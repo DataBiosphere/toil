@@ -51,8 +51,8 @@ try and restart the jobs in it",
                       default=None)
     
     parser.add_option("--batchSystem", dest="batchSystem", 
-                      help="The type of batch system to run the job(s) with, currently can be 'single_machine'/'parasol'/'acid_test'",
-                      default="single_machine")
+                      help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'",
+                      default="singleMachine")
     
     parser.add_option("--retryCount", dest="retryCount", 
                       help="Number of times to try a failing job before giving up and labelling job failed",
@@ -114,13 +114,13 @@ def loadTheBatchSystem(config):
     if batchSystemString == "parasol":
         batchSystem = ParasolBatchSystem(config)
         logger.info("Using the parasol batch system")
-    elif batchSystemString == "single_machine":
+    elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
         batchSystem = SingleMachineBatchSystem(config)
         logger.info("Using the single machine batch system")
-    elif batchSystemString == "gridengine":
+    elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
         batchSystem = GridengineBatchSystem(config)
         logger.info("Using the grid engine machine batch system")
-    elif batchSystemString == "acid_test":
+    elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
         batchSystem = SingleMachineBatchSystem(config, worker=BadWorker)
         config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
     else:
