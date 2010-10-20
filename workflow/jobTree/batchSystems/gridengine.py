@@ -10,18 +10,23 @@ import sys
 from workflow.jobTree.lib.bioio import logger
 from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
 
+
+#2,097,152 K
 def getjobexitcode(tmpFileForStdOut, jobid):
-    fileHandle = open(tmpFileForStdOut, 'w')
-    process = subprocess.Popen(["qacct", "-j", str(jobid)], stdout = fileHandle,stderr = subprocess.STDOUT)
-    sts = os.waitpid(process.pid, 0)
-    fileHandle.close()
-    if sts == 0:
-        return None
-    resfile = open(tmpFileForStdOut, "r")
-    for line in resfile:
+    process = subprocess.Popen(["qacct", "-j", str(jobid)], stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
+    for line in process.communicate()[0].split("\n"):
         if line.startswith("exit_status"):
             return int(line.split()[1])
-    
+    return None
+def getjobinfo(jobid):
+    process = subprocess.Popen(["qstat", "-j",str(jobid)], stdout = subprocess.PIPE)
+    jobinfo = list()
+    headers = list()
+    results = process.communicate()[0].split("\n")
+    for currline in results:
+        if currline.startswith("submission_time"):
+            jobtime =  " ".join(currline.split()[1:])
+            return time.mktime(time.strptime(jobtime,"%a %b %d %H:%M:%S %Y"))
 def killjob(jobid, tmpFileForStdOut):
     fileHandle = open(tmpFileForStdOut, 'w')
     process = subprocess.Popen(["qdel",str(jobid)], stdout=fileHandle)
@@ -30,17 +35,24 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
     qsubline = list(["qsub","-b" ,"y","-terse","-j" ,"y", "-o", out ])
         
     reqline = list()
+    #cores = None
     if cores is not None:
-        reqline.append("num_proc="+str(cores))
+        reqline.append("cpu="+str(cores))
     if mem is not None:
-        reqline.append("mem_total="+str(mem))
+        reqline.append("mem_free="+str(mem/ 1024)+"K")
     if len(reqline) > 0:
-        qsubline.extend(["-soft","-l", ",".join(reqline)])
+        qsubline.extend(["-hard","-l", ",".join(reqline)])
         
-    fileHandle = open(tmpFileForStdOut, 'w')
     qsubline.append(jobcommand)
-    process = subprocess.Popen(qsubline, stdout=fileHandle)
-    sts = os.waitpid(process.pid, 0)
+    print "**"+" ".join(qsubline)
+    process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
+    result = None
+        
+    line = process.communicate()[0].split("\n")[0]
+    #print "**ERROR"+str(process.returncode)
+    #print "**"+line
+    result =  int(line)
+    return result
     #print "**"+" ".join(qsubline)
     #while True:
         #time.sleep(100)
@@ -73,12 +85,10 @@ class GridengineBatchSystem(AbstractBatchSystem):
             #print command
   
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessarys
-            addjob(command, self.scratchFile,cores = cpu, mem = memory, out = outfile)
+            jobID = addjob(command, self.scratchFile,cores = cpu, mem = memory, out = outfile)
             
-            fileHandle = open(self.scratchFile, 'r')
-            line = fileHandle.readline()
-            jobID = int(line)
-            logger.debug("Got the job id: %s from line: %s" % (jobID, line))
+
+            logger.debug("Got the job id: %s" % (jobID))
             assert jobID not in issuedJobs.keys()
             issuedJobs[jobID] = command
             logger.debug("Issued the job command: %s with job id: %i " % (command, jobID))
@@ -101,12 +111,10 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return self.currentjobs
     
     def getRunningJobIDs(self):
-        #10/09/2010 21:33:58
         times = {}
-        for currjob in getjobs():
-            if currjob in self.getIssuedJobIDs():
-                time = time.time() - time.mktime(time.strptime(currjob["submit/start at"],"%m/%d/%Y %H:%M:%S %Y"))
-                times[currjob["job-ID"]] = time
+        for currjob in self.getIssuedJobIDs():
+            time = time.time() - getjobinfo(currjob["job-ID"])
+            times[currjob] = time
         return times
     
     def getUpdatedJobs(self):
