@@ -113,6 +113,7 @@ def setLoggingFromOptions(options):
         addLoggingFileHandler(options.logFile, options.logRotating)
     
     logger.info("Logging to file: %s" % options.logFile)  
+    
 
 #########################################################
 #########################################################
