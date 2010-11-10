@@ -145,6 +145,17 @@ def popen(command, tempFile):
         raise RuntimeError("Command: %s exited with non-zero status %i" % (command, i))
     return i
 
+def popenCatch(command):
+    """Runs a command and return standard out.
+    """
+    logger.debug("Running the command: %s" % command)
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+    sts = os.waitpid(process.pid, 0)
+    i = sts[1]
+    if i != 0:
+        raise RuntimeError("Command: %s exited with non-zero status %i" % (command, i))
+    return process.stdout.read().strip()
+
 def getTotalCpuTime():
     """Gives the total cpu time, including the children. 
     """
