@@ -56,7 +56,7 @@ try and restart the jobs in it",
     
     parser.add_option("--retryCount", dest="retryCount", 
                       help="Number of times to try a failing job before giving up and labelling job failed",
-                      default=1)
+                      default=0)
     
     parser.add_option("--waitDuration", dest="waitDuration", 
                       help="Period of time to pause after updating the running jobs (default is set by batch system)")

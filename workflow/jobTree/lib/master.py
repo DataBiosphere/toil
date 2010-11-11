@@ -221,7 +221,7 @@ def reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem):
                 processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
 
 reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
-def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfterNTimesMissing=5):
+def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfterNTimesMissing=3):
     """Check all the current job ids are in the list of currently running batch system jobs. 
     If a job is missing, we mark it as so, if it is missing for a number of runs of 
     this function (say 10).. then we try deleting the job (though its probably lost), we wait
