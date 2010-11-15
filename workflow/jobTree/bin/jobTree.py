@@ -121,7 +121,7 @@ def loadTheBatchSystem(config):
         batchSystem = GridengineBatchSystem(config)
         logger.info("Using the grid engine machine batch system")
     elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-        batchSystem = SingleMachineBatchSystem(config, worker=BadWorker)
+        batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
         config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
     else:
         raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)

@@ -296,14 +296,12 @@ def mainLoop(config, batchSystem):
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
-        jobsToIssue = []
-        
         for jobFile in list(updatedJobFiles):
             job = ET.parse(jobFile).getroot()
             assert job.attrib["colour"] not in ("grey", "blue")
             
             if job.attrib["colour"] == "white": #Get ready to start the job
-                if len(jobIDsToJobsHash) + len(jobsToIssue) < maxIssuedJobs:
+                if len(jobIDsToJobsHash) < maxIssuedJobs:
                     logger.debug("Job: %s is being started" % job.attrib["file"])
                     updatedJobFiles.remove(job.attrib["file"])
                     
@@ -314,7 +312,7 @@ def mainLoop(config, batchSystem):
                     job.attrib["colour"] = "grey"
                     writeJobs([ job ]) #Check point, do this before issuing job, so state is not read until issued
                     
-                    jobsToIssue.append(job) #Issue the jobs as a batch
+                    issueJobs([ job ], jobIDsToJobsHash, batchSystem)
                 else:
                     logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
             elif job.attrib["colour"] == "black": #Job has finished okay
@@ -407,8 +405,6 @@ def mainLoop(config, batchSystem):
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
                 deleteJob(job, config) #This could be done earlier, but I like it this way.
-        
-        issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem) #We issue the jobs after the fact so that the single machine mode can exploit some parallelism.
                 
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
