@@ -32,7 +32,7 @@ def killjob(jobid, tmpFileForStdOut):
     process = subprocess.Popen(["qdel",str(jobid)], stdout=fileHandle)
 
 def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/null"):
-    qsubline = list(["qsub","-b" ,"y","-terse","-j" ,"y", "-o", out ])
+    qsubline = list(["qsub","-cwd","-b","y","-terse","-j" ,"y", "-o", out ])
         
     reqline = list()
     #cores = None
@@ -44,7 +44,7 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
         qsubline.extend(["-hard","-l", ",".join(reqline)])
         
     qsubline.append(jobcommand)
-    print "**"+" ".join(qsubline)
+    logger.logDebug("**"+" ".join(qsubline))
     process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
     result = None
         
