@@ -60,6 +60,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             assert memory != None
             assert cpu != None
             assert logFile != None
+            logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
             self.jobs[self.jobIndex] = command
             issuedJobs[self.jobIndex] = command
             self.inputQueue.put((command, logFile, self.jobIndex))
