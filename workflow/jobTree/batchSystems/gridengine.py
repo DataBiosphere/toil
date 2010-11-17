@@ -44,7 +44,7 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
         qsubline.extend(["-hard","-l", ",".join(reqline)])
         
     qsubline.append(jobcommand)
-    logger.logDebug("**"+" ".join(qsubline))
+    logger.debug("**"+" ".join(qsubline))
     process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
     result = None
         
