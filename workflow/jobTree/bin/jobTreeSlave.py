@@ -73,8 +73,8 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
     
     #Deal with memory and cpu requirements (this pass tells the running job how much cpu and memory they have,
     #according to the batch system
-    tempJob.attrib["memory"] = str(memoryAvailable)
-    tempJob.attrib["cpu"] = str(cpuAvailable)
+    tempJob.attrib["available_memory"] = str(memoryAvailable)
+    tempJob.attrib["available_cpu"] = str(cpuAvailable)
     if stats != None:
         tempJob.attrib["stats"] = getTempFile(rootDir=localSlaveTempDir)
         os.remove(tempJob.attrib["stats"])

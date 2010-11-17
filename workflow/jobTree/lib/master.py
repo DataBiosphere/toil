@@ -242,6 +242,19 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
             reissueMissingJobs_missingHash.pop(jobID)
             batchSystem.killJobs([ jobID ])
             processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
+            
+def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
+    """Waits sleepFor seconds while there are no updated jobs, repeating this 
+    cycle sleepNumber times.
+    """
+    i = 0
+    while i < sleepNumber:
+        updatedJobs = updatedJobsFn()
+        if len(updatedJobs) != 0:
+            return updatedJobs
+        time.sleep(sleepFor)
+        i += 1
+    return updatedJobsFn()
 
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
@@ -320,6 +333,7 @@ def mainLoop(config, batchSystem):
                 #Deal with stats
                 if stats:
                     system("cat %s >> %s" % (job.attrib["stats"], config.attrib["stats"]))
+                    open(job.attrib["stats"], 'w').close() #Reset the stats file
                 childCount = int(job.attrib["child_count"])
                 blackChildCount = int(job.attrib["black_child_count"])
                 assert childCount == blackChildCount #Has no currently running child jobs
@@ -410,7 +424,10 @@ def mainLoop(config, batchSystem):
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
             break
         
-        updatedJobs = batchSystem.getUpdatedJobs() #Asks the batch system what jobs have been completed.
+        if len(updatedJobFiles) > 0:
+            updatedJobs = batchSystem.getUpdatedJobs() #Asks the batch system what jobs have been completed.
+        else:
+            updatedJobs = pauseForUpdatedJobs(batchSystem.getUpdatedJobs) #Asks the batch system what jobs have been completed.
         for jobID in updatedJobs.keys(): #Runs through a map of updated jobs and there status, 
             result = updatedJobs[jobID]
             if jobIDsToJobsHash.has_key(jobID): 

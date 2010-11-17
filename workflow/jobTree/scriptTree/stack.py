@@ -141,8 +141,8 @@ class Stack:
         self.localTempDir = job.attrib["local_temp_dir"]
         self.globalTempDir = job.attrib["global_temp_dir"]
         maxTime = float(job.attrib["job_time"])
-        memory = int(job.attrib["memory"])
-        cpu = int(job.attrib["cpu"])
+        memory = int(job.attrib["available_memory"])
+        cpu = int(job.attrib["available_cpu"])
         
         if job.attrib.has_key("stats"):
             stats = ET.Element("stack")
@@ -218,8 +218,10 @@ class Stack:
             job.attrib["command"] = followOnStack.makeRunnable(self.globalTempDir)
             job.attrib["time"] = str(followOnStack.getRunTime())
             followOnMemory = followOnStack.getMemory()
+            assert not job.attrib.has_key("memory")
             if followOnMemory != sys.maxint:
                 job.attrib["memory"] = str(followOnMemory)
+            assert not job.attrib.has_key("cpu")
             followOnCpu = followOnStack.getCpu()
             if followOnCpu != sys.maxint:
                 job.attrib["cpu"] = str(followOnCpu)
@@ -233,8 +235,10 @@ class Stack:
             childJob = ET.SubElement(childrenTag, "child", { "command":childStack.makeRunnable(self.globalTempDir),
                                               "time":str(childStack.getRunTime()) })
             childMemory = childStack.getMemory()
+            assert not childJob.attrib.has_key("memory")
             if childMemory != sys.maxint:
                 childJob.attrib["memory"] = str(childMemory)
+            assert not childJob.attrib.has_key("cpu")
             childCpu = childStack.getCpu()
             if childCpu != sys.maxint:
                 childJob.attrib["cpu"] = str(childCpu)

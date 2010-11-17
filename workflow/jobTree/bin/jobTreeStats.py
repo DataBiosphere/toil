@@ -57,7 +57,7 @@ def main():
         raise RuntimeError("A valid job tree must contain the config file")
     
     if not os.path.isfile(os.path.join(options.jobTree, "stats.xml")):
-        raise RuntimeError("The job-tree was run without the --stats flag, so no stats we created")
+        raise RuntimeError("The job-tree was run without the --stats flag, so no stats were created")
     
     ##########################################
     #Read the stats and config
