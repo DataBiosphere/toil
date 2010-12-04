@@ -242,6 +242,10 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
             reissueMissingJobs_missingHash.pop(jobID)
             batchSystem.killJobs([ jobID ])
             processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
+    if len(reissueMissingJobs_missingHash) > 0:
+        logger.critical("Going to sleep before trying again before trying to find missing jobs")
+        time.sleep(60)
+        reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfterNTimesMissing)
             
 def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
     """Waits sleepFor seconds while there are no updated jobs, repeating this 
