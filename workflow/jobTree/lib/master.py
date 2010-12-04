@@ -308,7 +308,7 @@ def mainLoop(config, batchSystem):
         startClock = getTotalCpuTime()
     
     logger.info("Starting the main loop")
-    timeSinceJobsLastRescued = time.time()
+    timeSinceJobsLastRescued = time.time() + rescueJobsFrequency - 100 #We hack it so that we rescue jobs after the first 100 seconds
     while True:
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
