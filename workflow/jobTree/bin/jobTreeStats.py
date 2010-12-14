@@ -102,7 +102,7 @@ def main():
     def fn2(element, containingItems, containingItemName, getFn):
         itemCounts = [ len(getFn(containingItem)) for containingItem in containingItems ]
         itemCounts.sort()
-        if len(itemCounts) == 0:
+        if len(itemCounts) == 0: 
             itemCounts.append(0)
         element.attrib["median_number_per_%s" % containingItemName] = str(itemCounts[len(itemCounts)/2])
         element.attrib["average_number_per_%s" % containingItemName] = str(float(sum(itemCounts))/len(itemCounts))
