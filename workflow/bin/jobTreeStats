@@ -109,9 +109,6 @@ def main():
         element.attrib["min_number_per_%s" % containingItemName] = str(min(itemCounts))
         element.attrib["max_number_per_%s" % containingItemName] = str(max(itemCounts))
     
-    if stats.find("total_time") == None: #Hack to allow it to work on unfinished jobtrees.
-        ET.SubElement(stats, "total_time", { "time":"0.0", "clock":"0.0"})
-    
     collatedStatsTag = ET.Element("collated_stats", { "total_run_time":stats.find("total_time").attrib["time"],
                                                      "total_clock":stats.find("total_time").attrib["clock"],
                                                      "batch_system":config.attrib["batch_system"],
