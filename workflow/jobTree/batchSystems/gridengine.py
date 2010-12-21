@@ -32,8 +32,8 @@ def killjob(jobid, tmpFileForStdOut):
     process = subprocess.Popen(["qdel",str(jobid)], stdout=fileHandle)
 
 def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/null"):
-    qsubline = list(["qsub","-cwd","-b","y","-terse","-j" ,"y", "-o", out ])
-        
+    qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-v", "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"], "-o", out ])
+    
     reqline = list()
     #cores = None
     if cores is not None:
@@ -51,7 +51,7 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
     line = process.communicate()[0].split("\n")[0]
     #print "**ERROR"+str(process.returncode)
     #print "**"+line
-    result =  int(line)
+    result = int(line)
     return result
     #print "**"+" ".join(qsubline)
     #while True:
@@ -75,7 +75,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         
     def __des__(self):
         #Closes the file handle associated with the results file.
-        self.parasolResultsFileHandle.close() #Close the results file, cos were done.
+        self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
         
     def issueJobs(self, jobCommands):
         """Issues grid engine with job commands.
