@@ -61,8 +61,6 @@ def writeJobs(jobs):
     """Writes a list of jobs to file, ensuring that the previous
     state is maintained until after the write is complete
     """
-    #The lock file name, by a round about mechanism
-    
     #Create a unique updating name using the first file in the list
     fileName = jobs[0].attrib["file"]
     updatingFile = fileName + ".updating"
@@ -155,8 +153,17 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
     assert jobID in jobIDsToJobsHash
     jobFile = jobIDsToJobsHash.pop(jobID)
     
-    if resultStatus != 0: #Job not successful
-        if os.path.isfile(jobFile + ".updating"): #The job failed while attempting to write the job file.
+    updatingFileIsPresent = os.path.isfile(jobFile + ".updating")
+    newFileIsPresent = os.path.isfile(jobFile + ".new")
+    
+    if resultStatus == 0 and updatingFileIsPresent:
+        logger.critical("Despite the batch system claiming success there is a .updating file present: %s", jobFile + ".updating")
+        
+    if resultStatus == 0 and newFileIsPresent:
+        logger.critical("Despite the batch system claiming success there is a .new file present: %s", jobFile + ".new")
+    
+    if resultStatus != 0 or newFileIsPresent or updatingFileIsPresent: #Job not successful according to batchsystem, or according to the existance of a .new or .updating file
+        if updatingFileIsPresent: #The job failed while attempting to write the job file.
             logger.critical("There was an .updating file for the crashed job: %s" % jobFile)
             if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
                 logger.critical("There was an .new file for the crashed job: %s" % jobFile)
@@ -170,7 +177,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
             writeJobs([ job ])
             logger.critical("We've reverted to the original job file and marked it as failed: %s" % jobFile)
         else:
-            if os.path.isfile(jobFile + ".new"): #The job was not properly updated before crashing
+            if newFileIsPresent: #The job was not properly updated before crashing
                 logger.critical("There is a valid .new file %s" % jobFile)
                 if os.path.isfile(jobFile):
                     os.remove(jobFile)
