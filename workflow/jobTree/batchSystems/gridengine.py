@@ -38,9 +38,9 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
     ## setting -l cpu=1 means that only a few jobs run at a time
     cores = None
     if cores is not None:
-        reqline.append("cpu="+str(cores))
+        reqline.append("p="+str(cores))
     if mem is not None:
-        reqline.append("mem_free="+str(mem/ 1024)+"K")
+        reqline.append("vf="+str(mem/ 1024)+"K")
     if len(reqline) > 0:
         qsubline.extend(["-hard","-l", ",".join(reqline)])
         
