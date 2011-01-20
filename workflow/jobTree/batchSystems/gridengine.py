@@ -35,7 +35,8 @@ def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/n
     qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-v", "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"], "-o", out ])
     
     reqline = list()
-    #cores = None
+    ## setting -l cpu=1 means that only a few jobs run at a time
+    cores = None
     if cores is not None:
         reqline.append("cpu="+str(cores))
     if mem is not None:
