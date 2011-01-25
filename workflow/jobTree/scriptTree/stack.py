@@ -28,6 +28,23 @@ from workflow.jobTree.lib.master import mainLoop
 
 from workflow.jobTree.scriptTree.target import Target
         
+class JobFile:
+    def __init__(self, filename):
+        self.jobfilename = filename
+        self.xmlRoot = ET.parse(self.jobfilename).getroot()
+        self.attrib = self.xmlRoot.attrib
+    def getGlobalTempDir(self):
+        return self.xmlRoot.attrib["global_temp_dir"]
+    def addChild(self, cmd, time):
+        c = self.xmlRoot.find("children")
+        ET.SubElement(c, "child", {"command":str(cmd), "time":str(time)})
+        return self
+    def write(self):
+        fh = open(self.jobfilename, mode="w")
+        ET.ElementTree(self.xmlRoot).write(fh)
+        fh.close();
+        return self
+
 class Stack:
     """Holds together a stack of targets and runs them.
     The only public methods are documented at the top of this file..
@@ -55,6 +72,12 @@ class Stack:
         """
         addOptions(parser)
     
+    def addToJobFile(self, jobFile):
+        job = JobFile(jobFile)
+        cmd = self.makeRunnable(job.getGlobalTempDir())
+        job.addChild(cmd, 1000)
+        job.write()
+
     def startJobTree(self, options):
         """Runs jobtree using the given options (see Stack.getDefaultOptions
         and Stack.addJobTreeOptions).

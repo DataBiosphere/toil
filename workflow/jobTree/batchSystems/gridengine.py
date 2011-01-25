@@ -32,11 +32,13 @@ def killjob(jobid, tmpFileForStdOut):
     process = subprocess.Popen(["qdel",str(jobid)], stdout=fileHandle)
 
 def addjob(jobcommand, tmpFileForStdOut, cores = None, mem = None, out = "/dev/null"):
-    qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-v", "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"], "-o", out ])
+    qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-cwd","-v", 
+                     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"], 
+                     "-o",out])
     
     reqline = list()
     ## setting -l cpu=1 means that only a few jobs run at a time
-    cores = None
+    #cores = None
     if cores is not None:
         reqline.append("p="+str(cores))
     if mem is not None:

@@ -36,6 +36,17 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
     system(command)
     logger.info("Ran the jobtree apparently okay")
     
+
+def commandAvailable(executable):
+    return 0 == os.system("which %s > /dev/null 2> /dev/null" % executable)
+
+def detectQueueSystem():
+    if commandAvailable("parasol"):
+        return "parasol"
+    if commandAvailable("qsub"):
+        return "gridEngine"
+    return "singleMachine"
+
 def addOptions(parser):
     addLoggingOptions(parser)#This adds the logging stuff..
     
@@ -50,9 +61,9 @@ If you pass an existing directory it will check if it's a valid existin job tree
 try and restart the jobs in it",
                       default=None)
     
-    parser.add_option("--batchSystem", dest="batchSystem", 
+    parser.add_option("--batchSystem", dest="batchSystem",
                       help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'",
-                      default="singleMachine")
+                      default=detectQueueSystem())
     
     parser.add_option("--retryCount", dest="retryCount", 
                       help="Number of times to try a failing job before giving up and labelling job failed",
