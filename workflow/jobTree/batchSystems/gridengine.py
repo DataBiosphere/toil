@@ -15,7 +15,7 @@ from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
 def getjobexitcode(tmpFileForStdOut, jobid):
     process = subprocess.Popen(["qacct", "-j", str(jobid)], stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
     for line in process.communicate()[0].split("\n"):
-        if line.startswith("exit_status"):
+        if line.startswith("failure"):
             return int(line.split()[1])
     return None
 def getjobinfo(jobid):
