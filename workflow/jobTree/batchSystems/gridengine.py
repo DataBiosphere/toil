@@ -15,9 +15,12 @@ from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
 def getjobexitcode(tmpFileForStdOut, jobid):
     process = subprocess.Popen(["qacct", "-j", str(jobid)], stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
     for line in process.communicate()[0].split("\n"):
-        if line.startswith("failure"):
+        if line.startswith("failure") and int(line.split()[1]) == 1:
+	    return 1
+        elif line.startswith("exit_status"):
             return int(line.split()[1])
     return None
+
 def getjobinfo(jobid):
     process = subprocess.Popen(["qstat", "-j",str(jobid)], stdout = subprocess.PIPE)
     jobinfo = list()
@@ -27,6 +30,7 @@ def getjobinfo(jobid):
         if currline.startswith("submission_time"):
             jobtime =  " ".join(currline.split()[1:])
             return time.mktime(time.strptime(jobtime,"%a %b %d %H:%M:%S %Y"))
+
 def killjob(jobid, tmpFileForStdOut):
     fileHandle = open(tmpFileForStdOut, 'w')
     process = subprocess.Popen(["qdel",str(jobid)], stdout=fileHandle)
@@ -118,16 +122,16 @@ class GridengineBatchSystem(AbstractBatchSystem):
         for currjob in self.getIssuedJobIDs():
             time = time.time() - getjobinfo(currjob["job-ID"])
             times[currjob] = time
+
         return times
     
     def getUpdatedJobs(self):
         retcodes = {}
         for currjob in self.currentjobs:
-            
             exit = getjobexitcode(self.scratchFile, currjob)
             if exit is not None:
-                
                 retcodes[currjob] = exit 
+
         self.currentjobs -= set(retcodes.keys())
         return retcodes
     
