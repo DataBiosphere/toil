@@ -98,7 +98,7 @@ class Target2(Target):
     def __init__(self, tempFileName):
         #Try requesting random amounts of CPU and memory requirements..
         self.requestedMemory = int(1 + random.random() *100000000)
-        self.requestedCpu = int(1 + random.random() * 4)
+        self.requestedCpu = int(1 + random.random() * 1)
         Target.__init__(self, time=random.random() * 10, memory=self.requestedMemory, cpu=self.requestedCpu)
         self.tempFileName = tempFileName
 

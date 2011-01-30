@@ -1,6 +1,6 @@
 binPath = ../bin
 
-all : ${binPath}/jobTree ${binPath}/jobTreeStatus ${binPath}/jobTreeKill ${binPath}/jobTreeSlave ${binPath}/jobTreeStats ${binPath}/scriptTree ${binPath}/jobTreeTest_CommandFirst.py ${binPath}/jobTreeTest_CommandSecond.py ${binPath}/scriptTreeTest_Wrapper.py ${binPath}/scriptTreeTest_Wrapper2.py ${binPath}/scriptTreeTest_Sort.py
+all : ${binPath}/jobTree ${binPath}/jobTreeStatus ${binPath}/jobTreeKill ${binPath}/jobTreeSlave ${binPath}/jobTreeStats ${binPath}/scriptTree  ${binPath}/multijob ${binPath}/jobTreeTest_CommandFirst.py ${binPath}/jobTreeTest_CommandSecond.py ${binPath}/scriptTreeTest_Wrapper.py ${binPath}/scriptTreeTest_Wrapper2.py ${binPath}/scriptTreeTest_Sort.py
 
 ${binPath}/jobTree : bin/jobTree.py
 	cp bin/jobTree.py ${binPath}/jobTree
@@ -25,6 +25,10 @@ ${binPath}/jobTreeStats : bin/jobTreeStats.py
 ${binPath}/scriptTree : scriptTree/scriptTree.py
 	cp scriptTree/scriptTree.py ${binPath}/scriptTree
 	chmod +x ${binPath}/scriptTree
+	
+${binPath}/multijob : batchSystems/multijob.py
+	cp batchSystems/multijob.py ${binPath}/multijob
+	chmod +x ${binPath}/multijob
 	
 ${binPath}/jobTreeTest_CommandFirst.py : test/jobTree/jobTreeTest_CommandFirst.py
 	cp test/jobTree/jobTreeTest_CommandFirst.py ${binPath}/jobTreeTest_CommandFirst.py

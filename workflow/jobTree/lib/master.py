@@ -61,6 +61,9 @@ def writeJobs(jobs):
     """Writes a list of jobs to file, ensuring that the previous
     state is maintained until after the write is complete
     """
+    if len(jobs) == 0:
+	return
+
     #Create a unique updating name using the first file in the list
     fileName = jobs[0].attrib["file"]
     updatingFile = fileName + ".updating"
@@ -161,7 +164,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
         
     if resultStatus == 0 and newFileIsPresent:
         logger.critical("Despite the batch system claiming success there is a .new file present: %s", jobFile + ".new")
-    
+
     if resultStatus != 0 or newFileIsPresent or updatingFileIsPresent: #Job not successful according to batchsystem, or according to the existance of a .new or .updating file
         if updatingFileIsPresent: #The job failed while attempting to write the job file.
             logger.critical("There was an .updating file for the crashed job: %s" % jobFile)
@@ -320,6 +323,7 @@ def mainLoop(config, batchSystem):
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
+	jobsToIssue = []
         for jobFile in list(updatedJobFiles):
             job = ET.parse(jobFile).getroot()
             assert job.attrib["colour"] not in ("grey", "blue")
@@ -334,9 +338,10 @@ def mainLoop(config, batchSystem):
                     open(job.attrib["log_file"], 'w').close()
                     
                     job.attrib["colour"] = "grey"
-                    writeJobs([ job ]) #Check point, do this before issuing job, so state is not read until issued
+                    #writeJobs([ job ]) #Check point, do this before issuing job, so state is not read until issued
                     
-                    issueJobs([ job ], jobIDsToJobsHash, batchSystem)
+                    #issueJobs([ job ], jobIDsToJobsHash, batchSystem)
+		    jobsToIssue.append(job)
                 else:
                     logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
             elif job.attrib["colour"] == "black": #Job has finished okay
@@ -430,6 +435,11 @@ def mainLoop(config, batchSystem):
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
                 deleteJob(job, config) #This could be done earlier, but I like it this way.
+
+	###End of for loop
+    	writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
+        issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
+
                 
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
