@@ -186,7 +186,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
                     os.remove(jobFile)
                 os.rename(jobFile + ".new", jobFile)
                 job = ET.parse(jobFile).getroot()
-                if job.attrib["colour"] == "grey": #The job failed while prepping to run another job on the slave
+                if job.attrib["colour"] == "grey": #The job failed while preparing to run another job on the slave
                     assert job.find("children").find("child") == None #File 
                     job.attrib["colour"] = "red"
                     writeJobs([ job ])
