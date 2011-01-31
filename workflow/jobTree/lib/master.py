@@ -186,6 +186,10 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
                     os.remove(jobFile)
                 os.rename(jobFile + ".new", jobFile)
                 job = ET.parse(jobFile).getroot()
+                if job.attrib["colour"] == "grey": #The job failed while prepping to run another job on the slave
+                    assert job.find("children").find("child") == None #File 
+                    job.attrib["colour"] = "red"
+                    writeJobs([ job ])
                 assert job.attrib["colour"] in ("black", "red")
             else:
                 logger.critical("There was no valid .new file %s" % jobFile)
