@@ -21,6 +21,7 @@ class Target:
             raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
         self.importStrings = set((".".join((self.__module__, self.__class__.__name__)),))
+        self.loggingMessages = []
 
     def run(self):
         """Do user stuff here, including creating any follow on jobs.
@@ -88,6 +89,11 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Gets the child commands, as a list of tuples of strings and floats, representing the run times.
         """
         return self.__childCommands[:]
+    
+    def logToMaster(self, string):
+        """Send a logging message to the master.
+        """
+        self.loggingMessages.append(string)
     
 ####
 #Private functions
