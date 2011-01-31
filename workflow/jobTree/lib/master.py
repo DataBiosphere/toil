@@ -62,7 +62,7 @@ def writeJobs(jobs):
     state is maintained until after the write is complete
     """
     if len(jobs) == 0:
-	return
+        return
 
     #Create a unique updating name using the first file in the list
     fileName = jobs[0].attrib["file"]
@@ -440,8 +440,8 @@ def mainLoop(config, batchSystem):
                 totalJobFiles -= 1
                 deleteJob(job, config) #This could be done earlier, but I like it this way.
 
-	###End of for loop
-    	writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
+        ###End of for loop
+        writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
         issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
 
                 

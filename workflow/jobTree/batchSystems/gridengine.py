@@ -16,43 +16,43 @@ from workflow.jobTree.batchSystems.multijob import MultiTarget
 
 class MemoryString:
     def __init__(self, string):
-	if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G':
-	    self.unit = string[-1]
-	    self.val = float(string[:-1])
-	else:
-	    self.unit = 'B'
-	    self.val = float(string)
-	self.bytes = self.byteVal()
+        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G':
+            self.unit = string[-1]
+            self.val = float(string[:-1])
+        else:
+            self.unit = 'B'
+            self.val = float(string)
+        self.bytes = self.byteVal()
 
     def __str__(self):
-	if self.unit != 'B':
-	    return str(val) + unit
-	else:
-	    return str(val)
+        if self.unit != 'B':
+            return str(val) + unit
+        else:
+            return str(val)
 
     def byteVal(self):
-	if self.unit == 'B':
-	    return self.val
+        if self.unit == 'B':
+            return self.val
         elif self.unit == 'K':
-	    return self.val * 1024
-	elif self.unit == 'M':
-	    return self.val * 1048576
-	elif self.unit == 'G':
-	    return self.val * 1073741824
+            return self.val * 1024
+        elif self.unit == 'M':
+            return self.val * 1048576
+        elif self.unit == 'G':
+            return self.val * 1073741824
 
     def __cmp__(self, other):
-	return cmp(self.bytes, other.bytes)
+        return cmp(self.bytes, other.bytes)
 
 def prepareQsub(cpu, mem):
     qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-cwd","-v", 
-		     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]])
+                     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]])
     reqline = list()
     if cpu is not None:
-	reqline.append("p="+str(cpu))
+        reqline.append("p="+str(cpu))
     if mem is not None:
-	reqline.append("vf="+str(mem/ 1024)+"K")
+        reqline.append("vf="+str(mem/ 1024)+"K")
     if len(reqline) > 0:
-	qsubline.extend(["-hard","-l", ",".join(reqline)])
+        qsubline.extend(["-hard","-l", ",".join(reqline)])
     logger.debug("**"+" ".join(qsubline))
     return qsubline
 
@@ -66,39 +66,39 @@ def qsub(qsubline):
 class Worker(Thread):
     def __init__(self, inputQueue, outputQueue, boss):
         Thread.__init__(self)
-	self.inputQueue = inputQueue
-	self.outputQueue = outputQueue
-	self.currentjobs = set()
+        self.inputQueue = inputQueue
+        self.outputQueue = outputQueue
+        self.currentjobs = set()
         
     def getjobexitcode(self, job, task):
-	args = ["qacct", "-j", str(job)]
-	if task is not None:
-	     args.extend(["-t", str(task)])
+        args = ["qacct", "-j", str(job)]
+        if task is not None:
+             args.extend(["-t", str(task)])
 
         process = subprocess.Popen(args, stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
         for line in process.stdout:
             if line.startswith("failed") and int(line.split()[1]) == 1:
-	        return 1
+                return 1
             elif line.startswith("exit_status"):
                 return int(line.split()[1])
         return None
         
     def run(self):
         while True:
-	    # Load new job ids 
-	    while not self.inputQueue.empty():
-		self.currentjobs.add(self.inputQueue.get())
+            # Load new job ids 
+            while not self.inputQueue.empty():
+                self.currentjobs.add(self.inputQueue.get())
 
-	    # Test known job list
-	    finishedJobs = []
+            # Test known job list
+            finishedJobs = []
             for (job, task) in self.currentjobs:
-        	exit = self.getjobexitcode(job, task)
+                exit = self.getjobexitcode(job, task)
                 if exit is not None:
                     self.outputQueue.put((job, task, exit))
-		    finishedJobs.append((job, task))
+                    finishedJobs.append((job, task))
 
             self.currentjobs -= set(finishedJobs)
-	    time.sleep(10)
+            time.sleep(10)
 
 class GridengineBatchSystem(AbstractBatchSystem):
     """The interface for gridengine.
@@ -112,73 +112,73 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.scratchFile = self.config.attrib["scratch_file"]
         self.currentjobs = set()
-	self.obtainSystemConstants()
-	self.jobIDs = dict()
-	self.sgeJobIDs = dict()
-	self.nextJobID = 0
+        self.obtainSystemConstants()
+        self.jobIDs = dict()
+        self.sgeJobIDs = dict()
+        self.nextJobID = 0
 
-	self.newJobsQueue = Queue()
-	self.updatedJobsQueue = Queue()
-	self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self)
-	self.worker.setDaemon(True)
-	self.worker.start()
+        self.newJobsQueue = Queue()
+        self.updatedJobsQueue = Queue()
+        self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self)
+        self.worker.setDaemon(True)
+        self.worker.start()
         
     def __des__(self):
         #Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
     def addJob(self, command, sgeJobID, issuedJobs, index=None):
-	jobID = self.nextJobID
-	self.nextJobID += 1
-	self.jobIDs[(sgeJobID, index)] = jobID
-	self.sgeJobIDs[jobID] = (sgeJobID, index) 
-	assert jobID not in issuedJobs.keys()
-	issuedJobs[jobID] = command
-	logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
-	self.currentjobs.add(jobID)
-	self.newJobsQueue.put((sgeJobID, index))
-	
+        jobID = self.nextJobID
+        self.nextJobID += 1
+        self.jobIDs[(sgeJobID, index)] = jobID
+        self.sgeJobIDs[jobID] = (sgeJobID, index) 
+        assert jobID not in issuedJobs.keys()
+        issuedJobs[jobID] = command
+        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+        self.currentjobs.add(jobID)
+        self.newJobsQueue.put((sgeJobID, index))
+        
     def issueJobs(self, jobCommands):
         """Issues grid engine with job commands.
         """
         issuedJobs = dict()
-	requirements = dict()
+        requirements = dict()
         for command, memory, cpu, outfile in jobCommands:
-	    if cpu > self.maxCPU:
-		RuntimeError("Job requested more CPUs than available on any node in the farm") 
-	    if memory > self.maxMEM.bytes:
-		RuntimeError("Job requested more memory than available on any node in the farm")
-	    if not (cpu, memory) in requirements:
-		requirements[cpu, memory] = []
-	    requirements[cpu, memory].append((command, outfile))
+            if cpu > self.maxCPU:
+                RuntimeError("Job requested more CPUs than available on any node in the farm") 
+            if memory > self.maxMEM.bytes:
+                RuntimeError("Job requested more memory than available on any node in the farm")
+            if not (cpu, memory) in requirements:
+                requirements[cpu, memory] = []
+            requirements[cpu, memory].append((command, outfile))
 
-	for cpu, memory in requirements:
-	    jobs = requirements[cpu, memory]
-	    if len(jobs) == 1:
-		    (command, outfile) = jobs[0]
-		    qsubline = prepareQsub(cpu, memory)
-		    qsubline.extend(['-o', outfile, command])
-		    result = qsub(qsubline)
-		    self.addJob(command, result, issuedJobs)
-	    else: 
-	            target = MultiTarget(jobs)
-		    multicommand = target.makeRunnable(self.config.attrib["log_file_dir"])
-		    qsubline = prepareQsub(cpu, memory)
-		    qsubline.extend(["-o", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
-		    result = qsub(qsubline)
-		    for index in range(len(jobs)):
-			    self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)
+        for cpu, memory in requirements:
+            jobs = requirements[cpu, memory]
+            if len(jobs) == 1:
+                    (command, outfile) = jobs[0]
+                    qsubline = prepareQsub(cpu, memory)
+                    qsubline.extend(['-o', outfile, command])
+                    result = qsub(qsubline)
+                    self.addJob(command, result, issuedJobs)
+            else: 
+                    target = MultiTarget(jobs)
+                    multicommand = target.makeRunnable(self.config.attrib["log_file_dir"])
+                    qsubline = prepareQsub(cpu, memory)
+                    qsubline.extend(["-o", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
+                    result = qsub(qsubline)
+                    for index in range(len(jobs)):
+                            self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)
         return issuedJobs
 
     def getSgeID(self, jobID):
-	if not jobID in self.sgeJobIDs:
-	     RuntimeError("Unknown jobID, could not be converted")
+        if not jobID in self.sgeJobIDs:
+             RuntimeError("Unknown jobID, could not be converted")
 
-	(job,task) = self.sgeJobIDs[jobID]
-	if task is None:
-	     return str(job) 
-	else:
-	     return str(job) + "." + str(task)
+        (job,task) = self.sgeJobIDs[jobID]
+        if task is None:
+             return str(job) 
+        else:
+             return str(job) + "." + str(task)
     
     def killJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -186,36 +186,36 @@ class GridengineBatchSystem(AbstractBatchSystem):
         """
         for jobID in jobIDs:
             self.currentjobs.remove(jobID)
-	    process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
-	    del self.jobIDs[self.sgeJobIDs[jobID]]
-	    del self.sgeJobIDs[jobID]
+            process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
+            del self.jobIDs[self.sgeJobIDs[jobID]]
+            del self.sgeJobIDs[jobID]
     
     def getIssuedJobIDs(self):
         """Gets the list of jobs issued to parasol.
         """
         #Example issued job, first field is jobID, last is the results file
         #31816891 localhost  benedictpaten 2009/07/23 10:54:09 python ~/Desktop/out.txt           
-	return self.currentjobs
+        return self.currentjobs
     
     def getRunningJobIDs(self):
         times = {}
-	currentjobs = set(self.sgeJobIDs[x] for x in self.getIssuedJobIDs())
+        currentjobs = set(self.sgeJobIDs[x] for x in self.getIssuedJobIDs())
         process = subprocess.Popen(["qstat"], stdout = subprocess.PIPE)
-	
-	for currline in process.stdout:
-	    items = curline.strip().split()
-	    if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
-		jobstart = " ".join(items[5:7])
-		jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-		times[items[0]] = time.time() - jobstart 
+        
+        for currline in process.stdout:
+            items = curline.strip().split()
+            if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
+                jobstart = " ".join(items[5:7])
+                jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
+                times[items[0]] = time.time() - jobstart 
 
         return times
     
     def getUpdatedJobs(self):
         retcodes = {}
         while not self.updatedJobsQueue.empty():
-	    (job, task, retcode) = self.updatedJobsQueue.get()
-	    retcodes[self.jobIDs[(job, task)]] =  retcode
+            (job, task, retcode) = self.updatedJobsQueue.get()
+            retcodes[self.jobIDs[(job, task)]] =  retcode
 
         self.currentjobs -= set(retcodes.keys())
         return retcodes
@@ -232,38 +232,38 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return 1800 #Half an hour
 
     def obtainSystemConstants(self):
-	p = subprocess.Popen(["qhost"], stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
+        p = subprocess.Popen(["qhost"], stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
 
-	line = p.stdout.readline()
-	items = line.strip().split()
-	num_columns = len(items)
-	cpu_index = None
-	mem_index = None	
-	for i in range(num_columns):
-		if items[i] == 'NCPU':
-			cpu_index = i
-		elif items[i] == 'MEMTOT':
-			mem_index = i
+        line = p.stdout.readline()
+        items = line.strip().split()
+        num_columns = len(items)
+        cpu_index = None
+        mem_index = None        
+        for i in range(num_columns):
+                if items[i] == 'NCPU':
+                        cpu_index = i
+                elif items[i] == 'MEMTOT':
+                        mem_index = i
 
-	if cpu_index is None or mem_index is None:
-		RuntimeError("qhost command does not return NCPU or MEMTOT columns")
+        if cpu_index is None or mem_index is None:
+                RuntimeError("qhost command does not return NCPU or MEMTOT columns")
 
-	p.stdout.readline()
+        p.stdout.readline()
 
-	self.maxCPU = 0
-	self.maxMEM = MemoryString("0")
-	for line in p.stdout:
-		items = line.strip().split()
-		if len(items) < num_columns:
-			RuntimeError("qhost output has a varying number of columns")
-		if items[cpu_index] != '-' and items[cpu_index] > self.maxCPU:
-			self.maxCPU = items[cpu_index]
-		if items[mem_index] != '-' and MemoryString(items[mem_index]) > self.maxMEM:
-			self.maxMEM = MemoryString(items[mem_index])
+        self.maxCPU = 0
+        self.maxMEM = MemoryString("0")
+        for line in p.stdout:
+                items = line.strip().split()
+                if len(items) < num_columns:
+                        RuntimeError("qhost output has a varying number of columns")
+                if items[cpu_index] != '-' and items[cpu_index] > self.maxCPU:
+                        self.maxCPU = items[cpu_index]
+                if items[mem_index] != '-' and MemoryString(items[mem_index]) > self.maxMEM:
+                        self.maxMEM = MemoryString(items[mem_index])
 
-	if self.maxCPU is 0 or self.maxMEM is 0:
-		RuntimeError("qhost returns null NCPU or MEMTOT info")
-		
+        if self.maxCPU is 0 or self.maxMEM is 0:
+                RuntimeError("qhost returns null NCPU or MEMTOT info")
+                
         
 def main():
     pass
