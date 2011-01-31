@@ -127,16 +127,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
-    def getSgeID(self, jobID):
-	if not jobID in self.sgeJobIDs:
-	     RuntimeError("Unknown jobID, could not be converted")
-
-	(job,task) = self.sgeJobIDs[jobID]
-	if task is None:
-	     return str(job) 
-	else:
-	     return str(job) + "." + str(task)
-
     def addJob(self, command, sgeJobID, issuedJobs, index=None):
 	jobID = self.nextJobID
 	self.nextJobID += 1
@@ -179,6 +169,16 @@ class GridengineBatchSystem(AbstractBatchSystem):
 		    for index in range(len(jobs)):
 			    self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)
         return issuedJobs
+
+    def getSgeID(self, jobID):
+	if not jobID in self.sgeJobIDs:
+	     RuntimeError("Unknown jobID, could not be converted")
+
+	(job,task) = self.sgeJobIDs[jobID]
+	if task is None:
+	     return str(job) 
+	else:
+	     return str(job) + "." + str(task)
     
     def killJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -186,9 +186,9 @@ class GridengineBatchSystem(AbstractBatchSystem):
         """
         for jobID in jobIDs:
             self.currentjobs.remove(jobID)
+	    process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
 	    del self.jobIDs[self.sgeJobIDs[jobID]]
 	    del self.sgeJobIDs[jobID]
-	    process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
     
     def getIssuedJobIDs(self):
         """Gets the list of jobs issued to parasol.
