@@ -207,7 +207,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
             if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
                 jobstart = " ".join(items[5:7])
                 jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                times[self.jobsIDs[(items[0], items[9])]] = time.time() - jobstart 
+                times[self.jobIDs[(items[0], items[9])]] = time.time() - jobstart 
 
         return times
     
