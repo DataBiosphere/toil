@@ -45,7 +45,7 @@ class MultiTarget():
         if outfile is None:
                 system(job)
         else:
-                system("%s > %s" % (job, outfile))
+                system("%s >& %s" % (job, outfile))
 
     def makeRunnable(self, tempDir):
         pickleFile = tempDir.getTempFile(".pickle")

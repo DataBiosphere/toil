@@ -177,7 +177,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
             if len(jobs) == 1:
                     (command, outfile) = jobs[0]
                     qsubline = prepareQsub(cpu, memory)
-                    qsubline.extend(['-o', outfile, command])
+                    qsubline.extend(['-o', outfile, '-e', outfile, command])
                     result = qsub(qsubline)
                     self.addJob(command, result, issuedJobs)
             else: 
