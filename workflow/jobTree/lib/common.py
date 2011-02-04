@@ -27,3 +27,19 @@ from workflow.jobTree.lib.bioio import system
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
     logger.info("Ran the job-tree stats command apparently okay")
+    
+def gridEngineIsInstalled():
+    """Returns True if grid-engine is installed, else False.
+    """
+    try:
+        return system("qstat -version") == 0
+    except RuntimeError:
+        return False
+    
+def parasolIsInstalled():
+    """Returns True if parasol is installed, else False.
+    """
+    try:
+        return system("parasol status") == 0
+    except RuntimeError:
+        return False

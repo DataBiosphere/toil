@@ -147,6 +147,14 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
             tempJob = ET.parse(tempFile).getroot()
             job.attrib["colour"] = "black" #Update the colour
             
+            #Deal with any logging messages directed at the master
+            if tempJob.find("messages") != None:
+                messages = job.find("messages")
+                if messages == None:
+                    messages = ET.SubElement(job, "messages")
+                for messageTag in tempJob.find("messages").findall("message"):
+                    messages.append(messageTag)
+            
             #Update the runtime of the stack..
             totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
             runtime = float(jobToRun.attrib["time"])

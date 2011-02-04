@@ -53,6 +53,7 @@ class Down(Target):
     
     def run(self):
         length = self.fileEnd - self.fileStart
+        self.logToMaster("Am running a down target with length: %i from input file: %s" % (length, self.inputFile))
         assert length >= 0
         if length > self.N:
             midPoint = getMidPoint(self.inputFile, self.fileStart, self.fileEnd)
@@ -80,6 +81,7 @@ class Up(Target):
         
     def run(self):
         merge(self.inputFile1, self.inputFile2, self.outputFile)
+        self.logToMaster("Am running an up target with input files: %s and %s" % (self.inputFile1, self.inputFile2))
         
 def main():
     parser = OptionParser()

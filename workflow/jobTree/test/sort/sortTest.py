@@ -13,6 +13,9 @@ from workflow.jobTree.lib.bioio import system
 from workflow.jobTree.lib.bioio import getTempDirectory
 from workflow.jobTree.lib.bioio import getTempFile
 
+from workflow.jobTree.lib.common import parasolIsInstalled, gridEngineIsInstalled
+
+
 from workflow.jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 class TestCase(unittest.TestCase):
@@ -23,12 +26,19 @@ class TestCase(unittest.TestCase):
     def testScriptTree_SortSimple(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        scriptTree_SortTest(self.testNo, "single_machine")
+        scriptTree_SortTest(self.testNo, "singleMachine")
     
     def testScriptTree_SortGridEngine(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        scriptTree_SortTest(self.testNo, "gridengine")
+        if gridEngineIsInstalled():
+            scriptTree_SortTest(self.testNo, "gridengine")
+            
+    def testScriptTree_Parasol(self):
+        """Tests scriptTree/jobTree by sorting a file in parallel.
+        """
+        if parasolIsInstalled():
+            scriptTree_SortTest(self.testNo, "parasol")
     
     def testScriptTree_SortAcid(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.

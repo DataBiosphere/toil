@@ -111,9 +111,9 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         return self.__childCommands[:]
     
     def logToMaster(self, string):
-        """Send a logging message to the master.
+        """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
         """
-        self.loggingMessages.append(string)
+        self.loggingMessages.append(str(string))
     
 ####
 #Private functions
@@ -131,3 +131,6 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Sets the stack object that is calling the target.
         """
         self.stack = stack
+        
+    def getMasterLoggingMessages(self):
+        return self.loggingMessages[:]

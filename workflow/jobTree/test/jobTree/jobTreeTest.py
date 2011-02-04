@@ -16,6 +16,8 @@ from workflow.jobTree.lib.bioio import parseSuiteTestOptions
 from workflow.jobTree.lib.bioio import logger
 from workflow.jobTree.lib.bioio import TempFileTree
 
+from workflow.jobTree.lib.common import parasolIsInstalled, gridEngineIsInstalled
+
 from workflow.jobTree.test.jobTree.jobTreeTest_CommandFirst import makeTreePointer
 
 class TestCase(unittest.TestCase):
@@ -33,14 +35,16 @@ class TestCase(unittest.TestCase):
         self.tempFileTree.destroyTempFiles()
         system("rm -rf %s %s" % (self.jobTreeDir, self.tempFileTreeDir)) #Cleanup the job tree in case it hasn't already been cleaned up.
      
-    #def testJobTree_SingleMachine(self):
-        #testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "single_machine")    
+    def testJobTree_SingleMachine(self):
+        testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")    
     
-    #def testJobTree_Parasol(self):
-        #if os.system("parasol status") == 0:
-            #testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "parasol") 
+    def testJobTree_Parasol(self):
+        if parasolIsInstalled():
+            testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "parasol") 
+    
     def testJobTree_gridengine(self):
-        testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "gridengine") 
+        if gridEngineIsInstalled():
+            testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "gridengine") 
 
 def testJobTree(testNo, depth, tempFileTree, jobTreeDir, batchSystem):
     """Runs a test program using the job tree using the single machine batch system.

@@ -374,6 +374,10 @@ def mainLoop(config, batchSystem):
                 if stats:
                     system("cat %s >> %s" % (job.attrib["stats"], config.attrib["stats"]))
                     open(job.attrib["stats"], 'w').close() #Reset the stats file
+                if job.find("messages") != None:
+                    for message in job.find("messages").findall("message"):
+                        logger.info("Received the following message from job: %s" % message.attrib["message"])
+                    job.remove(job.find("messages"))
                 childCount = int(job.attrib["child_count"])
                 blackChildCount = int(job.attrib["black_child_count"])
                 assert childCount == blackChildCount #Has no currently running child jobs

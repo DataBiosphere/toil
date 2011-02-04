@@ -238,7 +238,11 @@ class Stack:
                                                 "clock":str(getTotalCpuTime() - targetStartClock),
                                                 "class":".".join((target.__class__.__name__,)),
                                                 "e_time":str(target.getRunTime())})
-                    
+                
+            for message in target.getMasterLoggingMessages():
+                if job.find("messages") == None:
+                    ET.SubElement(job, "messages")
+                ET.SubElement(job.find("messages"), "message", { "message": message} )
         
         #######
         #Now build the new stacks and corresponding jobs
