@@ -30,7 +30,7 @@ from threading import Thread
 
 from workflow.jobTree.lib.bioio import logger
 from workflow.jobTree.lib.bioio import system
-from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
+from workflow.jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 from workflow.jobTree.batchSystems.multijob import MultiTarget
 

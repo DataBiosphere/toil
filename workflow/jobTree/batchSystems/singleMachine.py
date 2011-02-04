@@ -29,7 +29,7 @@ from Queue import Queue, Empty
 
 from workflow.jobTree.lib.bioio import logger
  
-from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
+from workflow.jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from workflow.jobTree.lib.bioio import getTempFile
 from workflow.jobTree.lib.bioio import system
 

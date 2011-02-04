@@ -26,7 +26,7 @@ import subprocess
 import time
 
 from workflow.jobTree.lib.bioio import logger
-from workflow.jobTree.lib.abstractBatchSystem import AbstractBatchSystem
+from workflow.jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 def popenParasolCommand(command, tmpFileForStdOut, runUntilSuccessful=True):
     """Issues a parasol command using popen to capture the output.

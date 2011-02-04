@@ -56,6 +56,8 @@ def getMemoryCpuAndTimeRequirements(job, nextJob):
     return memory, cpu, compTime
  
 def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
+    """Runs a job.
+    """
     from workflow.jobTree.lib.bioio import getTempFile
     from workflow.jobTree.lib.bioio import getTempDirectory
     from workflow.jobTree.lib.bioio import logger
