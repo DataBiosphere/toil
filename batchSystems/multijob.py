@@ -28,8 +28,8 @@ try:
 except ImportError:
     import pickle as cPickle
 
-from jobTree.lib.bioio import getTempFile
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import getTempFile
+from jobTree.src.bioio import system
 
 class MultiTarget():
     def __init__(self, commands):

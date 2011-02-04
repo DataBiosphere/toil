@@ -5,7 +5,7 @@
 
 import os
 import sys
-from lib.bioio import system
+from jobTree.src.bioio import system
 
 def fn2(file, oldPath, newPath):
     system("sed 's/%s/%s/g' %s > temporaryConversionFile" % (oldPath, newPath, file))
@@ -23,6 +23,7 @@ def fn(dir):
                 print "Modifying", i
                 fn2(i, "workflow\.jobTree", "jobTree") #Get rid of the 'workflow' bit
                 fn2(i, "jobTree\.bin", "jobTree.lib")
+                fn2(i, "jobTree\.lib", "jobTree.src")
             else:
                 print "Not modifying", i
     

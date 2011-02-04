@@ -20,9 +20,9 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import getBasicOptionParser 
-from jobTree.lib.bioio import parseBasicOptions
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import getBasicOptionParser 
+from jobTree.src.bioio import parseBasicOptions
 
 from jobTree.scriptTree.stack import loadPickleFile
 

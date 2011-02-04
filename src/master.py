@@ -32,11 +32,11 @@ import os.path
 import xml.etree.ElementTree as ET
 import time
 
-from jobTree.lib.bioio import logger, getTotalCpuTime
-from jobTree.lib.bioio import getLogLevelString
-from jobTree.lib.bioio import logFile
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import workflowRootPath
+from jobTree.src.bioio import logger, getTotalCpuTime
+from jobTree.src.bioio import getLogLevelString
+from jobTree.src.bioio import logFile
+from jobTree.src.bioio import system
+from jobTree.src.bioio import workflowRootPath
 
 def createJob(attrib, parent, config):
     """Creates an XML record for the job in a file within the hierarchy of jobs.

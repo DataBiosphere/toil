@@ -58,11 +58,11 @@ def getMemoryCpuAndTimeRequirements(job, nextJob):
 def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
     """Runs a job.
     """
-    from jobTree.lib.bioio import getTempFile
-    from jobTree.lib.bioio import getTempDirectory
-    from jobTree.lib.bioio import logger
-    from jobTree.lib.bioio import system
-    from jobTree.lib.bioio import getTotalCpuTime
+    from jobTree.src.bioio import getTempFile
+    from jobTree.src.bioio import getTempDirectory
+    from jobTree.src.bioio import logger
+    from jobTree.src.bioio import system
+    from jobTree.src.bioio import getTotalCpuTime
     
     assert len(job.find("children").findall("child")) == 0
     assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
@@ -203,14 +203,14 @@ def main():
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
-    from jobTree.lib.bioio import getBasicOptionParser
-    from jobTree.lib.bioio import parseBasicOptions
-    from jobTree.lib.bioio import logger
-    from jobTree.lib.bioio import addLoggingFileHandler
-    from jobTree.lib.bioio import setLogLevel
-    from jobTree.lib.bioio import getTotalCpuTime
+    from jobTree.src.bioio import getBasicOptionParser
+    from jobTree.src.bioio import parseBasicOptions
+    from jobTree.src.bioio import logger
+    from jobTree.src.bioio import addLoggingFileHandler
+    from jobTree.src.bioio import setLogLevel
+    from jobTree.src.bioio import getTotalCpuTime
     
-    from jobTree.lib.master import writeJobs
+    from jobTree.src.master import writeJobs
     
     ##########################################
     #Construct the arguments.

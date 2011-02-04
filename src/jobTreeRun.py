@@ -33,13 +33,13 @@ from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, BadWorker
 
-from jobTree.lib.master import createJob
-from jobTree.lib.master import mainLoop
-from jobTree.lib.master import writeJobs
+from jobTree.src.master import createJob
+from jobTree.src.master import mainLoop
+from jobTree.src.master import writeJobs
 
-from jobTree.lib.bioio import logger, setLoggingFromOptions, addLoggingOptions
-from jobTree.lib.bioio import TempFileTree
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import logger, setLoggingFromOptions, addLoggingOptions
+from jobTree.src.bioio import TempFileTree
+from jobTree.src.bioio import system
 
 
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 

@@ -31,20 +31,20 @@ except ImportError:
     
 import xml.etree.ElementTree as ET
 
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import setLogLevel
-from jobTree.lib.bioio import setLoggingFromOptions
-from jobTree.lib.bioio import getTempFile
-from jobTree.lib.bioio import getTempDirectory 
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import getTotalCpuTime
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import setLogLevel
+from jobTree.src.bioio import setLoggingFromOptions
+from jobTree.src.bioio import getTempFile
+from jobTree.src.bioio import getTempDirectory 
+from jobTree.src.bioio import system
+from jobTree.src.bioio import getTotalCpuTime
 
-from jobTree.lib.jobTreeRun import addOptions
-from jobTree.lib.jobTreeRun import createJobTree
-from jobTree.lib.jobTreeRun import reloadJobTree
-from jobTree.lib.jobTreeRun import createFirstJob
-from jobTree.lib.jobTreeRun import loadEnvironment
-from jobTree.lib.master import mainLoop
+from jobTree.src.jobTreeRun import addOptions
+from jobTree.src.jobTreeRun import createJobTree
+from jobTree.src.jobTreeRun import reloadJobTree
+from jobTree.src.jobTreeRun import createFirstJob
+from jobTree.src.jobTreeRun import loadEnvironment
+from jobTree.src.master import mainLoop
 
 from jobTree.scriptTree.target import Target
         

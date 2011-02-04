@@ -21,8 +21,8 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import system
 
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))

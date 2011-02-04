@@ -5,10 +5,10 @@ import unittest
 import sys
 import os
 
-from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import getTempDirectory
+from jobTree.src.bioio import TestStatus
+from jobTree.src.bioio import parseSuiteTestOptions
+from jobTree.src.bioio import system
+from jobTree.src.bioio import getTempDirectory
 from jobTree.test.jobTree.jobTreeTest import runJobTreeStatusAndFailIfNotComplete
  
 class TestCase(unittest.TestCase):

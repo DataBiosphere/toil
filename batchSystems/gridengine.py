@@ -28,8 +28,8 @@ import sys
 from Queue import Queue, Empty
 from threading import Thread
 
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import system
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 from jobTree.batchSystems.multijob import MultiTarget

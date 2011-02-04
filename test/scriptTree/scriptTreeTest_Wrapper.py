@@ -11,10 +11,10 @@ from optparse import OptionParser
 from jobTree.test.jobTree.jobTreeTest import makeFileTree
 from jobTree.test.jobTree.jobTreeTest_CommandFirst import makeTreePointer
 
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import TempFileTree
-from jobTree.lib.bioio import getRandomAlphaNumericString
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import TempFileTree
+from jobTree.src.bioio import getRandomAlphaNumericString
+from jobTree.src.bioio import system
 
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack

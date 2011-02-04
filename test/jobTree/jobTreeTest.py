@@ -10,13 +10,13 @@ import random
 import subprocess
 import xml.etree.ElementTree as ET
 
-from jobTree.lib.bioio import system 
-from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import TempFileTree
+from jobTree.src.bioio import system 
+from jobTree.src.bioio import TestStatus
+from jobTree.src.bioio import parseSuiteTestOptions
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import TempFileTree
 
-from jobTree.lib.common import parasolIsInstalled, gridEngineIsInstalled
+from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled
 
 from jobTree.test.jobTree.jobTreeTest_CommandFirst import makeTreePointer
 

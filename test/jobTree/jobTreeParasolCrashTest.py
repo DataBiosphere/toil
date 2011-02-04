@@ -13,14 +13,14 @@ import threading
 import time
 import subprocess
  
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import popen
-from jobTree.lib.bioio import getTempFile
-from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import TempFileTree
-from jobTree.lib.bioio import workflowRootPath
+from jobTree.src.bioio import system
+from jobTree.src.bioio import popen
+from jobTree.src.bioio import getTempFile
+from jobTree.src.bioio import TestStatus
+from jobTree.src.bioio import parseSuiteTestOptions
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import TempFileTree
+from jobTree.src.bioio import workflowRootPath
 
 from jobTree.test.jobTree.jobTreeTest import setupJobTree
 from jobTree.test.jobTree.jobTreeTest import checkEndStateOfJobTree

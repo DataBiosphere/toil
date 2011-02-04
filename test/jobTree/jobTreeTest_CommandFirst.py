@@ -6,13 +6,13 @@
 import sys
 import random
 import xml.etree.ElementTree as ET
-from jobTree.lib.bioio import logger
-from jobTree.lib.bioio import addLoggingFileHandler
+from jobTree.src.bioio import logger
+from jobTree.src.bioio import addLoggingFileHandler
 
-from jobTree.lib.bioio import getBasicOptionParser
-from jobTree.lib.bioio import parseBasicOptions
-from jobTree.lib.bioio import getTempFile
-from jobTree.lib.bioio import setLogLevel
+from jobTree.src.bioio import getBasicOptionParser
+from jobTree.src.bioio import parseBasicOptions
+from jobTree.src.bioio import getTempFile
+from jobTree.src.bioio import setLogLevel
 
 def makeTreePointer(treeNode, tempFile):
     tree = ET.Element("tree_pointer")

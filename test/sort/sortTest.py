@@ -7,13 +7,13 @@ import sys
 import os
 import random
 
-from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import getTempDirectory
-from jobTree.lib.bioio import getTempFile
+from jobTree.src.bioio import TestStatus
+from jobTree.src.bioio import parseSuiteTestOptions
+from jobTree.src.bioio import system
+from jobTree.src.bioio import getTempDirectory
+from jobTree.src.bioio import getTempFile
 
-from jobTree.lib.common import parasolIsInstalled, gridEngineIsInstalled
+from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled
 
 
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint

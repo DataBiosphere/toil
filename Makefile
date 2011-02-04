@@ -2,24 +2,24 @@ binPath = ./bin
 
 all : ${binPath}/jobTreeRun ${binPath}/jobTreeStatus ${binPath}/jobTreeKill ${binPath}/jobTreeSlave ${binPath}/jobTreeStats ${binPath}/scriptTree  ${binPath}/multijob ${binPath}/jobTreeTest_CommandFirst.py ${binPath}/jobTreeTest_CommandSecond.py ${binPath}/scriptTreeTest_Wrapper.py ${binPath}/scriptTreeTest_Wrapper2.py ${binPath}/scriptTreeTest_Sort.py
 
-${binPath}/jobTreeRun : lib/jobTreeRun.py
-	cp lib/jobTreeRun.py ${binPath}/jobTreeRun
+${binPath}/jobTreeRun : src/jobTreeRun.py
+	cp src/jobTreeRun.py ${binPath}/jobTreeRun
 	chmod +x ${binPath}/jobTreeRun
 
-${binPath}/jobTreeStatus : lib/jobTreeStatus.py
-	cp lib/jobTreeStatus.py ${binPath}/jobTreeStatus
+${binPath}/jobTreeStatus : src/jobTreeStatus.py
+	cp src/jobTreeStatus.py ${binPath}/jobTreeStatus
 	chmod +x ${binPath}/jobTreeStatus
 	
-${binPath}/jobTreeKill : lib/jobTreeKill.py
-	cp lib/jobTreeKill.py ${binPath}/jobTreeKill
+${binPath}/jobTreeKill : src/jobTreeKill.py
+	cp src/jobTreeKill.py ${binPath}/jobTreeKill
 	chmod +x ${binPath}/jobTreeKill
 	
-${binPath}/jobTreeSlave : lib/jobTreeSlave.py
-	cp lib/jobTreeSlave.py ${binPath}/jobTreeSlave
+${binPath}/jobTreeSlave : src/jobTreeSlave.py
+	cp src/jobTreeSlave.py ${binPath}/jobTreeSlave
 	chmod +x ${binPath}/jobTreeSlave
 	
-${binPath}/jobTreeStats : lib/jobTreeStats.py
-	cp lib/jobTreeStats.py ${binPath}/jobTreeStats
+${binPath}/jobTreeStats : src/jobTreeStats.py
+	cp src/jobTreeStats.py ${binPath}/jobTreeStats
 	chmod +x ${binPath}/jobTreeStats
 	
 ${binPath}/scriptTree : scriptTree/scriptTree.py

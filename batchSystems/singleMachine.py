@@ -27,11 +27,11 @@ import time
 from threading import Thread
 from Queue import Queue, Empty
 
-from jobTree.lib.bioio import logger
+from jobTree.src.bioio import logger
  
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.lib.bioio import getTempFile
-from jobTree.lib.bioio import system
+from jobTree.src.bioio import getTempFile
+from jobTree.src.bioio import system
 
 class Worker(Thread):
     def __init__(self, inputQueue, outputQueue):

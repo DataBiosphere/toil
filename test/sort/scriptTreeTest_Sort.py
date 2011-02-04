@@ -5,7 +5,7 @@
 from optparse import OptionParser
 import os
 import shutil
-from jobTree.lib.bioio import getTempFile
+from jobTree.src.bioio import getTempFile
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
