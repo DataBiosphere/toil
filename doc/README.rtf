@@ -6,7 +6,7 @@
 \deftab720
 \pard\pardeftab720\ql\qnatural
 
-\f0\fs22 \cf0 Read-me for workflow.jobTree, 10/07/2009 Benedict Paten (\ul benedict\ulnone  AT \ul soe\ulnone  DOT \ul ucsc\ulnone  dot \ul edu\ulnone ), revised 09/17/2010.\
+\f0\fs22 \cf0 Read-me for jobTree, 10/07/2009 Benedict Paten (\ul benedict\ulnone  AT \ul soe\ulnone  DOT \ul ucsc\ulnone  dot \ul edu\ulnone ), revised 09/17/2010.\
 \
 \ul Job-tree Introduction:\ulnone \
 \
@@ -47,9 +47,9 @@ This inherited template pattern has the following advantages:\
 (2) You write less boiler plate.\
 (2) You can organise all the input arguments and options in one place.\
 \
-The best way to learn how to use script tree is to look at an example. The following is taken from workflow.jobTree.test.sort.scriptTreeTest_Sort.py which provides a complete script for performing a parallel merge sort. \
+The best way to learn how to use script tree is to look at an example. The following is taken from jobTree.test.sort.scriptTreeTest_Sort.py which provides a complete script for performing a parallel merge sort. \
 \
-Below is the first 'Target' of this script inherited from the base class 'workflow.jobTree.scriptTree.Target'. Its job is to setup the merge sort.\
+Below is the first 'Target' of this script inherited from the base class 'jobTree.scriptTree.Target'. Its job is to setup the merge sort.\
 \
 \pard\pardeftab720\ql\qnatural
 \cf2 class\cf0  Setup(Target):\
@@ -84,7 +84,7 @@ An example of this is shown in tests/sorts/scriptTreeTest_Sort.py. \
 \
 The first line to notice is:\
 \pard\pardeftab720\ql\qnatural
-\cf2 from\cf0  workflow.jobTree.scriptTree.target \cf2 import\cf0  Target, Stack\
+\cf2 from\cf0  jobTree.scriptTree.target \cf2 import\cf0  Target, Stack\
 This imports the Target and Stack objects (the stack object is used to run the targets).\
 \
 Most of the code defines a series of targets (see above). \
@@ -109,7 +109,7 @@ a stack object is created, which is passed the first target as its sole construc
 \
 One final important detail, the lines:\
 	\cf2 if\cf0  __name__ == \cf3 '__main__'\cf0 :\
-    		\cf2 from\cf0  workflow.jobTree.test.sort.scriptTreeTest_Sort \cf2 import\cf0  *\
+    		\cf2 from\cf0  jobTree.test.sort.scriptTreeTest_Sort \cf2 import\cf0  *\
 reload the objects in the module, such that their module names will be absolute (this is necessary for the serialization that is used). Targets in other classes that are imported do not need to be reloaded in this way.\
 \
 The script can then be run, for example using the command: \
