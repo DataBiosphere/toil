@@ -51,7 +51,7 @@ ${binPath}/scriptTreeTest_Sort.py : test/sort/scriptTreeTest_Sort.py
 	chmod +x ${binPath}/scriptTreeTest_Sort.py
 
 clean :
-	rm -f ${binPath}/* doc/pydoc/*
+	rm -f ${binPath}/* 
 
 tests :
 	#Running python allTests.py
