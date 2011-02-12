@@ -30,7 +30,7 @@ from jobTree.src.bioio import logger
 from jobTree.src.bioio import getBasicOptionParser
 from jobTree.src.bioio import parseBasicOptions
 
-from jobTree.src.jobTree import loadTheBatchSystem
+from jobTree.src.jobTreeRun import loadTheBatchSystem
 
 def main():
     parser = getBasicOptionParser("usage: %prog [options]", "%prog 0.1")
