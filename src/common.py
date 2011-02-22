@@ -32,7 +32,7 @@ def gridEngineIsInstalled():
     """Returns True if grid-engine is installed, else False.
     """
     try:
-        return system("qstat -version") == 0
+        return system("qstat -help") == 0
     except RuntimeError:
         return False
     
