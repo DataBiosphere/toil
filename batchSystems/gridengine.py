@@ -185,7 +185,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
                     target = MultiTarget(jobs)
                     multicommand = target.makeRunnable(self.config.attrib["log_file_dir"])
                     qsubline = prepareQsub(cpu, memory)
-                    qsubline.extend(["-o", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
+                    qsubline.extend(["-o", "/dev/null", "-e", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
                     result = qsub(qsubline)
                     for index in range(len(jobs)):
                             self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)

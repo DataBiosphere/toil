@@ -30,6 +30,7 @@ except ImportError:
 
 from jobTree.src.bioio import getTempFile
 from jobTree.src.bioio import system
+from jobTree.src.bioio import workflowRootPath
 
 class MultiTarget():
     def __init__(self, commands):
@@ -52,7 +53,8 @@ class MultiTarget():
         fileHandle = open(pickleFile, 'w')
         cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         fileHandle.close() 
-        return "multijob %s" % (pickleFile)
+        multijobexec = os.path.join(workflowRootPath(), "bin", "multijob")
+        return "%s %s" % (multijobexec, pickleFile)
 
 if __name__ == "__main__":
         fileHandle = open(sys.argv[1], 'r')
