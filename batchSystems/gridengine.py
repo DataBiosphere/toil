@@ -83,14 +83,7 @@ def qsub(qsubline):
     logger.debug("Got the job id: %s" % (str(result)))
     return result
 
-class Worker(Thread):
-    def __init__(self, inputQueue, outputQueue, boss):
-        Thread.__init__(self)
-        self.inputQueue = inputQueue
-        self.outputQueue = outputQueue
-        self.currentjobs = set()
-        
-    def getjobexitcode(self, job, task):
+def getjobexitcode(job, task):
         args = ["qacct", "-j", str(job)]
         if task is not None:
              args.extend(["-t", str(task)])
@@ -102,6 +95,14 @@ class Worker(Thread):
             elif line.startswith("exit_status"):
                 return int(line.split()[1])
         return None
+
+class Worker(Thread):
+    def __init__(self, inputQueue, outputQueue, boss):
+        Thread.__init__(self)
+        self.inputQueue = inputQueue
+        self.outputQueue = outputQueue
+        self.currentjobs = set()
+        
         
     def run(self):
         while True:
@@ -112,7 +113,7 @@ class Worker(Thread):
             # Test known job list
             finishedJobs = []
             for (job, task) in self.currentjobs:
-                exit = self.getjobexitcode(job, task)
+                exit = getjobexitcode(job, task)
                 if exit is not None:
                     self.outputQueue.put((job, task, exit))
                     finishedJobs.append((job, task))
@@ -184,7 +185,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
                     target = MultiTarget(jobs)
                     multicommand = target.makeRunnable(self.config.attrib["log_file_dir"])
                     qsubline = prepareQsub(cpu, memory)
-                    qsubline.extend(["-o", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
+                    qsubline.extend(["-o", "/dev/null", "-e", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
                     result = qsub(qsubline)
                     for index in range(len(jobs)):
                             self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)
@@ -209,6 +210,17 @@ class GridengineBatchSystem(AbstractBatchSystem):
             process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
             del self.jobIDs[self.sgeJobIDs[jobID]]
             del self.sgeJobIDs[jobID]
+
+        toKill = set(jobIDs)
+        while len(toKill) > 0:
+            for jobID in toKill:
+                (job,task) = self.sgeJobIDs[jobID]
+                if getjobexitcode(job, task) is None:
+                    toKill.remove(jobID)
+
+            if len(toKill) > 0:
+                logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
+                time.sleep(5)
     
     def getIssuedJobIDs(self):
         """Gets the list of jobs issued to parasol.

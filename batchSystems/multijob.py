@@ -28,10 +28,7 @@ try:
 except ImportError:
     import pickle as cPickle
 
-from jobTree.src.bioio import getTempFile
-from jobTree.src.bioio import system
-
-class MultiTarget():
+class MultiTarget:
     def __init__(self, commands):
         self.commands = commands
 
@@ -43,19 +40,25 @@ class MultiTarget():
              RuntimeError("Task ID not within the array range 1 <= %i <= %i", task_id, len(self.commands))
         (job, outfile) = self.commands[task_id - 1]
         if outfile is None:
-                system(job)
+                os.system(job)
         else:
-                system("%s >& %s" % (job, outfile))
+                os.system("%s >& %s" % (job, outfile))
 
     def makeRunnable(self, tempDir):
+        from jobTree.src.bioio import getTempFile
+        from jobTree.src.bioio import workflowRootPath
+
         pickleFile = tempDir.getTempFile(".pickle")
         fileHandle = open(pickleFile, 'w')
         cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         fileHandle.close() 
-        return "multijob %s" % (pickleFile)
+        multijobexec = os.path.join(workflowRootPath(), "bin", "multijob")
+        jtPath = os.path.split(workflowRootPath())[0]
+        return "%s %s %s" % (multijobexec, pickleFile, jtPath)
 
 if __name__ == "__main__":
         fileHandle = open(sys.argv[1], 'r')
+        sys.path += [ sys.argv[2] ]
         multitarget = cPickle.load(fileHandle)
         fileHandle.close()
         multitarget.execute() 
