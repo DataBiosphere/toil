@@ -62,9 +62,9 @@ def commandAvailable(executable):
     return 0 == os.system("which %s > /dev/null 2> /dev/null" % executable)
 
 def detectQueueSystem():
-    if commandAvailable("parasol status"):
+    if commandAvailable("parasol"):
         return "parasol"
-    if commandAvailable("qstat -version"):
+    if commandAvailable("qstat"):
         return "gridEngine"
     return "singleMachine"
 
