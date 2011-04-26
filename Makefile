@@ -53,6 +53,6 @@ ${binPath}/scriptTreeTest_Sort.py : test/sort/scriptTreeTest_Sort.py
 clean :
 	rm -f ${binPath}/* 
 
-tests :
+test :
 	#Running python allTests.py
 	PYTHONPATH=.. PATH=../../bin:$$PATH python allTests.py --testLength=SHORT --logDebug
