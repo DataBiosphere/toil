@@ -71,6 +71,7 @@ class Stack:
     """
     def __init__(self, target):
         self.stack = [ target ]
+        self.verifyTargetAttributesExist(target)
         self.runTime = target.getRunTime()
         
     @staticmethod
@@ -102,6 +103,7 @@ class Stack:
         """Runs jobtree using the given options (see Stack.getDefaultOptions
         and Stack.addJobTreeOptions).
         """
+        self.verifyJobTreeOptions(options)
         setLoggingFromOptions(options)
         options.jobTree = os.path.abspath(options.jobTree)
         if os.path.isdir(options.jobTree):
@@ -199,7 +201,7 @@ class Stack:
         newChildCommands = [] #Ditto for the child commands
         newFollowOns = [] #Ditto for the follow-ons 
         while self.hasRemaining():
-            if stats != None: #Getting the runtime of the stats module
+            if stats is not None: #Getting the runtime of the stats module
                 targetStartTime = time.time()
                 targetStartClock = getTotalCpuTime()
                 
@@ -222,7 +224,7 @@ class Stack:
             followOn = target.getFollowOn()
             #if target.__class__ != CleanupGlobalTempDirTarget and followOn == None:
             #    followOn = CleanupGlobalTempDirTarget()
-            if followOn != None: #Target to get rid of follow on when done.
+            if followOn is not None: #Target to get rid of follow on when done.
                 if target.isGlobalTempDirSet():
                     followOn.setGlobalTempDir(target.getGlobalTempDir())
                 newFollowOns.append(followOn)
@@ -233,14 +235,14 @@ class Stack:
             #Now add the child commands to the newChildCommands stack
             newChildCommands += target.getChildCommands()
             
-            if stats != None:
+            if stats is not None:
                 ET.SubElement(stats, "target", { "time":str(time.time() - targetStartTime), 
                                                 "clock":str(getTotalCpuTime() - targetStartClock),
                                                 "class":".".join((target.__class__.__name__,)),
                                                 "e_time":str(target.getRunTime())})
                 
             for message in target.getMasterLoggingMessages():
-                if job.find("messages") == None:
+                if job.find("messages") is None:
                     ET.SubElement(job, "messages")
                 ET.SubElement(job.find("messages"), "message", { "message": message} )
         
@@ -301,12 +303,39 @@ class Stack:
         fileHandle.close()
         
         #Finish up the stats
-        if stats != None:
+        if stats is not None:
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(getTotalCpuTime() - startClock)
             fileHandle = open(job.attrib["stats"], 'w')
             ET.ElementTree(stats).write(fileHandle)
             fileHandle.close()
+    
+    def verifyJobTreeOptions(self, options):
+        """ verifyJobTreeOptions() returns None if all necessary values
+        are present in options, otherwise it raises an error.
+        It can also serve to validate the values of the options.
+        """
+        required = ['logLevel', 'command', 'batchSystem', 'jobTree']
+        for r in required:
+            if r not in vars(options):
+                raise RuntimeError("Error, there is a missing option (%s) from the scriptTree Stack, "
+                                   "did you remember to call Stack.addJobTreeOptions()?" % r)
+        if options.jobTree is None:
+            raise RuntimeError("Specify --jobTree")
+
+    def verifyTargetAttributesExist(self, target):
+        """ verifyTargetAttributesExist() checks to make sure that the Target
+        instance has been properly instantiated. Returns None if instance is OK,
+        raises an error otherwise.
+        """
+        required = ['_Target__followOn', '_Target__children', '_Target__childCommands', 
+                    '_Target__time', '_Target__memory', '_Target__cpu', 'globalTempDir']
+        for r in required:
+            if r not in vars(target):
+                raise RuntimeError("Error, there is a missing attribute, %s, from a Target sub instance %s, "
+                                   "did you remember to call Target.__init__(self) in the %s "
+                                   "__init__ method?" % ( r, target.__class__.__name__,
+                                                          target.__class__.__name__))
 
 def loadPickleFile(pickleFile):
     """Loads the first object from a pickle file.
