@@ -119,7 +119,7 @@ def setLoggingFromOptions(options):
     """Sets the logging from a dictionary of name/value options.
     """
     #We can now set up the logging info.
-    if options.logLevel != None:
+    if options.logLevel is not None:
         setLogLevel(options.logLevel) #Use log level, unless flags are set..   
      
     if options.logInfo:
@@ -129,7 +129,7 @@ def setLoggingFromOptions(options):
         
     logger.info("Logging set at level: %s" % logLevelString)  
     
-    if options.logFile != None:
+    if options.logFile is not None:
         addLoggingFileHandler(options.logFile, options.logRotating)
     
     logger.info("Logging to file: %s" % options.logFile)  
@@ -273,7 +273,7 @@ def saveInputs(savedInputsDir, listOfFilesAndDirsToSave):
 #########################################################
 
 def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", parser=None):
-    if parser == None:
+    if parser is None:
         parser = OptionParser(usage=usage, version=version)
     
     addLoggingOptions(parser)
@@ -298,7 +298,7 @@ def parseBasicOptions(parser):
     return options, args
 
 def parseSuiteTestOptions(parser=None):
-    if parser == None:
+    if parser is None:
         parser = getBasicOptionParser()
     
     parser.add_option("--testLength", dest="testLength", type="string",
@@ -321,7 +321,7 @@ def parseSuiteTestOptions(parser=None):
         assert options.testLength == "VERY_LONG" #Otherwise an unrecognised option
         TestStatus.setTestStatus(TestStatus.TEST_VERY_LONG)
     
-    if options.saveError != None:
+    if options.saveError is not None:
         TestStatus.setSaveErrorLocation(options.saveError)
         
     return options, args
@@ -333,7 +333,7 @@ def nameValue(name, value, valueType=str):
         if value:
             return "--%s" % name
         return ""
-    if value == None:
+    if value is None:
         return ""
     return "--%s %s" % (name, valueType(value))    
 
@@ -353,7 +353,7 @@ def getRandomAlphaNumericString(length=10):
 def getTempFile(suffix="", rootDir=None):
     """Returns a string representing a temporary file, that must be manually deleted
     """
-    if rootDir == None:
+    if rootDir is None:
         handle, tmpFile = tempfile.mkstemp(suffix)
         os.close(handle)
         return tmpFile
@@ -367,7 +367,7 @@ def getTempDirectory(rootDir=None):
     """
     returns a temporary directory that must be manually deleted
     """
-    if rootDir == None:
+    if rootDir is None:
         return tempfile.mkdtemp()
     else:
         while True:
