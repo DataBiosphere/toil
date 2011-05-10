@@ -70,6 +70,7 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
     logger.addHandler(handler)
     
 def setLogLevel(logLevel):
+    logLevel = logLevel.upper()
     assert logLevel in [ "CRITICAL", "INFO", "DEBUG" ] #Log level must be one of these strings.
     global logLevelString
     logLevelString = logLevel
