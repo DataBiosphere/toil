@@ -13,6 +13,5 @@ follow-on job and job-tree takes care of the rest.
 
 ###Script-tree Introduction:###
 
-Script-tree provides a simple Python interface to job-tree, and is the preferred
-interface for job-tree. 
+Script-tree provides a simple Python interface to interact with job-tree.
 ... details in <code>docs/README.rtf</code>
