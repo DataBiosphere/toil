@@ -264,7 +264,7 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
     runningJobs = set(batchSystem.getIssuedJobIDs())
     jobIDsSet = set(jobIDsToJobsHash.keys())
     #Clean up the reissueMissingJobs_missingHash hash
-    missingJobIDsSet = set(reissueMissingJobs)
+    missingJobIDsSet = set(reissueMissingJobs_missingHash.keys())
     for jobID in missingJobIDsSet.difference(jobIDsSet):
         reissueMissingJobs_missingHash.pop(jobID)
     assert runningJobs.issubset(jobIDsSet) #Assert checks we have no unexpected jobs running
