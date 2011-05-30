@@ -263,7 +263,11 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
     """
     runningJobs = set(batchSystem.getIssuedJobIDs())
     jobIDsSet = set(jobIDsToJobsHash.keys())
-    assert runningJobs.issubset(jobIDsSet)
+    #Clean up the reissueMissingJobs_missingHash hash
+    missingJobIDsSet = set(reissueMissingJobs_missingHash.keys())
+    for jobID in missingJobIDsSet.difference(jobIDsSet):
+        reissueMissingJobs_missingHash.pop(jobID)
+    assert runningJobs.issubset(jobIDsSet) #Assert checks we have no unexpected jobs running
     for jobID in set(jobIDsSet.difference(runningJobs)):
         jobFile = jobIDsToJobsHash[jobID]
         if reissueMissingJobs_missingHash.has_key(jobID):
@@ -276,11 +280,8 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
             reissueMissingJobs_missingHash.pop(jobID)
             batchSystem.killJobs([ jobID ])
             processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
-    if len(reissueMissingJobs_missingHash) > 0:
-        logger.critical("Going to sleep before trying again before trying to find missing jobs")
-        time.sleep(60)
-        reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfterNTimesMissing)
-            
+    return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
+          
 def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
     """Waits sleepFor seconds while there are no updated jobs, repeating this 
     cycle sleepNumber times.
@@ -492,9 +493,11 @@ def mainLoop(config, batchSystem):
             reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem)
             logger.info("Reissued any over long jobs")
             
-            reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem)
+            if reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem):
+                timeSinceJobsLastRescued = time.time()
+            else:
+                timeSinceJobsLastRescued += 60 #This means we'll try again in 60 seconds
             logger.info("Rescued any (long) missing jobs")
-            timeSinceJobsLastRescued = time.time()
         #Going to sleep to let the job system catch up.
         time.sleep(waitDuration)
     
