@@ -1,6 +1,8 @@
 binPath = ./bin
 files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats scriptTree multijob jobTreeTest_CommandFirst.py jobTreeTest_CommandSecond.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
 
+.PHONY: all test clean
+
 all : $(foreach j,${files}, ${binPath}/$j)
 
 ${binPath}/% : src/%.py
