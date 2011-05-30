@@ -62,11 +62,11 @@ def main():
                       help="Directory containing the job tree")
     
     parser.add_option("--verbose", dest="verbose", action="store_true",
-                      help="Print loads of information, particularly all the log files of errors",
+                      help="Print loads of information, particularly all the log files of errors. default=%default",
                       default=False)
     
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
-                      help="Return exit value of 1 if job tree jobs not all completed",
+                      help="Return exit value of 1 if job tree jobs not all completed. default=%default",
                       default=False)
     
     options, args = parseBasicOptions(parser)

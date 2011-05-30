@@ -99,11 +99,11 @@ def addLoggingOptions(parser):
     """Adds logging options to an optparse.OptionsParser
     """
     parser.add_option("--logInfo", dest="logInfo", action="store_true",
-                     help="Turn on logging at INFO level",
+                     help="Turn on logging at INFO level. default=%default",
                      default=False)
     
     parser.add_option("--logDebug", dest="logDebug", action="store_true",
-                     help="Turn on logging at DEBUG level",
+                     help="Turn on logging at DEBUG level. default=%default",
                      default=False)
     
     parser.add_option("--logLevel", dest="logLevel", type="string",
@@ -113,7 +113,7 @@ def addLoggingOptions(parser):
                       help="File to log in")
     
     parser.add_option("--noRotatingLogging", dest="logRotating", action="store_false",
-                     help="Turn off rotating logging, which prevents log files getting too big",
+                     help="Turn off rotating logging, which prevents log files getting too big. default=%default",
                      default=True)
 
 def setLoggingFromOptions(options):
@@ -280,7 +280,7 @@ def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", pa
     addLoggingOptions(parser)
     
     parser.add_option("--tempDirRoot", dest="tempDirRoot", type="string",
-                      help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base",
+                      help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
                       default=os.getcwd())
     
     return parser
@@ -303,7 +303,7 @@ def parseSuiteTestOptions(parser=None):
         parser = getBasicOptionParser()
     
     parser.add_option("--testLength", dest="testLength", type="string",
-                     help="Control the length of the tests either SHORT/MEDIUM/LONG/VERY_LONG",
+                     help="Control the length of the tests either SHORT/MEDIUM/LONG/VERY_LONG. default=%default",
                      default="SHORT")
     
     parser.add_option("--saveError", dest="saveError", type="string",

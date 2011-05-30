@@ -83,11 +83,11 @@ try and restart the jobs in it",
                       default=None)
     
     parser.add_option("--batchSystem", dest="batchSystem",
-                      help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'",
+                      help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default",
                       default=detectQueueSystem())
     
     parser.add_option("--retryCount", dest="retryCount", 
-                      help="Number of times to try a failing job before giving up and labelling job failed",
+                      help="Number of times to try a failing job before giving up and labelling job failed. default=%default",
                       default=0)
     
     parser.add_option("--waitDuration", dest="waitDuration", 
@@ -97,37 +97,37 @@ try and restart the jobs in it",
                       help="Period of time to wait (in seconds) between checking for missing/overlong jobs (default is set by the batch system)")
     
     parser.add_option("--maxJobDuration", dest="maxJobDuration", 
-                      help="Maximum runtime of a job (in seconds) before we kill it (this is an approximate time, and the actual time before killing the job may be longer)",
+                      help="Maximum runtime of a job (in seconds) before we kill it (this is an approximate time, and the actual time before killing the job may be longer). default=%default",
                       default=str(sys.maxint))
     
     parser.add_option("--jobTime", dest="jobTime", 
                       help="The approximate time (in seconds) that you'd like a list of child jobs to be run serially before being parallised. \
                       This parameter allows one to avoid over parallelising tiny jobs, and therefore paying significant scheduling overhead, by \
-                      running tiny jobs in series on a single node/core of the cluster.",
+                      running tiny jobs in series on a single node/core of the cluster. default=%default",
                       default=30)
     
     parser.add_option("--maxLogFileSize", dest="maxLogFileSize", 
-                      help="The maximum size of a log file to keep (in bytes), log files larger than this will be truncated to the last X bytes. Default is 50 kilobytes",
+                      help="The maximum size of a log file to keep (in bytes), log files larger than this will be truncated to the last X bytes. Default is 50 kilobytes, default=%default",
                       default=50120)
     
     parser.add_option("--defaultMemory", dest="defaultMemory", 
-                      help="The default amount of memory to request for a job (in bytes), by default is 2^31 = 2 gigabytes",
+                      help="The default amount of memory to request for a job (in bytes), by default is 2^31 = 2 gigabytes, default=%default",
                       default=2147483648)
     
     parser.add_option("--defaultCpu", dest="defaultCpu", 
-                      help="The default the number of cpus to dedicate a job, the default is 1",
+                      help="The default the number of cpus to dedicate a job. default=%default",
                       default=1)
     
     parser.add_option("--maxJobs", dest="maxJobs", 
-                      help="The maximum number of jobs to issue to the batch system at any one time",
+                      help="The maximum number of jobs to issue to the batch system at any one time. default=%default",
                       default=sys.maxint)
     
     parser.add_option("--maxThreads", dest="maxThreads", 
-                      help="The maximum number of threads to use when running in single machine mode",
+                      help="The maximum number of threads to use when running in single machine mode. default=%default",
                       default=4)
     
     parser.add_option("--stats", dest="stats", action="store_true",
-                      help="Records statistics about the job-tree to be used by jobTreeStats",
+                      help="Records statistics about the job-tree to be used by jobTreeStats. default=%default",
                       default=False)
     
 def setupTempFileTrees(config):
