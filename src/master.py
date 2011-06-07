@@ -32,10 +32,10 @@ import os.path
 import xml.etree.ElementTree as ET
 import time
 
-from jobTree.src.bioio import logger, getTotalCpuTime
-from jobTree.src.bioio import getLogLevelString
-from jobTree.src.bioio import logFile
-from jobTree.src.bioio import system
+from sonLib.bioio import logger, getTotalCpuTime
+from sonLib.bioio import getLogLevelString
+from sonLib.bioio import logFile
+from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
 
 def createJob(attrib, parent, config):
@@ -295,6 +295,12 @@ def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
         i += 1
     return updatedJobsFn()
 
+def reportJobLogFiles(job):
+    logger.critical("The log file of the job")
+    logFile(job.attrib["log_file"], logger.critical)
+    logger.critical("The log file of the slave for the job")
+    logFile(job.attrib["slave_log_file"], logger.critical) #We log the job log file in the main loop
+
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
     """    
@@ -337,6 +343,8 @@ def mainLoop(config, batchSystem):
     maxIssuedJobs = int(config.attrib["max_jobs"]) #The maximum number of jobs to issue to the batch system
     assert maxIssuedJobs >= 1
     
+    reportAllJobLogFiles = bool(int(config.attrib["reportAllJobLogFiles"]))
+    
     stats = config.attrib.has_key("stats")
     if stats:
         startTime = time.time()
@@ -371,6 +379,8 @@ def mainLoop(config, batchSystem):
                     logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
             elif job.attrib["colour"] == "black": #Job has finished okay
                 logger.debug("Job: %s has finished okay" % job.attrib["file"])
+                if reportAllJobLogFiles:
+                    reportJobLogFiles(job)
                 #Deal with stats
                 if stats:
                     system("cat %s >> %s" % (job.attrib["stats"], config.attrib["stats"]))
@@ -439,10 +449,7 @@ def mainLoop(config, batchSystem):
                          
             elif job.attrib["colour"] == "red": #Job failed
                 logger.critical("Job: %s failed" % job.attrib["file"])
-                logger.critical("The log file of the failed job")
-                logFile(job.attrib["log_file"], logger.critical)
-                logger.critical("The log file of the slave for the failed job")
-                logFile(job.attrib["slave_log_file"], logger.critical) #We log the job log file in the main loop
+                reportJobLogFiles(job)
                 #Checks
                 assert len(job.find("children").findall("child")) == 0
                 assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])

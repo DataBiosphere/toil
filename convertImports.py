@@ -5,7 +5,7 @@
 
 import os
 import sys
-from jobTree.src.bioio import system
+from sonLib.bioio import system
 
 def fn2(file, oldPath, newPath):
     system("sed 's/%s/%s/g' %s > temporaryConversionFile" % (oldPath, newPath, file))

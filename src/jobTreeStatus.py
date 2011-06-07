@@ -27,12 +27,12 @@ import sys
 import os
 
 import xml.etree.ElementTree as ET
-from jobTree.src.bioio import logger
-from jobTree.src.bioio import logFile 
+from sonLib.bioio import logger
+from sonLib.bioio import logFile 
 
-from jobTree.src.bioio import getBasicOptionParser
-from jobTree.src.bioio import parseBasicOptions
-from jobTree.src.bioio import TempFileTree
+from sonLib.bioio import getBasicOptionParser
+from sonLib.bioio import parseBasicOptions
+from sonLib.bioio import TempFileTree
 
 def parseJobFile(absFileName):
     try:

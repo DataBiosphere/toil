@@ -29,12 +29,12 @@ import os
 import xml.etree.ElementTree as ET
 from xml.dom import minidom #For making stuff pretty
 
-from jobTree.src.bioio import logger
-from jobTree.src.bioio import logFile 
+from sonLib.bioio import logger
+from sonLib.bioio import logFile 
 
-from jobTree.src.bioio import getBasicOptionParser
-from jobTree.src.bioio import parseBasicOptions
-from jobTree.src.bioio import TempFileTree
+from sonLib.bioio import getBasicOptionParser
+from sonLib.bioio import parseBasicOptions
+from sonLib.bioio import TempFileTree
 
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.

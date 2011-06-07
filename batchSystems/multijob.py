@@ -45,7 +45,7 @@ class MultiTarget:
                 os.system("%s >& %s" % (job, outfile))
 
     def makeRunnable(self, tempDir):
-        from jobTree.src.bioio import getTempFile
+        from sonLib.bioio import getTempFile
         from jobTree.src.bioio import workflowRootPath
 
         pickleFile = tempDir.getTempFile(".pickle")

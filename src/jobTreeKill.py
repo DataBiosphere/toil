@@ -26,9 +26,9 @@
 import os
 
 import xml.etree.ElementTree as ET
-from jobTree.src.bioio import logger
-from jobTree.src.bioio import getBasicOptionParser
-from jobTree.src.bioio import parseBasicOptions
+from sonLib.bioio import logger
+from sonLib.bioio import getBasicOptionParser
+from sonLib.bioio import parseBasicOptions
 
 from jobTree.src.jobTreeRun import loadTheBatchSystem
 

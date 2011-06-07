@@ -21,7 +21,7 @@
 #THE SOFTWARE.
 
 import sys
-from jobTree.src.bioio import system
+from sonLib.bioio import system
 
 class Target:
     """Each job wrapper extends this class.

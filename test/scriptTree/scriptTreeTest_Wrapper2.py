@@ -10,7 +10,7 @@ import os
 import random
 from optparse import OptionParser
 
-from jobTree.src.bioio import getRandomAlphaNumericString
+from sonLib.bioio import getRandomAlphaNumericString
 
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack

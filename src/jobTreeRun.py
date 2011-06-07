@@ -37,9 +37,9 @@ from jobTree.src.master import createJob
 from jobTree.src.master import mainLoop
 from jobTree.src.master import writeJobs
 
-from jobTree.src.bioio import logger, setLoggingFromOptions, addLoggingOptions
-from jobTree.src.bioio import TempFileTree
-from jobTree.src.bioio import system
+from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions
+from sonLib.bioio import TempFileTree
+from sonLib.bioio import system
 
 
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 
@@ -130,6 +130,10 @@ try and restart the jobs in it",
                       help="Records statistics about the job-tree to be used by jobTreeStats. default=%default",
                       default=False)
     
+    parser.add_option("--reportAllJobLogFiles", dest="reportAllJobLogFiles", action="store_true",
+                      help="Report the log files of all jobs, not just that fail. default=%default",
+                      default=False)
+    
 def setupTempFileTrees(config):
     """Load the temp file trees
     """
@@ -207,6 +211,7 @@ def createJobTree(options):
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
     config.attrib["max_jobs"] = str(int(options.maxJobs))
     config.attrib["max_threads"] = str(int(options.maxThreads))
+    config.attrib["reportAllJobLogFiles"] = str(int(options.reportAllJobLogFiles))
     if options.stats:
         config.attrib["stats"] = os.path.join(options.jobTree, "stats.xml")
         fileHandle = open(config.attrib["stats"], 'w')

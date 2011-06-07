@@ -26,7 +26,7 @@ from jobTree.test.sort.sortTest import TestCase as sortTest
 from jobTree.test.utilities.statsTest import TestCase as statsTest
 #import jobTree.test.jobTreeParasolCrashTest.TestCase as jobTreeParasolCrashTest
 
-from jobTree.src.bioio import parseSuiteTestOptions
+from sonLib.bioio import parseSuiteTestOptions
 
 def allSuites():
     jobTreeTestSuite = unittest.makeSuite(jobTreeTest, 'test')

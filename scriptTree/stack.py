@@ -31,13 +31,13 @@ except ImportError:
     
 import xml.etree.ElementTree as ET
 
-from jobTree.src.bioio import logger
-from jobTree.src.bioio import setLogLevel
-from jobTree.src.bioio import setLoggingFromOptions
-from jobTree.src.bioio import getTempFile
-from jobTree.src.bioio import getTempDirectory 
-from jobTree.src.bioio import system
-from jobTree.src.bioio import getTotalCpuTime
+from sonLib.bioio import logger
+from sonLib.bioio import setLogLevel
+from sonLib.bioio import setLoggingFromOptions
+from sonLib.bioio import getTempFile
+from sonLib.bioio import getTempDirectory 
+from sonLib.bioio import system
+from sonLib.bioio import getTotalCpuTime
 
 from jobTree.src.jobTreeRun import addOptions
 from jobTree.src.jobTreeRun import createJobTree

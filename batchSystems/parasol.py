@@ -25,7 +25,7 @@ import re
 import subprocess
 import time
 
-from jobTree.src.bioio import logger
+from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 def popenParasolCommand(command, tmpFileForStdOut, runUntilSuccessful=True):

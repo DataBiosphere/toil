@@ -5,11 +5,11 @@ import unittest
 import sys
 import os
 
-from jobTree.src.bioio import TestStatus
-from jobTree.src.bioio import parseSuiteTestOptions
-from jobTree.src.bioio import system
-from jobTree.src.bioio import getTempDirectory
-from jobTree.src.bioio import getTempFile
+from sonLib.bioio import TestStatus
+from sonLib.bioio import parseSuiteTestOptions
+from sonLib.bioio import system
+from sonLib.bioio import getTempDirectory
+from sonLib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
 

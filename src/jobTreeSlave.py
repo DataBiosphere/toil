@@ -58,11 +58,11 @@ def getMemoryCpuAndTimeRequirements(job, nextJob):
 def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
     """Runs a job.
     """
-    from jobTree.src.bioio import getTempFile
-    from jobTree.src.bioio import getTempDirectory
-    from jobTree.src.bioio import logger
-    from jobTree.src.bioio import system
-    from jobTree.src.bioio import getTotalCpuTime
+    from sonLib.bioio import getTempFile
+    from sonLib.bioio import getTempDirectory
+    from sonLib.bioio import logger
+    from sonLib.bioio import system
+    from sonLib.bioio import getTotalCpuTime
     
     assert len(job.find("children").findall("child")) == 0
     assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
@@ -203,12 +203,12 @@ def main():
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
-    from jobTree.src.bioio import getBasicOptionParser
-    from jobTree.src.bioio import parseBasicOptions
-    from jobTree.src.bioio import logger
-    from jobTree.src.bioio import addLoggingFileHandler
-    from jobTree.src.bioio import setLogLevel
-    from jobTree.src.bioio import getTotalCpuTime
+    from sonLib.bioio import getBasicOptionParser
+    from sonLib.bioio import parseBasicOptions
+    from sonLib.bioio import logger
+    from sonLib.bioio import addLoggingFileHandler
+    from sonLib.bioio import setLogLevel
+    from sonLib.bioio import getTotalCpuTime
     
     from jobTree.src.master import writeJobs
     
