@@ -291,7 +291,7 @@ def main():
     options, args = parser.parse_args()
     
     if len(args) != 0:
-        raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
+        parser.error("Unrecognised input arguments: %s" % " ".join(args))
         
     ##########################################
     #Now run the job tree construction/master
