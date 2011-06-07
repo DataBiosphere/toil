@@ -191,7 +191,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
             #Write back the runtime, after addin the follow on time and subtracting the time of the run job.
             job.attrib["total_time"] = str(totalRuntime)
         else:
-            logger.info("Failed the job")
+            logger.critical("Failed the job")
             job.attrib["colour"] = "red" #Update the colour
     
     #Clean up
@@ -265,7 +265,7 @@ def main():
         processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats)
         
         if job.attrib["colour"] != "black":
-            logger.info("Exiting the slave because of a failed job")
+            logger.critical("Exiting the slave because of a failed job")
             break
    
         totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
