@@ -356,7 +356,7 @@ def mainLoop(config, batchSystem):
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
-	jobsToIssue = []
+        jobsToIssue = []
         for jobFile in list(updatedJobFiles):
             job = ET.parse(jobFile).getroot()
             assert job.attrib["colour"] not in ("grey", "blue")
@@ -371,10 +371,7 @@ def mainLoop(config, batchSystem):
                     open(job.attrib["log_file"], 'w').close()
                     
                     job.attrib["colour"] = "grey"
-                    #writeJobs([ job ]) #Check point, do this before issuing job, so state is not read until issued
-                    
-                    #issueJobs([ job ], jobIDsToJobsHash, batchSystem)
-		    jobsToIssue.append(job)
+                    jobsToIssue.append(job)
                 else:
                     logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
             elif job.attrib["colour"] == "black": #Job has finished okay
@@ -410,12 +407,6 @@ def mainLoop(config, batchSystem):
                         unbornChildren.remove(unbornChild)
                         unbornChild = unbornChildren.find("child")
                         
-                        #This was code to aggregate groups of children into one job, but we don't do this now
-                        #while cummulativeChildTime < idealJobTime and unbornChild != None: #Cummulate a series of children into each job as a stack of jobs (to balance cost of parellelism with cost of running stuff in serially).
-                        #    cummulativeChildTime += float(unbornChild.attrib["time"])
-                        #    ET.SubElement(newJob.find("followOns"), "followOn", unbornChild.attrib.copy())    
-                        #    unbornChildren.remove(unbornChild)
-                        #    unbornChild = unbornChildren.find("child")
                         newJob.attrib["total_time"] = str(cummulativeChildTime)
                     
                     updatedJobFiles.remove(job.attrib["file"])
