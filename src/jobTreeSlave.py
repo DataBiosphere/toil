@@ -55,11 +55,10 @@ def getMemoryCpuAndTimeRequirements(job, nextJob):
         compTime = max(float(nextJob.attrib["time"]), 0.0)
     return memory, cpu, compTime
  
-def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
+def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, 
+               localSlaveTempDir, localTempDir):
     """Runs a job.
     """
-    from sonLib.bioio import getTempFile
-    from sonLib.bioio import getTempDirectory
     from sonLib.bioio import logger
     from sonLib.bioio import system
     from sonLib.bioio import getTotalCpuTime
@@ -77,12 +76,8 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
     
     #Time length of 'ideal' job before further parallelism is required
     tempJob.attrib["job_time"] = job.attrib["job_time"]
-    
-    #Dir to put all the temp files in.
-    localSlaveTempDir = getTempDirectory()
 
     #Temp file dirs for job.
-    localTempDir = getTempDirectory(rootDir=localSlaveTempDir)
     tempJob.attrib["local_temp_dir"] = localTempDir
     depth = len(job.find("followOns").findall("followOn"))
     tempJob.attrib["global_temp_dir"] = os.path.join(job.attrib["global_temp_dir"], str(depth))
@@ -95,108 +90,117 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats):
     
     #Deal with memory and cpu requirements (this pass tells the running job how much cpu and memory they have,
     #according to the batch system
-    tempJob.attrib["available_memory"] = str(memoryAvailable)
+    tempJob.attrib["available_memory"] = str(memoryAvailable) 
     tempJob.attrib["available_cpu"] = str(cpuAvailable)
+    
+    #Run the actual command
+    tempLogFile = os.path.join(localSlaveTempDir, "temp.log")
+    fileHandle = open(tempLogFile, 'w')
+    
     if stats != None:
-        tempJob.attrib["stats"] = getTempFile(rootDir=localSlaveTempDir)
-        os.remove(tempJob.attrib["stats"])
+        startTime = time.time()
+        startClock = getTotalCpuTime()
     
-    #Now write the temp job file
-    tempFile = getTempFile(rootDir=localSlaveTempDir)
-    fileHandle = open(tempFile, 'w') 
-    tree = ET.ElementTree(tempJob)
-    tree.write(fileHandle)
-    fileHandle.close()
-    logger.info("Copied the jobs files ready for the job")
-    
-    if "JOB_FILE" not in command:
-        logger.critical("There is no 'JOB_FILE' string in the command to be run to take the job-file argument: %s" % command)
-        job.attrib["colour"] = "red" #Update the colour
+    #If you're a script tree python process, we don't need to python
+    if command[:10] == "scriptTree":
+        import jobTree.scriptTree.scriptTree
+        stderr = sys.stderr 
+        stdout = sys.stdout
+        exitValue = 0
+        try:
+            sys.stderr = fileHandle
+            sys.stdout = fileHandle
+            l = command.split()
+            jobTree.scriptTree.scriptTree.run(tempJob, l[1], l[2:])
+        except:
+            exitValue = 1
+        sys.stderr = stderr
+        sys.stdout = stdout
     else:
-        #First load the environment for the job.
-        fileHandle = open(job.attrib["environment_file"], 'r')
-        environment = cPickle.load(fileHandle)
-        fileHandle.close()
-        logger.info("Loaded the environment for the process")
-        
-        #Run the actual command
-        tempLogFile = getTempFile(suffix=".log", rootDir=localSlaveTempDir)
-        fileHandle = open(tempLogFile, 'w')
-        finalCommand = command.replace("JOB_FILE", tempFile)
-        if stats != None:
-            startTime = time.time()
-            startClock = getTotalCpuTime()
-        process = subprocess.Popen(finalCommand, shell=True, stdout=fileHandle, stderr=subprocess.STDOUT, env=environment)
-            
-        sts = os.waitpid(process.pid, 0)
-        fileHandle.close()
-        truncateFile(tempLogFile, int(job.attrib["max_log_file_size"]))
-        
-        #Copy across the log file
-        system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
-        i = sts[1]
-        
-        logger.info("Ran the job command=%s with exit status %i" % (finalCommand, i))
-        
-        if i == 0:
-            logger.info("Passed the job, okay")
-            
-            if stats != None:
-                jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), "clock":str(getTotalCpuTime() - startClock) })
-                if os.path.exists(tempJob.attrib["stats"]):
-                    jobTag.append(ET.parse(tempJob.attrib["stats"]).getroot())
-            
-            tempJob = ET.parse(tempFile).getroot()
-            job.attrib["colour"] = "black" #Update the colour
-            
-            #Deal with any logging messages directed at the master
-            if tempJob.find("messages") != None:
-                messages = job.find("messages")
-                if messages == None:
-                    messages = ET.SubElement(job, "messages")
-                for messageTag in tempJob.find("messages").findall("message"):
-                    messages.append(messageTag)
-            
-            #Update the runtime of the stack..
-            totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
-            runtime = float(jobToRun.attrib["time"])
-            totalRuntime -= runtime
-            if totalRuntime < 0.0:
-                totalRuntime = 0.0
-            
-            #The children
-            children = job.find("children")
-            assert len(children.findall("child")) == 0 #The children
-            assert tempJob.find("children") != None
-            for child in tempJob.find("children").findall("child"):
-                memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, child)
-                ET.SubElement(children, "child", { "command":child.attrib["command"], 
-                        "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
-                logger.info("Making a child with command: %s" % (child.attrib["command"]))
-            
-            #The follow on command
-            followOns = job.find("followOns")
-            followOns.remove(followOns.findall("followOn")[-1]) #Remove the old job
-            if tempJob.attrib.has_key("command"):
-                memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, tempJob)
-                ET.SubElement(followOns, "followOn", { "command":tempJob.attrib["command"], 
-                        "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
-                ##Add the runtime to the total runtime..
-                totalRuntime += compTime
-                logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
-                
-            elif len(tempJob.find("children").findall("child")) != 0: #This is to keep the stack of follow on jobs consistent.
-                ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "time":"0", "memory":"1000000", "cpu":"1" })
-                logger.info("Making a stub follow on job")
-            #Write back the runtime, after addin the follow on time and subtracting the time of the run job.
-            job.attrib["total_time"] = str(totalRuntime)
-        else:
-            logger.critical("Failed the job")
+        if "JOB_FILE" not in command:
+            logger.critical("There is no 'JOB_FILE' string in the command to be run to take the job-file argument: %s" % command)
             job.attrib["colour"] = "red" #Update the colour
+        
+        #Now write the temp job file
+        tempFile = os.path.join(localSlaveTempDir, "tempJob.xml")
+        fileHandle2 = open(tempFile, 'w')  
+        tree = ET.ElementTree(tempJob)
+        tree.write(fileHandle2)
+        fileHandle2.close()
+        logger.info("Copied the jobs files ready for the job")
+        
+        process = subprocess.Popen(command.replace("JOB_FILE", tempFile), shell=True, stdout=fileHandle, stderr=subprocess.STDOUT, env=environment)
+        sts = os.waitpid(process.pid, 0)
+        exitValue = sts[1]
+        if exitValue == 0:
+            tempJob = ET.parse(tempFile).getroot()
+        
+    fileHandle.close()
+    truncateFile(tempLogFile, int(job.attrib["max_log_file_size"]))
+    
+    #Copy across the log file
+    system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
+    
+    logger.info("Ran the job command=%s with exit status %i" % (command, exitValue))
+    
+    if exitValue == 0:
+        logger.info("Passed the job, okay")
+        
+        if stats != None:
+            jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), "clock":str(getTotalCpuTime() - startClock) })
+            if tempJob.find("stats") != None:
+                jobTag.append(tempJob.remove(tempJob.find("stats")))
+        
+        job.attrib["colour"] = "black" #Update the colour
+        
+        #Deal with any logging messages directed at the master
+        if tempJob.find("messages") != None:
+            messages = job.find("messages")
+            if messages == None:
+                messages = ET.SubElement(job, "messages")
+            for messageTag in tempJob.find("messages").findall("message"):
+                messages.append(messageTag)
+        
+        #Update the runtime of the stack..
+        totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
+        runtime = float(jobToRun.attrib["time"])
+        totalRuntime -= runtime
+        if totalRuntime < 0.0:
+            totalRuntime = 0.0
+        
+        #The children
+        children = job.find("children")
+        assert len(children.findall("child")) == 0 #The children
+        assert tempJob.find("children") != None
+        for child in tempJob.find("children").findall("child"):
+            memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, child)
+            ET.SubElement(children, "child", { "command":child.attrib["command"], 
+                    "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
+            logger.info("Making a child with command: %s" % (child.attrib["command"]))
+        
+        #The follow on command
+        followOns = job.find("followOns")
+        followOns.remove(followOns.findall("followOn")[-1]) #Remove the old job
+        if tempJob.attrib.has_key("command"):
+            memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, tempJob)
+            ET.SubElement(followOns, "followOn", { "command":tempJob.attrib["command"], 
+                    "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
+            ##Add the runtime to the total runtime..
+            totalRuntime += compTime
+            logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
+            
+        elif len(tempJob.find("children").findall("child")) != 0: #This is to keep the stack of follow on jobs consistent.
+            ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "time":"0", "memory":"1000000", "cpu":"1" })
+            logger.info("Making a stub follow on job")
+        #Write back the runtime, after addin the follow on time and subtracting the time of the run job.
+        job.attrib["total_time"] = str(totalRuntime)
+    else:
+        logger.critical("Failed the job")
+        job.attrib["colour"] = "red" #Update the colour
     
     #Clean up
-    system("rm -rf %s" % (localSlaveTempDir))
-    logger.info("Cleaned up by removing temp jobfile (the copy), and the temporary file directory for the job")
+    system("rm -rf %s/*" % (localTempDir))
+    logger.info("Cleaned up by removing the contents of the local temporary file directory for the job")
     
 def main():
     sys.path +=  [ sys.argv[1] ]
@@ -209,7 +213,7 @@ def main():
     from sonLib.bioio import addLoggingFileHandler
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime
-    
+    from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
     
     ##########################################
@@ -241,6 +245,20 @@ def main():
     logger.info("Parsed arguments and set up logging")
     
     ##########################################
+    #Load the environment for the job
+    ##########################################
+    
+    #First load the environment for the job.
+    fileHandle = open(job.attrib["environment_file"], 'r')
+    environment = cPickle.load(fileHandle)
+    fileHandle.close()
+    for i in environment:
+        os.environ[i] = environment[i]
+    #os.environ = environment
+    #os.putenv(key, value)
+    logger.info("Loaded the environment for the process")
+    
+    ##########################################
     #Setup the stats, if requested
     ##########################################
     
@@ -250,6 +268,16 @@ def main():
         stats = ET.Element("slave")
     else:
         stats = None
+        
+    ##########################################
+    #Setup the temporary directories.
+    ##########################################
+        
+    #Dir to put all the temp files in.
+    localSlaveTempDir = getTempDirectory()
+    localTempDir = os.path.join(localSlaveTempDir, "localTempDir") 
+    os.mkdir(localTempDir)
+    os.chmod(localTempDir, 0777)
     
     ##########################################
     #Run the script.
@@ -262,7 +290,7 @@ def main():
     memoryAvailable = int(jobToRun.attrib["memory"])
     cpuAvailable = int(jobToRun.attrib["cpu"])
     while True:
-        processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats)
+        processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
         
         if job.attrib["colour"] != "black":
             logger.critical("Exiting the slave because of a failed job")
@@ -322,6 +350,12 @@ def main():
         fileHandle = open(job.attrib["stats"], 'w')
         ET.ElementTree(stats).write(fileHandle)
         fileHandle.close()
+    
+    ##########################################
+    #Cleanup the temporary directory
+    ##########################################
+    
+    system("rm -rf %s" % localSlaveTempDir)
     
 def _test():
     import doctest      

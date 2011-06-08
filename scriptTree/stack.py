@@ -142,7 +142,7 @@ class Stack:
             for importString in target.importStrings:
                 i.add(importString)
         classNames = " ".join(i)
-        return "scriptTree --job JOB_FILE --target %s %s" % (pickleFile, classNames)
+        return "scriptTree %s %s" % (pickleFile, classNames)
     
     def addTarget(self, target):
         self.stack.append(target)
@@ -178,8 +178,7 @@ class Stack:
     def getGlobalTempDir(self):
         return getTempDirectory(rootDir=self.globalTempDir)
 
-    def execute(self, jobFile):
-        job = ET.parse(jobFile).getroot()
+    def execute(self, job):
         setLogLevel(job.attrib["log_level"])
         logger.info("Setup logging with level: %s" % job.attrib["log_level"])
         self.tempDirAccessed = False
@@ -296,19 +295,12 @@ class Stack:
         for childCommand, runTime in newChildCommands:
             ET.SubElement(childrenTag, "child", { "command":str(childCommand),
                                               "time":str(runTime) })
-    
-        #Now write the updated job file
-        fileHandle = open(jobFile, 'w')
-        ET.ElementTree(job).write(fileHandle)
-        fileHandle.close()
         
         #Finish up the stats
         if stats is not None:
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(getTotalCpuTime() - startClock)
-            fileHandle = open(job.attrib["stats"], 'w')
-            ET.ElementTree(stats).write(fileHandle)
-            fileHandle.close()
+            job.append(stats)
     
     def verifyJobTreeOptions(self, options):
         """ verifyJobTreeOptions() returns None if all necessary values
