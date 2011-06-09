@@ -359,7 +359,7 @@ def mainLoop(config, batchSystem):
     
     logger.info("Starting the main loop")
     timeSinceJobsLastRescued = time.time() - rescueJobsFrequency + 100 #We hack it so that we rescue jobs after the first 100 seconds to get around an apparent parasol bug
-    while True:
+    while True: 
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
@@ -379,6 +379,9 @@ def mainLoop(config, batchSystem):
                     
                     job.attrib["colour"] = "grey"
                     jobsToIssue.append(job)
+                    writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
+                    issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
+                    jobsToIssue = []
                 else:
                     logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
             elif job.attrib["colour"] == "black": #Job has finished okay
@@ -471,8 +474,8 @@ def mainLoop(config, batchSystem):
                 deleteJob(job, config) #This could be done earlier, but I like it this way.
 
         ###End of for loop
-        writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
-        issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
+        #writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
+        #issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
       
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
