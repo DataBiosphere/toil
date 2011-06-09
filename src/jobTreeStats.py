@@ -101,7 +101,7 @@ def main():
         itemTimes.sort()
         itemClocks = [ round(float(item.attrib["clock"])) for item in items ]
         itemClocks.sort()
-        itemWaits = [ round(float(item.attrib["time"])) - round(float(item.attrib["clock"])) for item in items ]
+        itemWaits = [ round(round(float(item.attrib["time"])) - round(float(item.attrib["clock"]))) for item in items ]
         itemWaits.sort()
         assert len(itemClocks) == len(itemTimes)
         assert len(itemClocks) == len(itemWaits)
