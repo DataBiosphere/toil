@@ -215,6 +215,7 @@ def main():
     from sonLib.bioio import getTotalCpuTime
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
+    from sonLib.bioio import system
     
     ##########################################
     #Construct the arguments.
