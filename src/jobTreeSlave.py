@@ -98,6 +98,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     fileHandle = open(tempLogFile, 'w')
     
     if stats != None:
+        tempJob.attrib["stats"] = ""
         startTime = time.time()
         startClock = getTotalCpuTime()
     
@@ -138,9 +139,6 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     fileHandle.close()
     truncateFile(tempLogFile, int(job.attrib["max_log_file_size"]))
     
-    #Copy across the log file
-    system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
-    
     logger.info("Ran the job command=%s with exit status %i" % (command, exitValue))
     
     if exitValue == 0:
@@ -148,8 +146,8 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
         
         if stats != None:
             jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), "clock":str(getTotalCpuTime() - startClock) })
-            if tempJob.find("stats") != None:
-                jobTag.append(tempJob.remove(tempJob.find("stats")))
+            if tempJob.find("stack") != None:
+                jobTag.append(tempJob.find("stack"))
         
         job.attrib["colour"] = "black" #Update the colour
         
@@ -201,6 +199,8 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     #Clean up
     system("rm -rf %s/*" % (localTempDir))
     logger.info("Cleaned up by removing the contents of the local temporary file directory for the job")
+    
+    return tempLogFile
     
 def main():
     sys.path +=  [ sys.argv[1] ]
@@ -265,7 +265,7 @@ def main():
     
     if job.attrib.has_key("stats"):
         startTime = time.time()
-        startClock = time.clock()
+        startClock = getTotalCpuTime()
         stats = ET.Element("slave")
     else:
         stats = None
@@ -291,10 +291,16 @@ def main():
     memoryAvailable = int(jobToRun.attrib["memory"])
     cpuAvailable = int(jobToRun.attrib["cpu"])
     while True:
-        processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
+        tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
         
         if job.attrib["colour"] != "black":
             logger.critical("Exiting the slave because of a failed job")
+            if job.attrib.has_key("reportAllJobLogFiles"):
+                #Copy across the log file
+                system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
+        else:
+            #Copy back the job log file, because we saw failure
+            system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
             break
    
         totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack

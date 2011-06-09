@@ -1,17 +1,11 @@
 binPath = ./bin
-files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats scriptTree multijob jobTreeTest_CommandFirst.py jobTreeTest_CommandSecond.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
+files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats multijob jobTreeTest_CommandFirst.py jobTreeTest_CommandSecond.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
 
 .PHONY: all test clean
 
 all : $(foreach j,${files}, ${binPath}/$j)
 
 ${binPath}/% : src/%.py
-	mkdir -p $(dir $@)
-	cp $< $@.tmp
-	mv $@.tmp $@
-	chmod +x $@
-
-${binPath}/scriptTree : scriptTree/scriptTree.py
 	mkdir -p $(dir $@)
 	cp $< $@.tmp
 	mv $@.tmp $@

@@ -62,6 +62,8 @@ def createJob(attrib, parent, config):
     job.attrib["default_memory"] = config.attrib["default_memory"]
     job.attrib["default_cpu"] = config.attrib["default_cpu"]
     job.attrib["total_time"] = attrib["time"]
+    if bool(int(config.attrib["reportAllJobLogFiles"])):
+        job.attrib["reportAllJobLogFiles"] = ""
     if config.attrib.has_key("stats"):
         job.attrib["stats"] = config.attrib["log_file_dir"].getTempFile(".xml") #The file to store stats in..
     ET.SubElement(job, "children") 
@@ -334,6 +336,11 @@ def mainLoop(config, batchSystem):
             updatedJobFiles.add(jobFile)
     logger.info("Got the active (non grey/blue) job files")
     
+    #Write process job worker threads
+    #Make queue to put jobs to process on
+    #Write an get updated jobs thread to put jobs on
+    #Write a thread safe 'add job id' and 'and get total issued jobs' and add 'get total issued jobs' thread safe methods, block on issuing jobs when total number of issued jobs exceeds a threshold
+    
     totalJobFiles = len(jobFiles) #Total number of job files we have.
     jobIDsToJobsHash = {} #A hash of the currently running jobs ids, made by the batch system.
     
@@ -466,8 +473,7 @@ def mainLoop(config, batchSystem):
         ###End of for loop
         writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
         issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
-
-                
+      
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
             break
@@ -476,6 +482,7 @@ def mainLoop(config, batchSystem):
             updatedJobs = batchSystem.getUpdatedJobs() #Asks the batch system what jobs have been completed.
         else:
             updatedJobs = pauseForUpdatedJobs(batchSystem.getUpdatedJobs) #Asks the batch system what jobs have been completed.
+        
         for jobID in updatedJobs.keys(): #Runs through a map of updated jobs and there status, 
             result = updatedJobs[jobID]
             if jobIDsToJobsHash.has_key(jobID): 

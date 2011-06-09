@@ -189,9 +189,9 @@ class Stack:
         cpu = int(job.attrib["available_cpu"])
         
         if job.attrib.has_key("stats"):
-            stats = ET.Element("stack")
+            stats = ET.SubElement(job, "stack")
             startTime = time.time()
-            startClock = time.clock()
+            startClock = getTotalCpuTime()
         else:
             stats = None
         
@@ -199,6 +199,7 @@ class Stack:
         #off into stacks
         newChildCommands = [] #Ditto for the child commands
         newFollowOns = [] #Ditto for the follow-ons 
+        baseDir = os.getcwd()
         while self.hasRemaining():
             if stats is not None: #Getting the runtime of the stats module
                 targetStartTime = time.time()
@@ -215,6 +216,9 @@ class Stack:
                 assert targetCpu <= cpu
             #Run the target, first cleanup then run.
             target.run()
+            #Change dir back to cwd dir, if changed by target (this is a safety issue)
+            if os.getcwd() != baseDir:
+                os.chdir(baseDir)
             #Cleanup after the target
             if self.tempDirAccessed:
                 system("rm -rf %s/*" % self.localTempDir)
@@ -300,7 +304,6 @@ class Stack:
         if stats is not None:
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(getTotalCpuTime() - startClock)
-            job.append(stats)
     
     def verifyJobTreeOptions(self, options):
         """ verifyJobTreeOptions() returns None if all necessary values
