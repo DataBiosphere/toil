@@ -90,13 +90,21 @@ def main():
     #Collate the stats and report
     ##########################################  
     
+    def round(i):
+        if i < 0:
+            logger.debug("I got a less than 0 value: %s" % i)
+            return 0.0
+        return i
+    
     def fn(element, items, itemName):
-        itemTimes = [ float(item.attrib["time"]) for item in items ]
+        itemTimes = [ round(float(item.attrib["time"])) for item in items ]
         itemTimes.sort()
-        itemClocks = [ float(item.attrib["clock"]) for item in items ]
+        itemClocks = [ round(float(item.attrib["clock"])) for item in items ]
         itemClocks.sort()
-        itemWaits = [ float(item.attrib["time"]) - float(item.attrib["clock"]) for item in items ]
+        itemWaits = [ round(float(item.attrib["time"])) - round(float(item.attrib["clock"])) for item in items ]
         itemWaits.sort()
+        assert len(itemClocks) == len(itemTimes)
+        assert len(itemClocks) == len(itemWaits)
         if len(itemTimes) == 0:
             itemTimes.append(0)
             itemClocks.append(0)
@@ -169,7 +177,6 @@ def main():
     targetNames = set()
     for target in targets:
         targetNames.add(target.attrib["class"])
-    
     
     targetTypesTag = ET.SubElement(collatedStatsTag, "target_types")
     for targetName in targetNames:

@@ -27,13 +27,13 @@ import subprocess
 import xml.etree.ElementTree as ET
 import cPickle
 
-def truncateFile(fileNameString, toBig=50000):
-    """Truncates a file that is bigger than toBig bytes, leaving only the 
-    last toBig bytes in the file.
+def truncateFile(fileNameString, tooBig=50000):
+    """Truncates a file that is bigger than tooBig bytes, leaving only the 
+    last tooBig bytes in the file.
     """
-    if os.path.getsize(fileNameString) > toBig:
+    if os.path.getsize(fileNameString) > tooBig:
         fh = open(fileNameString, 'rb+')
-        fh.seek(-toBig, 2) 
+        fh.seek(-tooBig, 2) 
         data = fh.read()
         fh.seek(0) # rewind
         fh.write(data)
@@ -246,6 +246,17 @@ def main():
     logger.info("Parsed arguments and set up logging")
     
     ##########################################
+    #Setup the stats, if requested
+    ##########################################
+    
+    if job.attrib.has_key("stats"):
+        startTime = time.time()
+        startClock = getTotalCpuTime()
+        stats = ET.Element("slave")
+    else:
+        stats = None
+    
+    ##########################################
     #Load the environment for the job
     ##########################################
     
@@ -258,17 +269,6 @@ def main():
     #os.environ = environment
     #os.putenv(key, value)
     logger.info("Loaded the environment for the process")
-    
-    ##########################################
-    #Setup the stats, if requested
-    ##########################################
-    
-    if job.attrib.has_key("stats"):
-        startTime = time.time()
-        startClock = getTotalCpuTime()
-        stats = ET.Element("slave")
-    else:
-        stats = None
         
     ##########################################
     #Setup the temporary directories.
@@ -348,6 +348,12 @@ def main():
     logger.info("Finished running the chain of jobs on this node")
     
     ##########################################
+    #Cleanup the temporary directory
+    ##########################################
+    
+    system("rm -rf %s" % localSlaveTempDir)
+    
+    ##########################################
     #Finish up the stats
     ##########################################
     
@@ -357,12 +363,6 @@ def main():
         fileHandle = open(job.attrib["stats"], 'w')
         ET.ElementTree(stats).write(fileHandle)
         fileHandle.close()
-    
-    ##########################################
-    #Cleanup the temporary directory
-    ##########################################
-    
-    system("rm -rf %s" % localSlaveTempDir)
     
 def _test():
     import doctest      
