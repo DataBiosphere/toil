@@ -293,15 +293,13 @@ def main():
     while True:
         tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
         
-        if job.attrib["colour"] != "black":
+        if job.attrib["colour"] != "black": 
             logger.critical("Exiting the slave because of a failed job")
-            if job.attrib.has_key("reportAllJobLogFiles"):
-                #Copy across the log file
-                system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
-        else:
-            #Copy back the job log file, because we saw failure
-            system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
+            system("mv %s %s" % (tempLogFile, job.attrib["log_file"])) #Copy back the job log file, because we saw failure
             break
+        elif job.attrib.has_key("reportAllJobLogFiles"):
+            #Copy across the log file
+            system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
    
         totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
         

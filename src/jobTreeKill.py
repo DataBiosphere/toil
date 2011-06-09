@@ -21,7 +21,7 @@
 #THE SOFTWARE.
 
 """Kills any running jobs trees in a rogue jobtree.
-"""
+""" 
 
 import os
 

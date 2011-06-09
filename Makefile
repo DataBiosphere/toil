@@ -27,7 +27,7 @@ ${binPath}/scriptTreeTest_%.py : test/scriptTree/scriptTreeTest_%.py
 	mkdir -p $(dir $@)
 	cp $< $@.tmp
 	mv $@.tmp $@
-	chmod +x $@
+	chmod +x $@ 
 
 ${binPath}/scriptTreeTest_Sort.py : test/sort/scriptTreeTest_Sort.py
 	mkdir -p $(dir $@)
