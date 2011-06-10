@@ -44,7 +44,7 @@ def createJob(attrib, parent, config):
     job = ET.Element("job")
     job.attrib["file"] = config.attrib["job_file_dir"].getTempFile(".xml")
     job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-    job.attrib["colour"] = "white"
+    job.attrib["colour"] = "grey"
     followOns = ET.SubElement(job, "followOns")
     ET.SubElement(followOns, "followOn", attrib.copy())
     if parent != None:
@@ -72,7 +72,7 @@ def createJob(attrib, parent, config):
 def deleteJob(job, config):
     """Removes an old job, including any log files.
     """
-    config.attrib["log_file_dir"].destroyTempFile(job.attrib["log_file"])
+    config.attrib["log_file_dir"].destroyTempFile(job.attrib["log_file"]) #These files must exist through out for the temp file tree to survive
     config.attrib["slave_log_file_dir"].destroyTempFile(job.attrib["slave_log_file"])
     config.attrib["temp_dir_dir"].destroyTempDir(job.attrib["global_temp_dir"])
     config.attrib["job_file_dir"].destroyTempFile(job.attrib["file"])
@@ -166,10 +166,7 @@ def restartFailedJobs(config, jobFiles):
             logger.info("Restarting job: %s" % job.attrib["file"])
             job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
             if job.attrib["colour"] == "red":
-                job.attrib["colour"] = "white"
-            #Is leaf and job failed when the system went downbut the status did not get updated.
-            if job.attrib["colour"] == "grey": 
-                job.attrib["colour"] = "white"
+                job.attrib["colour"] = "grey"
             writeJobs([ job ])
 
 def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
@@ -227,17 +224,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
                         job.attrib["colour"] = "red"
                         writeJobs([ job ])
                     logger.critical("We've reverted to the original job file and marked it as failed: %s" % jobFile)
-    else:
-        job = ET.parse(jobFile).getroot()
-        
-    ##Now check the log files exist, because they must ultimately be cleaned up by their respective file trees.
-    if not os.path.isfile(job.attrib["log_file"]): #We need to keep these files in existence.
-        open(job.attrib["log_file"], 'w').close()
-        logger.critical("The log file %s for job %s had disappeared" % (job.attrib["log_file"], jobFile))
-    if not os.path.isfile(job.attrib["slave_log_file"]):
-        open(job.attrib["slave_log_file"], 'w').close()
-        logger.critical("The slave log file %s for job %s had disappeared" % (job.attrib["slave_log_file"], jobFile))
-    
+
     assert jobFile not in updatedJobFiles
     updatedJobFiles.add(jobFile) #Now we know the job is done we can add it to the list of updated job files
     logger.debug("Added job: %s to active jobs" % jobFile)
@@ -302,7 +289,7 @@ def reportJobLogFiles(job):
     logFile(job.attrib["log_file"], logger.critical)
     logger.critical("The log file of the slave for the job")
     logFile(job.attrib["slave_log_file"], logger.critical) #We log the job log file in the main loop
-
+    
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
     """    
@@ -325,30 +312,22 @@ def mainLoop(config, batchSystem):
     fixJobsList(config, jobFiles)
     logger.info("Fixed the job files using any .old files")
     
-    #Get jobs that were running, or that had failed reset to 'white' status
+    #Get jobs that were running, or that had failed reset to 'grey' status
     restartFailedJobs(config, jobFiles)
     logger.info("Reworked failed jobs")
     
     updatedJobFiles = set() #Jobs whose status needs updating, either because they have finished, or because they need to be started.
     for jobFile in jobFiles:
         job = ET.parse(jobFile).getroot()
-        if job.attrib["colour"] not in ("grey", "blue"):
+        if job.attrib["colour"] not in ("blue"):
             updatedJobFiles.add(jobFile)
-    logger.info("Got the active (non grey/blue) job files")
-    
-    #Write process job worker threads
-    #Make queue to put jobs to process on
-    #Write an get updated jobs thread to put jobs on
-    #Write a thread safe 'add job id' and 'and get total issued jobs' and add 'get total issued jobs' thread safe methods, block on issuing jobs when total number of issued jobs exceeds a threshold
+    logger.info("Got the active (non blue) job files")
     
     totalJobFiles = len(jobFiles) #Total number of job files we have.
     jobIDsToJobsHash = {} #A hash of the currently running jobs ids, made by the batch system.
     
     idealJobTime = float(config.attrib["job_time"]) 
     assert idealJobTime > 0.0
-    
-    maxIssuedJobs = int(config.attrib["max_jobs"]) #The maximum number of jobs to issue to the batch system
-    assert maxIssuedJobs >= 1
     
     reportAllJobLogFiles = bool(int(config.attrib["reportAllJobLogFiles"]))
     
@@ -363,27 +342,35 @@ def mainLoop(config, batchSystem):
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
-        jobsToIssue = []
         for jobFile in list(updatedJobFiles):
             job = ET.parse(jobFile).getroot()
-            assert job.attrib["colour"] not in ("grey", "blue")
+            assert job.attrib["colour"] is not "blue"
             
-            if job.attrib["colour"] == "white": #Get ready to start the job
-                if len(jobIDsToJobsHash) < maxIssuedJobs:
-                    logger.debug("Job: %s is being started" % job.attrib["file"])
-                    updatedJobFiles.remove(job.attrib["file"])
-                    
-                    #Reset the log files for the job.
-                    open(job.attrib["slave_log_file"], 'w').close()
-                    open(job.attrib["log_file"], 'w').close()
-                    
-                    job.attrib["colour"] = "grey"
-                    jobsToIssue.append(job)
-                    writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
-                    issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
-                    jobsToIssue = []
-                else:
-                    logger.debug("Job: %s is not being issued yet because we have %i jobs issued" % (job.attrib["file"], len(jobIDsToJobsHash)))
+            ##Check the log files exist, because they must ultimately be cleaned up by their respective file trees.
+            def checkFileExists(fileName, type):
+                if not os.path.isfile(fileName): #We need to keep these files in existence.
+                    open(fileName, 'w').close()
+                    logger.critical("The file %s for of type %s for job %s had disappeared" % (fileName, type, jobFile))
+            checkFileExists(job.attrib["log_file"], "log_file")
+            checkFileExists(job.attrib["slave_log_file"], "slave_log_file")
+            if stats:
+                checkFileExists(job.attrib["stats"], "stats")
+            
+            def reissueJob(job):
+                #Reset the log files for the job.
+                updatedJobFiles.remove(jobFile)
+                open(job.attrib["slave_log_file"], 'w').close()
+                open(job.attrib["log_file"], 'w').close()
+                assert job.attrib["colour"] == "grey"
+                issueJobs([ job ], jobIDsToJobsHash, batchSystem)
+                
+            def makeGreyAndReissueJob(job):
+                job.attrib["colour"] = "grey"
+                writeJobs([ job ])
+                reissueJob(job)
+            
+            if job.attrib["colour"] == "grey": #Get ready to start the job
+                reissueJob(job)
             elif job.attrib["colour"] == "black": #Job has finished okay
                 logger.debug("Job: %s has finished okay" % job.attrib["file"])
                 if reportAllJobLogFiles:
@@ -407,30 +394,24 @@ def mainLoop(config, batchSystem):
                     newChildren = []
                     while unbornChild != None:
                         cummulativeChildTime = float(unbornChild.attrib["time"])
-                        
                         newJob = createJob(unbornChild.attrib.copy(), job.attrib["file"], config)
-                        
                         totalJobFiles += 1
-                        updatedJobFiles.add(newJob.attrib["file"])
-                        
                         newChildren.append(newJob)
                         unbornChildren.remove(unbornChild)
                         unbornChild = unbornChildren.find("child")
-                        
                         newJob.attrib["total_time"] = str(cummulativeChildTime)
                     
                     updatedJobFiles.remove(job.attrib["file"])
                     job.attrib["child_count"] = str(childCount + len(newChildren))
                     job.attrib["colour"] = "blue" #Blue - has children running.
                     writeJobs([ job ] + newChildren ) #Check point
+                    issueJobs(newChildren, jobIDsToJobsHash, batchSystem) #Issue the new children directly
                     
                 elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
                     logger.debug("Job: %s has a new command that we can now issue" % job.attrib["file"])
                     ##Reset the job run info
                     job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-                    job.attrib["colour"] = "white"
-                    ##End resetting the job
-                    writeJobs([ job ])
+                    makeGreyAndReissueJob(job)
                     
                 else: #Job has finished, so we can defer to any parent
                     logger.debug("Job: %s is now dead" % job.attrib["file"])
@@ -445,8 +426,9 @@ def mainLoop(config, batchSystem):
                             assert parent.attrib["file"] not in updatedJobFiles
                             updatedJobFiles.add(parent.attrib["file"])
                         writeJobs([ job, parent ]) #Check point
-                    else:
-                        writeJobs([ job ])
+                    updatedJobFiles.remove(job.attrib["file"])
+                    totalJobFiles -= 1
+                    deleteJob(job, config)
                          
             elif job.attrib["colour"] == "red": #Job failed
                 logger.critical("Job: %s failed" % job.attrib["file"])
@@ -458,24 +440,19 @@ def mainLoop(config, batchSystem):
                 remainingRetyCount = int(job.attrib["remaining_retry_count"])
                 if remainingRetyCount > 0: #Give it another try, maybe there is a bad node somewhere
                     job.attrib["remaining_retry_count"] = str(remainingRetyCount-1)
-                    job.attrib["colour"] = "white"
                     logger.critical("Job: %s will be restarted, it has %s goes left" % (job.attrib["file"], job.attrib["remaining_retry_count"]))
-                    writeJobs([ job ]) #Check point
+                    makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetyCount == 0
-                    updatedJobFiles.remove(job.attrib["file"])
+                    updatedJobFiles.remove(job.attrib["file"]) #We remove the job and neither delete it or reissue it
                     logger.critical("Job: %s is completely failed" % job.attrib["file"])
                     
-            else:
+            else: #This case should only occur after failure
                 logger.debug("Job: %s is already dead, we'll get rid of it" % job.attrib["file"])
                 assert job.attrib["colour"] == "dead"
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
-                deleteJob(job, config) #This could be done earlier, but I like it this way.
-
-        ###End of for loop
-        #writeJobs(jobsToIssue) #Check point, do this before issuing job, so state is not read until issued
-        #issueJobs(jobsToIssue, jobIDsToJobsHash, batchSystem)
+                deleteJob(job, config)
       
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
