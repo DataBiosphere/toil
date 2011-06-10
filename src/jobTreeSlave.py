@@ -215,6 +215,7 @@ def main():
     from sonLib.bioio import getTotalCpuTime
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
+    from jobTree.src.master import readJob
     from sonLib.bioio import system
     
     ##########################################
@@ -234,7 +235,7 @@ def main():
     #Parse the job.
     ##########################################
     
-    job = ET.parse(options.jobFile).getroot()
+    job = readJob(options.jobFile)
     
     ##########################################
     #Setup the logging

@@ -34,9 +34,11 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
+from jobTree.src.master import readJob
+
 def parseJobFile(absFileName):
     try:
-        job = ET.parse(absFileName).getroot()
+        job = readJob(absFileName)
         return job
     except IOError:
         logger.info("Encountered error while parsing job file %s, so we will ignore it" % absFileName)

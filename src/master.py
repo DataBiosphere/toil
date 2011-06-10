@@ -31,6 +31,7 @@ import sys
 import os.path 
 import xml.etree.ElementTree as ET
 import time
+from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
 from sonLib.bioio import getLogLevelString
@@ -78,6 +79,21 @@ def deleteJob(job, config):
     config.attrib["job_file_dir"].destroyTempFile(job.attrib["file"])
     if config.attrib.has_key("stats"):
         config.attrib["log_file_dir"].destroyTempFile(job.attrib["stats"])
+        
+def writeJob(job, jobFileName):
+    tree = ET.ElementTree(job)
+    #fileHandle = open(jobFileName, 'w') 
+    fileHandle = BZ2File(jobFileName, 'w', compresslevel=5)
+    tree.write(fileHandle)
+    fileHandle.close()
+
+def readJob(jobFile):
+    #return ET.parse(jobFile).getroot()
+    fileHandle = open(jobFile, 'r')
+    fileHandle = BZ2File(jobFile, 'r')
+    job = ET.parse(fileHandle).getroot()
+    fileHandle.close()
+    return job
 
 def writeJobs(jobs):
     """Writes a list of jobs to file, ensuring that the previous
@@ -100,9 +116,7 @@ def writeJobs(jobs):
     for job in jobs:
         newFileName = job.attrib["file"] + ".new"
         assert not os.path.isfile(newFileName)
-        fileHandle = open(newFileName, 'w')
-        tree = ET.ElementTree(job)
-        tree.write(fileHandle)
+        writeJob(job, newFileName)
         fileHandle.close()
        
     os.remove(updatingFile) #Remove the updating file, now the new files represent the valid state
@@ -162,7 +176,7 @@ def restartFailedJobs(config, jobFiles):
     """
     for absFileName in jobFiles:
         if os.path.isfile(absFileName):
-            job = ET.parse(absFileName).getroot()
+            job = readJob(absFileName)
             logger.info("Restarting job: %s" % job.attrib["file"])
             job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
             if job.attrib["colour"] == "red":
@@ -192,7 +206,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
                 os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
             os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
             assert os.path.isfile(jobFile)
-            job = ET.parse(jobFile).getroot() #The original must still be there.
+            job = readJob(jobFile) #The original must still be there.
             assert job.find("children").find("child") == None #The original can not reflect the end state of the job.
             assert int(job.attrib["black_child_count"]) == int(job.attrib["child_count"])
             job.attrib["colour"] = "red" #It failed, so we mark it so and continue.
@@ -204,7 +218,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
                 if os.path.isfile(jobFile):
                     os.remove(jobFile)
                 os.rename(jobFile + ".new", jobFile)
-                job = ET.parse(jobFile).getroot()
+                job = readJob(jobFile)
                 if job.attrib["colour"] == "grey": #The job failed while preparing to run another job on the slave
                     assert job.find("children").find("child") == None #File 
                     job.attrib["colour"] = "red"
@@ -213,7 +227,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
             else:
                 logger.critical("There was no valid .new file %s" % jobFile)
                 assert os.path.isfile(jobFile)
-                job = ET.parse(jobFile).getroot() #The job may have failed before or after creating this file, we check the state.
+                job = readJob(jobFile) #The job may have failed before or after creating this file, we check the state.
                 if job.attrib["colour"] == "black": #The job completed okay, so we'll keep it
                     logger.critical("Despite the batch system job failing, the job appears to have completed okay")
                 else:
@@ -318,7 +332,7 @@ def mainLoop(config, batchSystem):
     
     updatedJobFiles = set() #Jobs whose status needs updating, either because they have finished, or because they need to be started.
     for jobFile in jobFiles:
-        job = ET.parse(jobFile).getroot()
+        job = readJob(jobFile)
         if job.attrib["colour"] not in ("blue"):
             updatedJobFiles.add(jobFile)
     logger.info("Got the active (non blue) job files")
@@ -343,7 +357,7 @@ def mainLoop(config, batchSystem):
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), len(jobIDsToJobsHash)))
         
         for jobFile in list(updatedJobFiles):
-            job = ET.parse(jobFile).getroot()
+            job = readJob(jobFile)
             assert job.attrib["colour"] is not "blue"
             
             ##Check the log files exist, because they must ultimately be cleaned up by their respective file trees.
@@ -417,7 +431,7 @@ def mainLoop(config, batchSystem):
                     logger.debug("Job: %s is now dead" % job.attrib["file"])
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
-                        parent = ET.parse(job.attrib["parent"]).getroot()
+                        parent = readJob(job.attrib["parent"])
                         assert parent.attrib["colour"] == "blue"
                         assert int(parent.attrib["black_child_count"]) < int(parent.attrib["child_count"])
                         parent.attrib["black_child_count"] = str(int(parent.attrib["black_child_count"]) + 1)
