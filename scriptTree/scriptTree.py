@@ -29,7 +29,7 @@ from jobTree.scriptTree.stack import loadPickleFile
 def run(job, target, classes):
     #Naughty stuff to do the import of the target we need
     for className in classes:
-        logger.info("Loading the class name", className)
+        logger.info("Loading the class name %s" % className)
         l = className.split(".")
         moduleName = ".".join(l[:-1])
         className = l[-1]

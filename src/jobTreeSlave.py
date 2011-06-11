@@ -26,6 +26,7 @@ import time
 import subprocess
 import xml.etree.ElementTree as ET
 import cPickle
+import traceback
 
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
@@ -62,6 +63,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     from sonLib.bioio import logger
     from sonLib.bioio import system
     from sonLib.bioio import getTotalCpuTime
+    from sonLib.bioio import redirectLoggerStreamHandlers
     
     assert len(job.find("children").findall("child")) == 0
     assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
@@ -105,18 +107,23 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     #If you're a script tree python process, we don't need to python
     if command[:10] == "scriptTree":
         import jobTree.scriptTree.scriptTree
-        stderr = sys.stderr 
-        stdout = sys.stdout
+        savedStdErr = sys.stderr 
+        savedStdOut = sys.stdout
         exitValue = 0
-        try:
-            sys.stderr = fileHandle
+        try: 
+            sys.stderr = fileHandle 
             sys.stdout = fileHandle
+            redirectLoggerStreamHandlers(savedStdErr, fileHandle)
             l = command.split()
             jobTree.scriptTree.scriptTree.run(tempJob, l[1], l[2:])
         except:
+            traceback.print_exc(file=fileHandle)
             exitValue = 1
-        sys.stderr = stderr
-        sys.stdout = stdout
+        sys.stderr = savedStdErr
+        sys.stdout = savedStdOut
+        redirectLoggerStreamHandlers(fileHandle, sys.stderr)
+        if exitValue == 1:
+            logger.critical("Caught an exception in the target being run")
     else:
         if "JOB_FILE" not in command:
             logger.critical("There is no 'JOB_FILE' string in the command to be run to take the job-file argument: %s" % command)

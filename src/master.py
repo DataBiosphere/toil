@@ -31,7 +31,7 @@ import sys
 import os.path 
 import xml.etree.ElementTree as ET
 import time
-from bz2 import BZ2File
+#from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
 from sonLib.bioio import getLogLevelString
@@ -82,18 +82,18 @@ def deleteJob(job, config):
         
 def writeJob(job, jobFileName):
     tree = ET.ElementTree(job)
-    #fileHandle = open(jobFileName, 'w') 
-    fileHandle = BZ2File(jobFileName, 'w', compresslevel=5)
+    fileHandle = open(jobFileName, 'w') 
+    #fileHandle = BZ2File(jobFileName, 'w', compresslevel=5)
     tree.write(fileHandle)
     fileHandle.close()
 
 def readJob(jobFile):
-    #return ET.parse(jobFile).getroot()
-    fileHandle = open(jobFile, 'r')
-    fileHandle = BZ2File(jobFile, 'r')
-    job = ET.parse(fileHandle).getroot()
-    fileHandle.close()
-    return job
+    return ET.parse(jobFile).getroot()
+    #fileHandle = open(jobFile, 'r')
+    #fileHandle = BZ2File(jobFile, 'r')
+    #job = ET.parse(fileHandle).getroot()
+    #fileHandle.close()
+    #return job
 
 def writeJobs(jobs):
     """Writes a list of jobs to file, ensuring that the previous
@@ -364,7 +364,7 @@ def mainLoop(config, batchSystem):
             def checkFileExists(fileName, type):
                 if not os.path.isfile(fileName): #We need to keep these files in existence.
                     open(fileName, 'w').close()
-                    logger.critical("The file %s for of type %s for job %s had disappeared" % (fileName, type, jobFile))
+                    logger.critical("The file %s of type %s for job %s had disappeared" % (fileName, type, jobFile))
             checkFileExists(job.attrib["log_file"], "log_file")
             checkFileExists(job.attrib["slave_log_file"], "slave_log_file")
             if stats:
