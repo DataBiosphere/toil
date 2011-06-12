@@ -395,7 +395,7 @@ def mainLoop(config, batchSystem):
                     open(job.attrib["stats"], 'w').close() #Reset the stats file
                 if job.find("messages") != None:
                     for message in job.find("messages").findall("message"):
-                        logger.info("Received the following message from job: %s" % message.attrib["message"])
+                        logger.critical("Received the following message from job: %s" % message.attrib["message"])
                     job.remove(job.find("messages"))
                 childCount = int(job.attrib["child_count"])
                 blackChildCount = int(job.attrib["black_child_count"])
