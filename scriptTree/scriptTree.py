@@ -27,13 +27,13 @@ from sonLib.bioio import parseBasicOptions
 from jobTree.scriptTree.stack import loadPickleFile
 
 def run(job, target, classes):
-    #Naughty stuff to do the import of the target we need
+    # Naughty stuff to do the import of the target we need
     for className in classes:
         logger.info("Loading the class name %s" % className)
         l = className.split(".")
         moduleName = ".".join(l[:-1])
         className = l[-1]
-        _temp = __import__(moduleName, globals(), locals(), [ className ], -1)
+        _temp = __import__(moduleName, globals(), locals(), [className], -1)
         exec "%s = 1" % className
         vars()[className] = _temp.__dict__[className]
     
