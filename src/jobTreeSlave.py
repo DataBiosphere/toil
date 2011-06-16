@@ -107,7 +107,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     #If you're a script tree python process, we don't need to python
     if command[:10] == "scriptTree":
         import jobTree.scriptTree.scriptTree
-        savedStdErr = sys.stderr 
+        savedStdErr = sys.stderr
         savedStdOut = sys.stdout
         exitValue = 0
         try: 
@@ -117,7 +117,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
             l = command.split()
             jobTree.scriptTree.scriptTree.run(tempJob, l[1], l[2:])
         except:
-            traceback.print_exc(file=fileHandle)
+            traceback.print_exc(file = fileHandle)
             exitValue = 1
         sys.stderr = savedStdErr
         sys.stdout = savedStdOut
@@ -210,7 +210,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     return tempLogFile
     
 def main():
-    sys.path +=  [ sys.argv[1] ]
+    sys.path.append(sys.argv[1])
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
@@ -236,7 +236,8 @@ def main():
                       default="None")
     
     options, args = parseBasicOptions(parser)
-    assert len(args) == 0
+    if len(args) != 0:
+        parser.error('unanticipated arguments discovered: %s' % ' '.join(args))
 
     ##########################################
     #Parse the job.
@@ -274,6 +275,10 @@ def main():
     fileHandle.close()
     for i in environment:
         os.environ[i] = environment[i]
+    if "PATH" in environment:
+        for e in environment["PYTHONPATH"].split(':'):
+            if e != '':
+                sys.path.append(e)
     #os.environ = environment
     #os.putenv(key, value)
     logger.info("Loaded the environment for the process")
@@ -293,8 +298,10 @@ def main():
     ##########################################
     
     maxTime = float(job.attrib["job_time"])
-    assert maxTime > 0.0
-    assert maxTime < sys.maxint
+    if maxTime <= 0.0:
+        parser.error('maxTime needs to be strictly positive, not %s' % str(maxTime))
+    if maxTime >= sys.maxint:
+        parser.error('maxTime needs to be less than sys.maxint but %d >= %d' % (maxTime, sys.maxint))
     jobToRun = job.find("followOns").findall("followOn")[-1]
     memoryAvailable = int(jobToRun.attrib["memory"])
     cpuAvailable = int(jobToRun.attrib["cpu"])
