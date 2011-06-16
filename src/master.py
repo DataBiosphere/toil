@@ -20,10 +20,12 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-"""The master component (of a master slave pattern) for a job manager used by sontrace programs (cactus etc) 
-for running hierarchical trees of jobs on the cluster.
+"""The master component (of a master slave pattern) for a job manager used by 
+sontrace programs (cactus etc) for running hierarchical trees of jobs on the 
+cluster.
 
-Takes a crash-only philosophy so that any part of the process can be failed and then restarted at will (see the accompanying tests).
+Takes a crash-only philosophy so that any part of the process can be failed 
+and then restarted at will (see the accompanying tests).
 """
 
 import os
@@ -306,7 +308,7 @@ def reportJobLogFiles(job):
     
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
-    """    
+    """
     waitDuration = float(config.attrib["wait_duration"])
     assert waitDuration >= 0
     rescueJobsFrequency = float(config.attrib["rescue_jobs_frequency"])
