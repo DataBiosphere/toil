@@ -236,8 +236,7 @@ def main():
                       default="None")
     
     options, args = parseBasicOptions(parser)
-    if len(args) != 0:
-        parser.error('unanticipated arguments discovered: %s' % ' '.join(args))
+    assert len(args) == 0
 
     ##########################################
     #Parse the job.
@@ -275,7 +274,8 @@ def main():
     fileHandle.close()
     for i in environment:
         os.environ[i] = environment[i]
-    if "PATH" in environment:
+    # sys.path is used by __import__ to find modules
+    if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
@@ -298,10 +298,8 @@ def main():
     ##########################################
     
     maxTime = float(job.attrib["job_time"])
-    if maxTime <= 0.0:
-        parser.error('maxTime needs to be strictly positive, not %s' % str(maxTime))
-    if maxTime >= sys.maxint:
-        parser.error('maxTime needs to be less than sys.maxint but %d >= %d' % (maxTime, sys.maxint))
+    assert maxTime > 0.0
+    assert maxTime < sys.maxint
     jobToRun = job.find("followOns").findall("followOn")[-1]
     memoryAvailable = int(jobToRun.attrib["memory"])
     cpuAvailable = int(jobToRun.attrib["cpu"])
