@@ -311,8 +311,10 @@ def main():
             system("mv %s %s" % (tempLogFile, job.attrib["log_file"])) #Copy back the job log file, because we saw failure
             break
         elif job.attrib.has_key("reportAllJobLogFiles"):
+            logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
             #Copy across the log file
             system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
+            break
    
         totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
         

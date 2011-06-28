@@ -103,7 +103,7 @@ def writeJobs(jobs):
     """
     if len(jobs) == 0:
         return
-
+    assert len(set(jobs)) == len(jobs)
     #Create a unique updating name using the first file in the list
     fileName = jobs[0].attrib["file"]
     updatingFile = fileName + ".updating"
@@ -119,7 +119,6 @@ def writeJobs(jobs):
         newFileName = job.attrib["file"] + ".new"
         assert not os.path.isfile(newFileName)
         writeJob(job, newFileName)
-        fileHandle.close()
        
     os.remove(updatingFile) #Remove the updating file, now the new files represent the valid state
     
@@ -434,6 +433,7 @@ def mainLoop(config, batchSystem):
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
                         parent = readJob(job.attrib["parent"])
+                        assert job.attrib["parent"] != jobFile
                         assert parent.attrib["colour"] == "blue"
                         assert int(parent.attrib["black_child_count"]) < int(parent.attrib["child_count"])
                         parent.attrib["black_child_count"] = str(int(parent.attrib["black_child_count"]) + 1)
