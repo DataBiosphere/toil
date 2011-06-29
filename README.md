@@ -124,7 +124,7 @@ The script will return a zero exit value if the jobTree system is successfully a
 
 If the script fails because a target failed then the script will return a non-zero exit value and log file information will be reported to std error (these errors can also be retrieved using the jobTreeStatus command). If you wish to retry the job after fixing the error then the batch can be restarted by calling
 
-**jobTreeRun --jobTree bar/jobTree --logLevel INFO**
+<code>[]$ jobTreeRun --jobTree bar/jobTree --logLevel INFO</code>
 
 Which will attempt to restart the jobs from the previous point of failure.
 
