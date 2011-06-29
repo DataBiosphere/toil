@@ -9,6 +9,7 @@ Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
 
 The basic pattern provided by jobTree is as follows: 
+
 1. You have a job running on your cluster which requires further parallelisation. 
 2. You create a list of jobs to perform this parallelisation. These are the 'child' jobs of your process, we call them collectively the 'children'.
 3. You create a 'follow-on' job, to be performed after all the children have successfully completed. This job is responsible for cleaning up the input files created for the children and doing any further processing. **Children should not cleanup files created by parents**, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
