@@ -109,14 +109,14 @@ One final important detail, the lines:
 
 ```python
     if __name__ == '__main__':
-                from jobTree.test.sort.scriptTreeTest_Sort import *
+        from jobTree.test.sort.scriptTreeTest_Sort import *
 ```
 
 reload the objects in the module, such that their module names will be absolute (this is necessary for the serialization that is used). Targets in other classes that are imported do not need to be reloaded in this way.
 
 The script can then be run, for example using the command: 
 
-<code>scriptTreeTest_Sort.py --fileToSort foo --jobTree bar/jobTree --batchSystem parasol --logLevel INFO</code>
+<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --jobTree bar/jobTree --batchSystem parasol --logLevel INFO</code>
 
 Which in this case uses parasol and INFO level logging and where foo is the file to sort and bar/jobTree is the location of a directory (which should not already exist) from which the batch will be managed.
 
@@ -131,8 +131,11 @@ Which will attempt to restart the jobs from the previous point of failure.
 ##Atomicity
 jobTree and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until jobTree knows your children have been completed okay you can not assume that your job (if using scriptTree, Target) has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
          
-1. **Never cleansup/alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
-2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the job tree master process. These two properties are the key to job atomicity. Additionally, you'll find it much easier if a job:
+1. **Never cleans up / alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
+2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the job tree master process. 
+
+    These two properties are the key to job atomicity. Additionally, you'll find it much easier if a job:
+
 3. Only creates temp files in the two provided temporary file directories. This ensures we don't soil the cluster's disks.
 4. Logs sensibly, so that error messages can be transmitted back to the master and the pipeline can be successfully debugged.
 
@@ -141,16 +144,21 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
 ##Probably FAQ's:
 * _Why do we use this pattern?_
+
     Ideally when issuing children the parent job could just go to sleep on the cluster. But unless it frees the machine it's sleeping on, then the cluster soon jams up with sleeping jobs. This design is a pragmatic way of designing simple parallel code. It isn't heavy duty, it isn't map-reduce, but it has it's niche.
 
 * _What do you mean 'crash only' software?_
+
     This is just a fancy way of saying that jobTree checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a consumer you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
 
 * _How scaleable?_
+
     Probably not very, but it could be. You should be safe to have a 1000 concurrent jobs running, depending on your file-system and batch system.
 
 * _Can you support my XYZ batch system?_
+
     See the abstract base class 'AbstractBatchSystem' in the code to see what's required. You'll probably need to speak to me as I haven't attempted to comprehensively document these functions, though it's pretty straight forward.
 
 * _Is there an API for the jobTree top level commands?_
+
     Not really - at this point please use scriptTree and the few command line utilities present in the bin directory.
