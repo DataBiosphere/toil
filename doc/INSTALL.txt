@@ -1,8 +1,10 @@
 Installing job-tree.
 
-(1) Place the directory containing the jobTree dir on your python path. i.e.
-PYTHONPATH=${PYTHONPATH}:FOO
-where FOO/jobTree is the path containing the base directory of jobTree. 
+(0) Install sonLib. See https://github.com/benedictpaten/sonLib
+
+(1) Place the directory containing the jobTree in the same directory as sonLib. 
+The directory containing both sonLib and jobTree should be on your python path. i.e.
+PYTHONPATH=${PYTHONPATH}:FOO where FOO/jobTree is the path containing the base directory of jobTree. 
 
 (2) Build the code:
 Type make all in the base directory, this just puts some stuff that is currently all python based in the bin dir. In the future there might be some actual compiliation.

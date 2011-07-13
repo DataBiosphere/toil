@@ -4,6 +4,10 @@
 ##Author
 Benedict Paten (benedict@soe.ucsc.edu)
 
+##Installation
+
+For install instructions see doc/install.txt
+
 ##Introduction
 Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
