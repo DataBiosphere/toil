@@ -8,6 +8,13 @@ Benedict Paten (benedict@soe.ucsc.edu)
 
 For install instructions see doc/install.txt
 
+
+##Requirements
+
+* Python 2.5 or later, but less than 3.0
+* sonLib https://github.com/benedictpaten/sonLib
+
+
 ##Introduction
 Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
@@ -167,3 +174,7 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 * _Is there an API for the jobTree top level commands?_
 
     Not really - at this point please use scriptTree and the few command line utilities present in the bin directory.
+
+* _Why am I getting the error "ImportError: No module named etree.ElementTree"?_
+
+    The version of python in your path is less than 2.5. When jobTree spawns a new job it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
