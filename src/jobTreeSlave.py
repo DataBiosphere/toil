@@ -273,7 +273,7 @@ def main():
     environment = cPickle.load(fileHandle)
     fileHandle.close()
     for i in environment:
-        if i not in {"TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE" }:
+        if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
