@@ -90,6 +90,7 @@ def writeJob(job, jobFileName):
     fileHandle.close()
 
 def readJob(jobFile):
+    logger.debug("Going to load the file %s" % absFileName)
     return ET.parse(jobFile).getroot()
     #fileHandle = open(jobFile, 'r')
     #fileHandle = BZ2File(jobFile, 'r')
