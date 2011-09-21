@@ -128,11 +128,15 @@ def writeJobs(jobs):
             os.remove(job.attrib["file"])
         os.rename(job.attrib["file"] + ".new", job.attrib["file"])
 
-def issueJobs(jobs, jobIDsToJobsHash, batchSystem):
+def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs):
     """Issues jobs to the batch system.
     """
-    jobCommands = {}
     for job in jobs:
+        queueingJobs.append(job)
+    jobCommands = {}
+    i = len(jobIDsToJobsHash.keys())
+    for i in xrange(len(jobIDsToJobsHash.keys()), min(maxJobs, len(queueingJobs))):
+        job = queueingJobs.pop()
         jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
         jobCommands["%s -E %s %s --job %s" % (sys.executable, jobCommand, os.path.split(workflowRootPath())[0], job.attrib["file"])] = (job.attrib["file"], int(followOnJob.attrib["memory"]), int(followOnJob.attrib["cpu"]), job.attrib["slave_log_file"])
@@ -351,6 +355,10 @@ def mainLoop(config, batchSystem):
     if stats:
         startTime = time.time()
         startClock = getTotalCpuTime()
+        
+    #Stuff do handle the maximum number of issued jobs
+    queueingJobs = []
+    maxJobs = int(config.attrib["max_jobs"])
     
     logger.info("Starting the main loop")
     timeSinceJobsLastRescued = time.time() - rescueJobsFrequency + 100 #We hack it so that we rescue jobs after the first 100 seconds to get around an apparent parasol bug
@@ -378,7 +386,7 @@ def mainLoop(config, batchSystem):
                 open(job.attrib["slave_log_file"], 'w').close()
                 open(job.attrib["log_file"], 'w').close()
                 assert job.attrib["colour"] == "grey"
-                issueJobs([ job ], jobIDsToJobsHash, batchSystem)
+                issueJobs([ job ], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs)
                 
             def makeGreyAndReissueJob(job):
                 job.attrib["colour"] = "grey"
@@ -421,7 +429,7 @@ def mainLoop(config, batchSystem):
                     job.attrib["child_count"] = str(childCount + len(newChildren))
                     job.attrib["colour"] = "blue" #Blue - has children running.
                     writeJobs([ job ] + newChildren ) #Check point
-                    issueJobs(newChildren, jobIDsToJobsHash, batchSystem) #Issue the new children directly
+                    issueJobs(newChildren, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs) #Issue the new children directly
                     
                 elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
                     logger.debug("Job: %s has a new command that we can now issue" % job.attrib["file"])
@@ -470,6 +478,9 @@ def mainLoop(config, batchSystem):
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
                 deleteJob(job, config)
+                
+        #This command is issued to ensure any queing jobs are issued at the end of the loop
+        issueJobs([], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs)
       
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
