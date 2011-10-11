@@ -39,5 +39,5 @@ clean :
 	rm -rf ${binPath}/
 
 test :
-#Running python allTests.py
+	#Running python allTests.py
 	PYTHONPATH=.. PATH=../../bin:$$PATH python allTests.py --testLength=SHORT --logDebug
