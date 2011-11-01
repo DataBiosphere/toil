@@ -98,9 +98,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         return self.jobs.keys()
     
     def getRunningJobIDs(self):
-        """Return the map of jobs
+        """Return empty map
         """
-        return self.jobs.copy()
+	return dict()
     
     def getUpdatedJobs(self):
         """Returns a map of the run jobs and the return value of their processes.
