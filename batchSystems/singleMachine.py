@@ -98,9 +98,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         return self.jobs.keys()
     
     def getRunningJobIDs(self):
-        """As no jobs are running in parallel, just returns an empty map.
+        """Return the map of jobs
         """
-        return self.jobs.keys()
+        return self.jobs.copy()
     
     def getUpdatedJobs(self):
         """Returns a map of the run jobs and the return value of their processes.
