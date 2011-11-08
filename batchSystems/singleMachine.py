@@ -42,6 +42,7 @@ class Worker(Thread):
     def run(self):
         while True:
             command, logFile, jobID = self.inputQueue.get()
+            logger.info("Starting a job with ID %s", jobID)
             #fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
             tempLogFile = getTempFile()
             fileHandle = open(tempLogFile, 'w')
@@ -53,6 +54,7 @@ class Worker(Thread):
                 system("mv %s %s" % (tempLogFile, logFile))
             self.outputQueue.put((command, sts[1], jobID))
             self.inputQueue.task_done()
+            logger.info("Finished a job with ID %s", jobID)
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
@@ -100,7 +102,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     def getRunningJobIDs(self):
         """Return empty map
         """
-	return dict()
+        return dict()
     
     def getUpdatedJobs(self):
         """Returns a map of the run jobs and the return value of their processes.

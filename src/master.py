@@ -134,8 +134,7 @@ def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs):
     for job in jobs:
         queueingJobs.append(job)
     jobCommands = {}
-    i = len(jobIDsToJobsHash.keys())
-    for i in xrange(len(jobIDsToJobsHash.keys()), min(maxJobs, len(queueingJobs))):
+    for i in xrange(len(jobIDsToJobsHash.keys()), min(maxJobs, len(jobIDsToJobsHash.keys()) + len(queueingJobs))):
         job = queueingJobs.pop()
         jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
@@ -414,16 +413,14 @@ def mainLoop(config, batchSystem):
                 unbornChildren = job.find("children")
                 unbornChild = unbornChildren.find("child")
                 if unbornChild != None: #We must give birth to the unborn children
-                    logger.debug("Job: %s has children to schedule" % job.attrib["file"])
+                    logger.debug("Job: %s has %i children to schedule" % (job.attrib["file"], len(unbornChildren.findall("child"))))
                     newChildren = []
                     while unbornChild != None:
-                        cummulativeChildTime = float(unbornChild.attrib["time"])
-                        newJob = createJob(unbornChild.attrib.copy(), job.attrib["file"], config)
+                        newJob = createJob(unbornChild.attrib, job.attrib["file"], config)
                         totalJobFiles += 1
                         newChildren.append(newJob)
                         unbornChildren.remove(unbornChild)
                         unbornChild = unbornChildren.find("child")
-                        newJob.attrib["total_time"] = str(cummulativeChildTime)
                     
                     updatedJobFiles.remove(job.attrib["file"])
                     job.attrib["child_count"] = str(childCount + len(newChildren))
