@@ -134,7 +134,7 @@ def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs):
     for job in jobs:
         queueingJobs.append(job)
     jobCommands = {}
-    for i in xrange(len(jobIDsToJobsHash.keys()), min(maxJobs, len(jobIDsToJobsHash.keys()) + len(queueingJobs))):
+    for i in xrange(min(maxJobs - len(jobIDsToJobsHash.keys()), len(queueingJobs))):
         job = queueingJobs.pop()
         jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
