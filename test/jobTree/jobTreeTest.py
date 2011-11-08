@@ -45,7 +45,18 @@ class TestCase(unittest.TestCase):
     def testJobTree_gridengine(self):
         if gridEngineIsInstalled():
             testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "gridengine") 
-
+    
+    def testJobTree_dependencies(self):
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree comb --maxThreads 100" % self.jobTreeDir
+        os.system("rm -rf %s" % self.jobTreeDir)
+        system(commandLine)
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree fly --maxThreads 100" % self.jobTreeDir
+        os.system("rm -rf %s" % self.jobTreeDir)
+        system(commandLine)
+        os.system("rm -rf %s" % self.jobTreeDir)
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree balanced --maxThreads 100" % self.jobTreeDir
+        system(commandLine)
+        
 def testJobTree(testNo, depth, tempFileTree, jobTreeDir, batchSystem):
     """Runs a test program using the job tree using the single machine batch system.
     """
