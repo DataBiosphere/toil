@@ -120,7 +120,7 @@ def scriptTree_SortTest(testNo, batchSystem, lines=100000, maxLineLength=10, N=1
         l.sort()
         fileHandle.close()
         #Sort the file
-        command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0" % (jobTreeDir, tempFile, N, batchSystem)
+        command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxJobs 20" % (jobTreeDir, tempFile, N, batchSystem)
         system(command)
         #Now check the file is properly sorted..
         #Now get the sorted file
