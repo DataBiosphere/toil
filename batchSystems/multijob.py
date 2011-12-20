@@ -22,6 +22,7 @@
 
 import sys
 import os
+import subprocess
 
 try:
     import cPickle 
@@ -40,9 +41,12 @@ class MultiTarget:
              RuntimeError("Task ID not within the array range 1 <= %i <= %i", task_id, len(self.commands))
         (job, outfile) = self.commands[task_id - 1]
         if outfile is None:
-                os.system(job)
+                ret = subprocess.call(job.split())
         else:
-                os.system("%s >& %s" % (job, outfile))
+                file = open(outfile, "w")
+                ret = subprocess.call(job.split(), stderr=file,stdout=file)
+                file.close()
+        sys.exit(ret)
 
     def makeRunnable(self, tempDir):
         from sonLib.bioio import getTempFile

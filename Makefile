@@ -1,5 +1,5 @@
 binPath = ./bin
-files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats multijob jobTreeTest_CommandFirst.py jobTreeTest_CommandSecond.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
+files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats multijob jobTreeTest_CommandFirst.py jobTreeTest_CommandSecond.py jobTreeTest_Dependencies.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
 
 .PHONY: all test clean
 
@@ -17,7 +17,7 @@ ${binPath}/multijob : batchSystems/multijob.py
 	mv $@.tmp $@
 	chmod +x $@
 
-${binPath}/jobTreeTest_Command%.py : test/jobTree/jobTreeTest_Command%.py
+${binPath}/jobTreeTest_%.py : test/jobTree/jobTreeTest_%.py
 	mkdir -p $(dir $@)
 	cp $< $@.tmp
 	mv $@.tmp $@

@@ -27,6 +27,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import cPickle
 import traceback
+import time
 
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
@@ -304,6 +305,7 @@ def main():
     jobToRun = job.find("followOns").findall("followOn")[-1]
     memoryAvailable = int(jobToRun.attrib["memory"])
     cpuAvailable = int(jobToRun.attrib["cpu"])
+    startTime = time.time()
     while True:
         tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
         
@@ -325,6 +327,10 @@ def main():
             
         if len(childrenList) >= 2: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
             logger.info("No more jobs can run in series by this slave, its got %i children" % len(childrenList))
+            break
+        
+        if time.time() - startTime > maxTime:
+            logger.info("We are breaking because the maximum time the job should run for has been exceeded")
             break
         
         followOns = job.find("followOns")
@@ -359,7 +365,7 @@ def main():
     writeJobs([ job ])
     logger.info("Written out an updated job file")
     
-    logger.info("Finished running the chain of jobs on this node")
+    logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
     ##########################################
     #Cleanup the temporary directory

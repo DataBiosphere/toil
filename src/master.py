@@ -128,26 +128,36 @@ def writeJobs(jobs):
             os.remove(job.attrib["file"])
         os.rename(job.attrib["file"] + ".new", job.attrib["file"])
 
-def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs):
+def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed):
     """Issues jobs to the batch system.
     """
     for job in jobs:
         queueingJobs.append(job)
     jobCommands = {}
-    i = len(jobIDsToJobsHash.keys())
-    for i in xrange(len(jobIDsToJobsHash.keys()), min(maxJobs, len(queueingJobs))):
-        job = queueingJobs.pop()
+    #for i in xrange(min(maxJobs - len(jobIDsToJobsHash.keys()), len(queueingJobs))):
+    while len(queueingJobs) > 0:
+        job = queueingJobs[-1]
         jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
-        jobCommands["%s -E %s %s --job %s" % (sys.executable, jobCommand, os.path.split(workflowRootPath())[0], job.attrib["file"])] = (job.attrib["file"], int(followOnJob.attrib["memory"]), int(followOnJob.attrib["cpu"]), job.attrib["slave_log_file"])
+        memory = int(followOnJob.attrib["memory"])
+        cpu = int(followOnJob.attrib["cpu"])
+        if cpu > maxJobs:
+            raise RuntimeError("A request was made for %i cpus by the maxJobs parameters is set to %i, try increasing max jobs or lowering cpu demands" % (cpu, maxJobs))
+        if cpu + cpusUsed > maxJobs:
+            break
+        cpusUsed += cpu
+        jobCommands["%s -E %s %s --job %s" % (sys.executable, jobCommand, os.path.split(workflowRootPath())[0], job.attrib["file"])] = (job.attrib["file"], memory, cpu, job.attrib["slave_log_file"])
+        queueingJobs.pop()
     issuedJobs = batchSystem.issueJobs([ (key, jobCommands[key][1], jobCommands[key][2], jobCommands[key][3]) for key in jobCommands.keys() ])
     assert len(issuedJobs.keys()) == len(jobCommands.keys())
     for jobID in issuedJobs.keys():
         command = issuedJobs[jobID]
         jobFile = jobCommands[command][0]
+        cpu = jobCommands[command][2]
         assert jobID not in jobIDsToJobsHash
-        jobIDsToJobsHash[jobID] = jobFile
-        logger.debug("Issued the job: %s with job id: %i " % (jobFile, jobID))
+        jobIDsToJobsHash[jobID] = (jobFile, cpu)
+        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+    return cpusUsed
 
 def fixJobsList(config, jobFiles):
     """Traverses through and finds any .old files, using there saved state to recover a 
@@ -189,11 +199,12 @@ def restartFailedJobs(config, jobFiles):
                 job.attrib["colour"] = "grey"
             writeJobs([ job ])
 
-def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
+def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash, cpusUsed):
     """Function reads a processed job file and updates it state.
     """
     assert jobID in jobIDsToJobsHash
-    jobFile = jobIDsToJobsHash.pop(jobID)
+    jobFile, cpus = jobIDsToJobsHash.pop(jobID)
+    cpusUsed -= cpus #Fix the tally of the total number of cpus being
     
     updatingFileIsPresent = os.path.isfile(jobFile + ".updating")
     newFileIsPresent = os.path.isfile(jobFile + ".new")
@@ -248,23 +259,30 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobIDsToJobsHash):
     assert jobFile not in updatedJobFiles
     updatedJobFiles.add(jobFile) #Now we know the job is done we can add it to the list of updated job files
     logger.debug("Added job: %s to active jobs" % jobFile)
+    
+    return cpusUsed
 
-def reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem):
+def reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem, cpusUsed):
     """Check each issued job - if it is running for longer than desirable.. issue a kill instruction.
     Wait for the job to die then we pass the job to processFinishedJob.
     """
     maxJobDuration = float(config.attrib["max_job_duration"])
-    if maxJobDuration < 10000000: #We won't both doing anything is the rescue time is more than 10 weeks.
+    idealJobTime = float(config.attrib["job_time"])
+    if maxJobDuration < idealJobTime * 10:
+        logger.info("The max job duration is less than 10 times the ideal the job time, so I'm setting it to the ideal job time, sorry, but I don't want to crash your jobs because of limitations in jobTree ")
+        maxJobDuration = idealJobTime * 10
+    if maxJobDuration < 10000000: #We won't both doing anything is the rescue time is more than 16 weeks.
         runningJobs = batchSystem.getRunningJobIDs()
         for jobID in runningJobs.keys():
             if runningJobs[jobID] > maxJobDuration:
                 logger.critical("The job: %s has been running for: %s seconds, more than the max job duration: %s, we'll kill it" % \
-                            (jobIDsToJobsHash[jobID], str(runningJobs[jobID]), str(maxJobDuration)))
+                            (jobIDsToJobsHash[jobID][0], str(runningJobs[jobID]), str(maxJobDuration)))
                 batchSystem.killJobs([ jobID ])
-                processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
+                cpusUsed = processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash, cpusUsed)
+    return cpusUsed
 
 reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
-def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfterNTimesMissing=3):
+def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, cpusUsed, killAfterNTimesMissing=3):
     """Check all the current job ids are in the list of currently running batch system jobs. 
     If a job is missing, we mark it as so, if it is missing for a number of runs of 
     this function (say 10).. then we try deleting the job (though its probably lost), we wait
@@ -278,7 +296,7 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
         reissueMissingJobs_missingHash.pop(jobID)
     assert runningJobs.issubset(jobIDsSet) #Assert checks we have no unexpected jobs running
     for jobID in set(jobIDsSet.difference(runningJobs)):
-        jobFile = jobIDsToJobsHash[jobID]
+        jobFile = jobIDsToJobsHash[jobID][0]
         if reissueMissingJobs_missingHash.has_key(jobID):
             reissueMissingJobs_missingHash[jobID] = reissueMissingJobs_missingHash[jobID]+1
         else:
@@ -288,8 +306,8 @@ def reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, killAfter
         if timesMissing == killAfterNTimesMissing:
             reissueMissingJobs_missingHash.pop(jobID)
             batchSystem.killJobs([ jobID ])
-            processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash)
-    return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
+            cpusUsed = processFinishedJob(jobID, 1, updatedJobFiles, jobIDsToJobsHash, cpusUsed)
+    return len(reissueMissingJobs_missingHash) == 0, cpusUsed #We use this to inform if there are missing jobs
           
 def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
     """Waits sleepFor seconds while there are no updated jobs, repeating this 
@@ -359,6 +377,7 @@ def mainLoop(config, batchSystem):
     #Stuff do handle the maximum number of issued jobs
     queueingJobs = []
     maxJobs = int(config.attrib["max_jobs"])
+    cpusUsed = 0
     
     logger.info("Starting the main loop")
     timeSinceJobsLastRescued = time.time() - rescueJobsFrequency + 100 #We hack it so that we rescue jobs after the first 100 seconds to get around an apparent parasol bug
@@ -386,15 +405,15 @@ def mainLoop(config, batchSystem):
                 open(job.attrib["slave_log_file"], 'w').close()
                 open(job.attrib["log_file"], 'w').close()
                 assert job.attrib["colour"] == "grey"
-                issueJobs([ job ], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs)
+                return issueJobs([ job ], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed)
                 
             def makeGreyAndReissueJob(job):
                 job.attrib["colour"] = "grey"
                 writeJobs([ job ])
-                reissueJob(job)
+                return reissueJob(job)
             
             if job.attrib["colour"] == "grey": #Get ready to start the job
-                reissueJob(job)
+                cpusUsed = reissueJob(job)
             elif job.attrib["colour"] == "black": #Job has finished okay
                 logger.debug("Job: %s has finished okay" % job.attrib["file"])
                 if reportAllJobLogFiles:
@@ -414,28 +433,26 @@ def mainLoop(config, batchSystem):
                 unbornChildren = job.find("children")
                 unbornChild = unbornChildren.find("child")
                 if unbornChild != None: #We must give birth to the unborn children
-                    logger.debug("Job: %s has children to schedule" % job.attrib["file"])
+                    logger.debug("Job: %s has %i children to schedule" % (job.attrib["file"], len(unbornChildren.findall("child"))))
                     newChildren = []
                     while unbornChild != None:
-                        cummulativeChildTime = float(unbornChild.attrib["time"])
-                        newJob = createJob(unbornChild.attrib.copy(), job.attrib["file"], config)
+                        newJob = createJob(unbornChild.attrib, job.attrib["file"], config)
                         totalJobFiles += 1
                         newChildren.append(newJob)
                         unbornChildren.remove(unbornChild)
                         unbornChild = unbornChildren.find("child")
-                        newJob.attrib["total_time"] = str(cummulativeChildTime)
                     
                     updatedJobFiles.remove(job.attrib["file"])
                     job.attrib["child_count"] = str(childCount + len(newChildren))
                     job.attrib["colour"] = "blue" #Blue - has children running.
                     writeJobs([ job ] + newChildren ) #Check point
-                    issueJobs(newChildren, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs) #Issue the new children directly
+                    cpusUsed = issueJobs(newChildren, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed) #Issue the new children directly
                     
                 elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
                     logger.debug("Job: %s has a new command that we can now issue" % job.attrib["file"])
                     ##Reset the job run info
                     job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-                    makeGreyAndReissueJob(job)
+                    cpusUsed = makeGreyAndReissueJob(job)
                     
                 else: #Job has finished, so we can defer to any parent
                     logger.debug("Job: %s is now dead" % job.attrib["file"])
@@ -466,7 +483,7 @@ def mainLoop(config, batchSystem):
                 if remainingRetyCount > 0: #Give it another try, maybe there is a bad node somewhere
                     job.attrib["remaining_retry_count"] = str(remainingRetyCount-1)
                     logger.critical("Job: %s will be restarted, it has %s goes left" % (job.attrib["file"], job.attrib["remaining_retry_count"]))
-                    makeGreyAndReissueJob(job)
+                    cpusUsed = makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetyCount == 0
                     updatedJobFiles.remove(job.attrib["file"]) #We remove the job and neither delete it or reissue it
@@ -480,10 +497,11 @@ def mainLoop(config, batchSystem):
                 deleteJob(job, config)
                 
         #This command is issued to ensure any queing jobs are issued at the end of the loop
-        issueJobs([], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs)
+        cpusUsed = issueJobs([], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed)
       
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
+            assert cpusUsed == 0
             break
         
         if len(updatedJobFiles) > 0:
@@ -495,24 +513,28 @@ def mainLoop(config, batchSystem):
             result = updatedJobs[jobID]
             if jobIDsToJobsHash.has_key(jobID): 
                 if result == 0:
-                    logger.debug("Batch system is reporting that the job %s ended sucessfully" % jobIDsToJobsHash[jobID])   
+                    logger.debug("Batch system is reporting that the job %s ended successfully" % jobIDsToJobsHash[jobID][0])   
                 else:
-                    logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobIDsToJobsHash[jobID], result))  
-                processFinishedJob(jobID, result, updatedJobFiles, jobIDsToJobsHash)
+                    logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobIDsToJobsHash[jobID][0], result))  
+                cpusUsed = processFinishedJob(jobID, result, updatedJobFiles, jobIDsToJobsHash, cpusUsed)
             else:
                 logger.info("A result seems to already have been processed: %i" % jobID) #T
         
         if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds
-            reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem)
+            cpusUsed = reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem, cpusUsed)
             logger.info("Reissued any over long jobs")
             
-            if reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem):
+            hasNoMissingJobs, cpusUsed = reissueMissingJobs(updatedJobFiles, jobIDsToJobsHash, batchSystem, cpusUsed)
+            if hasNoMissingJobs:
                 timeSinceJobsLastRescued = time.time()
             else:
                 timeSinceJobsLastRescued += 60 #This means we'll try again in 60 seconds
             logger.info("Rescued any (long) missing jobs")
         #Going to sleep to let the job system catch up.
         time.sleep(waitDuration)
+        ##Check that the total number of cpus
+        assert sum([ cpus for jobID, cpus in jobIDsToJobsHash.values() ]) == cpusUsed
+        assert cpusUsed <= maxJobs
     
     if stats:
         fileHandle = open(config.attrib["stats"], 'a')
