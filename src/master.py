@@ -430,18 +430,15 @@ def mainLoop(config, batchSystem):
                 blackChildCount = int(job.attrib["black_child_count"])
                 assert childCount == blackChildCount #Has no currently running child jobs
                 #Launch any unborn children
-                unbornChildren = job.find("children")
-                unbornChild = unbornChildren.find("child")
-                if unbornChild != None: #We must give birth to the unborn children
-                    logger.debug("Job: %s has %i children to schedule" % (job.attrib["file"], len(unbornChildren.findall("child"))))
+                unbornChildren = job.find("children").findall("child")
+                if len(unbornChildren) > 0: #unbornChild != None: #We must give birth to the unborn children
+                    logger.debug("Job: %s has %i children to schedule" % (job.attrib["file"], len(unbornChildren)))
                     newChildren = []
-                    while unbornChild != None:
+                    for unbornChild in unbornChildren:
                         newJob = createJob(unbornChild.attrib, job.attrib["file"], config)
                         totalJobFiles += 1
                         newChildren.append(newJob)
-                        unbornChildren.remove(unbornChild)
-                        unbornChild = unbornChildren.find("child")
-                    
+                    job.find("children").clear() #removeall("child")
                     updatedJobFiles.remove(job.attrib["file"])
                     job.attrib["child_count"] = str(childCount + len(newChildren))
                     job.attrib["colour"] = "blue" #Blue - has children running.

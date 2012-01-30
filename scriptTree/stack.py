@@ -260,7 +260,7 @@ class Stack:
         if len(newFollowOns) > 0: #If we have follow ons
             followOnRuntime = sum([ followOn.getRunTime() for followOn in newFollowOns ])
             
-            if followOnRuntime > maxTime: #We create a parallel list of follow ons
+            if followOnRuntime > maxTime and len(newFollowOns) > 1: #We create a parallel list of follow ons
                 followOnStack = Stack(ParallelFollowOnTarget(newFollowOns))
             else:
                 followOnStack = Stack(newFollowOns.pop())
@@ -280,6 +280,7 @@ class Stack:
               
         #Now build stacks of children..
         childrenTag = job.find("children")
+        newChildren.reverse()
         while len(newChildren) > 0:
             childStack = Stack(newChildren.pop())
             while len(newChildren) > 0 and childStack.getRunTime() <= maxTime:
