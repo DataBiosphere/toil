@@ -133,30 +133,32 @@ def issueJobs(jobs, jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUs
     """
     for job in jobs:
         queueingJobs.append(job)
-    jobCommands = {}
-    #for i in xrange(min(maxJobs - len(jobIDsToJobsHash.keys()), len(queueingJobs))):
-    while len(queueingJobs) > 0:
-        job = queueingJobs[-1]
-        jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
-        followOnJob = job.find("followOns").findall("followOn")[-1]
-        memory = int(followOnJob.attrib["memory"])
-        cpu = int(followOnJob.attrib["cpu"])
-        if cpu > maxJobs:
-            raise RuntimeError("A request was made for %i cpus by the maxJobs parameters is set to %i, try increasing max jobs or lowering cpu demands" % (cpu, maxJobs))
-        if cpu + cpusUsed > maxJobs:
-            break
-        cpusUsed += cpu
-        jobCommands["%s -E %s %s --job %s" % (sys.executable, jobCommand, os.path.split(workflowRootPath())[0], job.attrib["file"])] = (job.attrib["file"], memory, cpu, job.attrib["slave_log_file"])
-        queueingJobs.pop()
-    issuedJobs = batchSystem.issueJobs([ (key, jobCommands[key][1], jobCommands[key][2], jobCommands[key][3]) for key in jobCommands.keys() ])
-    assert len(issuedJobs.keys()) == len(jobCommands.keys())
-    for jobID in issuedJobs.keys():
-        command = issuedJobs[jobID]
-        jobFile = jobCommands[command][0]
-        cpu = jobCommands[command][2]
-        assert jobID not in jobIDsToJobsHash
-        jobIDsToJobsHash[jobID] = (jobFile, cpu)
-        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+    if cpusUsed < maxJobs and len(queueingJobs) > 0:
+        jobCommands = {}
+        #for i in xrange(min(maxJobs - len(jobIDsToJobsHash.keys()), len(queueingJobs))):
+        while len(queueingJobs) > 0:
+            job = queueingJobs[-1]
+            jobCommand = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
+            followOnJob = job.find("followOns").findall("followOn")[-1]
+            memory = int(followOnJob.attrib["memory"])
+            cpu = int(followOnJob.attrib["cpu"])
+            if cpu > maxJobs:
+                raise RuntimeError("A request was made for %i cpus by the maxJobs parameters is set to %i, try increasing max jobs or lowering cpu demands" % (cpu, maxJobs))
+            if cpu + cpusUsed > maxJobs:
+                break
+            cpusUsed += cpu
+            jobCommands["%s -E %s %s --job %s" % (sys.executable, jobCommand, os.path.split(workflowRootPath())[0], job.attrib["file"])] = (job.attrib["file"], memory, cpu, job.attrib["slave_log_file"])
+            queueingJobs.pop()
+        if len(jobCommands) > 0:
+            issuedJobs = batchSystem.issueJobs([ (key, jobCommands[key][1], jobCommands[key][2], jobCommands[key][3]) for key in jobCommands.keys() ])
+            assert len(issuedJobs.keys()) == len(jobCommands.keys())
+            for jobID in issuedJobs.keys():
+                command = issuedJobs[jobID]
+                jobFile = jobCommands[command][0]
+                cpu = jobCommands[command][2]
+                assert jobID not in jobIDsToJobsHash
+                jobIDsToJobsHash[jobID] = (jobFile, cpu)
+                logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     return cpusUsed
 
 def fixJobsList(config, jobFiles):
@@ -376,7 +378,7 @@ def mainLoop(config, batchSystem):
         
     #Stuff do handle the maximum number of issued jobs
     queueingJobs = []
-    maxJobs = int(config.attrib["max_jobs"])
+    maxJobs = sys.maxint #int(config.attrib["max_jobs"])
     cpusUsed = 0
     
     logger.info("Starting the main loop")
@@ -492,9 +494,6 @@ def mainLoop(config, batchSystem):
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
                 deleteJob(job, config)
-                
-        #This command is issued to ensure any queing jobs are issued at the end of the loop
-        cpusUsed = issueJobs([], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed)
       
         if len(jobIDsToJobsHash) == 0 and len(updatedJobFiles) == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
@@ -517,6 +516,9 @@ def mainLoop(config, batchSystem):
             else:
                 logger.info("A result seems to already have been processed: %i" % jobID) #T
         
+        #This command is issued to ensure any queing jobs are issued at the end of the loop
+        cpusUsed = issueJobs([], jobIDsToJobsHash, batchSystem, queueingJobs, maxJobs, cpusUsed)
+        
         if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds
             cpusUsed = reissueOverLongJobs(updatedJobFiles, jobIDsToJobsHash, config, batchSystem, cpusUsed)
             logger.info("Reissued any over long jobs")
@@ -532,6 +534,8 @@ def mainLoop(config, batchSystem):
         ##Check that the total number of cpus
         assert sum([ cpus for jobID, cpus in jobIDsToJobsHash.values() ]) == cpusUsed
         assert cpusUsed <= maxJobs
+        if cpusUsed < maxJobs:
+            assert len(queueingJobs) == 0
     
     if stats:
         fileHandle = open(config.attrib["stats"], 'a')
