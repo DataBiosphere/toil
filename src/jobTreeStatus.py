@@ -71,6 +71,10 @@ def main():
     parser.add_option("--graph", dest="graphFile", default=None,
                       help="Prints info on the current job tree graph in the given file, in dot format.")
     
+    parser.add_option("--leaves", dest="leaves", action="store_true",
+                      help="Prints leaves of the tree in the graph file. default=%default",
+                      default=False)
+    
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
                       help="Return exit value of 1 if job tree jobs not all completed. default=%default",
                       default=False)
@@ -142,6 +146,8 @@ def main():
         fileHandle.write("overlap=false\n")
         fileHandle.write("node[];\n")
         nodeNames = {} #Hash of node names to nodes
+        if not options.leaves:
+            jobFiles = [ (job, jobFile) for (job, jobFile) in jobFiles if job.attrib["colour"] != "grey" ]
         for job, jobFile in jobFiles:
             colour = job.attrib["colour"]
             command = "None"
