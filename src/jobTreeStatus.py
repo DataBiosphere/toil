@@ -33,6 +33,7 @@ from sonLib.bioio import logFile
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
+import jobTree.scriptTree.scriptTree
 
 from jobTree.src.master import readJob
 
@@ -66,6 +67,9 @@ def main():
     parser.add_option("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of errors. default=%default",
                       default=False)
+    
+    parser.add_option("--graph", dest="graphFile", default=None,
+                      help="Prints info on the current job tree graph in the given file, in dot format.")
     
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
                       help="Return exit value of 1 if job tree jobs not all completed. default=%default",
@@ -102,16 +106,16 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    colours = {}
     jobFiles = TempFileTree(config.attrib["job_file_dir"]).listFiles()
+    jobFiles = [ (job, jobFile) for (job, jobFile) in zip([  parseJobFile(absFileName) for absFileName in jobFiles ], jobFiles) if job != None ]
+    colours = {}
+    
     if len(jobFiles) > 0:
         logger.info("Collating the colours of the job tree")
-        for absFileName in jobFiles:
-            job = parseJobFile(absFileName)
-            if job != None:
-                if not colours.has_key(job.attrib["colour"]):
-                    colours[job.attrib["colour"]] = 0
-                colours[job.attrib["colour"]] += 1
+        for job, jobFile, in jobFiles:
+            if not colours.has_key(job.attrib["colour"]):
+                colours[job.attrib["colour"]] = 0
+            colours[job.attrib["colour"]] += 1
     else:
         logger.info("There are no jobs to collate")
     
@@ -122,16 +126,46 @@ def main():
         print "\tColour: %s, number of jobs: %s" % (colour, colours[colour])
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
-        for absFileName in jobFiles:
-            job = parseJobFile(absFileName)
-            if job != None:
-                if job.attrib["colour"] == "red":
-                    if os.path.isfile(job.attrib["log_file"]):
-                        def fn(string):
-                            print string
-                        logFile(job.attrib["log_file"], fn)
-                    else:
-                        logger.info("Log file for job %s is not present" % job.attrib["file"])
+        for job, jobFile in jobFiles:
+            if job.attrib["colour"] == "red":
+                if os.path.isfile(job.attrib["log_file"]):
+                    def fn(string):
+                        print string
+                    logFile(job.attrib["log_file"], fn)
+                else:
+                    logger.info("Log file for job %s is not present" % job.attrib["file"])
+                    
+    i = 0            
+    if options.graphFile != None:
+        fileHandle = open(options.graphFile, 'w')
+        fileHandle.write("graph G {\n")
+        fileHandle.write("overlap=false\n")
+        fileHandle.write("node[];\n")
+        nodeNames = {} #Hash of node names to nodes
+        for job, jobFile in jobFiles:
+            colour = job.attrib["colour"]
+            command = "None"
+            if len(job.find("followOns").findall("followOn")) > 0:
+                command = job.find("followOns").findall("followOn")[-1].attrib["command"]
+            if command[:10] == "scriptTree":
+                l = command.split()
+                try:
+                    stack = jobTree.scriptTree.scriptTree.load(l[1], l[2:])
+                    target = stack.stack[-1]
+                    command = str(target.__class__)
+                except IOError:
+                    command = "Gone"
+            fileHandle.write("n%sn [label=\"%s %s\"];\n" % (i, colour, command))
+            nodeNames[jobFile] = i
+            i = i+1
+        fileHandle.write("edge[dir=forward];\n")
+        for job, jobFile in jobFiles:
+            nodeName = nodeNames[jobFile]
+            if "parent" in job.attrib.keys():
+                parentNodeName = nodeNames[job.attrib["parent"]]
+                fileHandle.write("n%sn -- n%sn;\n" % (parentNodeName, nodeName))
+        fileHandle.write("}\n")
+        fileHandle.close()
     
     if len(jobFiles) != 0 and options.failIfNotComplete:
         sys.exit(1)

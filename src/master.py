@@ -478,13 +478,13 @@ def mainLoop(config, batchSystem):
                 assert len(job.find("children").findall("child")) == 0
                 assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
                 
-                remainingRetyCount = int(job.attrib["remaining_retry_count"])
-                if remainingRetyCount > 0: #Give it another try, maybe there is a bad node somewhere
-                    job.attrib["remaining_retry_count"] = str(remainingRetyCount-1)
+                remainingRetryCount = int(job.attrib["remaining_retry_count"])
+                if remainingRetryCount > 0: #Give it another try, maybe there is a bad node somewhere
+                    job.attrib["remaining_retry_count"] = str(remainingRetryCount-1)
                     logger.critical("Job: %s will be restarted, it has %s goes left" % (job.attrib["file"], job.attrib["remaining_retry_count"]))
                     cpusUsed = makeGreyAndReissueJob(job)
                 else:
-                    assert remainingRetyCount == 0
+                    assert remainingRetryCount == 0
                     updatedJobFiles.remove(job.attrib["file"]) #We remove the job and neither delete it or reissue it
                     logger.critical("Job: %s is completely failed" % job.attrib["file"])
                     

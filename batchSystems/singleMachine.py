@@ -85,7 +85,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
             self.jobs[self.jobIndex] = command
             issuedJobs[self.jobIndex] = command
+            startTime = time.time()
             self.inputQueue.put((command, logFile, self.jobIndex))
+            if time.time() - startTime > 0.1:
+                raise RuntimeException("Queue blocked!")
             self.jobIndex += 1
         return issuedJobs
     
@@ -110,7 +113,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         runJobs = {}
         try:
             while True:
+                startTime = time.time()
                 command, exitValue, jobID = self.outputQueue.get_nowait()
+                if time.time() - startTime > 0.1:
+                    raise RuntimeException("Queue blocked!")
                 runJobs[jobID] = exitValue
                 self.jobs.pop(jobID)
                 logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))

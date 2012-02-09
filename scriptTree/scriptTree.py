@@ -26,7 +26,7 @@ from sonLib.bioio import parseBasicOptions
  
 from jobTree.scriptTree.stack import loadPickleFile
 
-def run(job, target, classes):
+def load(target, classes):
     # Naughty stuff to do the import of the target we need
     for className in classes:
         logger.info("Loading the class name %s" % className)
@@ -37,8 +37,9 @@ def run(job, target, classes):
         exec "%s = 1" % className
         vars()[className] = _temp.__dict__[className]
     
-    target = loadPickleFile(target)
-    
+    return loadPickleFile(target)    
+
+def run(job, target, classes):
+    target = load(target, classes)
     target.execute(job) 
-    
     logger.info("Finished executing the target")
