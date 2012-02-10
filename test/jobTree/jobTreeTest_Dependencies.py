@@ -2,15 +2,15 @@
 """ Test program designed to catch two bugs encountered when developing
 progressive cactus:
 1) spawning a daemon process causes indefinite jobtree hangs
-2) jobtree does not parallelize jobs in certain types of
+2) jobtree does not properly parallelize jobs in certain types of
 recursions
 
-These cases can be tested for by checking the timestamps output
-by this program.  If jobs get hung up until the daemon process
+If jobs get hung up until the daemon process
 finsishes, that would be a case of bug 1).  If jobs do not
 get issued in parallel (ie the begin UP does not happen
 concurrently for the leaves of the comb tree), then that is
-a case of bug 2)
+a case of bug 2).  This is now verified if a log file is 
+specified (--logFile [path] option)
 
 --Glenn Hickey
 """
@@ -168,31 +168,72 @@ class UpJob(Target):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
 
         sleep(self.sleepTime)
-        spawnDaemon("sleep 33.666")       
+        spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))       
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 
+# let k = maxThreads.  we make sure that jobs are fired in batches of k
+# so the first k jobs all happen within epsilon time of eachother, 
+# same for the next k jobs and so on.  we allow at most alpha time
+# between the different batches (ie between k+1 and k).  
+def checkLog(options):
+    epsilon = float(options.sleepTime) / 2.0
+    alpha = options.sleepTime * 2.0
+    logFile = open(options.logFile, "r")    
+    stamps = []
+    for logLine in logFile:
+        if "begin UP" in logLine:
+            chunks = logLine.split()
+            assert len(chunks) == 10
+            timeString = chunks[6]
+            timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
+            timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
+            timeObj.second + timeObj.microsecond / 1000000.
+            stamps.append(timeStamp)
+    
+    stamps.sort()
+    
+    for i in range(1,len(stamps)):
+        delta = stamps[i] - stamps[i-1]
+        if i % int(options.maxThreads) != 0:
+            if delta > epsilon:
+                raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
+                             (i, delta, epsilon))
+        elif delta > alpha:
+            raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
+                             (i, delta, alpha))
+            
+    logFile.close()
+    
 def main():
     parser = OptionParser()
     Stack.addJobTreeOptions(parser)
     parser.add_option("--sleepTime", dest="sleepTime", type="int",
-                     help="sleep [default=5] seconds", default="5")
+                     help="sleep [default=5] seconds", default=5)
     parser.add_option("--tree", dest="tree",
                       help="tree [balanced|comb|star|fly]", default="comb")
+    parser.add_option("--size", dest="size", type="int",
+                      help="tree size (for comb or star) [default=10]", 
+                      default=10) 
+        
     options, args = parser.parse_args()
     setLoggingFromOptions(options)
 
     startTime = datetime.datetime.now()
 
-    tree = combTree()
     if options.tree == "star":
-        tree = starTree()
+        tree = starTree(options.size)
     elif options.tree == "balanced":
         tree = balancedTree()
     elif options.tree == "fly":
         tree = flyTree()
+    else:
+        tree = combTree(options.size)
     
     baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime)
     Stack(baseTarget).startJobTree(options)
+    
+    if options.logFile is not None:
+        checkLog(options)
     
 if __name__ == '__main__':
     from jobTree.test.jobTree.jobTreeTest_Dependencies import *
