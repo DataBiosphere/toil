@@ -15,6 +15,7 @@ from sonLib.bioio import TestStatus
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger
 from sonLib.bioio import TempFileTree
+from sonLib.bioio import getTempFile
 
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled
 
@@ -36,26 +37,39 @@ class TestCase(unittest.TestCase):
         system("rm -rf %s %s" % (self.jobTreeDir, self.tempFileTreeDir)) #Cleanup the job tree in case it hasn't already been cleaned up.
      
     def testJobTree_SingleMachine(self):
-        testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")    
+        #testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")
+        pass    
     
     def testJobTree_Parasol(self):
+        pass
         if parasolIsInstalled():
             testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "parasol") 
     
     def testJobTree_gridengine(self):
+        pass
         if gridEngineIsInstalled():
             testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "gridengine") 
     
+    # only done in singleMachine for now.  Experts can run manually on other systems if they choose
     def testJobTree_dependencies(self):
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree comb --maxThreads 100" % self.jobTreeDir
-        os.system("rm -rf %s" % self.jobTreeDir)
+        system("rm -rf %s" % self.jobTreeDir)
+        logName = self.tempFileTree.getTempFile(suffix="_comblog.txt", makeDir=False)
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree comb --maxThreads 10 --size 100 --sleepTime 30" % \
+        (self.jobTreeDir, logName)
         system(commandLine)
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree fly --maxThreads 100" % self.jobTreeDir
-        os.system("rm -rf %s" % self.jobTreeDir)
+        
+        system("rm -rf %s" % self.jobTreeDir)
+        logName = self.tempFileTree.getTempFile(suffix="_flylog.txt", makeDir=False)
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree fly --maxThreads 8 --sleepTime 20" % \
+        (self.jobTreeDir, logName)
         system(commandLine)
-        os.system("rm -rf %s" % self.jobTreeDir)
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --tree balanced --maxThreads 100" % self.jobTreeDir
+        
+        system("rm -rf %s" % self.jobTreeDir)
+        logName = self.tempFileTree.getTempFile(suffix="_balalog.txt", makeDir=False)
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree balanced --maxThreads 5 --sleepTime 15" % \
+        (self.jobTreeDir, logName)
         system(commandLine)
+        system("rm -rf %s" % self.jobTreeDir)
         
 def testJobTree(testNo, depth, tempFileTree, jobTreeDir, batchSystem):
     """Runs a test program using the job tree using the single machine batch system.
