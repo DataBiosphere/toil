@@ -35,7 +35,7 @@ from sonLib.bioio import system
 
 class Worker(Thread):
     lock = Lock()
-    def __init__(self, inputQueue, outputQueue, maxCpus):
+    def __init__(self, inputQueue, outputQueue):
         Thread.__init__(self)
         self.inputQueue = inputQueue
         self.outputQueue = outputQueue
