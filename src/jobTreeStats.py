@@ -164,13 +164,9 @@ def main():
     #Add aggregated target info
     targets = []
     for job in jobs:
-        for stack in job.findall("stack"):
-            targets += stack.findall("target")
+        targets += job.findall("stack")
     def fn4(job):
-        targets = []
-        for stack in job.findall("stack"):
-            targets += stack.findall("target")
-        return targets
+        return list(job.findall("stack"))
     fn2(fn(collatedStatsTag, targets, "target"), jobs, "job", fn4)   
     
     #Get info for each target
@@ -182,8 +178,8 @@ def main():
     for targetName in targetNames:
         targetTypes = [ target for target in targets if target.attrib["class"] == targetName ]
         targetTypeTag = fn(targetTypesTag, targetTypes, targetName)
-        estimatedRunTimes = [ float(target.attrib["e_time"]) for target in targetTypes ]
-        targetTypeTag.attrib["estimated_time"] = str(sum(estimatedRunTimes)/len(estimatedRunTimes))
+        #estimatedRunTimes = [ float(target.attrib["e_time"]) for target in targetTypes ]
+        #targetTypeTag.attrib["estimated_time"] = str(sum(estimatedRunTimes)/len(estimatedRunTimes))
     
     def prettify(elem):
         """Return a pretty-printed XML string for the Element.

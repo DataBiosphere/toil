@@ -33,7 +33,7 @@ class Target:
         self.__followOn = None
         self.__children = []
         self.__childCommands = []
-        self.__time = sys.maxint #time
+        self.__time = time #This parameter is no longer used.
         self.__memory = memory
         self.__cpu = cpu
         self.globalTempDir = None

@@ -252,9 +252,9 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
     """Adds the first job to to the jobtree.
     """
     logger.info("Adding the first job")
-    if memory == None:
+    if memory == None or memory == sys.maxint:
         memory = config.attrib["default_memory"]
-    if cpu == None:
+    if cpu == None or memory == sys.maxint:
         cpu = config.attrib["default_cpu"]
     job = createJob({ "command":command, "memory":str(int(memory)), "cpu":str(int(cpu)), "time":str(float(time)) }, None, config)
     writeJobs([job])

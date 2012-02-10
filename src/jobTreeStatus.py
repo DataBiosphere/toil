@@ -153,14 +153,14 @@ def main():
             command = "None"
             if len(job.find("followOns").findall("followOn")) > 0:
                 command = job.find("followOns").findall("followOn")[-1].attrib["command"]
-            if command[:10] == "scriptTree":
-                l = command.split()
-                try:
-                    stack = jobTree.scriptTree.scriptTree.load(l[1], l[2:])
-                    target = stack.stack[-1]
-                    command = str(target.__class__)
-                except IOError:
-                    command = "Gone"
+                if command[:10] == "scriptTree":
+                    l = command.split()
+                    try:
+                        stack = jobTree.scriptTree.scriptTree.load(l[1], l[2:])
+                        target = stack.stack[-1]
+                        command = str(target.__class__)
+                    except IOError:
+                        command = "Gone"
             fileHandle.write("n%sn [label=\"%s %s\"];\n" % (i, colour, command))
             nodeNames[jobFile] = i
             i = i+1

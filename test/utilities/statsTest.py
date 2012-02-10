@@ -26,7 +26,7 @@ class TestCase(unittest.TestCase):
             tempFile = getTempFile(rootDir=tempDir)
             outputFile = getTempFile(rootDir=tempDir)
             jobTreeDir = os.path.join(tempDir, "jobTree")
-            lines=100000
+            lines=10000
             maxLineLength=10
             N=1000
             makeFileToSort(tempFile, lines, maxLineLength)

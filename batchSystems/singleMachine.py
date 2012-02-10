@@ -24,7 +24,7 @@ import os
 import random
 import subprocess
 import time
-from threading import Thread
+from threading import Thread, Lock
 from Queue import Queue, Empty
 
 from sonLib.bioio import logger
@@ -34,7 +34,8 @@ from sonLib.bioio import getTempFile
 from sonLib.bioio import system
 
 class Worker(Thread):
-    def __init__(self, inputQueue, outputQueue):
+    lock = Lock()
+    def __init__(self, inputQueue, outputQueue, maxCpus):
         Thread.__init__(self)
         self.inputQueue = inputQueue
         self.outputQueue = outputQueue
@@ -42,11 +43,16 @@ class Worker(Thread):
     def run(self):
         while True:
             command, logFile, jobID = self.inputQueue.get()
-            logger.info("Starting a job with ID %s", jobID)
+            startTime = time.time()
+            logger.info("Starting a job with ID %s" % jobID)
             #fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
             tempLogFile = getTempFile()
             fileHandle = open(tempLogFile, 'w')
-            process = subprocess.Popen(command, shell=True, stdout = fileHandle, stderr = fileHandle)
+            Worker.lock.acquire()
+            try:
+                process = subprocess.Popen(command, shell=True, stdout = fileHandle, stderr = fileHandle)
+            finally:
+                Worker.lock.release()
             sts = os.waitpid(process.pid, 0)
             fileHandle.close()
             #fnull.close()
@@ -54,7 +60,7 @@ class Worker(Thread):
                 system("mv %s %s" % (tempLogFile, logFile))
             self.outputQueue.put((command, sts[1], jobID))
             self.inputQueue.task_done()
-            logger.info("Finished a job with ID %s", jobID)
+            logger.info("Finished a job with ID %s in time %s" % (jobID, time.time() - startTime))
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
@@ -85,10 +91,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
             self.jobs[self.jobIndex] = command
             issuedJobs[self.jobIndex] = command
-            startTime = time.time()
             self.inputQueue.put((command, logFile, self.jobIndex))
-            if time.time() - startTime > 0.1:
-                raise RuntimeException("Queue blocked!")
             self.jobIndex += 1
         return issuedJobs
     
@@ -113,10 +116,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         runJobs = {}
         try:
             while True:
-                startTime = time.time()
                 command, exitValue, jobID = self.outputQueue.get_nowait()
-                if time.time() - startTime > 0.1:
-                    raise RuntimeException("Queue blocked!")
                 runJobs[jobID] = exitValue
                 self.jobs.pop(jobID)
                 logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))

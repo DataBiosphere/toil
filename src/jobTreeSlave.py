@@ -42,20 +42,17 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
         
-def getMemoryCpuAndTimeRequirements(job, nextJob):
+def getMemoryAndCpuRequirements(job, nextJob):
     """Gets the memory and cpu requirements from the job..
     """
     #Now deal with the CPU and memory..
     memory = job.attrib["default_memory"]
     cpu = job.attrib["default_cpu"]
-    compTime = sys.maxint
     if nextJob.attrib.has_key("memory"):
         memory = max(int(nextJob.attrib["memory"]), 0)
     if nextJob.attrib.has_key("cpu"):
         cpu = max(int(nextJob.attrib["cpu"]), 0)
-    if nextJob.attrib.has_key("time"):
-        compTime = max(float(nextJob.attrib["time"]), 0.0)
-    return memory, cpu, compTime
+    return memory, cpu
  
 def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, 
                localSlaveTempDir, localTempDir):
@@ -167,39 +164,28 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
             for messageTag in tempJob.find("messages").findall("message"):
                 messages.append(messageTag)
         
-        #Update the runtime of the stack..
-        totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
-        runtime = float(jobToRun.attrib["time"])
-        totalRuntime -= runtime
-        if totalRuntime < 0.0:
-            totalRuntime = 0.0
-        
         #The children
         children = job.find("children")
         assert len(children.findall("child")) == 0 #The children
         assert tempJob.find("children") != None
         for child in tempJob.find("children").findall("child"):
-            memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, child)
+            memory, cpu = getMemoryAndCpuRequirements(job, child)
             ET.SubElement(children, "child", { "command":child.attrib["command"], 
-                    "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
+                    "memory":str(memory), "cpu":str(cpu) })
             logger.info("Making a child with command: %s" % (child.attrib["command"]))
         
         #The follow on command
         followOns = job.find("followOns")
         followOns.remove(followOns.findall("followOn")[-1]) #Remove the old job
         if tempJob.attrib.has_key("command"):
-            memory, cpu, compTime = getMemoryCpuAndTimeRequirements(job, tempJob)
+            memory, cpu = getMemoryAndCpuRequirements(job, tempJob)
             ET.SubElement(followOns, "followOn", { "command":tempJob.attrib["command"], 
-                    "time":str(compTime), "memory":str(memory), "cpu":str(cpu) })
-            ##Add the runtime to the total runtime..
-            totalRuntime += compTime
+                    "memory":str(memory), "cpu":str(cpu) })
             logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
             
         elif len(tempJob.find("children").findall("child")) != 0: #This is to keep the stack of follow on jobs consistent.
-            ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "time":"0", "memory":"1000000", "cpu":"1" })
+            ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "memory":"1000000", "cpu":"1" })
             logger.info("Making a stub follow on job")
-        #Write back the runtime, after addin the follow on time and subtracting the time of the run job.
-        job.attrib["total_time"] = str(totalRuntime)
     else:
         logger.critical("Failed the job")
         job.attrib["colour"] = "red" #Update the colour
@@ -318,8 +304,6 @@ def main():
             #Copy across the log file
             system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
             break
-   
-        totalRuntime = float(job.attrib["total_time"])  #This is the estimate runtime of the jobs on the followon stack
         
         childrenNode = job.find("children")
         childrenList = childrenNode.findall("child")
@@ -337,10 +321,8 @@ def main():
         while len(childrenList) > 0:
             child = childrenList.pop()
             childrenNode.remove(child)
-            totalRuntime += float(child.attrib["time"])
             ET.SubElement(followOns, "followOn", child.attrib.copy())
-        #assert totalRuntime <= maxTime + 1 #The plus one second to avoid unimportant rounding errors
-        job.attrib["total_time"] = str(totalRuntime)
+       
         assert len(childrenNode.findall("child")) == 0
         
         if len(followOns.findall("followOn")) == 0:

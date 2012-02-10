@@ -82,7 +82,7 @@ def starTree(n = 10):
     return t
 
 # odd numbers are leaves
-def combTree(n = 10):
+def combTree(n = 100):
     t = dict()
     for i in range(0,n):
         if i % 2 == 0:
@@ -168,7 +168,7 @@ class UpJob(Target):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
 
         sleep(self.sleepTime)
-        spawnDaemon("sleep 33.666")       
+        #spawnDaemon("sleep 33.666")       
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 
 def main():

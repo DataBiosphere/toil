@@ -106,7 +106,7 @@ class TestCase(unittest.TestCase):
             assert midPoint >= 0
             system("rm -rf %s" % tempDir)
             
-def scriptTree_SortTest(testNo, batchSystem, lines=100000, maxLineLength=10, N=1000):
+def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000):
     """Tests scriptTree/jobTree by sorting a file in parallel.
     """
     for test in xrange(testNo):
