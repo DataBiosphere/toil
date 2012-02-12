@@ -254,9 +254,9 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
     logger.info("Adding the first job")
     if memory == None or memory == sys.maxint:
         memory = config.attrib["default_memory"]
-    if cpu == None or memory == sys.maxint:
+    if cpu == None or cpu == sys.maxint:
         cpu = config.attrib["default_cpu"]
-    job = createJob({ "command":command, "memory":str(int(memory)), "cpu":str(int(cpu)), "time":str(float(time)) }, None, config)
+    job = createJob({ "command":command, "memory":str(int(memory)), "cpu":str(int(cpu)) }, None, config)
     writeJobs([job])
     logger.info("Added the first job")
     

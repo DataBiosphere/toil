@@ -54,19 +54,19 @@ class TestCase(unittest.TestCase):
     def testJobTree_dependencies(self):
         system("rm -rf %s" % self.jobTreeDir)
         logName = self.tempFileTree.getTempFile(suffix="_comblog.txt", makeDir=False)
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree comb --maxThreads 10 --size 100 --sleepTime 30" % \
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree comb --maxJobs 10 --maxThreads 100 --size 100 --sleepTime 30" % \
         (self.jobTreeDir, logName)
         system(commandLine)
         
         system("rm -rf %s" % self.jobTreeDir)
         logName = self.tempFileTree.getTempFile(suffix="_flylog.txt", makeDir=False)
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree fly --maxThreads 8 --sleepTime 20" % \
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree fly --maxJobs 10 --maxThreads 8 --sleepTime 20" % \
         (self.jobTreeDir, logName)
         system(commandLine)
         
         system("rm -rf %s" % self.jobTreeDir)
         logName = self.tempFileTree.getTempFile(suffix="_balalog.txt", makeDir=False)
-        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree balanced --maxThreads 5 --sleepTime 15" % \
+        commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem singleMachine --tree balanced --maxThreads 5 --maxJobs 10 --sleepTime 15" % \
         (self.jobTreeDir, logName)
         system(commandLine)
         system("rm -rf %s" % self.jobTreeDir)

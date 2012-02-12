@@ -172,7 +172,7 @@ class UpJob(Target):
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 
 # let k = maxThreads.  we make sure that jobs are fired in batches of k
-# so the first k jobs all happen within epsilon time of eachother, 
+# so the first k jobs all happen within epsilon time of each other, 
 # same for the next k jobs and so on.  we allow at most alpha time
 # between the different batches (ie between k+1 and k).  
 def checkLog(options):
@@ -194,7 +194,7 @@ def checkLog(options):
     
     for i in range(1,len(stamps)):
         delta = stamps[i] - stamps[i-1]
-        if i % int(options.maxThreads) != 0:
+        if i % min(int(options.maxThreads), int(options.maxJobs)) != 0:
             if delta > epsilon:
                 raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
                              (i, delta, epsilon))
