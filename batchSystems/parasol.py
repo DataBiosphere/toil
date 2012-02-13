@@ -84,10 +84,10 @@ class ParasolBatchSystem(AbstractBatchSystem):
         assert cpu != None
         assert logFile != None
         pattern = re.compile("your job ([0-9]+).*")
-        command = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, jobCommand)
+        parasolCommand = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, command)
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
-            popenParasolCommand(command, self.scratchFile)
+            popenParasolCommand(parasolCommand, self.scratchFile)
             fileHandle = open(self.scratchFile, 'r')
             line = fileHandle.readline()
             fileHandle.close()
@@ -99,7 +99,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 time.sleep(5)
         jobID = int(match.group(1))
         logger.debug("Got the job id: %s from line: %s" % (jobID, line))
-        logger.debug("Issued the job command: %s with job id: %i " % (command, jobID))
+        logger.debug("Issued the job command: %s with job id: %i " % (parasolCommand, jobID))
         return jobID
     
     def killJobs(self, jobIDs):
