@@ -138,8 +138,8 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQue
         #Update the total number of used cpus
         try: 
             while True:
-                cpu = cpuQueue.get_nowait()
-                usedCpus -= cpu
+                pCpu = cpuQueue.get_nowait()
+                usedCpus -= pCpu
                 assert usedCpus >= 0
                 cpuQueue.task_done()
         except Empty:
@@ -158,12 +158,12 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQue
         #Deal with the minimum cpus
         if cpu > maxCpus:
             raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
-        while usedCpus + cpu > maxCpus:
-            cpu = cpuQueue.get()
-            usedCpus -= cpu
+        usedCpus += cpu
+        while usedCpus > maxCpus:
+            pCpu = cpuQueue.get()
+            usedCpus -= pCpu
             assert usedCpus >= 0
             cpuQueue.task_done()
-        usedCpus += cpu
         
         #Now, finally, issue the job!
         lock.acquire()
@@ -561,7 +561,7 @@ def mainLoop(config, batchSystem):
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
                 break 
-            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+            updatedJob = batchSystem.getUpdatedJob(0) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
