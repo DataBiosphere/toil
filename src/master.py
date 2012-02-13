@@ -254,7 +254,7 @@ class JobBatcher:
             assert jobID in self.jobIDsToJobsHash
             self.jobsIssued -= 1
             jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-            #self.cpuQueue.put(cpu)
+            self.cpuQueue.put(cpu)
             return jobFile
         finally:
             self.lock.release()
