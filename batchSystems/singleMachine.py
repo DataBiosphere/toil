@@ -80,20 +80,18 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             worker.setDaemon(True)
             worker.start()
 
-    def issueJobs(self, commands):
+    def issueJob(self, command, memory, cpu, logFile):
         """Runs the jobs right away.
         """
-        issuedJobs = {}
-        for command, memory, cpu, logFile in commands: #Add the commands to the queue
-            assert memory != None
-            assert cpu != None
-            assert logFile != None
-            logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
-            self.jobs[self.jobIndex] = command
-            issuedJobs[self.jobIndex] = command
-            self.inputQueue.put((command, logFile, self.jobIndex))
-            self.jobIndex += 1
-        return issuedJobs
+        assert memory != None
+        assert cpu != None
+        assert logFile != None
+        logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
+        self.jobs[self.jobIndex] = command
+        i = self.jobIndex
+        self.inputQueue.put((command, logFile, self.jobIndex))
+        self.jobIndex += 1
+        return i
     
     def killJobs(self, jobIDs):
         """As jobs are already run, this method has no effect.
@@ -110,25 +108,19 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         return dict()
     
-    def getUpdatedJobs(self):
+    def getUpdatedJob(self, maxWait):
         """Returns a map of the run jobs and the return value of their processes.
         """
-        runJobs = {}
+        i = None
         try:
-            while True:
-                command, exitValue, jobID = self.outputQueue.get_nowait()
-                runJobs[jobID] = exitValue
-                self.jobs.pop(jobID)
-                logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))
-                self.outputQueue.task_done()
+            command, exitValue, jobID = self.outputQueue.get(timeout=maxWait)
+            i = (jobID, exitValue)
+            self.jobs.pop(jobID)
+            logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))
+            self.outputQueue.task_done()
         except Empty:
             pass
-        return runJobs
-    
-    def getWaitDuration(self):
-        """As the main process is serial, we can make this zero.
-        """
-        return 0.0
+        return i
     
     def getRescueJobFrequency(self):
         """This should not really occur, wihtout an error. To exercise the 

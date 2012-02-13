@@ -90,9 +90,6 @@ try and restart the jobs in it",
                       help="Number of times to try a failing job before giving up and labelling job failed. default=%default",
                       default=0)
     
-    parser.add_option("--waitDuration", dest="waitDuration", 
-                      help="Period of time to pause after updating the running jobs (default is set by batch system)")
-    
     parser.add_option("--rescueJobsFrequency", dest="rescueJobsFrequency", 
                       help="Period of time to wait (in seconds) between checking for missing/overlong jobs (default is set by the batch system)")
     
@@ -220,10 +217,7 @@ def createJobTree(options):
     #Load the batch system.
     batchSystem = loadTheBatchSystem(config)
     
-    #Set the two parameters determining the polling frequency of the system.
-    config.attrib["wait_duration"] = str(float(batchSystem.getWaitDuration()))
-    if options.waitDuration != None:
-        config.attrib["wait_duration"] = str(float(options.waitDuration))
+    #Set the parameters determining the polling frequency of the system.
         
     config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
     if options.rescueJobsFrequency != None:

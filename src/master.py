@@ -149,7 +149,7 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, usedCp
             try:
                 if usedCpus[0] + cpu <= maxCpus:
                     usedCpus[0] += cpu
-                    jobID = batchSystem.issueJobs([ (jobCommand, memory, cpu, job.attrib["slave_log_file"]) ]).keys()[0]
+                    jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
                     jobIDsToJobsHash[jobID] = (jobFile, cpu)
                     logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
                     break
@@ -374,19 +374,6 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
             batchSystem.killJobs([ jobID ])
             processFinishedJob(jobID, 1, updatedJobFiles, jobBatcher)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
-          
-def pauseForUpdatedJobs(updatedJobsFn, sleepFor=0.1, sleepNumber=100):
-    """Waits sleepFor seconds while there are no updated jobs, repeating this 
-    cycle sleepNumber times.
-    """
-    i = 0
-    while i < sleepNumber:
-        updatedJobs = updatedJobsFn()
-        if len(updatedJobs) != 0:
-            return updatedJobs
-        time.sleep(sleepFor)
-        i += 1
-    return updatedJobsFn()
 
 def reportJobLogFiles(job):
     logger.critical("The log file of the job")
@@ -397,13 +384,11 @@ def reportJobLogFiles(job):
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
     """
-    waitDuration = float(config.attrib["wait_duration"])
-    assert waitDuration >= 0
     rescueJobsFrequency = float(config.attrib["rescue_jobs_frequency"])
     maxJobDuration = float(config.attrib["max_job_duration"])
     assert maxJobDuration >= 0
-    logger.info("Got parameters, wait duration %s, rescue jobs frequency: %s max job duration: %s" % \
-                (waitDuration, rescueJobsFrequency, maxJobDuration))
+    logger.info("Got parameters,rescue jobs frequency: %s max job duration: %s" % \
+                (rescueJobsFrequency, maxJobDuration))
     
     #Kill any jobs on the batch system queue from the last time.
     assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
@@ -554,26 +539,22 @@ def mainLoop(config, batchSystem):
                 updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
                 deleteJob(job, config)
-      
-        if jobBatcher.getNumberOfJobsIssued() == 0 and len(updatedJobFiles) == 0:
-            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
-            break
         
-        if len(updatedJobFiles) > 0:
-            updatedJobs = batchSystem.getUpdatedJobs() #Asks the batch system what jobs have been completed.
-        else:
-            updatedJobs = pauseForUpdatedJobs(batchSystem.getUpdatedJobs) #Asks the batch system what jobs have been completed.
-        
-        for jobID in updatedJobs.keys(): #Runs through a map of updated jobs and there status, 
-            result = updatedJobs[jobID]
-            if jobBatcher.hasJob(jobID): 
-                if result == 0:
-                    logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
+        if len(updatedJobFiles) == 0:
+            if jobBatcher.getNumberOfJobsIssued() == 0:
+                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
+                break 
+            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+            if updatedJob != None: #Runs through a map of updated jobs and there status, 
+                jobID, result = updatedJob
+                if jobBatcher.hasJob(jobID): 
+                    if result == 0:
+                        logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
+                    else:
+                        logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobBatcher.getJob(jobID), result))  
+                    processFinishedJob(jobID, result, updatedJobFiles, jobBatcher)
                 else:
-                    logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobBatcher.getJob(jobID), result))  
-                processFinishedJob(jobID, result, updatedJobFiles, jobBatcher)
-            else:
-                logger.info("A result seems to already have been processed: %i" % jobID) #T
+                    logger.info("A result seems to already have been processed: %i" % jobID)
         
         if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds
             reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem)
@@ -585,8 +566,6 @@ def mainLoop(config, batchSystem):
             else:
                 timeSinceJobsLastRescued += 60 #This means we'll try again in 60 seconds
             logger.info("Rescued any (long) missing jobs")
-        #Going to sleep to let the job system catch up.
-        time.sleep(waitDuration)
     
     if stats:
         fileHandle = open(config.attrib["stats"], 'a')
