@@ -194,6 +194,7 @@ class JobBatcher:
         """
         self.jobsIssued += 1
         #self.queue.put(job)
+        jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
         memory = int(followOnJob.attrib["memory"])
         cpu = int(followOnJob.attrib["cpu"])
