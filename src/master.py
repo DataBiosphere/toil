@@ -41,7 +41,7 @@ from sonLib.bioio import logFile
 from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
 from threading import Thread, Lock
-from Queue import Queue
+from Queue import Queue, Empty
 
 def createJob(attrib, parent, config):
     """Creates an XML record for the job in a file within the hierarchy of jobs.
@@ -129,11 +129,23 @@ def writeJobs(jobs):
             os.remove(job.attrib["file"])
         os.rename(job.attrib["file"] + ".new", job.attrib["file"])
 
-def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, usedCpus):
+def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQueue):
     """Function submits jobs to the batch system
     """
+    usedCpus = 0
     jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
     while True:
+        #Update the total number of used cpus
+        try: 
+            while True:
+                cpu = cpuQueue.get_nowait()
+                usedCpus -= cpu
+                assert usedCpus >= 0
+                cpuQueue.task_done()
+        except Empty:
+            pass
+        
+        #Get a job from the queue
         job = queue.get()
         followOnJob = job.find("followOns").findall("followOn")[-1]
         memory = int(followOnJob.attrib["memory"])
@@ -142,20 +154,25 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, usedCp
         assert memory < sys.maxint
         jobFile = job.attrib["file"]
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
+        
+        #Deal with the minimum cpus
         if cpu > maxCpus:
             raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
-        while True:
-            lock.acquire()
-            try:
-                if usedCpus[0] + cpu <= maxCpus:
-                    usedCpus[0] += cpu
-                    jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-                    jobIDsToJobsHash[jobID] = (jobFile, cpu)
-                    logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
-                    break
-            finally:
-                lock.release()
-            time.sleep(0.01)      
+        while usedCpus + cpu > maxCpus:
+            cpu = cpuQueue.get()
+            usedCpus -= cpu
+            assert usedCpus >= 0
+            cpuQueue.task_done()
+        usedCpus += cpu
+        
+        #Now, finally, issue the job!
+        lock.acquire()
+        try:
+            jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+            jobIDsToJobsHash[jobID] = (jobFile, cpu)
+            logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+        finally:
+            lock.release()
         queue.task_done()
         
 class JobBatcher:
@@ -166,8 +183,8 @@ class JobBatcher:
         self.jobIDsToJobsHash = {}
         self.queue = Queue()
         self.lock = Lock()
-        self.usedCpus = [0]
-        worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.usedCpus))
+        self.cpuQueue = Queue()
+        worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
         worker.setDaemon(True)
         worker.start()
         self.jobsIssued = 0
@@ -225,7 +242,7 @@ class JobBatcher:
             assert jobID in self.jobIDsToJobsHash
             self.jobsIssued -= 1
             jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-            self.usedCpus[0] -= cpu
+            self.cpuQueue.put(cpu)
             return jobFile
         finally:
             self.lock.release()

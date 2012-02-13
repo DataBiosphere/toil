@@ -77,34 +77,30 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.parasolResultsFileHandle.close() #Close the results file, cos were done.
         
-    def issueJobs(self, jobCommands):
+    def issueJob(self, command, memory, cpu, logFile):
         """Issues parasol with job commands.
         """
-        issuedJobs = {}
-        for jobCommand, memory, cpu, logFile in jobCommands:
-            assert memory != None
-            assert cpu != None
-            assert logFile != None
-            pattern = re.compile("your job ([0-9]+).*")
-            command = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, jobCommand)
-            while True:
-                #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
-                popenParasolCommand(command, self.scratchFile)
-                fileHandle = open(self.scratchFile, 'r')
-                line = fileHandle.readline()
-                fileHandle.close()
-                match = pattern.match(line)
-                if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
-                    break
-                else:
-                    logger.info("We failed to properly add the job, we will try again after a sleep")
-                    time.sleep(5)
-            jobID = int(match.group(1))
-            logger.debug("Got the job id: %s from line: %s" % (jobID, line))
-            assert jobID not in issuedJobs.keys()
-            issuedJobs[jobID] = jobCommand
-            logger.debug("Issued the job command: %s with job id: %i " % (command, jobID))
-        return issuedJobs
+        assert memory != None
+        assert cpu != None
+        assert logFile != None
+        pattern = re.compile("your job ([0-9]+).*")
+        command = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, jobCommand)
+        while True:
+            #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
+            popenParasolCommand(command, self.scratchFile)
+            fileHandle = open(self.scratchFile, 'r')
+            line = fileHandle.readline()
+            fileHandle.close()
+            match = pattern.match(line)
+            if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
+                break
+            else:
+                logger.info("We failed to properly add the job, we will try again after a sleep")
+                time.sleep(5)
+        jobID = int(match.group(1))
+        logger.debug("Got the job id: %s from line: %s" % (jobID, line))
+        logger.debug("Issued the job command: %s with job id: %i " % (command, jobID))
+        return jobID
     
     def killJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -160,7 +156,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         fileHandle.close()
         return runningJobs
     
-    def getUpdatedJobs(self):
+    def getUpdatedJob(self, maxWait):
         """We use the parasol results to update the status of jobs, adding them
         to the list of updated jobs.
         
@@ -181,17 +177,15 @@ class ParasolBatchSystem(AbstractBatchSystem):
         plus you finally have the command name..
         """
         line = self.parasolResultsFileHandle.readline()
-        updatedJobs = {}
-        while line != '':
+        if line != '':
             results = line.split()
             if line[-1] == '\n':
                 line = line[:-1]
             logger.debug("Parasol completed a job, this is what we got: %s" % line)
             result = int(results[0])
             jobID = int(results[2])
-            updatedJobs[jobID] = result
-            line = self.parasolResultsFileHandle.readline()
-        return updatedJobs
+            return (jobID, result)
+        return None
     
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)
