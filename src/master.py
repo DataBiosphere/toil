@@ -410,6 +410,19 @@ def reportJobLogFiles(job):
     logger.critical("The log file of the slave for the job")
     logFile(job.attrib["slave_log_file"], logger.critical) #We log the job log file in the main loop
     
+def pauseForUpdatedJob(updatedJobFn, sleepFor=0.1, sleepNumber=100):
+    """Waits sleepFor seconds while there are no updated jobs, repeating this 
+    cycle sleepNumber times.
+    """
+    i = 0
+    while i < sleepNumber:
+        updatedJob = updatedJobFn(10)
+        if updatedJob != None:
+            return updatedJob
+        time.sleep(sleepFor)
+        i += 1
+    return updatedJobFn(10)
+    
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
     """
@@ -573,7 +586,7 @@ def mainLoop(config, batchSystem):
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
                 break 
-            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+            updatedJob = pauseForUpdatedJob(batchSystem.getUpdatedJob)) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
