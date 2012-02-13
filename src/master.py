@@ -184,28 +184,28 @@ class JobBatcher:
         self.queue = Queue()
         self.lock = Lock()
         self.cpuQueue = Queue()
-        #self.batchSystem = batchSystem
-        worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
-        worker.setDaemon(True)
-        worker.start()
+        self.batchSystem = batchSystem
+        #worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
+        #worker.setDaemon(True)
+        #worker.start()
         self.jobsIssued = 0
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        self.queue.put(job)
-        #jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
-        #followOnJob = job.find("followOns").findall("followOn")[-1]
-        #memory = int(followOnJob.attrib["memory"])
-        #cpu = int(followOnJob.attrib["cpu"])
-        #assert cpu < sys.maxint
-        #assert memory < sys.maxint
-        #jobFile = job.attrib["file"]
-        #jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
-        #jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-        #self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
-        #logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+        #self.queue.put(job)
+        jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
+        followOnJob = job.find("followOns").findall("followOn")[-1]
+        memory = int(followOnJob.attrib["memory"])
+        cpu = int(followOnJob.attrib["cpu"])
+        assert cpu < sys.maxint
+        assert memory < sys.maxint
+        jobFile = job.attrib["file"]
+        jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
+        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+        self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
+        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     
     def issueJobs(self, jobs):
         """Add a list of jobs
@@ -254,7 +254,7 @@ class JobBatcher:
             assert jobID in self.jobIDsToJobsHash
             self.jobsIssued -= 1
             jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-            self.cpuQueue.put(cpu)
+            #self.cpuQueue.put(cpu)
             return jobFile
         finally:
             self.lock.release()
