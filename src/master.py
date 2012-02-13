@@ -136,14 +136,14 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQue
     jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
     while True:
         #Update the total number of used cpus
-        try: 
-            while True:
-                pCpu = cpuQueue.get_nowait()
-                usedCpus -= pCpu
-                assert usedCpus >= 0
-                cpuQueue.task_done()
-        except Empty:
-            pass
+        #try: 
+        #    while True:
+        #        pCpu = cpuQueue.get_nowait()
+        #        usedCpus -= pCpu
+        #        assert usedCpus >= 0
+        #        cpuQueue.task_done()
+        #except Empty:
+        #    pass
         
         #Get a job from the queue
         job = queue.get()
@@ -156,14 +156,14 @@ def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQue
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
         
         #Deal with the minimum cpus
-        if cpu > maxCpus:
-            raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
-        usedCpus += cpu
-        while usedCpus > maxCpus:
-            pCpu = cpuQueue.get()
-            usedCpus -= pCpu
-            assert usedCpus >= 0
-            cpuQueue.task_done()
+        #if cpu > maxCpus:
+        #    raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
+        #usedCpus += cpu
+        #while usedCpus > maxCpus:
+        #    pCpu = cpuQueue.get()
+        #    usedCpus -= pCpu
+        #    assert usedCpus >= 0
+        #    cpuQueue.task_done()
         
         #Now, finally, issue the job!
         lock.acquire()
@@ -184,16 +184,26 @@ class JobBatcher:
         self.queue = Queue()
         self.lock = Lock()
         self.cpuQueue = Queue()
-        worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
-        worker.setDaemon(True)
-        worker.start()
+        #worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
+        #worker.setDaemon(True)
+        #worker.start()
         self.jobsIssued = 0
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        self.queue.put(job)
+        #self.queue.put(job)
+        followOnJob = job.find("followOns").findall("followOn")[-1]
+        memory = int(followOnJob.attrib["memory"])
+        cpu = int(followOnJob.attrib["cpu"])
+        assert cpu < sys.maxint
+        assert memory < sys.maxint
+        jobFile = job.attrib["file"]
+        jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
+        jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+        jobIDsToJobsHash[jobID] = (jobFile, cpu)
+        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     
     def issueJobs(self, jobs):
         """Add a list of jobs
@@ -242,7 +252,7 @@ class JobBatcher:
             assert jobID in self.jobIDsToJobsHash
             self.jobsIssued -= 1
             jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-            self.cpuQueue.put(cpu)
+            #self.cpuQueue.put(cpu)
             return jobFile
         finally:
             self.lock.release()
