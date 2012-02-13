@@ -586,7 +586,7 @@ def mainLoop(config, batchSystem):
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
                 break 
-            updatedJob = pauseForUpdatedJob(batchSystem.getUpdatedJob)) #Asks the batch system what jobs have been completed.
+            updatedJob = pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
