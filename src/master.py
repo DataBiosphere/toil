@@ -184,6 +184,8 @@ class JobBatcher:
         self.queue = Queue()
         self.lock = Lock()
         self.cpuQueue = Queue()
+        
+        self.batchSystem = batchSystem
         #worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
         #worker.setDaemon(True)
         #worker.start()
@@ -202,8 +204,8 @@ class JobBatcher:
         assert memory < sys.maxint
         jobFile = job.attrib["file"]
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
-        jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-        jobIDsToJobsHash[jobID] = (jobFile, cpu)
+        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+        self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
         logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     
     def issueJobs(self, jobs):
