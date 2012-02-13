@@ -113,7 +113,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         i = None
         try:
-            command, exitValue, jobID = self.outputQueue.get(timeout=maxWait)
+            command, exitValue, jobID = self.outputQueue.get_nowait() #(timeout=maxWait)
             i = (jobID, exitValue)
             self.jobs.pop(jobID)
             logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))
