@@ -139,6 +139,7 @@ class JobBatcher:
         self.jobsIssued = 0
         self.jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         self.rootPath = os.path.split(workflowRootPath())[0]
+        self.maxCpus = maxCpus
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
@@ -149,6 +150,8 @@ class JobBatcher:
         cpu = int(followOnJob.attrib["cpu"])
         assert cpu < sys.maxint
         assert memory < sys.maxint
+        if cpu > self.maxCpus:
+            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
         jobFile = job.attrib["file"]
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
         jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])

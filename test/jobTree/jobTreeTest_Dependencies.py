@@ -20,6 +20,7 @@ from time import sleep
 import random
 import datetime
 import sys
+import math
 
 from sonLib.bioio import system
 from optparse import OptionParser
@@ -112,17 +113,18 @@ def flyTree():
     return t
 
 class FirstJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         sleep(1)
         self.addChildTarget(DownJob(self.tree, self.event,
-                                    self.sleepTime, self.startTime))
+                                    self.sleepTime, self.startTime, self.cpu))
 
         self.setFollowOnTarget(LastJob())
 
@@ -135,12 +137,13 @@ class LastJob(Target):
         pass
     
 class DownJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         writeLog(self, "begin Down: %s" % self.event, self.startTime)
@@ -149,20 +152,21 @@ class DownJob(Target):
             writeLog(self, "add %s as child of %s" % (child, self.event),
                      self.startTime)
             self.addChildTarget(DownJob(self.tree, child,
-                                        self.sleepTime, self.startTime))
+                                        self.sleepTime, self.startTime, self.cpu))
 
         if len(children) == 0:
             self.setFollowOnTarget(UpJob(self.tree, self.event,
-                                         self.sleepTime, self.startTime))
+                                         self.sleepTime, self.startTime, self.cpu))
         return 0
     
 class UpJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
@@ -192,9 +196,22 @@ def checkLog(options):
     
     stamps.sort()
     
+    maxThreads = int(options.maxThreads)
+    maxCpus = int(options.maxJobs)
+    maxConcurrentJobs = min(maxThreads, maxCpus)
+    cpusPerThread = float(maxCpus) / maxConcurrentJobs
+    cpusPerJob = int(options.cpusPerJob)
+    assert cpusPerJob >= 1
+    assert cpusPerThread >= 1
+    threadsPerJob = 1
+    if cpusPerJob > cpusPerThread:
+        threadsPerJob = math.ceil(cpusPerJob / cpusPerThread)
+    maxConcurrentJobs = int(maxConcurrentJobs / threadsPerJob)
+    #print "Info on jobs", cpusPerThread, cpusPerJob, threadsPerJob, maxConcurrentJobs
+    assert maxConcurrentJobs >= 1
     for i in range(1,len(stamps)):
         delta = stamps[i] - stamps[i-1]
-        if i % min(int(options.maxThreads), int(options.maxJobs)) != 0:
+        if i % maxConcurrentJobs != 0:
             if delta > epsilon:
                 raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
                              (i, delta, epsilon))
@@ -214,6 +231,8 @@ def main():
     parser.add_option("--size", dest="size", type="int",
                       help="tree size (for comb or star) [default=10]", 
                       default=10) 
+    parser.add_option("--cpusPerJob", dest="cpusPerJob",
+                      help="Cpus per job", default="1")
         
     options, args = parser.parse_args()
     setLoggingFromOptions(options)
@@ -229,7 +248,7 @@ def main():
     else:
         tree = combTree(options.size)
     
-    baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime)
+    baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime, int(options.cpusPerJob))
     Stack(baseTarget).startJobTree(options)
     
     if options.logFile is not None:

@@ -184,7 +184,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
             logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
             
         elif len(tempJob.find("children").findall("child")) != 0: #This is to keep the stack of follow on jobs consistent.
-            ET.SubElement(followOns, "followOn", { "memory":"1000000", "cpu":"1" })
+            ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "memory":"1000000", "cpu":"1" })
             logger.info("Making a stub follow on job")
     else:
         logger.critical("Failed the job")

@@ -42,7 +42,11 @@ class Worker(Thread):
         
     def run(self):
         while True:
-            command, logFile, jobID = self.inputQueue.get()
+            args = self.inputQueue.get()
+            if args == None: #Case where we are reducing threads for max number of CPUs
+                self.inputQueue.task_done()
+                return
+            command, logFile, jobID, threadsToStart = args
             startTime = time.time()
             logger.info("Starting a job with ID %s" % jobID)
             #fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
@@ -58,7 +62,7 @@ class Worker(Thread):
             #fnull.close()
             if os.path.exists(tempLogFile):
                 system("mv %s %s" % (tempLogFile, logFile))
-            self.outputQueue.put((command, sts[1], jobID))
+            self.outputQueue.put((jobID, sts[1], threadsToStart))
             self.inputQueue.task_done()
             logger.info("Finished a job with ID %s in time %s" % (jobID, time.time() - startTime))
         
@@ -71,12 +75,17 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.jobIndex = 0
         self.jobs = {}
         self.maxThreads = int(config.attrib["max_threads"])
+        self.maxCpus = int(config.attrib["max_jobs"])
+        logger.info("Setting up the thread pool with %i threads given the max threads %i and the max cpus %i" % (min(self.maxThreads, self.maxCpus), self.maxThreads, self.maxCpus))
+        self.maxThreads = min(self.maxThreads, self.maxCpus)
+        self.cpusPerThread = float(self.maxCpus) / float(self.maxThreads)
+        assert self.cpusPerThread >= 1
         assert self.maxThreads >= 1
-        
         self.inputQueue = Queue()
         self.outputQueue = Queue()
-        for i in xrange(int(config.attrib["max_threads"])): #Setup the threads
-            worker = workerClass(self.inputQueue, self.outputQueue)
+        self.workerClass = workerClass
+        for i in xrange(self.maxThreads): #Setup the threads
+            worker = self.workerClass(self.inputQueue, self.outputQueue)
             worker.setDaemon(True)
             worker.start()
 
@@ -86,10 +95,20 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert memory != None
         assert cpu != None
         assert logFile != None
+        if cpu > self.maxCpus:
+            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
+        assert(cpu <= self.maxCpus)
         logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
         self.jobs[self.jobIndex] = command
         i = self.jobIndex
-        self.inputQueue.put((command, logFile, self.jobIndex))
+        #Deal with the max cpus calculation
+        k = 0
+        while cpu > self.cpusPerThread:
+            self.inputQueue.put(None)
+            cpu -= self.cpusPerThread
+            k += 1
+        assert k < self.maxThreads
+        self.inputQueue.put((command, logFile, self.jobIndex, k))
         self.jobIndex += 1
         return i
     
@@ -113,10 +132,14 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         i = None
         try:
-            command, exitValue, jobID = self.outputQueue.get(timeout=maxWait)
+            jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
             i = (jobID, exitValue)
             self.jobs.pop(jobID)
-            logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))
+            logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
+            for j in xrange(threadsToStart):
+                worker = self.workerClass(self.inputQueue, self.outputQueue)
+                worker.setDaemon(True)
+                worker.start()
             self.outputQueue.task_done()
         except Empty:
             pass
@@ -138,7 +161,11 @@ class BadWorker(Thread):
         
     def run(self):
         while True:
-            command, logFile, jobID = self.inputQueue.get()
+            args = self.inputQueue.get()
+            if args == None: #Case where we are reducing threads for max number of CPUs
+                self.inputQueue.task_done()
+                return
+            command, logFile, jobID, threadsToStart = args
             assert logFile != None
             fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
             #Run to first calculate the runtime..
@@ -148,5 +175,5 @@ class BadWorker(Thread):
                 process.kill()
             process.wait()
             fnull.close()
-            self.outputQueue.put((command, process.returncode, jobID))
+            self.outputQueue.put((jobID, process.returncode, threadsToStart))
             self.inputQueue.task_done()
