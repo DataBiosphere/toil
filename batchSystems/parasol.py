@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import time
+from threading import Thread
 from Queue import Queue, Empty
 
 from sonLib.bioio import logger
