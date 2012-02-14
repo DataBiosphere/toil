@@ -195,7 +195,7 @@ def checkLog(options):
             stamps.append(timeStamp)
     
     stamps.sort()
-    
+    q
     maxThreads = int(options.maxThreads)
     maxCpus = int(options.maxJobs)
     maxConcurrentJobs = min(maxThreads, maxCpus)

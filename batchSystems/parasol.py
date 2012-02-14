@@ -47,6 +47,40 @@ def popenParasolCommand(command, tmpFileForStdOut, runUntilSuccessful=True):
             logger.critical("Waited for a few seconds, will try again")
         else:
             return i
+        
+def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
+    """We use the parasol results to update the status of jobs, adding them
+    to the list of updated jobs.
+    
+    Results have the following structure.. (thanks Mark D!)
+    
+    int status;    /* Job status - wait() return format. 0 is good. */
+    char *host;    /* Machine job ran on. */
+    char *jobId;    /* Job queuing system job ID */
+    char *exe;    /* Job executable file (no path) */
+    int usrTicks;    /* 'User' CPU time in ticks. */
+    int sysTicks;    /* 'System' CPU time in ticks. */
+    unsigned submitTime;    /* Job submission time in seconds since 1/1/1970 */
+    unsigned startTime;    /* Job start time in seconds since 1/1/1970 */
+    unsigned endTime;    /* Job end time in seconds since 1/1/1970 */
+    char *user;    /* User who ran job */
+    char *errFile;    /* Location of stderr file on host */
+    
+    plus you finally have the command name..
+    """
+    while True:
+        line = parasolResultsFileHandle.readline()
+        if line != '':
+            results = line.split()
+            if line[-1] == '\n':
+                line = line[:-1]
+            logger.debug("Parasol completed a job, this is what we got: %s" % line)
+            result = int(results[0])
+            jobID = int(results[2])
+            outputQueue1.put(jobID)
+            outputQueue2.put((jobID, result))
+        else:
+            time.sleep(0.01) #Go to sleep to avoid churning
 
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
@@ -72,11 +106,16 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'r')
         logger.info("Reset the results queue")
-        
-    def __des__(self):
-        #Closes the file handle associated with the results file.
-        self.parasolResultsFileHandle.close() #Close the results file, cos were done.
-        
+        #Stuff to allow max cpus to be work
+        self.outputQueue1 = Queue()
+        self.outputQueue2 = Queue()
+        worker = Thread(target=processUpdatedJob, args=(self.outputQueue1, self.outputQueue2, self.parasolResultsFileHandle))
+        worker.setDaemon(True)
+        worker.start()
+        self.usedCpus = 0
+        self.maxCpus = int(config.attrib["max_jobs"])
+        self.jobIDsToCpu = {}
+         
     def issueJob(self, command, memory, cpu, logFile):
         """Issues parasol with job commands.
         """
@@ -85,6 +124,11 @@ class ParasolBatchSystem(AbstractBatchSystem):
         assert logFile != None
         pattern = re.compile("your job ([0-9]+).*")
         parasolCommand = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, command)
+        self.usedCpus += cpu
+        while self.usedCpus + cpu > self.maxCpus:
+            self.usedCpus -= self.jobIDsToCpu.pop(self.outputQueue1.get())
+            assert self.usedCpus >= 0
+            self.outputQueue1.task_done()
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
             popenParasolCommand(parasolCommand, self.scratchFile)
@@ -98,6 +142,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 logger.info("We failed to properly add the job, we will try again after a sleep")
                 time.sleep(5)
         jobID = int(match.group(1))
+        self.jobIDsToCpu[jobID] = cpu
         logger.debug("Got the job id: %s from line: %s" % (jobID, line))
         logger.debug("Issued the job command: %s with job id: %i " % (parasolCommand, jobID))
         return jobID
@@ -157,40 +202,10 @@ class ParasolBatchSystem(AbstractBatchSystem):
         return runningJobs
     
     def getUpdatedJob(self, maxWait):
-        """We use the parasol results to update the status of jobs, adding them
-        to the list of updated jobs.
-        
-        Results have the following structure.. (thanks Mark D!)
-        
-        int status;    /* Job status - wait() return format. 0 is good. */
-        char *host;    /* Machine job ran on. */
-        char *jobId;    /* Job queuing system job ID */
-        char *exe;    /* Job executable file (no path) */
-        int usrTicks;    /* 'User' CPU time in ticks. */
-        int sysTicks;    /* 'System' CPU time in ticks. */
-        unsigned submitTime;    /* Job submission time in seconds since 1/1/1970 */
-        unsigned startTime;    /* Job start time in seconds since 1/1/1970 */
-        unsigned endTime;    /* Job end time in seconds since 1/1/1970 */
-        char *user;    /* User who ran job */
-        char *errFile;    /* Location of stderr file on host */
-        
-        plus you finally have the command name..
-        """
-        endTime = time.time() + maxWait
-        while True:
-            line = self.parasolResultsFileHandle.readline()
-            if line != '':
-                results = line.split()
-                if line[-1] == '\n':
-                    line = line[:-1]
-                logger.debug("Parasol completed a job, this is what we got: %s" % line)
-                result = int(results[0])
-                jobID = int(results[2])
-                return (jobID, result)
-            if time.time() > endTime:
-                break
-            time.sleep(0.01) #Go to sleep to avoid churning
-        return None
+        i = self.outputQueue2.get(timeout=maxWait)
+        if i != None:
+            self.outputQueue2.task_done()
+        return i
     
     def getRescueJobFrequency(self):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
