@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import time
+from Queue import Queue, Empty
 
 from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
