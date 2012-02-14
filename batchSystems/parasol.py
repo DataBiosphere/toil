@@ -111,7 +111,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Stuff to allow max cpus to be work
         self.outputQueue1 = Queue()
         self.outputQueue2 = Queue()
-        worker = Thread(target=processUpdatedJob, args=(self.outputQueue1, self.outputQueue2, self.parasolResultsFileHandle))
+        worker = Thread(target=getUpdatedJob, args=(self.outputQueue1, self.outputQueue2, self.parasolResultsFileHandle))
         worker.setDaemon(True)
         worker.start()
         self.usedCpus = 0
