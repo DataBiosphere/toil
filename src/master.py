@@ -135,41 +135,25 @@ class JobBatcher:
     """
     def __init__(self, batchSystem, maxCpus):
         self.jobIDsToJobsHash = {}
-        self.deque = deque()
         self.batchSystem = batchSystem
         self.jobsIssued = 0
-        self.usedCpus = 0
-        self.maxCpus = maxCpus
         self.jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         self.rootPath = os.path.split(workflowRootPath())[0]
-    
-    def _issueJobs(self): 
-        while len(self.deque) > 0:
-            job, cpu, memory = self.deque[-1]
-            if cpu > self.maxCpus:
-                raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
-            if self.usedCpus + cpu <= self.maxCpus:
-                self.deque.pop()
-                self.usedCpus += cpu
-                assert cpu < sys.maxint
-                assert memory < sys.maxint
-                jobFile = job.attrib["file"]
-                jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
-                jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-                self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
-                logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
-            else:
-                break
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         followOnJob = job.find("followOns").findall("followOn")[-1]
-        cpu = int(followOnJob.attrib["cpu"])
         memory = int(followOnJob.attrib["memory"])
-        self.deque.appendleft((job, cpu, memory))
-        self._issueJobs()
+        cpu = int(followOnJob.attrib["cpu"])
+        assert cpu < sys.maxint
+        assert memory < sys.maxint
+        jobFile = job.attrib["file"]
+        jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
+        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+        self.jobIDsToJobsHash[jobID] = jobFile
+        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     
     def issueJobs(self, jobs):
         """Add a list of jobs
@@ -183,15 +167,10 @@ class JobBatcher:
         assert self.jobsIssued >= 0
         return self.jobsIssued
     
-    def getNumberOfQueuingJobs(self):
-        """Returns true iff there are jobs not yet issued, due to cpu constraints.
-        """
-        return len(self.deque)
-    
     def getJob(self, jobID):
         """Gets the job file associated the a given id
         """
-        return self.jobIDsToJobsHash[jobID][0]
+        return self.jobIDsToJobsHash[jobID]
     
     def hasJob(self, jobID):
         """Returns true if the jobID is in the list of jobs.
@@ -208,10 +187,7 @@ class JobBatcher:
         """
         assert jobID in self.jobIDsToJobsHash
         self.jobsIssued -= 1
-        jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-        self.usedCpus -= cpu
-        assert self.usedCpus >= 0
-        self._issueJobs()
+        jobFile = self.jobIDsToJobsHash.pop(jobID)
         return jobFile
     
 def fixJobsList(config, jobFiles):
@@ -413,12 +389,11 @@ def mainLoop(config, batchSystem):
     timeSinceJobsLastRescued = time.time() - rescueJobsFrequency + 100 #We hack it so that we rescue jobs after the first 100 seconds to get around an apparent parasol bug
 
     while True: 
-        if len(updatedJobFiles) == 0 and jobBatcher.getNumberOfJobsIssued() == 0:
-            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
-            break
+        if len(updatedJobFiles) > 0:
+            logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
         
-        if len(updatedJobFiles) > jobBatcher.getNumberOfQueuingJobs():
-            jobFile = updatedJobFiles.pop()
+        for jobFile in list(updatedJobFiles):
+            updatedJobFiles.remove(jobFile)
             job = readJob(jobFile)
             assert job.attrib["colour"] is not "blue"
             
@@ -434,7 +409,6 @@ def mainLoop(config, batchSystem):
             
             def reissueJob(job):
                 #Reset the log files for the job.
-                #updatedJobFiles.remove(jobFile)
                 open(job.attrib["slave_log_file"], 'w').close()
                 open(job.attrib["log_file"], 'w').close()
                 assert job.attrib["colour"] == "grey"
@@ -472,7 +446,6 @@ def mainLoop(config, batchSystem):
                         totalJobFiles += 1
                         newChildren.append(newJob)
                     job.find("children").clear() #removeall("child")
-                    #updatedJobFiles.remove(job.attrib["file"])
                     job.attrib["child_count"] = str(childCount + len(newChildren))
                     job.attrib["colour"] = "blue" #Blue - has children running.
                     writeJobs([ job ] + newChildren ) #Check point
@@ -498,7 +471,6 @@ def mainLoop(config, batchSystem):
                             assert parent.attrib["file"] not in updatedJobFiles
                             updatedJobFiles.add(parent.attrib["file"])
                         writeJobs([ job, parent ]) #Check point
-                    #updatedJobFiles.remove(job.attrib["file"])
                     totalJobFiles -= 1
                     deleteJob(job, config)
                          
@@ -516,18 +488,19 @@ def mainLoop(config, batchSystem):
                     makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetryCount == 0
-                    #updatedJobFiles.remove(job.attrib["file"]) #We remove the job and neither delete it or reissue it
                     logger.critical("Job: %s is completely failed" % job.attrib["file"])
                     
             else: #This case should only occur after failure
                 logger.debug("Job: %s is already dead, we'll get rid of it" % job.attrib["file"])
                 assert job.attrib["colour"] == "dead"
-                #updatedJobFiles.remove(job.attrib["file"])
                 totalJobFiles -= 1
-                deleteJob(job, config)     
-        else:
-            #if len(updatedJobFiles) == 0:
-            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+                deleteJob(job, config)
+        
+        if len(updatedJobFiles) == 0:
+            if jobBatcher.getNumberOfJobsIssued() == 0:
+                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
+                break 
+            updatedJob = batchSystem.getUpdatedJob(10) #pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
