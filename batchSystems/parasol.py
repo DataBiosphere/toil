@@ -176,15 +176,20 @@ class ParasolBatchSystem(AbstractBatchSystem):
         
         plus you finally have the command name..
         """
-        line = self.parasolResultsFileHandle.readline()
-        if line != '':
-            results = line.split()
-            if line[-1] == '\n':
-                line = line[:-1]
-            logger.debug("Parasol completed a job, this is what we got: %s" % line)
-            result = int(results[0])
-            jobID = int(results[2])
-            return (jobID, result)
+        endTime = time.time() + maxWait
+        while True:
+            line = self.parasolResultsFileHandle.readline()
+            if line != '':
+                results = line.split()
+                if line[-1] == '\n':
+                    line = line[:-1]
+                logger.debug("Parasol completed a job, this is what we got: %s" % line)
+                result = int(results[0])
+                jobID = int(results[2])
+                return (jobID, result)
+            if time.time() > endTime:
+                break
+            time.sleep(0.01) #Go to sleep to avoid churning
         return None
     
     def getRescueJobFrequency(self):

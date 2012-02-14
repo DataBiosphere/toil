@@ -33,6 +33,7 @@ import sys
 import os.path 
 import xml.etree.ElementTree as ET
 import time
+from collections import deque
 #from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
@@ -128,52 +129,6 @@ def writeJobs(jobs):
         if os.path.isfile(job.attrib["file"]):
             os.remove(job.attrib["file"])
         os.rename(job.attrib["file"] + ".new", job.attrib["file"])
-
-def jobBatcherWorker(batchSystem, maxCpus, queue, lock, jobIDsToJobsHash, cpuQueue):
-    """Function submits jobs to the batch system
-    """
-    usedCpus = 0
-    jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
-    while True:
-        #Update the total number of used cpus
-        try: 
-            while True:
-                pCpu = cpuQueue.get_nowait()
-                usedCpus -= pCpu
-                assert usedCpus >= 0
-                cpuQueue.task_done()
-        except Empty:
-            pass
-        
-        #Get a job from the queue
-        job = queue.get()
-        followOnJob = job.find("followOns").findall("followOn")[-1]
-        memory = int(followOnJob.attrib["memory"])
-        cpu = int(followOnJob.attrib["cpu"])
-        assert cpu < sys.maxint
-        assert memory < sys.maxint
-        jobFile = job.attrib["file"]
-        jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
-        
-        #Deal with the minimum cpus
-        if cpu > maxCpus:
-            raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
-        usedCpus += cpu
-        while usedCpus > maxCpus:
-            pCpu = cpuQueue.get()
-            usedCpus -= pCpu
-            assert usedCpus >= 0
-            cpuQueue.task_done()
-        
-        #Now, finally, issue the job!
-        lock.acquire()
-        try:
-            jobID = batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-            jobIDsToJobsHash[jobID] = (jobFile, cpu)
-            logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
-        finally:
-            lock.release()
-        queue.task_done()
         
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system, asynchronously
@@ -181,31 +136,41 @@ class JobBatcher:
     """
     def __init__(self, batchSystem, maxCpus):
         self.jobIDsToJobsHash = {}
-        self.queue = Queue()
-        self.lock = Lock()
-        self.cpuQueue = Queue()
+        self.deque = deque()
         self.batchSystem = batchSystem
-        #worker = Thread(target=jobBatcherWorker, args=(batchSystem, maxCpus, self.queue, self.lock, self.jobIDsToJobsHash, self.cpuQueue))
-        #worker.setDaemon(True)
-        #worker.start()
         self.jobsIssued = 0
+        self.usedCpus = 0
+        self.maxCpus = maxCpus
+        self.jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
+        self.rootPath = os.path.split(workflowRootPath())[0]
+    
+    def _issueJobs(self): 
+        while len(self.deque) > 0:
+            job, cpu, memory = self.deque[-1]
+            if cpu > self.maxCpus:
+                raise RuntimeError("A job is requesting more CPUs than available. Requested: %i, Available: %i" % (cpu, maxCpus))
+            if self.usedCpus + cpu <= self.maxCpus:
+                self.deque.pop()
+                self.usedCpus += cpu
+                assert cpu < sys.maxint
+                assert memory < sys.maxint
+                jobFile = job.attrib["file"]
+                jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
+                jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+                self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
+                logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+            else:
+                break
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        #self.queue.put(job)
-        jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         followOnJob = job.find("followOns").findall("followOn")[-1]
-        memory = int(followOnJob.attrib["memory"])
         cpu = int(followOnJob.attrib["cpu"])
-        assert cpu < sys.maxint
-        assert memory < sys.maxint
-        jobFile = job.attrib["file"]
-        jobCommand = "%s -E %s %s --job %s" % (sys.executable, jobTreeSlavePath, os.path.split(workflowRootPath())[0], jobFile)
-        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
-        self.jobIDsToJobsHash[jobID] = (jobFile, cpu)
-        logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
+        memory = int(followOnJob.attrib["memory"])
+        self.deque.appendleft((job, cpu, memory))
+        self._issueJobs()
     
     def issueJobs(self, jobs):
         """Add a list of jobs
@@ -222,42 +187,28 @@ class JobBatcher:
     def getJob(self, jobID):
         """Gets the job file associated the a given id
         """
-        self.lock.acquire()
-        try:
-            return self.jobIDsToJobsHash[jobID][0]
-        finally:
-            self.lock.release()
+        return self.jobIDsToJobsHash[jobID][0]
     
     def hasJob(self, jobID):
         """Returns true if the jobID is in the list of jobs.
         """
-        self.lock.acquire()
-        try:
-            return self.jobIDsToJobsHash.has_key(jobID)
-        finally:
-            self.lock.release()
+        return self.jobIDsToJobsHash.has_key(jobID)
         
     def getJobIDs(self):
         """Gets the set of jobs currently issued.
         """
-        self.lock.acquire()
-        try:
-            return self.jobIDsToJobsHash.keys()
-        finally:
-            self.lock.release()
+        return self.jobIDsToJobsHash.keys()
     
     def removeJobID(self, jobID):
         """Removes a job from the jobBatcher.
         """
-        self.lock.acquire()
-        try:
-            assert jobID in self.jobIDsToJobsHash
-            self.jobsIssued -= 1
-            jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
-            #self.cpuQueue.put(cpu)
-            return jobFile
-        finally:
-            self.lock.release()
+        assert jobID in self.jobIDsToJobsHash
+        self.jobsIssued -= 1
+        jobFile, cpu = self.jobIDsToJobsHash.pop(jobID)
+        self.usedCpus -= cpu
+        assert self.usedCpus >= 0
+        self._issueJobs()
+        return jobFile
     
 def fixJobsList(config, jobFiles):
     """Traverses through and finds any .old files, using there saved state to recover a 
