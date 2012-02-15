@@ -204,9 +204,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
         return runningJobs
     
     def getUpdatedJob(self, maxWait):
-        i = self.outputQueue2.get(timeout=maxWait)
-        if i != None:
+        i = None
+        try:
+            i = self.outputQueue2.get(timeout=maxWait)
             self.outputQueue2.task_done()
+        except Empty:
+            pass
         return i
     
     def getRescueJobFrequency(self):
