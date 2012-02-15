@@ -37,7 +37,8 @@ class TestCase(unittest.TestCase):
         system("rm -rf %s %s" % (self.jobTreeDir, self.tempFileTreeDir)) #Cleanup the job tree in case it hasn't already been cleaned up.
      
     def testJobTree_SingleMachine(self):
-        testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")
+        if not parasolIsInstalled() and not gridEngineIsInstalled():
+            testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")
     
     def testJobTree_Parasol(self):
         if parasolIsInstalled():
