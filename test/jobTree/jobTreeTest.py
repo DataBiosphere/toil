@@ -40,12 +40,10 @@ class TestCase(unittest.TestCase):
         testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")
     
     def testJobTree_Parasol(self):
-        return #This doesn't work because of the slowness of parasol
         if parasolIsInstalled():
             testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "parasol") 
     
     def testJobTree_gridengine(self):
-        return
         if gridEngineIsInstalled():
             testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "gridengine") 
     
@@ -71,10 +69,12 @@ class TestCase(unittest.TestCase):
         self.dependenciesTest(batchSystem="singleMachine")
         
     def testJobTree_dependencies_parasol(self):
+        return
         if parasolIsInstalled():
             self.dependenciesTest(batchSystem="parasol")
             
     def testJobTree_dependencies_girdengine(self):
+        return
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
         
