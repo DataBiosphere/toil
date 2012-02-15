@@ -126,11 +126,21 @@ class ParasolBatchSystem(AbstractBatchSystem):
         assert logFile != None
         pattern = re.compile("your job ([0-9]+).*")
         parasolCommand = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, command)
+        #Deal with the cpus
         self.usedCpus += cpu
-        while self.usedCpus + cpu > self.maxCpus:
+        while True: #Process finished results with no wait
+            try:
+               jobID = self.outputQueue1.get_nowait()
+               self.usedCpus -= self.jobIDsToCpu.pop(jobID)
+               assert self.usedCpus >= 0
+               self.outputQueue1.task_done()
+            except Empty:
+                break
+        while self.usedCpus + cpu > self.maxCpus: #If we are still waiting
             self.usedCpus -= self.jobIDsToCpu.pop(self.outputQueue1.get())
             assert self.usedCpus >= 0
             self.outputQueue1.task_done()
+        #Now keep going
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
             popenParasolCommand(parasolCommand, self.scratchFile)
