@@ -209,7 +209,7 @@ def main():
     from sonLib.bioio import logger
     from sonLib.bioio import addLoggingFileHandler
     from sonLib.bioio import setLogLevel
-    from sonLib.bioio import getTotalCpuTime
+    from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
     from jobTree.src.master import readJob
