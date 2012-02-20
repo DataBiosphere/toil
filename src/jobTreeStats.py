@@ -103,12 +103,15 @@ def main():
         itemClocks.sort()
         itemWaits = [ round(round(float(item.attrib["time"])) - round(float(item.attrib["clock"]))) for item in items ]
         itemWaits.sort()
+        itemMemory = [ round(float(item.attrib["memory"])) for item in items ]
+        itemMemory.sort()
         assert len(itemClocks) == len(itemTimes)
         assert len(itemClocks) == len(itemWaits)
         if len(itemTimes) == 0:
             itemTimes.append(0)
             itemClocks.append(0)
             itemWaits.append(0)
+            itemMemory.append(0)
         return ET.SubElement(element, itemName, { "total_number":str(len(items)),
                                                "total_time":str(sum(itemTimes)),
                                                "median_time":str(itemTimes[len(itemTimes)/2]),
@@ -124,7 +127,12 @@ def main():
                                                "median_wait":str(itemWaits[len(itemWaits)/2]),
                                                "average_wait":str(sum(itemWaits)/len(itemWaits)),
                                                "min_wait":str(min(itemWaits)),
-                                               "max_wait":str(max(itemWaits))
+                                               "max_wait":str(max(itemWaits)),
+                                               "total_memory":str(sum(itemMemory)),
+                                               "median_memory":str(itemMemory[len(itemMemory)/2]),
+                                               "average_memory":str(sum(itemMemory)/len(itemMemory)),
+                                               "min_memory":str(min(itemMemory)),
+                                               "max_memory":str(max(itemMemory))
                                                 })
     
     def fn2(element, containingItems, containingItemName, getFn):

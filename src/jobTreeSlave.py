@@ -60,7 +60,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     """
     from sonLib.bioio import logger
     from sonLib.bioio import system
-    from sonLib.bioio import getTotalCpuTime
+    from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import redirectLoggerStreamHandlers
     
     assert len(job.find("children").findall("child")) == 0
@@ -150,7 +150,10 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
         logger.info("Passed the job, okay")
         
         if stats != None:
-            jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), "clock":str(getTotalCpuTime() - startClock) })
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), 
+                                                  "clock":str(totalCpuTime - startClock),
+                                                  "memory":str(totalMemoryUsage) })
             if tempJob.find("stack") != None:
                 jobTag.append(tempJob.find("stack"))
         
@@ -360,8 +363,10 @@ def main():
     ##########################################
     
     if stats != None:
+        totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
         stats.attrib["time"] = str(time.time() - startTime)
-        stats.attrib["clock"] = str(getTotalCpuTime() - startClock)
+        stats.attrib["clock"] = str(totalCpuTime - startClock)
+        stats.attrib["memory"] = str(totalMemoryUsage)
         fileHandle = open(job.attrib["stats"], 'w')
         ET.ElementTree(stats).write(fileHandle)
         fileHandle.close()

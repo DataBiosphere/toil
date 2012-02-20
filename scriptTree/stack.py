@@ -37,7 +37,7 @@ from sonLib.bioio import setLoggingFromOptions
 from sonLib.bioio import getTempFile
 from sonLib.bioio import getTempDirectory 
 from sonLib.bioio import system
-from sonLib.bioio import getTotalCpuTime
+from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
 from jobTree.src.jobTreeRun import addOptions
 from jobTree.src.jobTreeRun import createJobTree
@@ -138,10 +138,6 @@ class Stack:
         
         baseDir = os.getcwd()
         
-        if stats is not None: #Getting the runtime of the stats module
-            targetStartTime = time.time()
-            targetStartClock = getTotalCpuTime()
-            
         self.target.setStack(self)
         #Debug check that we have the right amount of CPU and memory for the job in hand
         targetMemory = self.target.getMemory()
@@ -203,8 +199,10 @@ class Stack:
         #Finish up the stats
         if stats is not None:
             stats.attrib["time"] = str(time.time() - startTime)
-            stats.attrib["clock"] = str(getTotalCpuTime() - startClock)
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = ".".join((self.target.__class__.__name__,))
+            stats.attrib["memory"] = str(totalMemoryUsage)
     
     def verifyJobTreeOptions(self, options):
         """ verifyJobTreeOptions() returns None if all necessary values
