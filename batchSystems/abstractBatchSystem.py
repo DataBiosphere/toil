@@ -20,8 +20,6 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-from sonLib.bioio import logger, getTotalCpuTime
-
 class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
