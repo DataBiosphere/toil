@@ -255,6 +255,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         i = None
         try:
             (job, task, retcode) = self.updatedJobsQueue.get(timeout=maxWait)
+            self.updatedJobsQueue.task_done()
             i = (self.jobIDs[(job, task)], retcode)
             self.currentjobs -= set([self.jobIDs[(job, task)]])
         except Empty:
