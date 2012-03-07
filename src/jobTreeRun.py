@@ -152,7 +152,7 @@ def loadTheBatchSystem(config):
         logger.info("Using the single machine batch system")
     elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
         batchSystem = GridengineBatchSystem(config)
-        logger.info("Using the grid engine machine batch system")
+        logger.info("Using the grid engine machine batch system" + str(batchSystem))
     elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
         batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
         config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
@@ -239,7 +239,7 @@ def createJobTree(options):
     #Setup the temp file trees.
     setupTempFileTrees(config)
     
-    logger.info("Finished the job tree setup")
+    logger.info("Finished the job tree setup" + str(batchSystem) + " " + str(type(batchSystem)))
     return config, batchSystem
 
 def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):

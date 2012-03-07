@@ -154,6 +154,7 @@ class JobBatcher:
             raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
         jobFile = job.attrib["file"]
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
+	logger.debug(str(self.batchSystem))
         jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
         self.jobIDsToJobsHash[jobID] = jobFile
         logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))

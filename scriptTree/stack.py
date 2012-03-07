@@ -92,6 +92,7 @@ class Stack:
             cpu = self.getCpu()
             createFirstJob(command, config, memory=memory, cpu=cpu)
         loadEnvironment(config)
+	logger.info(str(batchSystem))
         return mainLoop(config, batchSystem)
 
 #####

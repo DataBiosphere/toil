@@ -159,6 +159,14 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.currentjobs.add(jobID)
         self.newJobsQueue.put((sgeJobID, index))
         
+    def issueJob(self, command, memory, cpu, logFile):
+	qsubline = prepareQsub(cpu, memory)
+	qsubline.extend(['-o', logFile, '-e', logFile, command])
+	result = qsub(qsubline)
+	jobs = dict()
+	self.addJob(command, result, jobs)
+	return jobs.keys()[0]
+
     def issueJobs(self, jobCommands):
         """Issues grid engine with job commands.
         """
@@ -242,6 +250,17 @@ class GridengineBatchSystem(AbstractBatchSystem):
                 times[self.jobIDs[(items[0], items[9])]] = time.time() - jobstart 
 
         return times
+    
+    def getUpdatedJob(self, maxWait):
+    	i = None
+	try:
+            (job, task, retcode) = self.updatedJobsQueue.get(timeout=maxWait)
+            i =  retcode
+	    self.currentjobs -= set([self.jobIDs[(job, task)]])
+	except Empty:
+	    pass
+
+        return i
     
     def getUpdatedJobs(self):
         retcodes = {}
