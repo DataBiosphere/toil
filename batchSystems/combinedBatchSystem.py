@@ -63,6 +63,7 @@ class CombinedBatchSystem(AbstractBatchSystem):
             remaining = endTime - time.time()
             if remaining <= 0:
                 return None
+            time.sleep(0.01)
     
     def getRescueJobFrequency(self):
         return (self.batchSystem1.getRescueJobFrequency() + self.batchSystem2.getRescueJobFrequency())/2 + 1

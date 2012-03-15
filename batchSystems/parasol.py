@@ -189,7 +189,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 issuedJobs.add(jobID)
             line = fileHandle.readline()
         fileHandle.close()
-        return issuedJobs
+        return list(issuedJobs)
     
     def getRunningJobIDs(self):
         """Returns map of runnig jobIDs and the time they have been running.
