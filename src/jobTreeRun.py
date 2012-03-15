@@ -32,6 +32,7 @@ from optparse import OptionParser
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, BadWorker
+from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 
 from jobTree.src.master import createJob
 from jobTree.src.master import mainLoop
@@ -85,6 +86,10 @@ try and restart the jobs in it",
     parser.add_option("--batchSystem", dest="batchSystem",
                       help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default",
                       default=detectQueueSystem())
+    
+    parser.add_option("--parasolCommand", dest="parasolCommand",
+                      help="The command to run the parasol program default=%default",
+                      default="parasol")
     
     parser.add_option("--retryCount", dest="retryCount", 
                       help="Number of times to try a failing job before giving up and labelling job failed. default=%default",
@@ -144,20 +149,32 @@ def loadTheBatchSystem(config):
     """Load the batch system.
     """
     batchSystemString = config.attrib["batch_system"]
-    if batchSystemString == "parasol":
-        batchSystem = ParasolBatchSystem(config)
-        logger.info("Using the parasol batch system")
-    elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
-        batchSystem = SingleMachineBatchSystem(config)
-        logger.info("Using the single machine batch system")
-    elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
-        batchSystem = GridengineBatchSystem(config)
-        logger.info("Using the grid engine machine batch system")
-    elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-        batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
-        config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
-    else:
-        raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+    def batchSystemConstructionFn(batchSystemString):
+        batchSystem = None
+        if batchSystemString == "parasol":
+            batchSystem = ParasolBatchSystem(config)
+            logger.info("Using the parasol batch system")
+        elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
+            batchSystem = SingleMachineBatchSystem(config)
+            logger.info("Using the single machine batch system")
+        elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
+            batchSystem = GridengineBatchSystem(config)
+            logger.info("Using the grid engine machine batch system")
+        elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
+            batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
+            config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
+        return batchSystem
+    batchSystem = batchSystemConstructionFn(batchSystemString)
+    if batchSystem == None:
+        batchSystems = batchSystemString.split()
+        if len(batchSystems) != 3:
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+        batchSystem1 = batchSystemConstructionFn(batchSystems[0])
+        batchSystem2 = batchSystemConstructionFn(batchSystems[1])
+        if batchSystem1 == None or batchSystem2 == None:
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+        maxMemoryForBatchSystem1 = float(batchSystems[2])
+        batchSystem = CombinedBatchSystem(config, batchSystem1, batchSystem2, lambda command, memory, cpu : memory <= maxMemoryForBatchSystem1)
     return batchSystem
 
 def loadEnvironment(config):
@@ -198,6 +215,7 @@ def createJobTree(options):
     config.attrib["log_file_dir"] = os.path.join(options.jobTree, "logFileDir")
     config.attrib["slave_log_file_dir"] = os.path.join(options.jobTree, "slaveLogFileDir")
     config.attrib["results_file"] = os.path.join(options.jobTree, "results.txt")
+    config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["scratch_file"] = os.path.join(options.jobTree, "scratch.txt")
     config.attrib["retry_count"] = str(int(options.retryCount))
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))

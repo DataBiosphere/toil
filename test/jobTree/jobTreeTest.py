@@ -38,6 +38,9 @@ class TestCase(unittest.TestCase):
      
     def testJobTree_SingleMachine(self):
         testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine")
+        
+    def testJobTree_CombinedBatchSystem(self):
+        testJobTree(self.testNo, self.depth, self.tempFileTree, self.jobTreeDir, "singleMachine singleMachine 1000000")
     
     def testJobTree_Parasol(self):
         if parasolIsInstalled():
@@ -119,7 +122,7 @@ def setupJobTree(tempFileTree, jobTreeDir, batchSystem, depth=2):
     (treePointerFile)
     
     jobTreeCommand = "jobTreeRun --jobTree %s --retryCount %i\
-     --command '%s' --logLevel=INFO --maxJobDuration 100 --batchSystem %s" % \
+     --command '%s' --logLevel=INFO --maxJobDuration 100 --batchSystem '%s'" % \
     (jobTreeDir, retryCount, command, batchSystem)
         
     logger.info("Setup the job okay")

@@ -87,10 +87,10 @@ def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
     """
-    
     def __init__(self, config):
         AbstractBatchSystem.__init__(self, config) #Call the parent constructor
         #Keep the name of the results file for the pstat2 command..
+        self.parasolCommand = config.attrib["parasol_command"]
         self.parasolResultsFile = config.attrib["results_file"]
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
@@ -125,7 +125,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         assert cpu != None
         assert logFile != None
         pattern = re.compile("your job ([0-9]+).*")
-        parasolCommand = "parasol -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (memory, cpu, self.parasolResultsFile, command)
+        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
         #Deal with the cpus
         self.usedCpus += cpu
         while True: #Process finished results with no wait
@@ -165,7 +165,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         while True:
             for jobID in jobIDs:
-                i = popenParasolCommand("parasol remove job %i" % jobID, tmpFileForStdOut=self.scratchFile, runUntilSuccessful=None)
+                i = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), tmpFileForStdOut=self.scratchFile, runUntilSuccessful=None)
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, i))
             runningJobs = self.getIssuedJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
@@ -178,7 +178,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         #Example issued job, first field is jobID, last is the results file
         #31816891 localhost  benedictpaten 2009/07/23 10:54:09 python ~/Desktop/out.txt
-        popenParasolCommand("parasol -extended list jobs", self.config.attrib["scratch_file"])
+        popenParasolCommand("%s -extended list jobs" % self.parasolCommand, self.config.attrib["scratch_file"])
         fileHandle = open(self.config.attrib["scratch_file"], 'r')
         line = fileHandle.readline()
         issuedJobs = set()
@@ -194,7 +194,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def getRunningJobIDs(self):
         """Returns map of runnig jobIDs and the time they have been running.
         """
-        popenParasolCommand("parasol -results=%s pstat2 " % self.parasolResultsFile, self.scratchFile)
+        popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile), self.scratchFile)
         fileHandle = open(self.scratchFile, 'r')
         line = fileHandle.readline()
         #Example lines..
