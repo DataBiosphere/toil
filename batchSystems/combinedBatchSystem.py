@@ -24,6 +24,7 @@ from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 
+import time
 
 class CombinedBatchSystem(AbstractBatchSystem):
     """Takes two batch systems and a choice function to decide which to issue to.
@@ -51,10 +52,17 @@ class CombinedBatchSystem(AbstractBatchSystem):
         return self.batchSystem1.getRunningJobIDs() + self.batchSystem2.getRunningJobIDs()
     
     def getUpdatedJob(self, maxWait):
-        updatedJob = self.batchSystem1.getUpdatedJob(maxWait)
-        if updatedJob != None:
-            return updatedJob
-        return self.batchSystem2.getUpdatedJob(maxWait)
+        endTime = time.time() + maxWait
+        while 1:
+            updatedJob = self.batchSystem1.getUpdatedJob(0)
+            if updatedJob != None:
+                return updatedJob
+            updatedJob = self.batchSystem2.getUpdatedJob(0)
+            if updatedJob != None:
+                return updatedJob
+            remaining = endTime - time.time()
+            if remaining <= 0:
+                return None
     
     def getRescueJobFrequency(self):
         return (self.batchSystem1.getRescueJobFrequency() + self.batchSystem2.getRescueJobFrequency())/2 + 1
