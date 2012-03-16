@@ -167,13 +167,23 @@ def loadTheBatchSystem(config):
     batchSystem = batchSystemConstructionFn(batchSystemString)
     if batchSystem == None:
         batchSystems = batchSystemString.split()
-        if len(batchSystems) != 3:
-            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
-        batchSystem1 = batchSystemConstructionFn(batchSystems[0])
-        batchSystem2 = batchSystemConstructionFn(batchSystems[1])
-        if batchSystem1 == None or batchSystem2 == None:
+        if len(batchSystems) not in (3, 4):
             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
         maxMemoryForBatchSystem1 = float(batchSystems[2])
+        maxJobs = sys.maxint
+        if len(batchSystems) == 4:
+            maxJobs = int(batchSystems[3])
+        #Hack the max jobs argument
+        oldMaxJobs = config.attrib["max_jobs"]
+        config.attrib["max_jobs"] = str(maxJobs)
+        batchSystem1 = batchSystemConstructionFn(batchSystems[0])
+        config.attrib["max_jobs"] = str(oldMaxJobs)
+        batchSystem2 = batchSystemConstructionFn(batchSystems[1])
+        
+        #Throw up if we can't make the batch systems
+        if batchSystem1 == None or batchSystem2 == None:
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+        
         batchSystem = CombinedBatchSystem(config, batchSystem1, batchSystem2, lambda command, memory, cpu : memory <= maxMemoryForBatchSystem1)
     return batchSystem
 

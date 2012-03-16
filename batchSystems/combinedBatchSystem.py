@@ -66,4 +66,4 @@ class CombinedBatchSystem(AbstractBatchSystem):
             time.sleep(0.01)
     
     def getRescueJobFrequency(self):
-        return (self.batchSystem1.getRescueJobFrequency() + self.batchSystem2.getRescueJobFrequency())/2 + 1
+        return min(self.batchSystem1.getRescueJobFrequency(), self.batchSystem2.getRescueJobFrequency())
