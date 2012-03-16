@@ -155,8 +155,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 time.sleep(5)
         jobID = int(match.group(1))
         self.jobIDsToCpu[jobID] = cpu
-        logger.debug("Got the job id: %s from line: %s" % (jobID, line))
-        logger.debug("Issued the job command: %s with job id: %i " % (parasolCommand, jobID))
+        logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
+        logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID
     
     def killJobs(self, jobIDs):
