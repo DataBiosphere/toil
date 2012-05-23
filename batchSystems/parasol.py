@@ -43,7 +43,7 @@ def popenParasolCommand(command, runUntilSuccessful=True):
         output, nothing = process.communicate() #process.stdout.read().strip()
         exitValue = process.wait()
         if exitValue == 0:
-            return 0, output
+            return 0, output.split("\n")
         logger.critical("The following parasol command failed (exit value %s): %s" % (exitValue, command))
         if not runUntilSuccessful:
             return exitValue, None
@@ -143,8 +143,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Now keep going
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
-            lines = popenParasolCommand(parasolCommand)[1]
-            match = pattern.match(lines[0])
+            line = popenParasolCommand(parasolCommand)[1][0]
+            match = pattern.match(line)
             if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
                 break
             else:
