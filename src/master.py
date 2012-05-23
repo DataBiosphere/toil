@@ -242,7 +242,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
     newFileIsPresent = os.path.isfile(jobFile + ".new")
     
     if resultStatus == 0 and updatingFileIsPresent:
-        logger.critical("Despite the batch system claiming success there is a .updating file present: %s", jobFile + ".updating")
+        logger.critical("Despite the batch system claiming success there is an .updating file present: %s", jobFile + ".updating")
         
     if resultStatus == 0 and newFileIsPresent:
         logger.critical("Despite the batch system claiming success there is a .new file present: %s", jobFile + ".new")
@@ -344,7 +344,7 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
         logger.critical("Job %s with id %i is missing for the %i time" % (jobFile, jobID, timesMissing))
         if timesMissing == killAfterNTimesMissing:
             reissueMissingJobs_missingHash.pop(jobID)
-            jobsToKill.append(jobId)
+            jobsToKill.append(jobID)
     killJobs(jobsToKill, updatedJobFiles, jobBatcher)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
