@@ -43,7 +43,7 @@ def popenParasolCommand(command, runUntilSuccessful=True):
         exitValue = process.wait()
         if exitValue == 0:
             return 0, output
-        logger.critical("The following parasol command failed: %s" % command)
+        logger.critical("The following parasol command failed (exit value %s): %s" % (exitValue, command))
         if not runUntilSuccessful:
             return exitValue, None
         time.sleep(10)
