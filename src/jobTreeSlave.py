@@ -28,6 +28,7 @@ import xml.etree.ElementTree as ET
 import cPickle
 import traceback
 import time
+import socket
 
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
@@ -299,7 +300,7 @@ def main():
         tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
         
         if job.attrib["colour"] != "black": 
-            logger.critical("Exiting the slave because of a failed job")
+            logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
             system("mv %s %s" % (tempLogFile, job.attrib["log_file"])) #Copy back the job log file, because we saw failure
             break
         elif job.attrib.has_key("reportAllJobLogFiles"):
