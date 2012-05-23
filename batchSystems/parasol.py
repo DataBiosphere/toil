@@ -30,7 +30,7 @@ from Queue import Queue, Empty
 from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
-def popenParasolCommand(command, tmpFileForStdOut, runUntilSuccessful=True):
+def popenParasolCommand(command, runUntilSuccessful=True):
     """Issues a parasol command using popen to capture the output.
     If the command fails then it will try pinging parasol until it gets a response.
     When it gets a response it will recursively call the issue parasol command, repeating this pattern 
@@ -38,18 +38,17 @@ def popenParasolCommand(command, tmpFileForStdOut, runUntilSuccessful=True):
     The final exit value will reflect this.
     """
     while True:
-        fileHandle = open(tmpFileForStdOut, 'w')
-        process = subprocess.Popen(command, shell=True, stdout=fileHandle)
-        sts = os.waitpid(process.pid, 0)
-        fileHandle.close()
-        i = sts[1]
-        if i != 0 and runUntilSuccessful:
-            logger.critical("The following parasol command failed: %s" % command)
-            time.sleep(10)
-            logger.critical("Waited for a few seconds, will try again")
-        else:
-            return i
-        
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        output, nothing = process.communicate() #process.stdout.read().strip()
+        exitValue = process.wait()
+        if exitValue == 0:
+            return 0, output
+        logger.critical("The following parasol command failed: %s" % command)
+        if not runUntilSuccessful:
+            return exitValue, None
+        time.sleep(10)
+        logger.critical("Waited for a few seconds, will try again")
+
 def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
     """We use the parasol results to update the status of jobs, adding them
     to the list of updated jobs.
@@ -143,11 +142,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Now keep going
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
-            popenParasolCommand(parasolCommand, self.scratchFile)
-            fileHandle = open(self.scratchFile, 'r')
-            line = fileHandle.readline()
-            fileHandle.close()
-            match = pattern.match(line)
+            lines = popenParasolCommand(parasolCommand)[1]
+            match = pattern.match(lines[0])
             if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
                 break
             else:
@@ -165,8 +161,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         while True:
             for jobID in jobIDs:
-                i = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), tmpFileForStdOut=self.scratchFile, runUntilSuccessful=None)
-                logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, i))
+                exitValue = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
+                logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 return
@@ -178,39 +174,31 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         #Example issued job, first field is jobID, last is the results file
         #31816891 localhost  benedictpaten 2009/07/23 10:54:09 python ~/Desktop/out.txt
-        popenParasolCommand("%s -extended list jobs" % self.parasolCommand, self.config.attrib["scratch_file"])
-        fileHandle = open(self.config.attrib["scratch_file"], 'r')
-        line = fileHandle.readline()
         issuedJobs = set()
-        while line != '':
-            tokens = line.split()
-            if tokens[-1] == self.config.attrib["results_file"]:
-                jobID = int(tokens[0])
-                issuedJobs.add(jobID)
-            line = fileHandle.readline()
-        fileHandle.close()
+        for line in popenParasolCommand("%s -extended list jobs" % self.parasolCommand)[1]:
+            if line != '':
+                tokens = line.split()
+                if tokens[-1] == self.config.attrib["results_file"]:
+                    jobID = int(tokens[0])
+                    issuedJobs.add(jobID)
         return list(issuedJobs)
     
     def getRunningJobIDs(self):
         """Returns map of runnig jobIDs and the time they have been running.
         """
-        popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile), self.scratchFile)
-        fileHandle = open(self.scratchFile, 'r')
-        line = fileHandle.readline()
         #Example lines..
         #r 5410186 benedictpaten jobTreeSlave 1247029663 localhost
         #r 5410324 benedictpaten jobTreeSlave 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedJobIDs()
-        while line != '':
-            match = self.runningPattern.match(line)
-            if match != None:
-                jobID = int(match.group(1))
-                startTime = int(match.group(2))
-                if jobID in issuedJobs: #It's one of our jobs
-                    runningJobs[jobID] = time.time() - startTime
-            line = fileHandle.readline()
-        fileHandle.close()
+        for line in popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile), self.scratchFile)[1]:
+            if line != '':
+                match = self.runningPattern.match(line)
+                if match != None:
+                    jobID = int(match.group(1))
+                    startTime = int(match.group(2))
+                    if jobID in issuedJobs: #It's one of our jobs
+                        runningJobs[jobID] = time.time() - startTime
         return runningJobs
     
     def getUpdatedJob(self, maxWait):

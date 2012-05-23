@@ -309,15 +309,15 @@ def reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem):
     if maxJobDuration < idealJobTime * 10:
         logger.info("The max job duration is less than 10 times the ideal the job time, so I'm setting it to the ideal job time, sorry, but I don't want to crash your jobs because of limitations in jobTree ")
         maxJobDuration = idealJobTime * 10
-    jobsToKill = []
     if maxJobDuration < 10000000: #We won't both doing anything is the rescue time is more than 16 weeks.
+        jobsToKill = []
         runningJobs = batchSystem.getRunningJobIDs()
         for jobID in runningJobs.keys():
             if runningJobs[jobID] > maxJobDuration:
                 logger.critical("The job: %s has been running for: %s seconds, more than the max job duration: %s, we'll kill it" % \
                             (jobBatcher.getJob(jobID), str(runningJobs[jobID]), str(maxJobDuration)))
                 jobsToKill.append(jobID)
-    killJobs(jobsToKill, updatedJobFiles, jobBatcher)
+        killJobs(jobsToKill, updatedJobFiles, jobBatcher)
 
 reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimesMissing=3):
