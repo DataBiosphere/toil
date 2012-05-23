@@ -292,7 +292,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
     updatedJobFiles.add(jobFile) #Now we know the job is done we can add it to the list of updated job files
     logger.debug("Added job: %s to active jobs" % jobFile)
     
-def killJobs(jobsToKill, updatedJobFiles, jobBatcher):
+def killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem):
     """Kills the given set of jobs and then sends them for processing
     """
     if len(jobsToKill) > 0:
@@ -309,15 +309,15 @@ def reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem):
     if maxJobDuration < idealJobTime * 10:
         logger.info("The max job duration is less than 10 times the ideal the job time, so I'm setting it to the ideal job time, sorry, but I don't want to crash your jobs because of limitations in jobTree ")
         maxJobDuration = idealJobTime * 10
+    jobsToKill = []
     if maxJobDuration < 10000000: #We won't both doing anything is the rescue time is more than 16 weeks.
-        jobsToKill = []
         runningJobs = batchSystem.getRunningJobIDs()
         for jobID in runningJobs.keys():
             if runningJobs[jobID] > maxJobDuration:
                 logger.critical("The job: %s has been running for: %s seconds, more than the max job duration: %s, we'll kill it" % \
                             (jobBatcher.getJob(jobID), str(runningJobs[jobID]), str(maxJobDuration)))
                 jobsToKill.append(jobID)
-        killJobs(jobsToKill, updatedJobFiles, jobBatcher)
+        killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
 
 reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimesMissing=3):
@@ -345,7 +345,7 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
         if timesMissing == killAfterNTimesMissing:
             reissueMissingJobs_missingHash.pop(jobID)
             jobsToKill.append(jobID)
-    killJobs(jobsToKill, updatedJobFiles, jobBatcher)
+    killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
 def reportJobLogFiles(job):
