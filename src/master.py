@@ -525,7 +525,7 @@ def mainLoop(config, batchSystem):
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
         
-        if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds
+        if len(updatedJobFiles) == 0 and time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
             reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem)
             logger.info("Reissued any over long jobs")
             

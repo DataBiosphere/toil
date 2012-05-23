@@ -74,9 +74,7 @@ def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
         line = parasolResultsFileHandle.readline()
         if line != '':
             results = line.split()
-            if line[-1] == '\n':
-                line = line[:-1]
-            logger.debug("Parasol completed a job, this is what we got: %s" % line)
+            logger.debug("Parasol completed a job, this is what we got: %s" % line[-1])
             result = int(results[0])
             jobID = int(results[2])
             outputQueue1.put(jobID)
@@ -185,7 +183,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         return list(issuedJobs)
     
     def getRunningJobIDs(self):
-        """Returns map of runnig jobIDs and the time they have been running.
+        """Returns map of running jobIDs and the time they have been running.
         """
         #Example lines..
         #r 5410186 benedictpaten jobTreeSlave 1247029663 localhost
