@@ -103,7 +103,6 @@ class ParasolBatchSystem(AbstractBatchSystem):
         exitValue = popenParasolCommand("%s -results=%s freeBatch" % (self.parasolCommand, self.parasolResultsFile), False)[0]
         if exitValue != None:
             logger.critical("Could not reset the parasol batch %s" % self.parasolResultsFile)
-        popenParasolCommand(command, runUntilSuccessful)
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
         self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'r')
