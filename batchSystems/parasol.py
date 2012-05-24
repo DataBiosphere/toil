@@ -95,13 +95,15 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence    
         self.queuePattern = re.compile("q\s+([0-9]+)")
         self.runningPattern = re.compile("r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")
-        #The scratch file
-        self.scratchFile = self.config.attrib["scratch_file"]
         self.killJobs(self.getIssuedJobIDs()) #Kill any jobs on the current stack
         logger.info("Going to sleep for a few seconds to kill any existing jobs")
         time.sleep(5) #Give batch system a second to sort itself out.
         logger.info("Removed any old jobs from the queue")
         #Reset the job queue and results
+        exitValue = popenParasolCommand("%s -results=%s freeBatch" % (self.parasolCommand, self.parasolResultsFile), False)[0]
+        if exitValue != None:
+            logger.critical("Could not reset the parasol batch %s" % self.parasolResultsFile)
+        popenParasolCommand(command, runUntilSuccessful)
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
         self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'r')
@@ -190,7 +192,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #r 5410324 benedictpaten jobTreeSlave 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedJobIDs()
-        for line in popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile), self.scratchFile)[1]:
+        for line in popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile))[1]:
             if line != '':
                 match = self.runningPattern.match(line)
                 if match != None:
