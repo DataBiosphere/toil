@@ -32,7 +32,7 @@ class AbstractBatchSystem:
         """
         self.config = config
     
-    def issueJob(self, command, memory, cpu, logFile):
+    def issueJob(self, command, memory, cpu):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for

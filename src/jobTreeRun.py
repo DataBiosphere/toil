@@ -37,6 +37,7 @@ from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.src.master import createJob
 from jobTree.src.master import mainLoop
 from jobTree.src.master import writeJobs
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
 
 from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
@@ -181,14 +182,14 @@ def loadEnvironment(config):
     """Puts the environment in the pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
-    fileHandle = open(config.attrib["environment_file"], 'w')
+    fileHandle = open(getEnvironmentFileName(config.attrib["job_tree"]), 'w')
     cPickle.dump(os.environ, fileHandle)
     fileHandle.close()
     logger.info("Written the environment for the jobs to the environment file")
 
 def writeConfig(config):
     #Write the config file to disk
-    fileHandle = open(os.path.join(config.attrib["job_tree"], "config.xml"), 'w')
+    fileHandle = open(getConfigFileName(config.attrib["job_tree"]), 'w')
     tree = ET.ElementTree(config)
     tree.write(fileHandle)
     fileHandle.close()
@@ -198,15 +199,16 @@ def reloadJobTree(jobTree):
     """Load the job tree from a dir.
     """
     logger.info("The job tree appears to already exist, so we'll reload it")
-    assert os.path.isfile(os.path.join(jobTree, "config.xml")) #A valid job tree must contain the config file
-    assert os.path.isfile(os.path.join(jobTree, "environ.pickle")) #A valid job tree must contain a pickle file which encodes the path environment of the job
-    assert os.path.isfile(os.path.join(jobTree, "jobNumber.xml")) #A valid job tree must contain a file which is updated with the number of jobs that have been run.
-    assert os.path.isdir(os.path.join(jobTree, "jobs")) #A job tree must have a directory of jobs.
+    assert os.path.isfile(getConfigFileName(jobTree)) #A valid job tree must contain the config file
+    assert os.path.isfile(getEnvironmentFileName(jobTree)) #A valid job tree must contain a pickle file which encodes the path environment of the job
+    assert os.path.isdir(getJobFileDirName(jobTree)) #A job tree must have a directory of jobs.
+    
     config = ET.parse(os.path.join(jobTree, "config.xml")).getroot()
-    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
     config.attrib["log_level"] = getLogLevelString()
+    writeConfig(config) #This updates the on disk config file with the new logging setting
+    
     batchSystem = loadTheBatchSystem(config)
-    writeConfig(config) #This updates the on disk config file
+    config.attrib["job_file_tree"] = TempFileTree(getJobFileDirName(jobTree))
     logger.info("Reloaded the jobtree")
     return config, batchSystem
 
@@ -217,12 +219,7 @@ def createJobTree(options):
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["job_tree"] = options.jobTree
-    config.attrib["environment_file"] = os.path.join(options.jobTree, "environ.pickle")
-    config.attrib["job_number_file"] = os.path.join(options.jobTree, "jobNumber.xml")
-    config.attrib["job_file_dir"] = os.path.join(options.jobTree, "jobs")
-    config.attrib["results_file"] = os.path.join(options.jobTree, "results.txt")
     config.attrib["parasol_command"] = options.parasolCommand
-    config.attrib["scratch_file"] = os.path.join(options.jobTree, "scratch.txt")
     config.attrib["retry_count"] = str(int(options.retryCount))
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
@@ -232,10 +229,11 @@ def createJobTree(options):
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
     config.attrib["max_jobs"] = str(int(options.maxJobs))
     config.attrib["max_threads"] = str(int(options.maxThreads))
-    config.attrib["reportAllJobLogFiles"] = str(int(options.reportAllJobLogFiles))
+    if options.reportAllJobLogFiles:
+        config.attrib["reportAllJobLogFiles"] = ""
     if options.stats:
-        config.attrib["stats"] = os.path.join(options.jobTree, "stats.xml")
-        fileHandle = open(config.attrib["stats"], 'w')
+        config.attrib["stats"] = ""
+        fileHandle = open(getStatsFileName(options.jobTree), 'w')
         fileHandle.write("<stats>")
         fileHandle.close()
     #Load the batch system.
@@ -248,13 +246,8 @@ def createJobTree(options):
     
     writeConfig(config)
     
-    #Set up the jobNumber file
-    fileHandle = open(config.attrib["job_number_file"], 'w')
-    ET.ElementTree(ET.Element("job_number", { "job_number":'0' })).write(fileHandle)
-    fileHandle.close()
-    
     #Setup the temp file tree.
-    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
+    config.attrib["job_file_tree"] = TempFileTree(getJobFileDirName(options.jobTree))
     
     logger.info("Finished the job tree setup")
     return config, batchSystem

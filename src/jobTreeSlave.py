@@ -215,60 +215,24 @@ def main():
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
     from jobTree.src.master import readJob
-    from jobTree.src.master import getSlaveLogFileName, getLogFileName, getStatsFileName    
+    from jobTree.src.master import getSlaveLogFileName, getLogFileName, getJobStatsFileName, getGlobalTempDirName  
+    from jobTree.src.jobTreeRun import getEnvironmentFileName, getConfigFileName
     from sonLib.bioio import system
     
-    ##########################################
-    #Construct the arguments.
-    ##########################################
-    
-    parser = getBasicOptionParser("usage: %prog [options]", "%prog 0.1")
-    
-  
-    parser.add_option("--job", dest="jobFile", 
-                      help="Job file containing command to run",
-                      default="None")
-    
-    parser.add_option("--jobTree", dest="jobTree", 
-                      help="Location of the job tree",
-                      default="None")
-    
-    options, args = parseBasicOptions(parser)
-    assert len(args) == 0
-
     ##########################################
     #Parse the job.
     ##########################################
     
-    job = readJob(options.jobFile)
-    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
-    
-    ##########################################
-    #Setup the logging
-    ##########################################
-    
-    #Setup the logging
-    setLogLevel(config.attrib["log_level"])
-    addLoggingFileHandler(getSlaveLogFileName(job), rotatingLogging=False)
-    logger.info("Parsed arguments and set up logging")
-    
-    ##########################################
-    #Setup the stats, if requested
-    ##########################################
-    
-    if config.attrib.has_key("stats"):
-        startTime = time.time()
-        startClock = getTotalCpuTime()
-        stats = ET.Element("slave")
-    else:
-        stats = None
+    jobTreePath = sys.argv[1]
+    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
+    job = readJob(sys.argv[2])
     
     ##########################################
     #Load the environment for the job
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = open(config.attrib["environment_file"], 'r')
+    fileHandle = open(getEnvironmentFileName(jobTreePath), 'r')
     environment = cPickle.load(fileHandle)
     fileHandle.close()
     for i in environment:
@@ -281,7 +245,6 @@ def main():
                 sys.path.append(e)
     #os.environ = environment
     #os.putenv(key, value)
-    logger.info("Loaded the environment for the process")
         
     ##########################################
     #Setup the temporary directories.
@@ -294,100 +257,142 @@ def main():
     os.chmod(localTempDir, 0777)
     
     ##########################################
-    #Run the script.
+    #Setup the logging
     ##########################################
     
-    maxTime = float(config.attrib["job_time"])
-    assert maxTime > 0.0
-    assert maxTime < sys.maxint
-    jobToRun = job.find("followOns").findall("followOn")[-1]
-    memoryAvailable = int(jobToRun.attrib["memory"])
-    cpuAvailable = int(jobToRun.attrib["cpu"])
-    startTime = time.time()
-    while True:
-        tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir, config)
+    #Setup the logging
+    setLogLevel(config.attrib["log_level"])
+    tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
+    slaveHandler = addLoggingFileHandler(tempSlaveLogFile, rotatingLogging=False)
+    logger.info("Parsed arguments and set up logging")
+    
+    try: #Try loop for slave logging
+        ##########################################
+        #Setup the stats, if requested
+        ##########################################
         
-        if job.attrib["colour"] != "black": 
-            logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
-            system("mv %s %s" % (tempLogFile, getLogFileName(job))) #Copy back the job log file, because we saw failure
-            break
-        elif config.attrib.has_key("reportAllJobLogFiles"):
-            logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
-            #Copy across the log file
-            system("mv %s %s" % (tempLogFile, getLogFileName(job)))
-            break
+        if config.attrib.has_key("stats"):
+            startTime = time.time()
+            startClock = getTotalCpuTime()
+            stats = ET.Element("slave")
+        else:
+            stats = None
         
-        childrenNode = job.find("children")
-        childrenList = childrenNode.findall("child")
-        #childRuntime = sum([ float(child.attrib["time"]) for child in childrenList ])
-            
-        if len(childrenList) >= 2: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
-            logger.info("No more jobs can run in series by this slave, its got %i children" % len(childrenList))
-            break
+        ##########################################
+        #Run the script.
+        ##########################################
         
-        if time.time() - startTime > maxTime:
-            logger.info("We are breaking because the maximum time the job should run for has been exceeded")
-            break
-        
-        followOns = job.find("followOns")
-        while len(childrenList) > 0:
-            child = childrenList.pop()
-            childrenNode.remove(child)
-            ET.SubElement(followOns, "followOn", child.attrib.copy())
-       
-        assert len(childrenNode.findall("child")) == 0
-        
-        if len(followOns.findall("followOn")) == 0:
-            logger.info("No more jobs can run by this slave as we have exhausted the follow ons")
-            break
-        
-        #Get the next job and see if we have enough cpu and memory to run it..
+        maxTime = float(config.attrib["job_time"])
+        assert maxTime > 0.0
+        assert maxTime < sys.maxint
         jobToRun = job.find("followOns").findall("followOn")[-1]
-        if int(jobToRun.attrib["memory"]) > memoryAvailable:
-            logger.info("We need more memory for the next job, so finishing")
-            break
-        if int(jobToRun.attrib["cpu"]) > cpuAvailable:
-            logger.info("We need more cpus for the next job, so finishing")
-            break
+        memoryAvailable = int(jobToRun.attrib["memory"])
+        cpuAvailable = int(jobToRun.attrib["cpu"])
+        startTime = time.time()
+        while True:
+            tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir, config)
+            
+            if job.attrib["colour"] != "black": 
+                logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
+                system("mv %s %s" % (tempLogFile, getLogFileName(job))) #Copy back the job log file, because we saw failure
+                break
+            elif config.attrib.has_key("reportAllJobLogFiles"):
+                logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
+                #Copy across the log file
+                system("mv %s %s" % (tempLogFile, getLogFileName(job)))
+                break
+            
+            childrenNode = job.find("children")
+            childrenList = childrenNode.findall("child")
+            #childRuntime = sum([ float(child.attrib["time"]) for child in childrenList ])
+                
+            if len(childrenList) >= 2: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
+                logger.info("No more jobs can run in series by this slave, its got %i children" % len(childrenList))
+                break
+            
+            if time.time() - startTime > maxTime:
+                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
+                break
+            
+            followOns = job.find("followOns")
+            while len(childrenList) > 0:
+                child = childrenList.pop()
+                childrenNode.remove(child)
+                ET.SubElement(followOns, "followOn", child.attrib.copy())
+           
+            assert len(childrenNode.findall("child")) == 0
+            
+            if len(followOns.findall("followOn")) == 0:
+                logger.info("No more jobs can run by this slave as we have exhausted the follow ons")
+                break
+            
+            #Get the next job and see if we have enough cpu and memory to run it..
+            jobToRun = job.find("followOns").findall("followOn")[-1]
+            if int(jobToRun.attrib["memory"]) > memoryAvailable:
+                logger.info("We need more memory for the next job, so finishing")
+                break
+            if int(jobToRun.attrib["cpu"]) > cpuAvailable:
+                logger.info("We need more cpus for the next job, so finishing")
+                break
+            
+            ##Updated the job so we can start the next loop cycle
+            job.attrib["colour"] = "grey"
+            writeJobs([ job ])
+            logger.info("Updated the status of the job to grey and starting the next job")
         
-        ##Updated the job so we can start the next loop cycle
-        job.attrib["colour"] = "grey"
+        #Write back the job file with the updated jobs, using the checkpoint method.
         writeJobs([ job ])
-        logger.info("Updated the status of the job to grey and starting the next job")
-    
-    #Write back the job file with the updated jobs, using the checkpoint method.
-    writeJobs([ job ])
-    logger.info("Written out an updated job file")
-    
-    logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Written out an updated job file")
+        
+        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
+        
+        ##########################################
+        #Finish up the stats
+        ##########################################
+        
+        if stats != None:
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            stats.attrib["time"] = str(time.time() - startTime)
+            stats.attrib["clock"] = str(totalCpuTime - startClock)
+            stats.attrib["memory"] = str(totalMemoryUsage)
+            fileHandle = open(getJobStatsFileName(job), 'w')
+            ET.ElementTree(stats).write(fileHandle)
+            fileHandle.close()
+        
+        ##########################################
+        #Cleanup global files at the end of the chain
+        ##########################################
+        
+        if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
+            nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "0")
+            assert os.path.exists(nestedGlobalTempDir)
+            system("rm -rf %s" % nestedGlobalTempDir)
+            if os.path.exists(getLogFileName(job)):
+                os.remove(getLogFileName(job))
+            if os.path.exists(slaveLogFileName(job)):
+                os.remove(slaveLogFileName(job))
+            if stats != None:
+                assert len(os.listdir(getGlobalTempDir)) == 2 #The job file and the stats file
+            else:
+                assert len(os.listdir(getGlobalTempDir)) == 1 #Just the job file
+            
+    except: #Case that something goes wrong in slave
+        ##########################################
+        #Where slave goes wrong
+        ##########################################
+        
+        slaveHandler.flush()
+        slaveHandler.close()
+        system("mv %s %s" % (tempSlaveLogFile, getSlaveLogFileName(job)))
+        system("rm -rf %s" % localSlaveTempDir)
+        return 0
     
     ##########################################
-    #Cleanup the temporary directory
+    #Normal cleanup
     ##########################################
     
+    slaveHandler.close()
     system("rm -rf %s" % localSlaveTempDir)
-    
-    ##########################################
-    #Finish up the stats
-    ##########################################
-    
-    if stats != None:
-        totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-        stats.attrib["time"] = str(time.time() - startTime)
-        stats.attrib["clock"] = str(totalCpuTime - startClock)
-        stats.attrib["memory"] = str(totalMemoryUsage)
-        fileHandle = open(getStatsFileName(job), 'w')
-        ET.ElementTree(stats).write(fileHandle)
-        fileHandle.close()
-    
-    ##########################################
-    #Cleanup global files at the end of the chain
-    ##########################################
-    
-    #if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
-    #    nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "0")
-    #    assert os.path.exists(nestedGlobalTempDir)
-    #    system("rm -rf %s" % nestedGlobalTempDir)
     
 def _test():
     import doctest      

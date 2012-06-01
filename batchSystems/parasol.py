@@ -30,6 +30,7 @@ from Queue import Queue, Empty
 
 from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from jobTree.src.master import getParasolResultsFileName
 
 def popenParasolCommand(command, runUntilSuccessful=True):
     """Issues a parasol command using popen to capture the output.
@@ -89,7 +90,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         AbstractBatchSystem.__init__(self, config) #Call the parent constructor
         #Keep the name of the results file for the pstat2 command..
         self.parasolCommand = config.attrib["parasol_command"]
-        self.parasolResultsFile = config.attrib["results_file"]
+        self.parasolResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
         self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence    
@@ -117,12 +118,11 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.maxCpus = int(config.attrib["max_jobs"])
         self.jobIDsToCpu = {}
          
-    def issueJob(self, command, memory, cpu, logFile):
+    def issueJob(self, command, memory, cpu):
         """Issues parasol with job commands.
         """
         assert memory != None
         assert cpu != None
-        assert logFile != None
         pattern = re.compile("your job ([0-9]+).*")
         parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
         #Deal with the cpus

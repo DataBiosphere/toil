@@ -131,7 +131,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
-        self.scratchFile = self.config.attrib["scratch_file"]
         self.currentjobs = set()
         self.obtainSystemConstants()
         self.jobIDs = dict()

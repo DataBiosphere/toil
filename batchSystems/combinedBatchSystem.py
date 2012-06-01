@@ -35,11 +35,11 @@ class CombinedBatchSystem(AbstractBatchSystem):
         self.batchSystem2 = batchSystem2
         self.batchSystemChoiceFn = batchSystemChoiceFn
 
-    def issueJob(self, command, memory, cpu, logFile):
+    def issueJob(self, command, memory, cpu):
         if self.batchSystemChoiceFn(command, memory, cpu):
-            return self.batchSystem1.issueJob(command, memory, cpu, logFile)
+            return self.batchSystem1.issueJob(command, memory, cpu)
         else:
-            return self.batchSystem2.issueJob(command, memory, cpu, logFile)
+            return self.batchSystem2.issueJob(command, memory, cpu)
         
     def killJobs(self, jobIDs):
         self.batchSystem1.killJobs(jobIDs)

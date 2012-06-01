@@ -36,6 +36,9 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+
+
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.
     """
@@ -83,8 +86,8 @@ def main():
     #Read the stats and config
     ##########################################  
     
-    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
-    stats = ET.parse(os.path.join(options.jobTree, "stats.xml")).getroot()
+    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
+    stats = ET.parse(getStatsFileName(options.jobTree)).getroot()
     
     ##########################################
     #Collate the stats and report

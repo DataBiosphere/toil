@@ -35,6 +35,7 @@ from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 import jobTree.scriptTree.scriptTree
 
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
 from jobTree.src.master import readJob
 
 def parseJobFile(absFileName):
@@ -94,20 +95,14 @@ def main():
     logger.info("Checking if we have files for job tree")
     assert options.jobTree != None
     assert os.path.isdir(options.jobTree) #The given job dir tree must exist.
-    assert os.path.isfile(os.path.join(options.jobTree, "config.xml")) #A valid job tree must contain the config gile
-    assert os.path.isdir(os.path.join(options.jobTree, "jobs")) #A job tree must have a directory of jobs.
-    
-    ##########################################
-    #Read the total job number
-    ##########################################  
-    
-    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
+    assert os.path.isfile(getConfigFileName(options.jobTree)) #A valid job tree must contain the config gile
+    assert os.path.isdir(getJobFileDirName(options.jobTree)) #A job tree must have a directory of jobs.
     
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    jobFiles = TempFileTree(config.attrib["job_file_dir"]).listFiles()
+    jobFiles = TempFileTree(getJobFileDirName(options.jobTree)).listFiles()
     jobFiles = [ (job, jobFile) for (job, jobFile) in zip([  parseJobFile(absFileName) for absFileName in jobFiles ], jobFiles) if job != None ]
     colours = {}
     

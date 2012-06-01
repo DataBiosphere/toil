@@ -41,27 +41,21 @@ class Worker(Thread):
         self.outputQueue = outputQueue
         
     def run(self):
+        fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
         while True:
             args = self.inputQueue.get()
             if args == None: #Case where we are reducing threads for max number of CPUs
                 self.inputQueue.task_done()
                 return
-            command, logFile, jobID, threadsToStart = args
+            command, jobID, threadsToStart = args
             startTime = time.time()
             logger.info("Starting a job with ID %s" % jobID)
-            #fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
-            tempLogFile = getTempFile()
-            fileHandle = open(tempLogFile, 'w')
             Worker.lock.acquire()
             try:
-                process = subprocess.Popen(command, shell=True, stdout = fileHandle, stderr = fileHandle)
+                process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
             finally:
                 Worker.lock.release()
             sts = os.waitpid(process.pid, 0)
-            fileHandle.close()
-            #fnull.close()
-            if os.path.exists(tempLogFile):
-                system("mv %s %s" % (tempLogFile, logFile))
             self.outputQueue.put((jobID, sts[1], threadsToStart))
             self.inputQueue.task_done()
             logger.info("Finished a job with ID %s in time %s" % (jobID, time.time() - startTime))
@@ -89,12 +83,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             worker.setDaemon(True)
             worker.start()
 
-    def issueJob(self, command, memory, cpu, logFile):
+    def issueJob(self, command, memory, cpu):
         """Runs the jobs right away.
         """
         assert memory != None
         assert cpu != None
-        assert logFile != None
         if cpu > self.maxCpus:
             raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
         assert(cpu <= self.maxCpus)
@@ -108,7 +101,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             cpu -= self.cpusPerThread
             k += 1
         assert k < self.maxThreads
-        self.inputQueue.put((command, logFile, self.jobIndex, k))
+        self.inputQueue.put((command, self.jobIndex, k))
         self.jobIndex += 1
         return i
     
@@ -160,20 +153,18 @@ class BadWorker(Thread):
         self.outputQueue = outputQueue
         
     def run(self):
+        fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
         while True:
             args = self.inputQueue.get()
             if args == None: #Case where we are reducing threads for max number of CPUs
                 self.inputQueue.task_done()
                 return
-            command, logFile, jobID, threadsToStart = args
-            assert logFile != None
-            fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
+            command, jobID, threadsToStart = args
             #Run to first calculate the runtime..
             process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
             if random.choice((False, True)):
                 time.sleep(random.random()*5) #Sleep up to 5 seconds before trying to kill it
                 process.kill()
             process.wait()
-            fnull.close()
             self.outputQueue.put((jobID, process.returncode, threadsToStart))
             self.inputQueue.task_done()
