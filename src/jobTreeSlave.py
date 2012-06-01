@@ -384,10 +384,10 @@ def main():
     #Cleanup global files at the end of the chain
     ##########################################
     
-    if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
-        nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "0")
-        assert os.path.exists(nestedGlobalTempDir)
-        system("rm -rf %s" % nestedGlobalTempDir)
+    #if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
+    #    nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "0")
+    #    assert os.path.exists(nestedGlobalTempDir)
+    #    system("rm -rf %s" % nestedGlobalTempDir)
     
 def _test():
     import doctest      
