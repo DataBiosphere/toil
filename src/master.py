@@ -240,6 +240,13 @@ def restartFailedJobs(config, jobFiles):
             if job.attrib["colour"] == "red":
                 job.attrib["colour"] = "grey"
             writeJobs([ job ])
+            
+def reportSlaveJobLogFile(job):
+    logger.critical("The log file of the slave for the job")
+    if os.path.exists(getSlaveLogFileName(job)):
+        logFile(getSlaveLogFileName(job), logger.critical) #We log the job log file in the main loop
+    else:
+        logger.critical("Slave file does not exist: %s" % getSlaveLogFileName(job))
 
 def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
     """Function reads a processed job file and updates it state.
@@ -264,6 +271,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
             os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
             assert os.path.isfile(jobFile)
             job = readJob(jobFile) #The original must still be there.
+            reportSlaveJobLogFile(job)
             assert job.find("children").find("child") == None #The original can not reflect the end state of the job.
             assert int(job.attrib["black_child_count"]) == int(job.attrib["child_count"])
             job.attrib["colour"] = "red" #It failed, so we mark it so and continue.
@@ -276,6 +284,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
                     os.remove(jobFile)
                 os.rename(jobFile + ".new", jobFile)
                 job = readJob(jobFile)
+                reportSlaveJobLogFile(job)
                 if job.attrib["colour"] == "grey": #The job failed while preparing to run another job on the slave
                     assert job.find("children").find("child") == None #File 
                     job.attrib["colour"] = "red"
@@ -285,6 +294,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
                 logger.critical("There was no valid .new file %s" % jobFile)
                 assert os.path.isfile(jobFile)
                 job = readJob(jobFile) #The job may have failed before or after creating this file, we check the state.
+                reportSlaveJobLogFile(job)
                 if job.attrib["colour"] == "black": #The job completed okay, so we'll keep it
                     logger.critical("Despite the batch system job failing, the job appears to have completed okay")
                 else:
@@ -355,18 +365,18 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
             jobsToKill.append(jobID)
     killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
-
+    
 def reportJobLogFiles(job):
-    logger.critical("The log file of the job")
-    if os.path.exists(getLogFileName(job)):
-        logFile(getLogFileName(job), logger.critical)
-    else:
-        logger.critical("Log file does not exist: %s" % getLogFileName(job))
     logger.critical("The log file of the slave for the job")
     if os.path.exists(getSlaveLogFileName(job)):
         logFile(getSlaveLogFileName(job), logger.critical) #We log the job log file in the main loop
     else:
         logger.critical("Slave file does not exist: %s" % getSlaveLogFileName(job))
+    logger.critical("The log file of the job")
+    if os.path.exists(getLogFileName(job)):
+        logFile(getLogFileName(job), logger.critical)
+    else:
+        logger.critical("Log file does not exist: %s" % getLogFileName(job))
     
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.

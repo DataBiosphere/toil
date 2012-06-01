@@ -82,6 +82,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     #Temp file dirs for job.
     tempJob.attrib["local_temp_dir"] = localTempDir
     depth = len(job.find("followOns").findall("followOn"))
+    assert depth >= 1
     tempJob.attrib["global_temp_dir"] = os.path.join(getGlobalTempDirName(job), str(depth))
     if not os.path.isdir(tempJob.attrib["global_temp_dir"]): #Ensures that the global temp dirs of each level are kept separate.
         os.mkdir(tempJob.attrib["global_temp_dir"])
@@ -261,9 +262,11 @@ def main():
     ##########################################
     
     #Setup the logging
-    setLogLevel(config.attrib["log_level"])
     tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
-    slaveHandler = addLoggingFileHandler(tempSlaveLogFile, rotatingLogging=False)
+    slaveHandle = open(tempSlaveLogFile, 'w')
+    sys.stderr = slaveHandle 
+    sys.stdout = slaveHandle
+    setLogLevel(config.attrib["log_level"])
     logger.info("Parsed arguments and set up logging")
     
     try: #Try loop for slave logging
@@ -364,7 +367,7 @@ def main():
         ##########################################
         
         if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
-            nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "0")
+            nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "1")
             assert os.path.exists(nestedGlobalTempDir)
             system("rm -rf %s" % nestedGlobalTempDir)
             if os.path.exists(getLogFileName(job)):
@@ -380,18 +383,18 @@ def main():
         ##########################################
         #Where slave goes wrong
         ##########################################
-        
-        slaveHandler.flush()
-        slaveHandler.close()
+        traceback.print_exc(file = slaveHandle)
+        slaveHandle.flush()
+        slaveHandle.close()
         system("mv %s %s" % (tempSlaveLogFile, getSlaveLogFileName(job)))
         system("rm -rf %s" % localSlaveTempDir)
-        return 1
+        raise RuntimeError()
     
     ##########################################
     #Normal cleanup
     ##########################################
     
-    slaveHandler.close()
+    slaveHandle.close()
     system("rm -rf %s" % localSlaveTempDir)
     return 0
     
