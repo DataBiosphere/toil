@@ -385,7 +385,7 @@ def main():
         slaveHandler.close()
         system("mv %s %s" % (tempSlaveLogFile, getSlaveLogFileName(job)))
         system("rm -rf %s" % localSlaveTempDir)
-        return 0
+        return 1
     
     ##########################################
     #Normal cleanup

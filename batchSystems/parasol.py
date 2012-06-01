@@ -178,7 +178,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         for line in popenParasolCommand("%s -extended list jobs" % self.parasolCommand)[1]:
             if line != '':
                 tokens = line.split()
-                if tokens[-1] == self.config.attrib["results_file"]:
+                if tokens[-1] == self.parasolResultsFile:
                     jobID = int(tokens[0])
                     issuedJobs.add(jobID)
         return list(issuedJobs)
