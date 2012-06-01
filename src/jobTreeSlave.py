@@ -393,6 +393,7 @@ def main():
     
     slaveHandler.close()
     system("rm -rf %s" % localSlaveTempDir)
+    return 0
     
 def _test():
     import doctest      
