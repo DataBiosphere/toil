@@ -44,23 +44,35 @@ from jobTree.src.bioio import workflowRootPath
 from threading import Thread, Lock
 from Queue import Queue, Empty
 
+def getJobFileName(job):
+    return os.path.join(job.attrib["global_temp_dir"], "job.xml")
+
+def getSlaveLogFileName(job):
+    return os.path.join(job.attrib["global_temp_dir"], "slave_log.txt")
+    
+def getLogFileName(job):
+    return os.path.join(job.attrib["global_temp_dir"], "log.txt")
+    
+def getGlobalTempDirName(job):
+    return job.attrib["global_temp_dir"]
+    
+def getStatsFileName(job):
+    return os.path.join(job.attrib["global_temp_dir"], "stats.txt")
+
 def createJob(attrib, parent, config):
     """Creates an XML record for the job in a file within the hierarchy of jobs.
     """
     job = ET.Element("job")
-    job.attrib["file"] = config.attrib["job_file_dir"].getTempFile(".xml")
+    job.attrib["global_temp_dir"] = config.attrib["job_file_dir"].getTempDirectory()
     job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
     job.attrib["colour"] = "grey"
     followOns = ET.SubElement(job, "followOns")
     ET.SubElement(followOns, "followOn", attrib.copy())
     if parent != None:
         job.attrib["parent"] = parent
-    job.attrib["child_count"] = str(0)
-    job.attrib["black_child_count"] = str(0)
+    job.attrib["child_count"] = "0"
+    job.attrib["black_child_count"] = "0"
     job.attrib["log_level"] = getLogLevelString()
-    job.attrib["log_file"] = config.attrib["log_file_dir"].getTempFile(".log") #The log file for the actual command
-    job.attrib["slave_log_file"] = config.attrib["slave_log_file_dir"].getTempFile(".log") #The log file for the slave
-    job.attrib["global_temp_dir"] = config.attrib["temp_dir_dir"].getTempDirectory()
     job.attrib["job_creation_time"] = str(time.time())
     job.attrib["environment_file"] = config.attrib["environment_file"]
     job.attrib["job_time"] = config.attrib["job_time"]
@@ -69,20 +81,15 @@ def createJob(attrib, parent, config):
     job.attrib["default_cpu"] = config.attrib["default_cpu"]
     if bool(int(config.attrib["reportAllJobLogFiles"])):
         job.attrib["reportAllJobLogFiles"] = ""
-    if config.attrib.has_key("stats"):
-        job.attrib["stats"] = config.attrib["log_file_dir"].getTempFile(".xml") #The file to store stats in..
     ET.SubElement(job, "children") 
+    if config.attrib.has_key("stats"):
+        job.attrib["stats"] = ""
     return job
 
 def deleteJob(job, config):
     """Removes an old job, including any log files.
     """
-    config.attrib["log_file_dir"].destroyTempFile(job.attrib["log_file"]) #These files must exist through out for the temp file tree to survive
-    config.attrib["slave_log_file_dir"].destroyTempFile(job.attrib["slave_log_file"])
-    config.attrib["temp_dir_dir"].destroyTempDir(job.attrib["global_temp_dir"])
-    config.attrib["job_file_dir"].destroyTempFile(job.attrib["file"])
-    if config.attrib.has_key("stats"):
-        config.attrib["log_file_dir"].destroyTempFile(job.attrib["stats"])
+    config.attrib["job_file_dir"].destroyTempDir(job.attrib["global_temp_dir"])
         
 def writeJob(job, jobFileName):
     tree = ET.ElementTree(job)
@@ -108,27 +115,27 @@ def writeJobs(jobs):
         return
     assert len(set(jobs)) == len(jobs)
     #Create a unique updating name using the first file in the list
-    fileName = jobs[0].attrib["file"]
+    fileName = getJobFileName(jobs[0])
     updatingFile = fileName + ".updating"
     
     #The existence of the the updating file signals we are in the process of creating an update to the state of the files
     assert not os.path.isfile(updatingFile)
     fileHandle = open(updatingFile, 'w')
-    fileHandle.write(" ".join([ job.attrib["file"] + ".new" for job in jobs ]))
+    fileHandle.write(" ".join([ getJobFileName(job) + ".new" for job in jobs ]))
     fileHandle.close()
     
     #Update the current files.
     for job in jobs:
-        newFileName = job.attrib["file"] + ".new"
+        newFileName = getJobFileName(job) + ".new"
         assert not os.path.isfile(newFileName)
         writeJob(job, newFileName)
        
     os.remove(updatingFile) #Remove the updating file, now the new files represent the valid state
     
     for job in jobs:
-        if os.path.isfile(job.attrib["file"]):
-            os.remove(job.attrib["file"])
-        os.rename(job.attrib["file"] + ".new", job.attrib["file"])
+        if os.path.isfile(getJobFileName(job)):
+            os.remove(getJobFileName(job))
+        os.rename(getJobFileName(job) + ".new", getJobFileName(job))
         
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
@@ -152,9 +159,9 @@ class JobBatcher:
         assert memory < sys.maxint
         if cpu > self.maxCpus:
             raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
-        jobFile = job.attrib["file"]
+        jobFile = getJobFileName(job)
         jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
-        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, job.attrib["slave_log_file"])
+        jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, getSlaveLogFileName(job))
         self.jobIDsToJobsHash[jobID] = jobFile
         logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
     
@@ -197,23 +204,19 @@ def fixJobsList(config, jobFiles):
     """Traverses through and finds any .old files, using there saved state to recover a 
     valid state of the job tree.
     """
-    updatingFiles = []
-    for fileName in jobFiles[:]:
-        if "updating" in fileName:
-            updatingFiles.append(fileName)
-    
-    for updatingFileName in updatingFiles: #Things crashed while the state was updating, so we should remove the 'updating' and '.new' files
-        fileHandle = open(updatingFileName, 'r')
-        for fileName in fileHandle.readline().split():
-            if os.path.isfile(fileName):
-                config.attrib["job_file_dir"].destroyTempFile(fileName)
-                jobFiles.remove(fileName)
-        fileHandle.close()
-        config.attrib["job_file_dir"].destroyTempFile(updatingFileName)
-        jobFiles.remove(updatingFileName)
+    for updatingFileName in jobFiles[:]:
+        if ".updating" == updatingFileName[-9:]: #Things crashed while the state was updating, so we should remove the 'updating' and '.new' files
+            fileHandle = open(updatingFileName, 'r')
+            for fileName in fileHandle.readline().split():
+                if os.path.isfile(fileName):
+                    config.attrib["job_file_dir"].destroyTempFile(fileName)
+                    jobFiles.remove(fileName)
+            fileHandle.close()
+            config.attrib["job_file_dir"].destroyTempFile(updatingFileName)
+            jobFiles.remove(updatingFileName)
     
     for fileName in jobFiles[:]: #Else any '.new' files will be switched in place of the original file. 
-        if fileName[-3:] == 'new':
+        if fileName[-4:] == '.new':
             originalFileName = fileName[:-4]
             os.rename(fileName, originalFileName)
             jobFiles.remove(fileName)
@@ -227,7 +230,7 @@ def restartFailedJobs(config, jobFiles):
     for absFileName in jobFiles:
         if os.path.isfile(absFileName):
             job = readJob(absFileName)
-            logger.info("Restarting job: %s" % job.attrib["file"])
+            logger.info("Restarting job: %s" % getJobFileName(job))
             job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
             if job.attrib["colour"] == "red":
                 job.attrib["colour"] = "grey"
@@ -350,9 +353,15 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
 
 def reportJobLogFiles(job):
     logger.critical("The log file of the job")
-    logFile(job.attrib["log_file"], logger.critical)
+    if os.path.exists(getLogFileName(job)):
+        logFile(getLogFileName(job), logger.critical)
+    else:
+        logger.critical("Log file does not exist: %s" % getLogFileName(job))
     logger.critical("The log file of the slave for the job")
-    logFile(job.attrib["slave_log_file"], logger.critical) #We log the job log file in the main loop
+    if os.path.exists(getSlaveLogFileName(job)):
+        logFile(getSlaveLogFileName(job), logger.critical) #We log the job log file in the main loop
+    else:
+        logger.critical("Slave file does not exist: %s" % getSlaveLogFileName(job))
     
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
@@ -367,7 +376,7 @@ def mainLoop(config, batchSystem):
     assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
     logger.info("Checked batch system has no running jobs and no updated jobs")
     
-    jobFiles = config.attrib["job_file_dir"].listFiles()
+    jobFiles = [ jobFile for jobFile in config.attrib["job_file_dir"].listFiles() if jobFile[-4:] == ".job" ]
     logger.info("Got a list of job files")
     
     #Repair the job tree using any .old files
@@ -410,20 +419,8 @@ def mainLoop(config, batchSystem):
             job = readJob(jobFile)
             assert job.attrib["colour"] is not "blue"
             
-            ##Check the log files exist, because they must ultimately be cleaned up by their respective file trees.
-            def checkFileExists(fileName, type):
-                if not os.path.isfile(fileName): #We need to keep these files in existence.
-                    open(fileName, 'w').close()
-                    logger.critical("The file %s of type %s for job %s had disappeared" % (fileName, type, jobFile))
-            checkFileExists(job.attrib["log_file"], "log_file")
-            checkFileExists(job.attrib["slave_log_file"], "slave_log_file")
-            if stats:
-                checkFileExists(job.attrib["stats"], "stats")
-            
             def reissueJob(job):
                 #Reset the log files for the job.
-                open(job.attrib["slave_log_file"], 'w').close()
-                open(job.attrib["log_file"], 'w').close()
                 assert job.attrib["colour"] == "grey"
                 jobBatcher.issueJob(job)
                 
@@ -435,13 +432,12 @@ def mainLoop(config, batchSystem):
             if job.attrib["colour"] == "grey": #Get ready to start the job
                 reissueJob(job)
             elif job.attrib["colour"] == "black": #Job has finished okay
-                logger.debug("Job: %s has finished okay" % job.attrib["file"])
+                logger.debug("Job: %s has finished okay" % getJobFileName(job))
                 if reportAllJobLogFiles:
                     reportJobLogFiles(job)
                 #Deal with stats
                 if stats:
-                    system("cat %s >> %s" % (job.attrib["stats"], config.attrib["stats"]))
-                    open(job.attrib["stats"], 'w').close() #Reset the stats file
+                    system("cat %s >> %s" % (getStatsFileName(job), config.attrib["stats"]))
                 if job.find("messages") != None:
                     for message in job.find("messages").findall("message"):
                         logger.critical("Received the following message from job: %s" % message.attrib["message"])
@@ -452,10 +448,10 @@ def mainLoop(config, batchSystem):
                 #Launch any unborn children
                 unbornChildren = job.find("children").findall("child")
                 if len(unbornChildren) > 0: #unbornChild != None: #We must give birth to the unborn children
-                    logger.debug("Job: %s has %i children to schedule" % (job.attrib["file"], len(unbornChildren)))
+                    logger.debug("Job: %s has %i children to schedule" % (getJobFileName(job), len(unbornChildren)))
                     newChildren = []
                     for unbornChild in unbornChildren:
-                        newJob = createJob(unbornChild.attrib, job.attrib["file"], config)
+                        newJob = createJob(unbornChild.attrib, getJobFileName(job), config)
                         totalJobFiles += 1
                         newChildren.append(newJob)
                     job.find("children").clear() #removeall("child")
@@ -465,13 +461,13 @@ def mainLoop(config, batchSystem):
                     jobBatcher.issueJobs(newChildren)
                     
                 elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
-                    logger.debug("Job: %s has a new command that we can now issue" % job.attrib["file"])
+                    logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
                     ##Reset the job run info
                     job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
                     makeGreyAndReissueJob(job)
                     
                 else: #Job has finished, so we can defer to any parent
-                    logger.debug("Job: %s is now dead" % job.attrib["file"])
+                    logger.debug("Job: %s is now dead" % getJobFileName(job))
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
                         parent = readJob(job.attrib["parent"])
@@ -481,14 +477,14 @@ def mainLoop(config, batchSystem):
                         parent.attrib["black_child_count"] = str(int(parent.attrib["black_child_count"]) + 1)
                         if int(parent.attrib["child_count"]) == int(parent.attrib["black_child_count"]):
                             parent.attrib["colour"] = "black"
-                            assert parent.attrib["file"] not in updatedJobFiles
-                            updatedJobFiles.add(parent.attrib["file"])
+                            assert getJobFileName(parent) not in updatedJobFiles
+                            updatedJobFiles.add(getJobFileName(parent))
                         writeJobs([ job, parent ]) #Check point
                     totalJobFiles -= 1
                     deleteJob(job, config)
                          
             elif job.attrib["colour"] == "red": #Job failed
-                logger.critical("Job: %s failed" % job.attrib["file"])
+                logger.critical("Job: %s failed" % getJobFileName(job))
                 reportJobLogFiles(job)
                 #Checks
                 assert len(job.find("children").findall("child")) == 0
@@ -497,14 +493,14 @@ def mainLoop(config, batchSystem):
                 remainingRetryCount = int(job.attrib["remaining_retry_count"])
                 if remainingRetryCount > 0: #Give it another try, maybe there is a bad node somewhere
                     job.attrib["remaining_retry_count"] = str(remainingRetryCount-1)
-                    logger.critical("Job: %s will be restarted, it has %s goes left" % (job.attrib["file"], job.attrib["remaining_retry_count"]))
+                    logger.critical("Job: %s will be restarted, it has %s goes left" % (getJobFileName(job), job.attrib["remaining_retry_count"]))
                     makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetryCount == 0
-                    logger.critical("Job: %s is completely failed" % job.attrib["file"])
+                    logger.critical("Job: %s is completely failed" % getJobFileName(job))
                     
             else: #This case should only occur after failure
-                logger.debug("Job: %s is already dead, we'll get rid of it" % job.attrib["file"])
+                logger.debug("Job: %s is already dead, we'll get rid of it" % getJobFileName(job))
                 assert job.attrib["colour"] == "dead"
                 totalJobFiles -= 1
                 deleteJob(job, config)

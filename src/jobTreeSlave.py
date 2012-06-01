@@ -81,13 +81,13 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     #Temp file dirs for job.
     tempJob.attrib["local_temp_dir"] = localTempDir
     depth = len(job.find("followOns").findall("followOn"))
-    tempJob.attrib["global_temp_dir"] = os.path.join(job.attrib["global_temp_dir"], str(depth))
+    tempJob.attrib["global_temp_dir"] = os.path.join(getGlobalTempDirName(job), str(depth))
     if not os.path.isdir(tempJob.attrib["global_temp_dir"]): #Ensures that the global temp dirs of each level are kept separate.
         os.mkdir(tempJob.attrib["global_temp_dir"])
         os.chmod(tempJob.attrib["global_temp_dir"], 0777)
-    if os.path.isdir(os.path.join(job.attrib["global_temp_dir"], str(depth+1))):
-        system("rm -rf %s" % os.path.join(job.attrib["global_temp_dir"], str(depth+1)))
-    assert not os.path.isdir(os.path.join(job.attrib["global_temp_dir"], str(depth+2)))
+    if os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+1))):
+        system("rm -rf %s" % os.path.join(getGlobalTempDirName(job), str(depth+1)))
+    assert not os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+2)))
     
     #Deal with memory and cpu requirements (this pass tells the running job how much cpu and memory they have,
     #according to the batch system
@@ -214,6 +214,7 @@ def main():
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
     from jobTree.src.master import readJob
+    from jobTree.src.master import getSlaveLogFileName, getLogFileName, getGlobalTempDirName, getStatsFileName    
     from sonLib.bioio import system
     
     ##########################################
@@ -241,7 +242,7 @@ def main():
     
     #Setup the logging
     setLogLevel(job.attrib["log_level"])
-    addLoggingFileHandler(job.attrib["slave_log_file"], rotatingLogging=False)
+    addLoggingFileHandler(getSlaveLogFileName(job), rotatingLogging=False)
     logger.info("Parsed arguments and set up logging")
     
     ##########################################
@@ -301,12 +302,12 @@ def main():
         
         if job.attrib["colour"] != "black": 
             logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
-            system("mv %s %s" % (tempLogFile, job.attrib["log_file"])) #Copy back the job log file, because we saw failure
+            system("mv %s %s" % (tempLogFile, getLogFileName(job))) #Copy back the job log file, because we saw failure
             break
         elif job.attrib.has_key("reportAllJobLogFiles"):
             logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
             #Copy across the log file
-            system("mv %s %s" % (tempLogFile, job.attrib["log_file"]))
+            system("mv %s %s" % (tempLogFile, getLogFileName(job)))
             break
         
         childrenNode = job.find("children")
@@ -368,7 +369,7 @@ def main():
         stats.attrib["time"] = str(time.time() - startTime)
         stats.attrib["clock"] = str(totalCpuTime - startClock)
         stats.attrib["memory"] = str(totalMemoryUsage)
-        fileHandle = open(job.attrib["stats"], 'w')
+        fileHandle = open(getStatsFileName(job), 'w')
         ET.ElementTree(stats).write(fileHandle)
         fileHandle.close()
     

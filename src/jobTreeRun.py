@@ -136,15 +136,6 @@ try and restart the jobs in it",
                       help="Report the log files of all jobs, not just that fail. default=%default",
                       default=False)
     
-def setupTempFileTrees(config):
-    """Load the temp file trees
-    """
-    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
-    config.attrib["temp_dir_dir"] = TempFileTree(config.attrib["temp_dir_dir"])
-    config.attrib["log_file_dir"] = TempFileTree(config.attrib["log_file_dir"])
-    config.attrib["slave_log_file_dir"] = TempFileTree(config.attrib["slave_log_file_dir"])
-    logger.info("Setup the temp file trees")
-    
 def loadTheBatchSystem(config):
     """Load the batch system.
     """
@@ -204,11 +195,8 @@ def reloadJobTree(jobTree):
     assert os.path.isfile(os.path.join(jobTree, "environ.pickle")) #A valid job tree must contain a pickle file which encodes the path environment of the job
     assert os.path.isfile(os.path.join(jobTree, "jobNumber.xml")) #A valid job tree must contain a file which is updated with the number of jobs that have been run.
     assert os.path.isdir(os.path.join(jobTree, "jobs")) #A job tree must have a directory of jobs.
-    assert os.path.isdir(os.path.join(jobTree, "tempDirDir")) #A job tree must have a directory of temporary directories (for jobs to make temp files in).
-    assert os.path.isdir(os.path.join(jobTree, "logFileDir")) #A job tree must have a directory of log files.
-    assert os.path.isdir(os.path.join(jobTree, "slaveLogFileDir")) #A job tree must have a directory of slave log files.
     config = ET.parse(os.path.join(jobTree, "config.xml")).getroot()
-    setupTempFileTrees(config)
+    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
     batchSystem = loadTheBatchSystem(config)
     logger.info("Reloaded the jobtree")
     return config, batchSystem
@@ -221,9 +209,6 @@ def createJobTree(options):
     config.attrib["environment_file"] = os.path.join(options.jobTree, "environ.pickle")
     config.attrib["job_number_file"] = os.path.join(options.jobTree, "jobNumber.xml")
     config.attrib["job_file_dir"] = os.path.join(options.jobTree, "jobs")
-    config.attrib["temp_dir_dir"] = os.path.join(options.jobTree, "tempDirDir")
-    config.attrib["log_file_dir"] = os.path.join(options.jobTree, "logFileDir")
-    config.attrib["slave_log_file_dir"] = os.path.join(options.jobTree, "slaveLogFileDir")
     config.attrib["results_file"] = os.path.join(options.jobTree, "results.txt")
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["scratch_file"] = os.path.join(options.jobTree, "scratch.txt")
@@ -264,8 +249,8 @@ def createJobTree(options):
     ET.ElementTree(ET.Element("job_number", { "job_number":'0' })).write(fileHandle)
     fileHandle.close()
     
-    #Setup the temp file trees.
-    setupTempFileTrees(config)
+    #Setup the temp file tree.
+    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
     
     logger.info("Finished the job tree setup")
     return config, batchSystem
