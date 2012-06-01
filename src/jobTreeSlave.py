@@ -43,12 +43,12 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
         
-def getMemoryAndCpuRequirements(job, nextJob):
+def getMemoryAndCpuRequirements(config, nextJob):
     """Gets the memory and cpu requirements from the job..
     """
     #Now deal with the CPU and memory..
-    memory = job.attrib["default_memory"]
-    cpu = job.attrib["default_cpu"]
+    memory = config.attrib["default_memory"]
+    cpu = config.attrib["default_cpu"]
     if nextJob.attrib.has_key("memory"):
         memory = max(int(nextJob.attrib["memory"]), 0)
     if nextJob.attrib.has_key("cpu"):
@@ -56,13 +56,14 @@ def getMemoryAndCpuRequirements(job, nextJob):
     return memory, cpu
  
 def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, 
-               localSlaveTempDir, localTempDir):
+               localSlaveTempDir, localTempDir, config):
     """Runs a job.
     """
     from sonLib.bioio import logger
     from sonLib.bioio import system
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import redirectLoggerStreamHandlers
+    from jobTree.src.master import getGlobalTempDirName
     
     assert len(job.find("children").findall("child")) == 0
     assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
@@ -73,10 +74,10 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
     ET.SubElement(tempJob, "children")
     
     #Log for job
-    tempJob.attrib["log_level"] = job.attrib["log_level"]
+    tempJob.attrib["log_level"] = config.attrib["log_level"]
     
     #Time length of 'ideal' job before further parallelism is required
-    tempJob.attrib["job_time"] = job.attrib["job_time"]
+    tempJob.attrib["job_time"] = config.attrib["job_time"]
 
     #Temp file dirs for job.
     tempJob.attrib["local_temp_dir"] = localTempDir
@@ -143,7 +144,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
             tempJob = ET.parse(tempFile).getroot()
         
     fileHandle.close()
-    truncateFile(tempLogFile, int(job.attrib["max_log_file_size"]))
+    truncateFile(tempLogFile, int(config.attrib["max_log_file_size"]))
     
     logger.info("Ran the job command=%s with exit status %i" % (command, exitValue))
     
@@ -173,7 +174,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
         assert len(children.findall("child")) == 0 #The children
         assert tempJob.find("children") != None
         for child in tempJob.find("children").findall("child"):
-            memory, cpu = getMemoryAndCpuRequirements(job, child)
+            memory, cpu = getMemoryAndCpuRequirements(config, child)
             ET.SubElement(children, "child", { "command":child.attrib["command"], 
                     "memory":str(memory), "cpu":str(cpu) })
             logger.info("Making a child with command: %s" % (child.attrib["command"]))
@@ -182,7 +183,7 @@ def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment,
         followOns = job.find("followOns")
         followOns.remove(followOns.findall("followOn")[-1]) #Remove the old job
         if tempJob.attrib.has_key("command"):
-            memory, cpu = getMemoryAndCpuRequirements(job, tempJob)
+            memory, cpu = getMemoryAndCpuRequirements(config, tempJob)
             ET.SubElement(followOns, "followOn", { "command":tempJob.attrib["command"], 
                     "memory":str(memory), "cpu":str(cpu) })
             logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
@@ -214,7 +215,7 @@ def main():
     from sonLib.bioio import getTempDirectory
     from jobTree.src.master import writeJobs
     from jobTree.src.master import readJob
-    from jobTree.src.master import getSlaveLogFileName, getLogFileName, getGlobalTempDirName, getStatsFileName    
+    from jobTree.src.master import getSlaveLogFileName, getLogFileName, getStatsFileName    
     from sonLib.bioio import system
     
     ##########################################
@@ -223,8 +224,13 @@ def main():
     
     parser = getBasicOptionParser("usage: %prog [options]", "%prog 0.1")
     
+  
     parser.add_option("--job", dest="jobFile", 
                       help="Job file containing command to run",
+                      default="None")
+    
+    parser.add_option("--jobTree", dest="jobTree", 
+                      help="Location of the job tree",
                       default="None")
     
     options, args = parseBasicOptions(parser)
@@ -235,13 +241,14 @@ def main():
     ##########################################
     
     job = readJob(options.jobFile)
+    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
     
     ##########################################
     #Setup the logging
     ##########################################
     
     #Setup the logging
-    setLogLevel(job.attrib["log_level"])
+    setLogLevel(config.attrib["log_level"])
     addLoggingFileHandler(getSlaveLogFileName(job), rotatingLogging=False)
     logger.info("Parsed arguments and set up logging")
     
@@ -249,7 +256,7 @@ def main():
     #Setup the stats, if requested
     ##########################################
     
-    if job.attrib.has_key("stats"):
+    if config.attrib.has_key("stats"):
         startTime = time.time()
         startClock = getTotalCpuTime()
         stats = ET.Element("slave")
@@ -261,7 +268,7 @@ def main():
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = open(job.attrib["environment_file"], 'r')
+    fileHandle = open(config.attrib["environment_file"], 'r')
     environment = cPickle.load(fileHandle)
     fileHandle.close()
     for i in environment:
@@ -290,7 +297,7 @@ def main():
     #Run the script.
     ##########################################
     
-    maxTime = float(job.attrib["job_time"])
+    maxTime = float(config.attrib["job_time"])
     assert maxTime > 0.0
     assert maxTime < sys.maxint
     jobToRun = job.find("followOns").findall("followOn")[-1]
@@ -298,13 +305,13 @@ def main():
     cpuAvailable = int(jobToRun.attrib["cpu"])
     startTime = time.time()
     while True:
-        tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir)
+        tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir, config)
         
         if job.attrib["colour"] != "black": 
             logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
             system("mv %s %s" % (tempLogFile, getLogFileName(job))) #Copy back the job log file, because we saw failure
             break
-        elif job.attrib.has_key("reportAllJobLogFiles"):
+        elif config.attrib.has_key("reportAllJobLogFiles"):
             logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
             #Copy across the log file
             system("mv %s %s" % (tempLogFile, getLogFileName(job)))

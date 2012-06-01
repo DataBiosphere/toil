@@ -72,18 +72,7 @@ def createJob(attrib, parent, config):
         job.attrib["parent"] = parent
     job.attrib["child_count"] = "0"
     job.attrib["black_child_count"] = "0"
-    job.attrib["log_level"] = getLogLevelString()
-    job.attrib["job_creation_time"] = str(time.time())
-    job.attrib["environment_file"] = config.attrib["environment_file"]
-    job.attrib["job_time"] = config.attrib["job_time"]
-    job.attrib["max_log_file_size"] = config.attrib["max_log_file_size"]
-    job.attrib["default_memory"] = config.attrib["default_memory"]
-    job.attrib["default_cpu"] = config.attrib["default_cpu"]
-    if bool(int(config.attrib["reportAllJobLogFiles"])):
-        job.attrib["reportAllJobLogFiles"] = ""
     ET.SubElement(job, "children") 
-    if config.attrib.has_key("stats"):
-        job.attrib["stats"] = ""
     return job
 
 def deleteJob(job, config):
@@ -140,13 +129,14 @@ def writeJobs(jobs):
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
     """
-    def __init__(self, batchSystem, maxCpus):
+    def __init__(self, config, batchSystem):
+        self.maxCpus = int(config.attrib["max_jobs"])
+        self.jobTree = config.attrib["job_tree"]
         self.jobIDsToJobsHash = {}
         self.batchSystem = batchSystem
         self.jobsIssued = 0
         self.jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
         self.rootPath = os.path.split(workflowRootPath())[0]
-        self.maxCpus = maxCpus
         
     def issueJob(self, job):
         """Add a job to the queue of jobs
@@ -160,7 +150,7 @@ class JobBatcher:
         if cpu > self.maxCpus:
             raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
         jobFile = getJobFileName(job)
-        jobCommand = "%s -E %s %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, jobFile)
+        jobCommand = "%s -E %s %s --jobTree %s --job %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, self.jobTree, jobFile)
         jobID = self.batchSystem.issueJob(jobCommand, memory, cpu, getSlaveLogFileName(job))
         self.jobIDsToJobsHash[jobID] = jobFile
         logger.debug("Issued the job: %s with job id: %i and cpus: %i" % (jobFile, jobID, cpu))
@@ -376,7 +366,13 @@ def mainLoop(config, batchSystem):
     assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
     logger.info("Checked batch system has no running jobs and no updated jobs")
     
-    jobFiles = [ jobFile for jobFile in config.attrib["job_file_dir"].listFiles() if jobFile[-4:] == ".job" ]
+    jobFiles = []
+    for globalTempDir in config.attrib["job_file_dir"].listFiles():
+        assert os.path.isdir(globalTempDir)
+        for tempFile in os.listdir(globalTempDir):
+            print "temp file", tempFile, "job.xml" == tempFile[:7]
+            if "job.xml" == tempFile[:7]:
+                jobFiles.append(os.path.join(globalTempDir, tempFile))
     logger.info("Got a list of job files")
     
     #Repair the job tree using any .old files
@@ -395,7 +391,7 @@ def mainLoop(config, batchSystem):
     logger.info("Got the active (non blue) job files")
     
     totalJobFiles = len(jobFiles) #Total number of job files we have.
-    jobBatcher = JobBatcher(batchSystem, int(config.attrib["max_jobs"]))
+    jobBatcher = JobBatcher(config, batchSystem)
     
     idealJobTime = float(config.attrib["job_time"]) 
     assert idealJobTime > 0.0

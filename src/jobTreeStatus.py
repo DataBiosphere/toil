@@ -96,9 +96,6 @@ def main():
     assert os.path.isdir(options.jobTree) #The given job dir tree must exist.
     assert os.path.isfile(os.path.join(options.jobTree, "config.xml")) #A valid job tree must contain the config gile
     assert os.path.isdir(os.path.join(options.jobTree, "jobs")) #A job tree must have a directory of jobs.
-    assert os.path.isdir(os.path.join(options.jobTree, "tempDirDir")) #A job tree must have a directory of temporary directories (for jobs to make temp files in).
-    assert os.path.isdir(os.path.join(options.jobTree, "logFileDir")) #A job tree must have a directory of log files.
-    assert os.path.isdir(os.path.join(options.jobTree, "slaveLogFileDir")) #A job tree must have a directory of slave log files.
     
     ##########################################
     #Read the total job number

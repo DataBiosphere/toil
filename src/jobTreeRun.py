@@ -38,10 +38,9 @@ from jobTree.src.master import createJob
 from jobTree.src.master import mainLoop
 from jobTree.src.master import writeJobs
 
-from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions
+from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
 from sonLib.bioio import system
-
 
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 
                rescueJobFrequency=None):
@@ -187,6 +186,14 @@ def loadEnvironment(config):
     fileHandle.close()
     logger.info("Written the environment for the jobs to the environment file")
 
+def writeConfig(config):
+    #Write the config file to disk
+    fileHandle = open(os.path.join(config.attrib["job_tree"], "config.xml"), 'w')
+    tree = ET.ElementTree(config)
+    tree.write(fileHandle)
+    fileHandle.close()
+    logger.info("Written the config file")
+
 def reloadJobTree(jobTree):
     """Load the job tree from a dir.
     """
@@ -197,7 +204,9 @@ def reloadJobTree(jobTree):
     assert os.path.isdir(os.path.join(jobTree, "jobs")) #A job tree must have a directory of jobs.
     config = ET.parse(os.path.join(jobTree, "config.xml")).getroot()
     config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
+    config.attrib["log_level"] = getLogLevelString()
     batchSystem = loadTheBatchSystem(config)
+    writeConfig(config) #This updates the on disk config file
     logger.info("Reloaded the jobtree")
     return config, batchSystem
 
@@ -206,6 +215,8 @@ def createJobTree(options):
     options.jobTree = os.path.abspath(options.jobTree)
     os.mkdir(options.jobTree)
     config = ET.Element("config")
+    config.attrib["log_level"] = getLogLevelString()
+    config.attrib["job_tree"] = options.jobTree
     config.attrib["environment_file"] = os.path.join(options.jobTree, "environ.pickle")
     config.attrib["job_number_file"] = os.path.join(options.jobTree, "jobNumber.xml")
     config.attrib["job_file_dir"] = os.path.join(options.jobTree, "jobs")
@@ -230,19 +241,12 @@ def createJobTree(options):
     #Load the batch system.
     batchSystem = loadTheBatchSystem(config)
     
-    #Set the parameters determining the polling frequency of the system.
-        
+    #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
     
-    #Write the config file to disk
-    fileHandle = open(os.path.join(options.jobTree, "config.xml"), 'w')
-    
-    tree = ET.ElementTree(config)
-    tree.write(fileHandle)
-    fileHandle.close()
-    logger.info("Written the config file")
+    writeConfig(config)
     
     #Set up the jobNumber file
     fileHandle = open(config.attrib["job_number_file"], 'w')

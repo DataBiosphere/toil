@@ -136,10 +136,13 @@ def checkEndStateOfJobTree(jobTreeDir):
     jobFiles = TempFileTree(os.path.join(jobTreeDir, "jobs")).listFiles()
     if len(jobFiles) > 0:
         for absFileName in jobFiles:
-            job = ET.parse(absFileName).getroot()
-            assert job.attrib["colour"] in ("red", "blue")
-            if job.attrib["colour"] == "red":
-                assert job.attrib["remaining_retry_count"] == "0"
+            assert os.path.isdir(absFileName)
+            for jobFile in os.listdir(absFileName):
+                if "job.xml" == jobFile[:7]:
+                    job = ET.parse(os.path.join(absFileName, jobFile)).getroot()
+                    assert job.attrib["colour"] in ("red", "blue")
+                    if job.attrib["colour"] == "red":
+                        assert job.attrib["remaining_retry_count"] == "0"
         return False
     else:
         return True
