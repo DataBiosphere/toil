@@ -55,12 +55,10 @@ class Worker(Thread):
                 process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
             finally:
                 Worker.lock.release()
-            #sts = os.waitpid(process.pid, 0)
-            #self.outputQueue.put((jobID, sts[1], threadsToStart))
-            sts = process.wait()
-            self.outputQueue.put((jobID, sts, threadsToStart))
+            process.wait()
+            self.outputQueue.put((jobID, process.returncode, threadsToStart))
             self.inputQueue.task_done()
-            logger.info("Finished a job with ID %s in time %s" % (jobID, time.time() - startTime))
+            logger.info("Finished a job with ID %s in time %s and exit value %s" % (jobID, time.time() - startTime, process.returncode))
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you

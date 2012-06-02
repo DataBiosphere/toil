@@ -210,7 +210,7 @@ def main():
     from sonLib.bioio import getBasicOptionParser
     from sonLib.bioio import parseBasicOptions
     from sonLib.bioio import logger
-    from sonLib.bioio import addLoggingFileHandler
+    from sonLib.bioio import addLoggingFileHandler, redirectLoggerStreamHandlers
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
@@ -264,8 +264,12 @@ def main():
     #Setup the logging
     tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
     slaveHandle = open(tempSlaveLogFile, 'w')
+    redirectLoggerStreamHandlers(sys.stderr, slaveHandle)
+    origStdErr = sys.stderr
+    origStdOut = sys.stdout
     sys.stderr = slaveHandle 
     sys.stdout = slaveHandle
+    
     setLogLevel(config.attrib["log_level"])
     logger.info("Parsed arguments and set up logging")
     
@@ -365,26 +369,29 @@ def main():
         ##########################################
         #Cleanup global files at the end of the chain
         ##########################################
-        
+       
         if job.attrib["colour"] == "black" and len(job.find("followOns").findall("followOn")) == 0:
             nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "1")
             assert os.path.exists(nestedGlobalTempDir)
             system("rm -rf %s" % nestedGlobalTempDir)
             if os.path.exists(getLogFileName(job)):
                 os.remove(getLogFileName(job))
-            if os.path.exists(slaveLogFileName(job)):
-                os.remove(slaveLogFileName(job))
+            if os.path.exists(getSlaveLogFileName(job)):
+                os.remove(getSlaveLogFileName(job))
             if stats != None:
-                assert len(os.listdir(getGlobalTempDir)) == 2 #The job file and the stats file
+                assert len(os.listdir(getGlobalTempDirName(job))) == 2 #The job file and the stats file
             else:
-                assert len(os.listdir(getGlobalTempDir)) == 1 #Just the job file
-            
+                assert len(os.listdir(getGlobalTempDirName(job))) == 1 #Just the job file
+    
+    ##########################################
+    #Where slave goes wrong
+    ##########################################
     except: #Case that something goes wrong in slave
-        ##########################################
-        #Where slave goes wrong
-        ##########################################
         traceback.print_exc(file = slaveHandle)
         slaveHandle.flush()
+        sys.stderr = origStdErr
+        sys.stdout = origStdOut
+        redirectLoggerStreamHandlers(slaveHandle, sys.stderr)
         slaveHandle.close()
         system("mv %s %s" % (tempSlaveLogFile, getSlaveLogFileName(job)))
         system("rm -rf %s" % localSlaveTempDir)
@@ -394,9 +401,11 @@ def main():
     #Normal cleanup
     ##########################################
     
+    sys.stderr = origStdErr
+    sys.stdout = origStdOut
+    redirectLoggerStreamHandlers(slaveHandle, sys.stderr)
     slaveHandle.close()
     system("rm -rf %s" % localSlaveTempDir)
-    return 0
     
 def _test():
     import doctest      
