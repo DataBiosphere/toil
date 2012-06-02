@@ -142,6 +142,10 @@ def writeJobs(jobs):
     """Writes a list of jobs to file, ensuring that the previous
     state is maintained until after the write is complete
     """
+    for job in jobs:
+        writeJob(job, getJobFileName(job))
+    return
+    
     if len(jobs) == 0:
         return
     assert len(set(jobs)) == len(jobs)
