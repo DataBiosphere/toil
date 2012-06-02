@@ -34,6 +34,8 @@ import os.path
 import xml.etree.ElementTree as ET
 import time
 from collections import deque
+from threading import Thread
+from Queue import Queue, Empty
 #from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
@@ -89,15 +91,36 @@ def createJob(attrib, parent, config):
     job.attrib["black_child_count"] = "0"
     ET.SubElement(job, "children") 
     return job
-
-def deleteJob(job, config):
-    """Removes an old job, including any log files.
+    
+class JobRemover:
+    """Class asynchronously deletes jobs
     """
-    #Try explicitly removing these files, leaving empty dir
-    if config.attrib.has_key("stats"):
-        os.remove(getJobStatsFileName(job))
-    os.remove(getJobFileName(job))
-    config.attrib["job_file_tree"].destroyTempDir(getGlobalTempDirName(job))
+    def __init__(self, config):
+        self.inputQueue = Queue()
+        def jobDeleter(inputQueue):
+            stats = config.attrib.has_key("stats")
+            fileTree = config.attrib["job_file_tree"]
+            while True:
+                job = inputQueue.get()
+                #Try explicitly removing these files, leaving empty dir
+                if stats:
+                    os.remove(getJobStatsFileName(job))
+                os.remove(getJobFileName(job))
+                fileTree.destroyTempDir(getGlobalTempDirName(job))
+                inputQueue.task_done()
+        worker = Thread(target=jobDeleter, args=(self.inputQueue,))
+        worker.setDaemon(True)
+        worker.start()
+    
+    def deleteJob(self, job):
+        self.inputQueue.put(job)
+    
+    def deleteJobs(self, jobs):
+        for job in jobs:
+            self.deleteJob(job)
+            
+    def join(self):
+        self.inputQueue.join()
         
 def writeJob(job, jobFileName):
     tree = ET.ElementTree(job)
@@ -144,7 +167,7 @@ def writeJobs(jobs):
         if os.path.isfile(getJobFileName(job)):
             os.remove(getJobFileName(job))
         os.rename(getJobFileName(job) + ".new", getJobFileName(job))
-        
+                   
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
     """
@@ -439,6 +462,7 @@ def mainLoop(config, batchSystem):
     jobsToWriteAfterTheFact = []
     jobsToDeleteAfterTheFact = []
     
+    jobRemover = JobRemover(config)
     while True: 
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
@@ -516,13 +540,12 @@ def mainLoop(config, batchSystem):
                             assert getJobFileName(parent) not in updatedJobFiles
                             updatedJobFiles.add(getJobFileName(parent))
                             writeJobs(jobsToWriteAfterTheFact)
-                            for job in jobsToDeleteAfterTheFact:
-                                totalJobFiles -= 1
-                                deleteJob(job, config)
+                            totalJobFiles -= len(jobsToDeleteAfterTheFact)
+                            jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
                             openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
                     else:
                         totalJobFiles -= 1
-                        deleteJob(job, config)
+                        jobRemover.deleteJob(job)
                          
             elif job.attrib["colour"] == "red": #Job failed
                 logger.critical("Job: %s failed" % getJobFileName(job))
@@ -544,13 +567,13 @@ def mainLoop(config, batchSystem):
                 logger.debug("Job: %s is already dead, we'll get rid of it" % getJobFileName(job))
                 assert job.attrib["colour"] == "dead"
                 totalJobFiles -= 1
-                deleteJob(job, config)
+                jobRemover.deleteJob(job)
                    
         if len(updatedJobFiles) == 0:
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
                 break 
-            updatedJob = batchSystem.getUpdatedJob(5) #pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
+            updatedJob = batchSystem.getUpdatedJob(1) #pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
@@ -564,9 +587,8 @@ def mainLoop(config, batchSystem):
         
         if len(updatedJobFiles) == 0 and len(jobsToWriteAfterTheFact) > 0:
             writeJobs(jobsToWriteAfterTheFact)
-            for job in jobsToDeleteAfterTheFact:
-                totalJobFiles -= 1
-                deleteJob(job, config)
+            totalJobFiles -= len(jobsToDeleteAfterTheFact)
+            jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
             openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
 
         if len(updatedJobFiles) == 0 and time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
@@ -585,6 +607,9 @@ def mainLoop(config, batchSystem):
         fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
         fileHandle.close()
     
-    logger.info("Finished the main loop")     
+    logger.info("Finished the main loop, now must finish deleting files")
+    startTime = time.time()
+    jobRemover.join()
+    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTime))    
     
     return totalJobFiles #Returns number of failed jobs

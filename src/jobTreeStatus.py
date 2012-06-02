@@ -102,7 +102,7 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobFiles = TempFileTree(getJobFileDirName(options.jobTree)).listFiles()
+    jobFiles = [ os.path.join(jobDir, "job.xml") for jobDir in TempFileTree(getJobFileDirName(options.jobTree)).listFiles() ]
     jobFiles = [ (job, jobFile) for (job, jobFile) in zip([  parseJobFile(absFileName) for absFileName in jobFiles ], jobFiles) if job != None ]
     colours = {}
     
