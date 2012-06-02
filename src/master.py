@@ -93,7 +93,11 @@ def createJob(attrib, parent, config):
 def deleteJob(job, config):
     """Removes an old job, including any log files.
     """
-    config.attrib["job_file_tree"].destroyTempDir(job.attrib["global_temp_dir"])
+    #Try explicitly removing these files, leaving empty dir
+    if config.attrib.has_key("stats"):
+        os.remove(getJobStatsFileName(job))
+    os.remove(getJobFileName(job))
+    config.attrib["job_file_tree"].destroyTempDir(getGlobalTempDirName(job))
         
 def writeJob(job, jobFileName):
     tree = ET.ElementTree(job)
@@ -434,7 +438,7 @@ def mainLoop(config, batchSystem):
     openParentsHash = {} #Parents that are already in memory, saves loading and reloading
     jobsToWriteAfterTheFact = []
     jobsToDeleteAfterTheFact = []
-
+    
     while True: 
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
@@ -515,9 +519,7 @@ def mainLoop(config, batchSystem):
                             for job in jobsToDeleteAfterTheFact:
                                 totalJobFiles -= 1
                                 deleteJob(job, config)
-                            openParentsHash = {} #Parents that are already in memory, saves loading and reloading
-                            jobsToWriteAfterTheFact = []
-                            jobsToDeleteAfterTheFact = []
+                            openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
                     else:
                         totalJobFiles -= 1
                         deleteJob(job, config)
@@ -548,7 +550,7 @@ def mainLoop(config, batchSystem):
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)
                 break 
-            updatedJob = batchSystem.getUpdatedJob(10) #pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
+            updatedJob = batchSystem.getUpdatedJob(5) #pauseForUpdatedJob(batchSystem.getUpdatedJob) #Asks the batch system what jobs have been completed.
             if updatedJob != None: #Runs through a map of updated jobs and there status, 
                 jobID, result = updatedJob
                 if jobBatcher.hasJob(jobID): 
@@ -560,6 +562,13 @@ def mainLoop(config, batchSystem):
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
         
+        if len(updatedJobFiles) == 0 and len(jobsToWriteAfterTheFact) > 0:
+            writeJobs(jobsToWriteAfterTheFact)
+            for job in jobsToDeleteAfterTheFact:
+                totalJobFiles -= 1
+                deleteJob(job, config)
+            openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
+
         if len(updatedJobFiles) == 0 and time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
             reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem)
             logger.info("Reissued any over long jobs")

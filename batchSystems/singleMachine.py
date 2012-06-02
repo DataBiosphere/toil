@@ -140,9 +140,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     
     def getRescueJobFrequency(self):
         """This should not really occur, wihtout an error. To exercise the 
-        system we allow it every minute. 
+        system we allow it every 90 minutes. 
         """
-        return 1800  
+        return 5600  
 
 class BadWorker(Thread):
     """This is used to test what happens if we fail and restart jobs
