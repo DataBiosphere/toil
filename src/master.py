@@ -429,15 +429,15 @@ def mainLoop(config, batchSystem):
         startClock = getTotalCpuTime()
         
     logger.info("Starting the main loop")
-    timeSinceJobsLastRescued = time.time() - rescueJobsFrequency + 100 #We hack it so that we rescue jobs after the first 100 seconds to get around an apparent parasol bug
+    timeSinceJobsLastRescued = time.time()
+
+    openParentsHash = {} #Parents that are already in memory, saves loading and reloading
+    jobsToWriteAfterTheFact = []
+    jobsToDeleteAfterTheFact = []
 
     while True: 
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
-        
-        openParentsHash = {} #Parents that are already in memory, saves loading and reloading
-        jobsToWriteAfterTheFact = []
-        jobsToDeleteAfterTheFact = []
         
         for jobFile in list(updatedJobFiles):
             updatedJobFiles.remove(jobFile)
@@ -495,6 +495,8 @@ def mainLoop(config, batchSystem):
                     logger.debug("Job: %s is now dead" % getJobFileName(job))
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
+                        jobsToWriteAfterTheFact.append(job)
+                        jobsToDeleteAfterTheFact.append(job)
                         if openParentsHash.has_key(job.attrib["parent"]):
                             parent = openParentsHash[job.attrib["parent"]]
                         else:
@@ -509,8 +511,13 @@ def mainLoop(config, batchSystem):
                             parent.attrib["colour"] = "black"
                             assert getJobFileName(parent) not in updatedJobFiles
                             updatedJobFiles.add(getJobFileName(parent))
-                        jobsToWriteAfterTheFact.append(job)
-                        jobsToDeleteAfterTheFact.append(job)
+                            writeJobs(jobsToWriteAfterTheFact)
+                            for job in jobsToDeleteAfterTheFact:
+                                totalJobFiles -= 1
+                                deleteJob(job, config)
+                            openParentsHash = {} #Parents that are already in memory, saves loading and reloading
+                            jobsToWriteAfterTheFact = []
+                            jobsToDeleteAfterTheFact = []
                     else:
                         totalJobFiles -= 1
                         deleteJob(job, config)
@@ -536,13 +543,7 @@ def mainLoop(config, batchSystem):
                 assert job.attrib["colour"] == "dead"
                 totalJobFiles -= 1
                 deleteJob(job, config)
-                
-        #Here we finally update parents etc
-        writeJobs(jobsToWriteAfterTheFact)
-        for job in jobsToDeleteAfterTheFact:
-            totalJobFiles -= 1
-            deleteJob(job, config)
-        
+                   
         if len(updatedJobFiles) == 0:
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalJobFiles)

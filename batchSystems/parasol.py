@@ -214,7 +214,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. We allow this every 10 minutes..
         """
-        return 1800 #Half an hour
+        return 5400 #Once every 90 minutes
         
 def main():
     pass
