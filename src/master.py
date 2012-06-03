@@ -527,7 +527,7 @@ def mainLoop(config, batchSystem):
                     logger.debug("Job: %s is now dead" % getJobFileName(job))
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
-                        jobsToWriteAfterTheFact.append(job)
+                        #jobsToWriteAfterTheFact.append(job)
                         jobsToDeleteAfterTheFact.append(job)
                         if openParentsHash.has_key(job.attrib["parent"]):
                             parent = openParentsHash[job.attrib["parent"]]
