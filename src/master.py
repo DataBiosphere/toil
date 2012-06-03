@@ -463,8 +463,8 @@ def mainLoop(config, batchSystem):
     timeSinceJobsLastRescued = time.time()
 
     openParentsHash = {} #Parents that are already in memory, saves loading and reloading
-    jobsToWriteAfterTheFact = []
-    jobsToDeleteAfterTheFact = []
+    #jobsToWriteAfterTheFact = []
+    #jobsToDeleteAfterTheFact = []
     
     jobRemover = JobRemover(config)
     while True: 
@@ -528,13 +528,15 @@ def mainLoop(config, batchSystem):
                     job.attrib["colour"] = "dead"
                     if job.attrib.has_key("parent"):
                         #jobsToWriteAfterTheFact.append(job)
-                        jobsToDeleteAfterTheFact.append(job)
+                        jobRemover.deleteJob(job)
+                        totalJobFiles -= 1
+                        #jobsToDeleteAfterTheFact.append(job)
                         if openParentsHash.has_key(job.attrib["parent"]):
                             parent = openParentsHash[job.attrib["parent"]]
                         else:
                             parent = readJob(job.attrib["parent"])
                             openParentsHash[job.attrib["parent"]] = parent
-                            jobsToWriteAfterTheFact.append(parent)
+                            #jobsToWriteAfterTheFact.append(parent)
                         assert job.attrib["parent"] != jobFile
                         assert parent.attrib["colour"] == "blue"
                         assert int(parent.attrib["black_child_count"]) < int(parent.attrib["child_count"])
@@ -543,10 +545,12 @@ def mainLoop(config, batchSystem):
                             parent.attrib["colour"] = "black"
                             assert getJobFileName(parent) not in updatedJobFiles
                             updatedJobFiles.add(getJobFileName(parent))
-                            writeJobs(jobsToWriteAfterTheFact)
-                            totalJobFiles -= len(jobsToDeleteAfterTheFact)
-                            jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
-                            openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
+                            writeJobs([ parent ])
+                            openParentsHash.pop(job.attrib["parent"])
+                            #writeJobs(jobsToWriteAfterTheFact)
+                            #totalJobFiles -= len(jobsToDeleteAfterTheFact)
+                            #jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
+                            #openParentsHash, jobsToWriteAfterTheFact = {}, []
                     else:
                         totalJobFiles -= 1
                         jobRemover.deleteJob(job)
@@ -589,11 +593,11 @@ def mainLoop(config, batchSystem):
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
         
-        if len(updatedJobFiles) == 0 and len(jobsToWriteAfterTheFact) > 0:
-            writeJobs(jobsToWriteAfterTheFact)
-            totalJobFiles -= len(jobsToDeleteAfterTheFact)
-            jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
-            openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
+        #if len(updatedJobFiles) == 0 and len(jobsToWriteAfterTheFact) > 0:
+        #    writeJobs(jobsToWriteAfterTheFact)
+        #    totalJobFiles -= len(jobsToDeleteAfterTheFact)
+        #    jobRemover.deleteJobs(jobsToDeleteAfterTheFact)
+        #    openParentsHash, jobsToWriteAfterTheFact, jobsToDeleteAfterTheFact = {}, [], []
 
         if len(updatedJobFiles) == 0 and time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
             reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem)
