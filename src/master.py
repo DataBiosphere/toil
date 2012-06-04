@@ -34,8 +34,8 @@ import os.path
 import xml.etree.ElementTree as ET
 import time
 from collections import deque
-from threading import Thread
-from Queue import Queue, Empty
+#from threading import Thread, Queue
+from multiprocessing import Process, Queue
 #from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
@@ -43,8 +43,6 @@ from sonLib.bioio import getLogLevelString
 from sonLib.bioio import logFile
 from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
-from threading import Thread, Lock
-from Queue import Queue, Empty
 
 def getEnvironmentFileName(jobTreePath):
     return os.path.join(jobTreePath, "environ.pickle")
@@ -108,8 +106,8 @@ class JobRemover:
                 os.remove(getJobFileName(job))
                 fileTree.destroyTempDir(getGlobalTempDirName(job))
                 inputQueue.task_done()
-        worker = Thread(target=jobDeleter, args=(self.inputQueue,))
-        worker.setDaemon(True)
+        worker = Process(target=jobDeleter, args=(self.inputQueue,))
+        #worker.setDaemon(True)
         worker.start()
     
     def deleteJob(self, job):
@@ -138,13 +136,14 @@ def readJob(jobFile):
     #fileHandle.close()
     #return job
 
-def writeJobs(jobs):
+def writeJobs(jobs, noCheckPoints=False):
     """Writes a list of jobs to file, ensuring that the previous
     state is maintained until after the write is complete
     """
-    for job in jobs:
-        writeJob(job, getJobFileName(job))
-    return
+    if noCheckPoints: #This avoids the expense of atomic updates
+        for job in jobs:
+            writeJob(job, getJobFileName(job))
+            return
     
     if len(jobs) == 0:
         return
