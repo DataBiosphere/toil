@@ -24,7 +24,7 @@ import os
 import sys
 import time
 import subprocess
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 import cPickle
 import traceback
 import time

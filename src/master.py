@@ -31,7 +31,7 @@ and then restarted at will (see the accompanying tests).
 import os
 import sys
 import os.path 
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 import time
 from collections import deque
 #from threading import Thread, Queue
@@ -80,7 +80,6 @@ def createJob(attrib, parent, config):
     """
     job = ET.Element("job")
     job.attrib["global_temp_dir"] = config.attrib["job_file_tree"].getTempDirectory()
-    job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
     job.attrib["colour"] = "grey"
     followOns = ET.SubElement(job, "followOns")
     ET.SubElement(followOns, "followOn", attrib.copy())
@@ -88,7 +87,9 @@ def createJob(attrib, parent, config):
         job.attrib["parent"] = parent
     job.attrib["child_count"] = "0"
     job.attrib["black_child_count"] = "0"
+    
     ET.SubElement(job, "children") 
+    job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
     return job
     
 class JobRemover:
@@ -100,23 +101,23 @@ class JobRemover:
             stats = config.attrib.has_key("stats")
             fileTree = config.attrib["job_file_tree"]
             while True:
-                job = inputQueue.get()
+                globalTempDir = inputQueue.get()
                 #Try explicitly removing these files, leaving empty dir
                 if stats: 
-                    os.remove(getJobStatsFileName(job))
-                os.remove(getJobFileName(job))
-                fileTree.destroyTempDir(getGlobalTempDirName(job))
+                    os.remove(os.path.join(globalTempDir, "stats.txt"))
+                os.remove(os.path.join(globalTempDir, "job.xml"))
+                fileTree.destroyTempDir(globalTempDir)
                 inputQueue.task_done()
         self.worker = Process(target=jobDeleter, args=(self.inputQueue, config))
         #worker.setDaemon(True)
         self.worker.start()
     
     def deleteJob(self, job):
-        self.inputQueue.put(job)
+        self.inputQueue.put(getGlobalTempDirName(job))
     
     def deleteJobs(self, jobs):
         for job in jobs:
-            self.deleteJob(job)
+            self.deleteJob(getGlobalTempDirName(job))
             
     def join(self):
         self.inputQueue.join()

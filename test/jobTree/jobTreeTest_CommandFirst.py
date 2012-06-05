@@ -5,7 +5,7 @@
 
 import sys
 import random
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 from sonLib.bioio import logger
 from sonLib.bioio import addLoggingFileHandler
 

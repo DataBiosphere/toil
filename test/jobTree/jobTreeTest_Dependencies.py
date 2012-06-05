@@ -24,7 +24,7 @@ import math
 
 from sonLib.bioio import system
 from optparse import OptionParser
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 
 from jobTree.src.bioio import getLogLevelString
 from jobTree.src.bioio import logger

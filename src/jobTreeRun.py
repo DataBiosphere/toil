@@ -25,7 +25,7 @@
 
 import os
 import sys 
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 import cPickle
 from optparse import OptionParser
 

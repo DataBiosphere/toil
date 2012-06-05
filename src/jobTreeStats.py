@@ -26,7 +26,7 @@
 import sys
 import os
 
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 from xml.dom import minidom #For making stuff pretty
 
 from sonLib.bioio import logger
