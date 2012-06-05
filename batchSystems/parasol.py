@@ -82,7 +82,6 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
         line = parasolResultsFileHandle.readline()
         if line != '':
             results = line.split()
-            logger.debug("Parasol completed a job, this is what we got: %s" % line[-1])
             result = int(results[0])
             jobID = int(results[2])
             outputQueue1.put(jobID)

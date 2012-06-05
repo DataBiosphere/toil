@@ -48,8 +48,12 @@ def worker(inputQueue, outputQueue):
             return
         command, jobID, threadsToStart = args
         sys.argv = command.split()[2:]
-        slaveMain()
-        outputQueue.put((jobID, 0, threadsToStart))
+        try:
+            slaveMain()
+            returnValue = 0
+        except:
+            returnValue = 1
+        outputQueue.put((jobID, returnValue, threadsToStart))
         inputQueue.task_done()
         
 class SingleMachineBatchSystem(AbstractBatchSystem):

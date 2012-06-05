@@ -136,6 +136,10 @@ try and restart the jobs in it",
                       help="Report the log files of all jobs, not just that fail. default=%default",
                       default=False)
     
+    parser.add_option("--noCheckPoints", dest="noCheckPoints", action="store_true",
+                      help="Switch off checkpointing in the master to speed up job processing default=%default",
+                      default=False)
+    
 def loadTheBatchSystem(config):
     """Load the batch system.
     """
@@ -229,6 +233,8 @@ def createJobTree(options):
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
     config.attrib["max_jobs"] = str(int(options.maxJobs))
     config.attrib["max_threads"] = str(int(options.maxThreads))
+    if options.noCheckPoints:
+        config.attrib["no_check_points"] = ""
     if options.reportAllJobLogFiles:
         config.attrib["reportAllJobLogFiles"] = ""
     if options.stats:

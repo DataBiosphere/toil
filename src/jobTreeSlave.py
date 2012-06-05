@@ -214,7 +214,7 @@ def main():
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
-    from jobTree.src.master import writeJobs
+    from jobTree.src.master import writeJob
     from jobTree.src.master import readJob
     from jobTree.src.master import getSlaveLogFileName, getLogFileName, getJobStatsFileName, getGlobalTempDirName  
     from jobTree.src.jobTreeRun import getEnvironmentFileName, getConfigFileName
@@ -344,11 +344,11 @@ def main():
             
             ##Updated the job so we can start the next loop cycle
             job.attrib["colour"] = "grey"
-            writeJobs([ job ])
+            writeJob(job)
             logger.info("Updated the status of the job to grey and starting the next job")
         
         #Write back the job file with the updated jobs, using the checkpoint method.
-        writeJobs([ job ])
+        writeJob(job)
         logger.info("Written out an updated job file")
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
