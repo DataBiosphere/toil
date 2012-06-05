@@ -25,14 +25,14 @@ import os
 import random
 import subprocess
 import time
+
 #from threading import Thread, Lock
 #from Queue import Queue
 from Queue import Empty
-
 from sonLib.bioio import logger
-
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
+
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from sonLib.bioio import getTempFile
 from sonLib.bioio import system
@@ -49,12 +49,8 @@ def worker(inputQueue, outputQueue):
         command, jobID, threadsToStart = args
         sys.argv = command.split()[2:]
         slaveMain()
-        #startTime = time.time()
-        #logger.info("Starting a job with ID %s" % jobID)
-        #process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
         outputQueue.put((jobID, 0, threadsToStart))
         inputQueue.task_done()
-        #logger.info("Finished a job with ID %s in time %s and exit value %s" % (jobID, time.time() - startTime, process.returncode))
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
@@ -76,7 +72,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.workerFn = workerFn
         for i in xrange(self.maxThreads): #Setup the threads
             worker = Process(target=workerFn, args=(self.inputQueue, self.outputQueue))
-            worker.daemon()
+            worker.daemon = True
             worker.start()
 
     def issueJob(self, command, memory, cpu):
@@ -122,13 +118,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         i = None
         try:
             jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
-            print "helllll!!!!!!!!!", jobID, exitValue, threadsToStart
             i = (jobID, exitValue)
             self.jobs.pop(jobID)
             logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
             for j in xrange(threadsToStart):
-                worker = Process(target=worker, args=(self.inputQueue, self.outputQueue))
-                worker.daemon()
+                worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
+                worker.daemon = True
                 worker.start()
             self.outputQueue.task_done()
         except Empty:

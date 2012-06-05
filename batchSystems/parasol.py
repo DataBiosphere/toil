@@ -25,8 +25,14 @@ import re
 import sys
 import subprocess
 import time
-from threading import Thread
-from Queue import Queue, Empty
+
+from Queue import Empty
+from sonLib.bioio import logger
+from multiprocessing import Process
+from multiprocessing import JoinableQueue as Queue
+
+#from threading import Thread
+#from Queue import Queue, Empty
 
 from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -51,7 +57,7 @@ def popenParasolCommand(command, runUntilSuccessful=True):
         time.sleep(10)
         logger.critical("Waited for a few seconds, will try again")
 
-def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
+def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
     """We use the parasol results to update the status of jobs, adding them
     to the list of updated jobs.
     
@@ -71,6 +77,7 @@ def getUpdatedJob(parasolResultsFileHandle, outputQueue1, outputQueue2):
     
     plus you finally have the command name..
     """
+    parasolResultsFileHandle = open(parasolResultsFile, 'r')
     while True:
         line = parasolResultsFileHandle.readline()
         if line != '':
@@ -92,8 +99,6 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.parasolCommand = config.attrib["parasol_command"]
         self.parasolResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
-        self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
-        self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence    
         self.queuePattern = re.compile("q\s+([0-9]+)")
         self.runningPattern = re.compile("r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")
         self.killJobs(self.getIssuedJobIDs()) #Kill any jobs on the current stack
@@ -104,15 +109,15 @@ class ParasolBatchSystem(AbstractBatchSystem):
         exitValue = popenParasolCommand("%s -results=%s freeBatch" % (self.parasolCommand, self.parasolResultsFile), False)[0]
         if exitValue != None:
             logger.critical("Could not reset the parasol batch %s" % self.parasolResultsFile)
-        self.parasolResultsFileHandle = open(self.parasolResultsFile, 'w')
-        self.parasolResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
-        self.parasolResultsFileHandle = open(self.parasolResultsFile, 'r')
+        open(self.parasolResultsFile, 'w').close()
         logger.info("Reset the results queue")
         #Stuff to allow max cpus to be work
         self.outputQueue1 = Queue()
         self.outputQueue2 = Queue()
-        worker = Thread(target=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
-        worker.setDaemon(True)
+        #worker = Thread(target=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
+        #worker.setDaemon(True)
+        worker = Process(target=getUpdatedJob, args=(self.parasolResultsFile, self.outputQueue1, self.outputQueue2))
+        worker.daemon = True
         worker.start()
         self.usedCpus = 0
         self.maxCpus = int(config.attrib["max_jobs"])
