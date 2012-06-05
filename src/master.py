@@ -102,7 +102,7 @@ class JobRemover:
             while True:
                 job = inputQueue.get()
                 #Try explicitly removing these files, leaving empty dir
-                if stats:
+                if stats: 
                     os.remove(getJobStatsFileName(job))
                 os.remove(getJobFileName(job))
                 fileTree.destroyTempDir(getGlobalTempDirName(job))
