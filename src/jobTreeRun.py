@@ -31,7 +31,7 @@ from optparse import OptionParser
 
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
-from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, BadWorker
+from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 
 from jobTree.src.master import createJob
@@ -152,7 +152,7 @@ def loadTheBatchSystem(config):
             batchSystem = GridengineBatchSystem(config)
             logger.info("Using the grid engine machine batch system")
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-            batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
+            batchSystem = SingleMachineBatchSystem(config, workerFn=badWorker)
             config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
         return batchSystem
     batchSystem = batchSystemConstructionFn(batchSystemString)

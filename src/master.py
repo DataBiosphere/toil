@@ -35,7 +35,8 @@ import xml.etree.ElementTree as ET
 import time
 from collections import deque
 #from threading import Thread, Queue
-from multiprocessing import Process, Queue
+from multiprocessing import Process, JoinableQueue
+#from multiprocessing.queues import SimpleQueue
 #from bz2 import BZ2File
 
 from sonLib.bioio import logger, getTotalCpuTime
@@ -94,8 +95,8 @@ class JobRemover:
     """Class asynchronously deletes jobs
     """
     def __init__(self, config):
-        self.inputQueue = Queue()
-        def jobDeleter(inputQueue):
+        self.inputQueue = JoinableQueue()
+        def jobDeleter(inputQueue, config):
             stats = config.attrib.has_key("stats")
             fileTree = config.attrib["job_file_tree"]
             while True:
@@ -106,9 +107,9 @@ class JobRemover:
                 os.remove(getJobFileName(job))
                 fileTree.destroyTempDir(getGlobalTempDirName(job))
                 inputQueue.task_done()
-        worker = Process(target=jobDeleter, args=(self.inputQueue,))
+        self.worker = Process(target=jobDeleter, args=(self.inputQueue, config))
         #worker.setDaemon(True)
-        worker.start()
+        self.worker.start()
     
     def deleteJob(self, job):
         self.inputQueue.put(job)
@@ -119,6 +120,7 @@ class JobRemover:
             
     def join(self):
         self.inputQueue.join()
+        self.worker.terminate()
         
 def writeJob(job, jobFileName):
     tree = ET.ElementTree(job)
