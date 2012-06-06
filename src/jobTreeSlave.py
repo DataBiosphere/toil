@@ -55,152 +55,63 @@ def getMemoryAndCpuRequirements(config, nextJob):
         cpu = max(int(nextJob.attrib["cpu"]), 0)
     return memory, cpu
  
-def processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, 
-               localSlaveTempDir, localTempDir, config):
+def processJob(job, command, memoryAvailable, cpuAvailable, 
+               defaultMemory, defaultCpu,
+               stats, localTempDir):
     """Runs a job.
     """
     from sonLib.bioio import logger
-    from sonLib.bioio import system
-    from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
-    from sonLib.bioio import redirectLoggerStreamHandlers
-    from jobTree.src.master import getGlobalTempDirName
+    from jobTree.src.master import getGlobalTempDirName, getJobFileName
+    import jobTree.scriptTree.scriptTree
     
     assert len(job.find("children").findall("child")) == 0
     assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
-    command = jobToRun.attrib["command"]
-    #Copy the job file to be edited
-    
-    tempJob = ET.Element("job")
-    ET.SubElement(tempJob, "children")
-    
-    #Log for job
-    tempJob.attrib["log_level"] = config.attrib["log_level"]
-    
-    #Time length of 'ideal' job before further parallelism is required
-    tempJob.attrib["job_time"] = config.attrib["job_time"]
-
+   
+    followOns = job.find("followOns")
+    jobFile = getJobFileName(job)
     #Temp file dirs for job.
-    tempJob.attrib["local_temp_dir"] = localTempDir
     depth = len(job.find("followOns").findall("followOn"))
     assert depth >= 1
-    tempJob.attrib["global_temp_dir"] = os.path.join(getGlobalTempDirName(job), str(depth))
-    if not os.path.isdir(tempJob.attrib["global_temp_dir"]): #Ensures that the global temp dirs of each level are kept separate.
-        os.mkdir(tempJob.attrib["global_temp_dir"])
-        os.chmod(tempJob.attrib["global_temp_dir"], 0777)
+    globalTempDir = os.path.join(getGlobalTempDirName(job), str(depth))
+    if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
+        os.mkdir(globalTempDir)
+        os.chmod(globalTempDir, 0777)
     if os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+1))):
         system("rm -rf %s" % os.path.join(getGlobalTempDirName(job), str(depth+1)))
     assert not os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+2)))
-    
-    #Deal with memory and cpu requirements (this pass tells the running job how much cpu and memory they have,
-    #according to the batch system
-    tempJob.attrib["available_memory"] = str(memoryAvailable) 
-    tempJob.attrib["available_cpu"] = str(cpuAvailable)
-    
-    #Run the actual command
-    tempLogFile = os.path.join(localSlaveTempDir, "temp.log")
-    fileHandle = open(tempLogFile, 'w')
-    
-    if stats != None:
-        tempJob.attrib["stats"] = ""
-        startTime = time.time()
-        startClock = getTotalCpuTime()
-    
-    #If you're a script tree python process, we don't need to python
-    if command[:10] == "scriptTree":
-        import jobTree.scriptTree.scriptTree
-        savedStdErr = sys.stderr
-        savedStdOut = sys.stdout
-        exitValue = 0
-        try: 
-            sys.stderr = fileHandle 
-            sys.stdout = fileHandle
-            redirectLoggerStreamHandlers(savedStdErr, fileHandle)
-            l = command.split()
-            jobTree.scriptTree.scriptTree.run(tempJob, l[1], l[2:])
-        except:
-            traceback.print_exc(file = fileHandle)
-            exitValue = 1
-        sys.stderr = savedStdErr
-        sys.stdout = savedStdOut
-        redirectLoggerStreamHandlers(fileHandle, sys.stderr)
-        if exitValue == 1:
-            logger.critical("Caught an exception in the target being run")
-    else:
-        if "JOB_FILE" not in command:
-            logger.critical("There is no 'JOB_FILE' string in the command to be run to take the job-file argument: %s" % command)
-            job.attrib["colour"] = "red" #Update the colour
+
+    try: 
+        if command != "": #Not a stub
+            commandTokens = command.split()  
+            for className in commandTokens[1:]:
+                #Magic for loading a class
+                logger.info("Loading the class name %s" % className)
+                l = className.split(".")
+                moduleName = ".".join(l[:-1])
+                className = l[-1]
+                _temp = __import__(moduleName, globals(), locals(), [className], -1)
+                exec "%s = 1" % className
+                vars()[className] = _temp.__dict__[className]
+            loadPickleFile(commandTokens[0]).execute(job, localTempDir, globalTempDir, memoryAvailable, cpuAvailable)
         
-        #Now write the temp job file
-        tempFile = os.path.join(localSlaveTempDir, "tempJob.xml")
-        fileHandle2 = open(tempFile, 'w')  
-        tree = ET.ElementTree(tempJob)
-        tree.write(fileHandle2)
-        fileHandle2.close()
-        logger.info("Copied the jobs files ready for the job")
-        
-        process = subprocess.Popen(command.replace("JOB_FILE", tempFile), shell=True, stdout=fileHandle, stderr=subprocess.STDOUT, env=environment)
-        sts = os.waitpid(process.pid, 0)
-        exitValue = sts[1]
-        if exitValue == 0:
-            tempJob = ET.parse(tempFile).getroot()
-        
-    fileHandle.close()
-    truncateFile(tempLogFile, int(config.attrib["max_log_file_size"]))
-    
-    logger.info("Ran the job command=%s with exit status %i" % (command, exitValue))
-    
-    if exitValue == 0:
-        logger.info("Passed the job, okay")
-        
-        if stats != None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            jobTag = ET.SubElement(stats, "job", { "time":str(time.time() - startTime), 
-                                                  "clock":str(totalCpuTime - startClock),
-                                                  "memory":str(totalMemoryUsage) })
-            if tempJob.find("stack") != None:
-                jobTag.append(tempJob.find("stack"))
-        
+            #The follow on command
+            if len(job.find("children").findall("child")) != 0 and \
+                totalFollowOns == len(followOns): #This is to keep the stack of follow on jobs consistent.
+                ET.SubElement(followOns, "followOn", { "command":"", "memory":"1000000", "cpu":"1" })
+                logger.info("Making a stub follow on job")
         job.attrib["colour"] = "black" #Update the colour
-        
-        #Deal with any logging messages directed at the master
-        if tempJob.find("messages") != None:
-            messages = job.find("messages")
-            if messages == None:
-                messages = ET.SubElement(job, "messages")
-            for messageTag in tempJob.find("messages").findall("message"):
-                messages.append(messageTag)
-        
-        #The children
-        children = job.find("children")
-        assert len(children.findall("child")) == 0 #The children
-        assert tempJob.find("children") != None
-        for child in tempJob.find("children").findall("child"):
-            memory, cpu = getMemoryAndCpuRequirements(config, child)
-            ET.SubElement(children, "child", { "command":child.attrib["command"], 
-                    "memory":str(memory), "cpu":str(cpu) })
-            logger.info("Making a child with command: %s" % (child.attrib["command"]))
-        
-        #The follow on command
-        followOns = job.find("followOns")
-        followOns.remove(followOns.findall("followOn")[-1]) #Remove the old job
-        if tempJob.attrib.has_key("command"):
-            memory, cpu = getMemoryAndCpuRequirements(config, tempJob)
-            ET.SubElement(followOns, "followOn", { "command":tempJob.attrib["command"], 
-                    "memory":str(memory), "cpu":str(cpu) })
-            logger.info("Making a follow on job with command: %s" % tempJob.attrib["command"])
-            
-        elif len(tempJob.find("children").findall("child")) != 0: #This is to keep the stack of follow on jobs consistent.
-            ET.SubElement(followOns, "followOn", { "command":"echo JOB_FILE", "memory":"1000000", "cpu":"1" })
-            logger.info("Making a stub follow on job")
-    else:
+    except:
+        traceback.print_exc(file = fileHandle)
+        logger.critical("Caught an exception in the target being run")
+        #Reload and colour red
+        job = readJob(jobFile) #Reload the job
         logger.critical("Failed the job")
         job.attrib["colour"] = "red" #Update the colour
-    
+        
     #Clean up
     system("rm -rf %s/*" % (localTempDir))
     logger.info("Cleaned up by removing the contents of the local temporary file directory for the job")
-    
-    return tempLogFile
+    return job
     
 def main():
     sys.path.append(sys.argv[1])
@@ -292,21 +203,22 @@ def main():
         maxTime = float(config.attrib["job_time"])
         assert maxTime > 0.0
         assert maxTime < sys.maxint
+        
         jobToRun = job.find("followOns").findall("followOn")[-1]
         memoryAvailable = int(jobToRun.attrib["memory"])
+        defaultMemory = int(config.attrib["memory"])
         cpuAvailable = int(jobToRun.attrib["cpu"])
+        defaultCpu = int(config.attrib["cpu"])
+        
         startTime = time.time()
         while True:
-            tempLogFile = processJob(job, jobToRun, memoryAvailable, cpuAvailable, stats, environment, localSlaveTempDir, localTempDir, config)
+            job = processJob(job, jobToRun, memoryAvailable, cpuAvailable, 
+                                     defaultMemory, defaultCpu,
+                                     stats, localTempDir, config)
             
             if job.attrib["colour"] != "black": 
                 logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
                 system("mv %s %s" % (tempLogFile, getLogFileName(job))) #Copy back the job log file, because we saw failure
-                break
-            elif config.attrib.has_key("reportAllJobLogFiles"):
-                logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
-                #Copy across the log file
-                system("mv %s %s" % (tempLogFile, getLogFileName(job)))
                 break
             
             childrenNode = job.find("children")
@@ -400,6 +312,12 @@ def main():
     ##########################################
     #Normal cleanup
     ##########################################
+    
+    elif config.attrib.has_key("reportAllJobLogFiles"):
+                logger.info("Exiting because we've been asked to report all logs, and this involves returning to the master")
+                #Copy across the log file
+                system("mv %s %s" % (tempLogFile, getLogFileName(job)))
+                break
     
     sys.stderr = origStdErr
     sys.stdout = origStdOut
