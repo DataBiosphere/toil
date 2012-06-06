@@ -32,7 +32,9 @@ class Target:
         """
         self.__followOn = None
         self.__children = []
+        self.__childCommands = []
         self.__memory = memory
+        self.__time = time #This parameter is no longer used.
         self.__cpu = cpu
         self.globalTempDir = None
         if self.__module__ == "__main__":
@@ -58,6 +60,16 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Adds the child target to be run as child of this target.
         """
         self.__children.append(childTarget)
+    
+    def addChildCommand(self, childCommand, runTime=sys.maxint):
+        """A command to be run as child of the job tree.
+        """
+        self.__childCommands.append((str(childCommand), float(runTime)))
+    
+    def getRunTime(self):
+        """Get the time the target is anticipated to run.
+        """
+        return self.__time
     
     def getGlobalTempDir(self):
         """Get the global temporary directory.
@@ -92,6 +104,11 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Get the child targets.
         """
         return self.__children[:]
+    
+    def getChildCommands(self):
+        """Gets the child commands, as a list of tuples of strings and floats, representing the run times.
+        """
+        return self.__childCommands[:]
     
     def logToMaster(self, string):
         """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.

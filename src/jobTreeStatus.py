@@ -33,10 +33,10 @@ from sonLib.bioio import logFile
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
-import jobTree.scriptTree.scriptTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getLogFileName, getJobFileName, getStatsFileName, getParasolResultsFileName, getConfigFileName
 from jobTree.src.master import readJob
+from jobTree.src.jobTreeSlave import loadStack
 
 def parseJobFile(absFileName):
     try:
@@ -124,12 +124,12 @@ def main():
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job, jobFile in jobFiles:
             if job.attrib["colour"] == "red":
-                if os.path.isfile(job.attrib["log_file"]):
+                if os.path.isfile(getLogFileName(job)):
                     def fn(string):
                         print string
-                    logFile(job.attrib["log_file"], fn)
+                    logFile(getLogFileName(job), fn)
                 else:
-                    logger.info("Log file for job %s is not present" % job.attrib["file"])
+                    logger.info("Log file for job %s is not present" % getJobFileName(job))
                     
     i = 0            
     if options.graphFile != None:
@@ -146,9 +146,8 @@ def main():
             if len(job.find("followOns").findall("followOn")) > 0:
                 command = job.find("followOns").findall("followOn")[-1].attrib["command"]
                 if command[:10] == "scriptTree":
-                    l = command.split()
                     try:
-                        stack = jobTree.scriptTree.scriptTree.load(l[1], l[2:])
+                        stack = loadStack(command)
                         target = stack.stack[-1]
                         command = str(target.__class__)
                     except IOError:

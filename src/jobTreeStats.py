@@ -38,7 +38,6 @@ from sonLib.bioio import TempFileTree
 
 from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
 
-
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.
     """
@@ -164,21 +163,13 @@ def main():
     slaves = stats.findall("slave")
     fn(collatedStatsTag, slaves, "slave")
     
-    #Add job info
-    jobs = []
-    for slave in slaves:
-        jobs += slave.findall("job")
-    def fn3(slave):
-        return slave.findall("job")
-    fn2(fn(collatedStatsTag, jobs, "job"), slaves, "slave", fn3)
-    
     #Add aggregated target info
     targets = []
-    for job in jobs:
-        targets += job.findall("stack")
+    for slave in slaves:
+        targets += slave.findall("target")
     def fn4(job):
-        return list(job.findall("stack"))
-    fn2(fn(collatedStatsTag, targets, "target"), jobs, "job", fn4)   
+        return list(slave.findall("target"))
+    fn2(fn(collatedStatsTag, targets, "target"), slaves, "slave", fn4)   
     
     #Get info for each target
     targetNames = set()

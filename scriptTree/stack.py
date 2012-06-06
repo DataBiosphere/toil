@@ -29,7 +29,7 @@ try:
 except ImportError:
     import pickle as cPickle
     
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 
 from sonLib.bioio import logger
 from sonLib.bioio import setLogLevel
@@ -110,13 +110,13 @@ class Stack:
         classNames = " ".join(i)
         return "scriptTree %s %s" % (pickleFile, classNames)
     
-    def getMemory(self, defaultMemory):
+    def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()
         if memory == sys.maxint:
             return defaultMemory
         return memory
     
-    def getCpu(self, defaultCpu):
+    def getCpu(self, defaultCpu=sys.maxint):
         cpu = self.target.getCpu()
         if cpu == sys.maxint:
             return defaultCpu
@@ -129,19 +129,16 @@ class Stack:
     def getGlobalTempDir(self):
         return getTempDirectory(rootDir=self.globalTempDir)
 
-    def execute(self, job, localTempDir, globalTempDir, 
+    def execute(self, job, stats, localTempDir, globalTempDir, 
                 memoryAvailable, cpuAvailable,
                 defaultMemory, defaultCpu):
         self.tempDirAccessed = False
         self.localTempDir = localTempDir
         self.globalTempDir = globalTempDir
         
-        if job.attrib.has_key("stats"):
-            stats = ET.SubElement(job, "stack")
+        if stats != None:
             startTime = time.time()
             startClock = getTotalCpuTime()
-        else:
-            stats = None
         
         baseDir = os.getcwd()
         
@@ -171,18 +168,21 @@ class Stack:
             ET.SubElement(job.find("followOns"), "followOn", 
                           { "command":followOnStack.makeRunnable(self.globalTempDir),
                             "memory":str(followOnStack.getMemory(defaultMemory)), 
-                            "cpu":followOnStack.getCpu(defaultCpu) })
+                            "cpu":str(followOnStack.getCpu(defaultCpu)) })
         
         #Now add the children to the newChildren stack
-        childrenTag = job.find("children")
         newChildren = self.target.getChildren()
         newChildren.reverse()
         while len(newChildren) > 0:
             childStack = Stack(newChildren.pop())
-            childJob = ET.SubElement(childrenTag, "child", 
+            childJob = ET.SubElement(job.find("children"), "child", 
                     { "command":childStack.makeRunnable(self.globalTempDir),
                      "memory":str(childStack.getMemory(defaultMemory)),
                      "cpu":str(childStack.getCpu(defaultCpu)) })
+        
+         #Now build jobs for each child command
+        for childCommand, runTime in self.target.getChildCommands():
+            ET.SubElement(job.find("children"), "child", { "command":str(childCommand), "memory":str(defaultMemory), "cpu":str(defaultCpu) })
           
         for message in self.target.getMasterLoggingMessages():
             if job.find("messages") is None:
@@ -190,7 +190,8 @@ class Stack:
             ET.SubElement(job.find("messages"), "message", { "message": message} )
         
         #Finish up the stats
-        if stats is not None:
+        if stats != None:
+            stats = ET.SubElement(stats, "target")
             stats.attrib["time"] = str(time.time() - startTime)
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["clock"] = str(totalCpuTime - startClock)
@@ -223,12 +224,4 @@ class Stack:
                                    "did you remember to call Target.__init__(self) in the %s "
                                    "__init__ method?" % ( r, target.__class__.__name__,
                                                           target.__class__.__name__))
-
-def loadPickleFile(pickleFile):
-    """Loads the first object from a pickle file.
-    """
-    fileHandle = open(pickleFile, 'r')
-    i = cPickle.load(fileHandle)
-    fileHandle.close()
-    return i
             

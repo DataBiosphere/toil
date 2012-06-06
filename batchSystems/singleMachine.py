@@ -153,7 +153,7 @@ def badWorker(inputQueue, outputQueue):
         #Run to first calculate the runtime..
         process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
         if random.choice((False, True)):
-            time.sleep(random.random()*5) #Sleep up to 5 seconds before trying to kill it
+            time.sleep(random.random())
             process.kill()
         process.wait()
         outputQueue.put((jobID, process.returncode, threadsToStart))
