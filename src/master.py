@@ -615,9 +615,9 @@ def mainLoop(config, batchSystem):
             logger.info("Rescued any (long) missing jobs")
     
     logger.info("Finished the main loop, now must finish deleting files")
-    startTime = time.time()
+    startTimeForRemovingFiles = time.time()
     jobRemover.join()
-    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTime))    
+    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTimeForRemovingFiles))    
     
     if stats:
         fileHandle = open(getStatsFileName(config.attrib["job_tree"]), 'ab')
