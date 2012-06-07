@@ -45,6 +45,7 @@ from sonLib.bioio import getLogLevelString
 from sonLib.bioio import logFile
 from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
+from sonLib.bioio import TempFileTree
 
 def getEnvironmentFileName(jobTreePath):
     return os.path.join(jobTreePath, "environ.pickle")
@@ -96,28 +97,33 @@ class JobRemover:
     def __init__(self, config):
         self.inputQueue = JoinableQueue()
         
-        def jobDeleter(inputQueue, statsFileHandle, fileTree):
-            while True:
-                globalTempDir = inputQueue.get()
-                #Try explicitly removing these files, leaving empty dir
-                if statsFileHandle != None: 
-                    pass
+        def jobDeleter(inputQueue, makeStats, statsFile, fileTreeFile):
+            #Designed to not share any state bar the queue and two strings
+            fileTree = TempFileTree(fileTreeFile) #only use for deletions, so okay
+            if makeStats:
+                statsFileHandle = open(statsFile, 'ab')
+                while True:
+                    globalTempDir = inputQueue.get()
                     jobStatsFile = os.path.join(globalTempDir, "stats.txt")
                     fH = open(jobStatsFile,'rb')
-                    #statsFileHandle.write(fH.read())
                     shutil.copyfileobj(fH, statsFileHandle)
                     fH.close()
                     os.remove(jobStatsFile)
-                os.remove(os.path.join(globalTempDir, "job.xml"))
-                fileTree.destroyTempDir(globalTempDir)
-                inputQueue.task_done()
-        
-        if config.attrib.has_key("stats"):
-            self.statsFileHandle = open(getStatsFileName(config.attrib["job_tree"]), 'ab')
-        else:
-            self.statsFileHandle = None
-        fileTree = config.attrib["job_file_tree"]       
-        self.worker = Process(target=jobDeleter, args=(self.inputQueue, self.statsFileHandle, fileTree))
+                    os.remove(os.path.join(globalTempDir, "job.xml"))
+                    fileTree.destroyTempDir(globalTempDir)
+                    statsFileHandle.flush()
+                    inputQueue.task_done()
+            else:
+                while True:
+                    globalTempDir = inputQueue.get()
+                    os.remove(os.path.join(globalTempDir, "job.xml"))
+                    fileTree.destroyTempDir(globalTempDir)
+                    inputQueue.task_done()
+   
+        self.worker = Process(target=jobDeleter, 
+                              args=(self.inputQueue, config.attrib.has_key("stats"), 
+                                    getStatsFileName(config.attrib["job_tree"]), 
+                                    getJobFileDirName(config.attrib["job_tree"])))
         #worker.setDaemon(True)
         self.worker.start()
     
@@ -130,8 +136,6 @@ class JobRemover:
             
     def join(self):
         self.inputQueue.join()
-        if self.statsFileHandle != None:
-            self.statsFileHandle.close()
         self.worker.terminate()
         
 def readJob(jobFile):
