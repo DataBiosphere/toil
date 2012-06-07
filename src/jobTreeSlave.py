@@ -210,8 +210,8 @@ def main():
                         ##########################################
                         
                         if len(children.findall("child")) != 0 and depth == len(followOns.findall("followOn")): #This is to keep the stack of follow on jobs consistent.
-                            ET.SubElement(followOns, "followOn", { "command":"", "memory":"1000000", "cpu":"1" })
-                            logger.info("Making a stub follow on job")
+                            ET.SubElement(followOns, "followOn", { "command":"", "memory":str(defaultMemory), "cpu":str(defaultCpu) })
+                            logger.info("Making a stub follow on job to clean up")
                 else: #Is another command
                     system(command) 
             except:
