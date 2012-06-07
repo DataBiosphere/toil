@@ -184,9 +184,10 @@ def main():
             if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
                 os.mkdir(globalTempDir)
                 os.chmod(globalTempDir, 0777)
-            if os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+1))):
-                system("rm -rf %s" % os.path.join(getGlobalTempDirName(job), str(depth+1)))
-            assert not os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+2)))
+            i = 1
+            while os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+i))):
+                system("rm -rf %s" % os.path.join(getGlobalTempDirName(job), str(depth+i)))
+                i += 1
         
             ##########################################
             #Run the job

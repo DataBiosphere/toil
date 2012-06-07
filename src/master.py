@@ -539,10 +539,16 @@ def mainLoop(config, batchSystem):
                     jobBatcher.issueJobs(newChildren)
                     
                 elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
-                    logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
-                    ##Reset the job run info
-                    job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-                    makeGreyAndReissueJob(job)
+                    followOn = job.find("followOns").findall("followOn")[-1]
+                    if followOn.attrib["command"] == "": #Was a stub job
+                        job.find("followOns").remove(followOn)
+                        updatedJobFiles.add(job)
+                        logger.debug("Filtering out stub job")
+                    else:
+                        logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
+                        ##Reset the job run info
+                        job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
+                        makeGreyAndReissueJob(job)
                     
                 else: #Job has finished, so we can defer to any parent
                     logger.debug("Job: %s is now dead" % getJobFileName(job))
