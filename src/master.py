@@ -89,7 +89,7 @@ class JobRemover:
                     fileTree.destroyTempDir(globalTempDir)
                     inputQueue.task_done()
                     
-        #return
+        return
    
         self.worker = Process(target=jobDeleter, 
                               args=(self.inputQueue, config.attrib.has_key("stats"), 
@@ -106,6 +106,7 @@ class JobRemover:
             self.deleteJob(job.getGlobalTempDirName())
             
     def join(self):
+        return
         self.inputQueue.join()
         self.worker.terminate()
     
@@ -485,13 +486,16 @@ def mainLoop(config, batchSystem):
                     else:
                         writeJobs([ job ] + newChildren, noCheckPoints=False) #Check point, including the parent
                     jobBatcher.issueJobs(newChildren)
-                    
                 elif job.getNumberOfFollowOnCommandsToIssue() != 0: #Has another job
-                    logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
-                    ##Reset the job run info
-                    job.setRemainingRetryCount(int(config.attrib["retry_count"]))
-                    makeGreyAndReissueJob(job)
-                    
+                    if job.getNextFollowOnCommandToIssue()[0] == "": #Was a stub job
+                        job.popNextFollowOnCommandToIssue()
+                        updatedJobFiles.add(job)
+                        logger.debug("Filtering out stub job")
+                    else:
+                        logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
+                        ##Reset the job run info
+                        job.setRemainingRetryCount(int(config.attrib["retry_count"]))
+                        makeGreyAndReissueJob(job)
                 else: #Job has finished, so we can defer to any parent
                     logger.debug("Job: %s is now dead" % job.getJobFileName())
                     if job.getParentJobFile() != None:
@@ -563,9 +567,9 @@ def mainLoop(config, batchSystem):
             logger.info("Rescued any (long) missing jobs")
     
     logger.info("Finished the main loop, now must finish deleting files")
-    startTime = time.time()
+    startTimeForRemovingFiles = time.time()
     jobRemover.join()
-    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTime))    
+    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTimeForRemovingFiles))    
     
     if stats:
         fileHandle = open(getStatsFileName(config.attrib["job_tree"]), 'ab')
