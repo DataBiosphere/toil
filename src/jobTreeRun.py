@@ -34,10 +34,11 @@ from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 
-from jobTree.src.master import createJob
+from jobTree.src.job import Job
+
 from jobTree.src.master import mainLoop
-from jobTree.src.master import writeJobs
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+from jobTree.src.master import writeJob
+from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getParasolResultsFileName, getConfigFileName, getJobFileDirName
 
 from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
@@ -58,7 +59,6 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
     system(command)
     logger.info("Ran the jobtree apparently okay")
     
-
 def commandAvailable(executable):
     return 0 == os.system("which %s > /dev/null 2> /dev/null" % executable)
 
@@ -263,11 +263,11 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
     """
     logger.info("Adding the first job")
     if memory == None or memory == sys.maxint:
-        memory = config.attrib["default_memory"]
+        memory = float(config.attrib["default_memory"])
     if cpu == None or cpu == sys.maxint:
-        cpu = config.attrib["default_cpu"]
-    job = createJob({ "command":command, "memory":str(int(memory)), "cpu":str(int(cpu)) }, None, config)
-    writeJobs([job])
+        cpu = float(config.attrib["default_cpu"])
+    job = Job(command=command, memory=memory, cpu=cpu, parentJobFile=None, config=config) 
+    writeJob(job)
     logger.info("Added the first job")
     
 def runJobTreeScript(options):

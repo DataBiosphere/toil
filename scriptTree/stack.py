@@ -45,7 +45,6 @@ from jobTree.src.jobTreeRun import reloadJobTree
 from jobTree.src.jobTreeRun import createFirstJob
 from jobTree.src.jobTreeRun import loadEnvironment
 from jobTree.src.master import mainLoop
-from jobTree.src.master import getGlobalTempDirName
 
 from jobTree.scriptTree.target import Target
 
@@ -165,29 +164,25 @@ class Stack:
             if self.target.isGlobalTempDirSet():
                 followOn.setGlobalTempDir(self.target.getGlobalTempDir())
             followOnStack = Stack(followOn)
-            ET.SubElement(job.find("followOns"), "followOn", 
-                          { "command":followOnStack.makeRunnable(self.globalTempDir),
-                            "memory":str(followOnStack.getMemory(defaultMemory)), 
-                            "cpu":str(followOnStack.getCpu(defaultCpu)) })
+            job.addFollowOnCommand((followOnStack.makeRunnable(self.globalTempDir),
+                                    followOnStack.getMemory(defaultMemory),
+                                    followOnStack.getCpu(defaultCpu)))
         
         #Now add the children to the newChildren stack
         newChildren = self.target.getChildren()
         newChildren.reverse()
         while len(newChildren) > 0:
             childStack = Stack(newChildren.pop())
-            childJob = ET.SubElement(job.find("children"), "child", 
-                    { "command":childStack.makeRunnable(self.globalTempDir),
-                     "memory":str(childStack.getMemory(defaultMemory)),
-                     "cpu":str(childStack.getCpu(defaultCpu)) })
+            job.addChildCommand((childStack.makeRunnable(self.globalTempDir),
+                     childStack.getMemory(defaultMemory),
+                     childStack.getCpu(defaultCpu)))
         
          #Now build jobs for each child command
         for childCommand, runTime in self.target.getChildCommands():
-            ET.SubElement(job.find("children"), "child", { "command":str(childCommand), "memory":str(defaultMemory), "cpu":str(defaultCpu) })
-          
+            job.addChildCommand((childCommand, defaultMemory, defaultCpu))
+            
         for message in self.target.getMasterLoggingMessages():
-            if job.find("messages") is None:
-                ET.SubElement(job, "messages")
-            ET.SubElement(job.find("messages"), "message", { "message": message} )
+            job.addMessage(message)
         
         #Finish up the stats
         if stats != None:

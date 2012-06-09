@@ -75,20 +75,16 @@ def main():
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
-    from jobTree.src.master import writeJob
-    from jobTree.src.master import readJob
-    from jobTree.src.master import getLogFileName, getJobStatsFileName, getGlobalTempDirName  
-    from jobTree.src.jobTreeRun import getEnvironmentFileName, getConfigFileName
+    from jobTree.src.job import readJob, Job
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, writeJob
     from sonLib.bioio import system
     
     ##########################################
-    #Parse the job.
+    #Input args
     ##########################################
     
     jobTreePath = sys.argv[1]
-    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
     jobFile = sys.argv[2]
-    job = readJob(jobFile)
     
     ##########################################
     #Load the environment for the job
@@ -131,15 +127,24 @@ def main():
     origStdOut = sys.stdout
     sys.stderr = slaveHandle 
     sys.stdout = slaveHandle
-    setLogLevel(config.attrib["log_level"])
-    logger.info("Parsed arguments and set up logging")
-    
+
     ##########################################
-    #Main loop
+    #Slave log file trapped from here on in
     ##########################################
-    
+
     slaveFailed = False
-    try: #Try loop for slave logging
+    try:
+    
+        ##########################################
+        #Parse input files
+        ##########################################
+        
+        config = ET.parse(getConfigFileName(jobTreePath)).getroot()
+        setLogLevel(config.attrib["log_level"])
+        job = readJob(jobFile)
+        logger.info("Parsed arguments and set up logging")
+    
+         #Try loop for slave logging
         ##########################################
         #Setup the stats, if requested
         ##########################################
@@ -163,14 +168,11 @@ def main():
         #The next job
         ##########################################
         
-        children = job.find("children")
-        followOns = job.find("followOns")
-        followOn = followOns.findall("followOn")[-1]
-        memoryAvailable = int(followOn.attrib["memory"])
+        command, memoryAvailable, cpuAvailable = job.getNextFollowOnCommandToIssue() 
         defaultMemory = int(config.attrib["default_memory"])
-        cpuAvailable = int(followOn.attrib["cpu"])
         defaultCpu = int(config.attrib["default_cpu"])
-        assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
+        assert job.getIssuedChildCount() == job.getCompletedChildCount()
+        assert job.getNumberOfChildCommandsToIssue() == 0
         
         startTime = time.time() 
         while True:
@@ -178,22 +180,21 @@ def main():
             #Global temp dir
             ##########################################
             
-            depth = len(followOns.findall("followOn"))
+            depth = job.getNumberOfFollowOnCommandsToIssue()
             assert depth >= 1
-            globalTempDir = os.path.join(getGlobalTempDirName(job), str(depth))
+            globalTempDir = os.path.join(job.getGlobalTempDirName(), str(depth))
             if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
                 os.mkdir(globalTempDir)
                 os.chmod(globalTempDir, 0777)
-            if os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+1))):
-                system("rm -rf %s" % os.path.join(getGlobalTempDirName(job), str(depth+1)))
-            assert not os.path.isdir(os.path.join(getGlobalTempDirName(job), str(depth+2)))
+            if os.path.isdir(os.path.join(job.getGlobalTempDirName(), str(depth+1))):
+                system("rm -rf %s" % os.path.join(job.getGlobalTempDirName(), str(depth+1)))
+            assert not os.path.isdir(os.path.join(job.getGlobalTempDirName(), str(depth+2)))
         
             ##########################################
             #Run the job
             ##########################################
         
             try: 
-                command = followOn.attrib["command"]
                 if command != "": #Not a stub
                     if command[:11] == "scriptTree ":
                         ##########################################
@@ -209,11 +210,11 @@ def main():
                         #Keep the stack okay
                         ##########################################
                         
-                        if len(children.findall("child")) != 0 and depth == len(followOns.findall("followOn")): #This is to keep the stack of follow on jobs consistent.
-                            ET.SubElement(followOns, "followOn", { "command":"", "memory":"1000000", "cpu":"1" })
+                        if job.getNumberOfChildCommandsToIssue() != 0 and depth == job.getNumberOfFollowOnCommandsToIssue(): #This is to keep the stack of follow on jobs consistent.
+                            job.addFollowOnCommand(("", defaultMemory, defaultCpu))
                             logger.info("Making a stub follow on job")
-                else: #Is another command
-                    system(command) 
+                    else: #Is another command
+                        system(command) 
             except:
                 ##########################################
                 #Deal with failure of the job
@@ -223,7 +224,7 @@ def main():
                 logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
                 #Reload and colour red
                 job = readJob(jobFile) #Reload the job
-                job.attrib["colour"] = "red" #Update the colour
+                job.setColour(Job.red) #Update the colour
                 slaveFailed = True
                 break
             
@@ -231,8 +232,8 @@ def main():
             #Cleanup a successful job
             ##########################################
             
-            followOns.remove(followOn)
-            job.attrib["colour"] = "black" #Update the colour    
+            job.popNextFollowOnCommandToIssue()
+            job.setColour(Job.black)
             system("rm -rf %s/*" % (localTempDir))
             
             ##########################################
@@ -244,30 +245,28 @@ def main():
                 break
             
             #Deal with children
-            if len(children.findall("child")) > 1: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this slave, its got %i children" % len(children.findall("child")))
+            if job.getNumberOfChildCommandsToIssue() > 1: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
+                logger.info("No more jobs can run in series by this slave, its got %i children" % job.getNumberOfChildCommandsToIssue())
                 break
-            elif len(children.findall("child")) == 1: #Only one job, so go ahead and run it on the slave, we've got time.
-                child = children.findall("child")[-1]
-                children.remove(child)
-                ET.SubElement(followOns, "followOn", child.attrib.copy())
+            elif job.getNumberOfChildCommandsToIssue() == 1: #Only one job, so go ahead and run it on the slave, we've got time.
+                job.addFollowOnCommand(job.removeChildrenToIssue()[0])
             
-            if len(followOns.findall("followOn")) == 0:
+            if job.getNumberOfFollowOnCommandsToIssue() == 0:
                 logger.info("No more jobs can run by this slave as we have exhausted the follow ons")
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
-            followOn = job.find("followOns").findall("followOn")[-1]
+            command, memory, cpu = job.getNextFollowOnCommandToIssue()
             
-            if int(followOn.attrib["memory"]) > memoryAvailable:
+            if memory > memoryAvailable:
                 logger.info("We need more memory for the next job, so finishing")
                 break
-            if int(followOn.attrib["cpu"]) > cpuAvailable:
+            if cpu > cpuAvailable:
                 logger.info("We need more cpus for the next job, so finishing")
                 break
             
             ##Updated the job so we can start the next loop cycle
-            job.attrib["colour"] = "grey"
+            job.setColour(Job.grey)
             writeJob(job) #Checkpoint
             logger.info("Updated the status of the job to grey and starting the next job")
         
@@ -283,7 +282,7 @@ def main():
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
-            fileHandle = open(getJobStatsFileName(job), 'w')
+            fileHandle = open(job.getJobStatsFileName(), 'w')
             ET.ElementTree(stats).write(fileHandle)
             fileHandle.close()
         
@@ -291,16 +290,16 @@ def main():
         #Cleanup global files at the end of the chain
         ##########################################
        
-        if job.attrib["colour"] == "black" and len(followOns.findall("followOn")) == 0:
-            nestedGlobalTempDir = os.path.join(getGlobalTempDirName(job), "1")
+        if job.getColour()== Job.black and job.getNumberOfFollowOnCommandsToIssue() == 0:
+            nestedGlobalTempDir = os.path.join(job.getGlobalTempDirName(), "1")
             assert os.path.exists(nestedGlobalTempDir)
             system("rm -rf %s" % nestedGlobalTempDir)
-            if os.path.exists(getLogFileName(job)):
-                os.remove(getLogFileName(job))
+            if os.path.exists(job.getLogFileName()):
+                os.remove(job.getLogFileName())
             if stats != None:
-                assert len(os.listdir(getGlobalTempDirName(job))) == 2 #The job file and the stats file
+                assert len(os.listdir(job.getGlobalTempDirName())) == 2 #The job file and the stats file
             else:
-                assert len(os.listdir(getGlobalTempDirName(job))) == 1 #Just the job file
+                assert len(os.listdir(job.getGlobalTempDirName())) == 1 #Just the job file
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
@@ -325,7 +324,7 @@ def main():
     #Copy back the log file to the global dir, if needed
     if config.attrib.has_key("reportAllJobLogFiles") or slaveFailed:
         truncateFile(tempSlaveLogFile)
-        system("mv %s %s" % (tempSlaveLogFile, getLogFileName(job)))
+        system("mv %s %s" % (tempSlaveLogFile, job.getLogFileName()))
         
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)

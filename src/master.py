@@ -37,11 +37,9 @@ import shutil
 from collections import deque
 #from threading import Thread, Queue
 from multiprocessing import Process, JoinableQueue
-#from multiprocessing.queues import SimpleQueue
-#from bz2 import BZ2File
 
+from job import Job, readJob, getJobFileName, getJobStatsFileName
 from sonLib.bioio import logger, getTotalCpuTime
-from sonLib.bioio import getLogLevelString
 from sonLib.bioio import logFile
 from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
@@ -61,35 +59,6 @@ def getParasolResultsFileName(jobTreePath):
 
 def getConfigFileName(jobTreePath):
     return os.path.join(jobTreePath, "config.xml")
-
-def getJobFileName(job):
-    return os.path.join(job.attrib["global_temp_dir"], "job.xml")
-
-def getLogFileName(job):
-    return os.path.join(job.attrib["global_temp_dir"], "log.txt")
-    
-def getGlobalTempDirName(job):
-    return job.attrib["global_temp_dir"]
-    
-def getJobStatsFileName(job):
-    return os.path.join(job.attrib["global_temp_dir"], "stats.txt")
-
-def createJob(attrib, parent, config):
-    """Creates an XML record for the job in a file within the hierarchy of jobs.
-    """
-    job = ET.Element("job")
-    job.attrib["global_temp_dir"] = config.attrib["job_file_tree"].getTempDirectory()
-    job.attrib["colour"] = "grey"
-    followOns = ET.SubElement(job, "followOns")
-    ET.SubElement(followOns, "followOn", attrib.copy())
-    if parent != None:
-        job.attrib["parent"] = parent
-    job.attrib["child_count"] = "0"
-    job.attrib["black_child_count"] = "0"
-    
-    ET.SubElement(job, "children") 
-    job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-    return job
     
 class JobRemover:
     """Class asynchronously deletes jobs
@@ -104,21 +73,23 @@ class JobRemover:
                 statsFileHandle = open(statsFile, 'ab')
                 while True:
                     globalTempDir = inputQueue.get()
-                    jobStatsFile = os.path.join(globalTempDir, "stats.txt")
+                    jobStatsFile = getJobStatsFileName(globalTempDir)
                     fH = open(jobStatsFile,'rb')
                     shutil.copyfileobj(fH, statsFileHandle)
                     fH.close()
                     os.remove(jobStatsFile)
-                    os.remove(os.path.join(globalTempDir, "job.xml"))
+                    os.remove(getJobFileName(globalTempDir))
                     fileTree.destroyTempDir(globalTempDir)
                     statsFileHandle.flush()
                     inputQueue.task_done()
             else:
                 while True:
                     globalTempDir = inputQueue.get()
-                    os.remove(os.path.join(globalTempDir, "job.xml"))
+                    os.remove(getJobFileName(globalTempDir))
                     fileTree.destroyTempDir(globalTempDir)
                     inputQueue.task_done()
+                    
+        #return
    
         self.worker = Process(target=jobDeleter, 
                               args=(self.inputQueue, config.attrib.has_key("stats"), 
@@ -128,41 +99,25 @@ class JobRemover:
         self.worker.start()
     
     def deleteJob(self, job):
-        self.inputQueue.put(getGlobalTempDirName(job))
+        self.inputQueue.put(job.getGlobalTempDirName())
     
     def deleteJobs(self, jobs):
         for job in jobs:
-            self.deleteJob(getGlobalTempDirName(job))
+            self.deleteJob(job.getGlobalTempDirName())
             
     def join(self):
         self.inputQueue.join()
         self.worker.terminate()
-        
-def readJob(jobFile):
-    logger.debug("Going to load the file %s" % jobFile)
-    return ET.parse(jobFile).getroot()
-    #fileHandle = open(jobFile, 'r')
-    #fileHandle = BZ2File(jobFile, 'r')
-    #job = ET.parse(fileHandle).getroot()
-    #fileHandle.close()
-    #return job
-        
-def writeJobFile(job, jobFileName):
-    tree = ET.ElementTree(job)
-    fileHandle = open(jobFileName, 'w') 
-    #fileHandle = BZ2File(jobFileName, 'w', compresslevel=5)
-    tree.write(fileHandle)
-    fileHandle.close()
-
+    
 def writeJob(job, noCheckPoints=False):
     """Writes a single job to file
     """
     if noCheckPoints: #This avoids the expense of atomic updates
-        writeJobFile(job, getJobFileName(job))
+        job.write(job.getJobFileName())
     else:
-        tempJobFileName = getJobFileName(job) + ".tmp"
-        writeJobFile(job, tempJobFileName)
-        os.rename(tempJobFileName, getJobFileName(job))
+        tempJobFileName = job.getJobFileName() + ".tmp"
+        job.write(tempJobFileName)
+        os.rename(tempJobFileName, job.getJobFileName())
 
 def writeJobs(jobs, noCheckPoints=False):
     """Writes a list of jobs to file, ensuring that the previous
@@ -170,34 +125,34 @@ def writeJobs(jobs, noCheckPoints=False):
     """
     if noCheckPoints: #This avoids the expense of atomic updates
         for job in jobs:
-            writeJobFile(job, getJobFileName(job))
+            job.write(job.getJobFileName())
         return
     
     if len(jobs) == 0:
         return
     assert len(set(jobs)) == len(jobs)
     #Create a unique updating name using the first file in the list
-    fileName = getJobFileName(jobs[0])
+    fileName = jobs[0].getJobFileName()
     updatingFile = fileName + ".updating"
     
     #The existence of the the updating file signals we are in the process of creating an update to the state of the files
     assert not os.path.isfile(updatingFile)
     fileHandle = open(updatingFile, 'w')
-    fileHandle.write(" ".join([ getJobFileName(job) + ".new" for job in jobs ]))
+    fileHandle.write(" ".join([ job.getJobFileName() + ".new" for job in jobs ]))
     fileHandle.close()
     
     #Update the current files.
     for job in jobs:
-        newFileName = getJobFileName(job) + ".new"
+        newFileName = job.getJobFileName() + ".new"
         assert not os.path.isfile(newFileName)
-        writeJobFile(job, newFileName)
+        job.write(newFileName)
        
     os.remove(updatingFile) #Remove the updating file, now the new files represent the valid state
     
     for job in jobs:
-        if os.path.isfile(getJobFileName(job)):
-            os.remove(getJobFileName(job))
-        os.rename(getJobFileName(job) + ".new", getJobFileName(job))
+        if os.path.isfile(job.getJobFileName()):
+            os.remove(job.getJobFileName())
+        os.rename(job.getJobFileName() + ".new", job.getJobFileName())
 
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
@@ -215,14 +170,10 @@ class JobBatcher:
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        followOnJob = job.find("followOns").findall("followOn")[-1]
-        memory = int(followOnJob.attrib["memory"])
-        cpu = int(followOnJob.attrib["cpu"])
-        assert cpu < sys.maxint
-        assert memory < sys.maxint
+        memory, cpu = job.getNextFollowOnCommandToIssue()[1:]
         if cpu > self.maxCpus:
             raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
-        jobFile = getJobFileName(job)
+        jobFile = job.getJobFileName()
         jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, self.jobTree, jobFile)
         jobID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobIDsToJobsHash[jobID] = jobFile
@@ -293,18 +244,18 @@ def restartFailedJobs(config, jobFiles):
     for absFileName in jobFiles:
         if os.path.isfile(absFileName):
             job = readJob(absFileName)
-            logger.info("Restarting job: %s" % getJobFileName(job))
-            job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
-            if job.attrib["colour"] == "red":
-                job.attrib["colour"] = "grey"
-            writeJobs([ job ])
+            logger.info("Restarting job: %s" % job.getJobFileName())
+            job.setRemainingRetryCount(int(config.attrib["retry_count"]))
+            if job.getColour() == Job.red:
+                job.setColour(Job.grey)
+            writeJob(job)
     
 def reportJobLogFile(job):
     logger.critical("The log file of the job")
-    if os.path.exists(getLogFileName(job)):
-        logFile(getLogFileName(job), logger.critical)
+    if os.path.exists(job.getLogFileName()):
+        logFile(job.getLogFileName(), logger.critical)
     else:
-        logger.critical("Log file does not exist: %s" % getLogFileName(job))
+        logger.critical("Log file does not exist: %s" % job.getLogFileName())
 
 def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
     """Function reads a processed job file and updates it state.
@@ -330,10 +281,10 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
             assert os.path.isfile(jobFile)
             job = readJob(jobFile) #The original must still be there.
             reportJobLogFile(job)
-            assert job.find("children").find("child") == None #The original can not reflect the end state of the job.
-            assert int(job.attrib["black_child_count"]) == int(job.attrib["child_count"])
-            job.attrib["colour"] = "red" #It failed, so we mark it so and continue.
-            writeJobs([ job ])
+            assert job.getNumberOfChildCommandsToIssue() == 0 #The original can not reflect the end state of the job.
+            assert job.getCompletedChildCount() == job.getIssuedChildCount()
+            job.setColour(Job.red) #It failed, so we mark it so and continue.
+            writeJob(job)
             logger.critical("We've reverted to the original job file and marked it as failed: %s" % jobFile)
         else:
             if newFileIsPresent: #The job was not properly updated before crashing
@@ -343,25 +294,25 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher):
                 os.rename(jobFile + ".new", jobFile)
                 job = readJob(jobFile)
                 reportJobLogFile(job)
-                if job.attrib["colour"] == "grey": #The job failed while preparing to run another job on the slave
-                    assert job.find("children").find("child") == None #File 
-                    job.attrib["colour"] = "red"
-                    writeJobs([ job ])
-                assert job.attrib["colour"] in ("black", "red")
+                if job.getColour() == Job.grey: #The job failed while preparing to run another job on the slave
+                    assert job.getNumberOfChildCommandsToIssue() == 0 #File 
+                    job.setColour(Job.red)
+                    writeJob(job)
+                assert job.getColour() in (Job.black, Job.red)
             else:
                 logger.critical("There was no valid .new file %s" % jobFile)
                 assert os.path.isfile(jobFile)
                 job = readJob(jobFile) #The job may have failed before or after creating this file, we check the state.
                 reportJobLogFile(job)
-                if job.attrib["colour"] == "black": #The job completed okay, so we'll keep it
+                if job.getColour() == Job.black: #The job completed okay, so we'll keep it
                     logger.critical("Despite the batch system job failing, the job appears to have completed okay")
                 else:
-                    assert job.attrib["colour"] in ("grey", "red")
-                    assert job.find("children").find("child") == None #File 
-                    assert int(job.attrib["black_child_count"]) == int(job.attrib["child_count"])
-                    if job.attrib["colour"] == "grey":
-                        job.attrib["colour"] = "red"
-                        writeJobs([ job ])
+                    assert job.getColour() in (Job.grey, Job.red)
+                    assert job.getNumberOfChildCommandsToIssue() == 0 
+                    assert job.getCompletedChildCount() == job.getIssuedChildCount()
+                    if job.getColour() == Job.grey:
+                        job.setColour(Job.red)
+                        writeJob(job)
                     logger.critical("We've reverted to the original job file and marked it as failed: %s" % jobFile)
     else:
         job = readJob(jobFile)
@@ -443,7 +394,6 @@ def mainLoop(config, batchSystem):
     for globalTempDir in config.attrib["job_file_tree"].listFiles():
         assert os.path.isdir(globalTempDir)
         for tempFile in os.listdir(globalTempDir):
-            print "temp file", tempFile, "job.xml" == tempFile[:7]
             if "job.xml" == tempFile[:7]:
                 jobFiles.append(os.path.join(globalTempDir, tempFile))
     logger.info("Got a list of job files")
@@ -460,8 +410,8 @@ def mainLoop(config, batchSystem):
     updatedJobFiles = set() #Jobs whose status needs updating, either because they have finished, or because they need to be started.
     for jobFile in jobFiles:
         job = readJob(jobFile)
-        if job.attrib["colour"] in ("blue"):
-            openParentsHash[getJobFileName(job)] = job
+        if job.getColour() == Job.blue:
+            openParentsHash[job.getJobFileName()] = job
         else:
             updatedJobFiles.add(job)
     logger.info("Got the active (non blue) job files")
@@ -492,98 +442,96 @@ def mainLoop(config, batchSystem):
         
         for job in list(updatedJobFiles):
             updatedJobFiles.remove(job)
-            assert job.attrib["colour"] is not "blue"
+            assert job.getColour() != Job.blue
             
             def reissueJob(job):
                 #Reset the log files for the job.
-                assert job.attrib["colour"] == "grey"
+                assert job.getColour() == Job.grey
                 jobBatcher.issueJob(job)
                 
             def makeGreyAndReissueJob(job):
-                job.attrib["colour"] = "grey"
+                job.setColour(Job.grey)
                 writeJob(job, noCheckPoints=noCheckPoints)
                 reissueJob(job)
             
-            if job.attrib["colour"] == "grey": #Get ready to start the job, should only happen when restarting from failure or with first job
+            if job.getColour() == Job.grey: #Get ready to start the job, should only happen when restarting from failure or with first job
                 reissueJob(job)
-            elif job.attrib["colour"] == "black": #Job has finished okay
-                logger.debug("Job: %s has finished okay" % getJobFileName(job))
+            elif job.getColour() == Job.black: #Job has finished okay
+                logger.debug("Job: %s has finished okay" % job.getJobFileName())
                 if reportAllJobLogFiles:
                     reportJobLogFile(job)
                 #Messages
-                if job.find("messages") != None:
-                    for message in job.find("messages").findall("message"):
-                        logger.critical("Received the following message from job: %s" % message.attrib["message"])
-                    job.remove(job.find("messages"))
-                childCount = int(job.attrib["child_count"])
-                blackChildCount = int(job.attrib["black_child_count"])
+                for message in job.removeMessages():
+                    logger.critical("Received the following message from job: %s" % message)
+                childCount = job.getIssuedChildCount()
+                blackChildCount = job.getCompletedChildCount()
                 assert childCount == blackChildCount #Has no currently running child jobs
                 #Launch any unborn children
-                unbornChildren = job.find("children").findall("child")
+                unbornChildren = job.removeChildrenToIssue()
+                assert job.getNumberOfChildCommandsToIssue() == 0
                 if len(unbornChildren) > 0: #unbornChild != None: #We must give birth to the unborn children
-                    logger.debug("Job: %s has %i children to schedule" % (getJobFileName(job), len(unbornChildren)))
+                    logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(unbornChildren)))
                     newChildren = []
-                    for unbornChild in unbornChildren:
-                        newJob = createJob(unbornChild.attrib, getJobFileName(job), config)
+                    for unbornCommand, unbornMemory, unbornCpu in unbornChildren:
+                        newJob = Job(unbornCommand, unbornMemory, unbornCpu, job.getJobFileName(), config)
                         totalJobFiles += 1
                         newChildren.append(newJob)
-                    job.find("children").clear() #removeall("child")
-                    job.attrib["child_count"] = str(childCount + len(newChildren))
-                    job.attrib["colour"] = "blue" #Blue - has children running.
-                    assert getJobFileName(job) not in openParentsHash
-                    openParentsHash[getJobFileName(job)] = job
+                    job.setIssuedChildCount(childCount + len(newChildren))
+                    job.setColour(Job.blue) #Blue - has children running.
+                    assert job.getJobFileName() not in openParentsHash
+                    openParentsHash[job.getJobFileName()] = job
                     if noCheckPoints:
                         writeJobs(newChildren, noCheckPoints=True) #In this case only the children need be written
                     else:
                         writeJobs([ job ] + newChildren, noCheckPoints=False) #Check point, including the parent
                     jobBatcher.issueJobs(newChildren)
                     
-                elif len(job.find("followOns").findall("followOn")) != 0: #Has another job
-                    logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
+                elif job.getNumberOfFollowOnCommandsToIssue() != 0: #Has another job
+                    logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
                     ##Reset the job run info
-                    job.attrib["remaining_retry_count"] = config.attrib["retry_count"]
+                    job.setRemainingRetryCount(int(config.attrib["retry_count"]))
                     makeGreyAndReissueJob(job)
                     
                 else: #Job has finished, so we can defer to any parent
-                    logger.debug("Job: %s is now dead" % getJobFileName(job))
-                    if job.attrib.has_key("parent"):
-                        assert openParentsHash.has_key(job.attrib["parent"])
-                        parent = openParentsHash[job.attrib["parent"]]
-                        assert job.attrib["parent"] != getJobFileName(job)
-                        assert parent.attrib["colour"] == "blue"
-                        assert int(parent.attrib["black_child_count"]) < int(parent.attrib["child_count"])
-                        job.attrib["colour"] == "dead"
-                        parent.attrib["black_child_count"] = str(int(parent.attrib["black_child_count"]) + 1)
-                        if int(parent.attrib["child_count"]) == int(parent.attrib["black_child_count"]):
-                            parent.attrib["colour"] = "black"
-                            assert getJobFileName(parent) not in updatedJobFiles
+                    logger.debug("Job: %s is now dead" % job.getJobFileName())
+                    if job.getParentJobFile() != None:
+                        assert openParentsHash.has_key(job.getParentJobFile())
+                        parent = openParentsHash[job.getParentJobFile()]
+                        assert job.getParentJobFile() != job.getJobFileName()
+                        assert parent.getColour() == Job.blue
+                        assert parent.getCompletedChildCount() < parent.getIssuedChildCount()
+                        job.setColour(Job.dead)
+                        parent.setCompletedChildCount(parent.getCompletedChildCount()+1)
+                        if parent.getIssuedChildCount() == parent.getCompletedChildCount():
+                            parent.setColour(Job.black)
+                            assert parent.getJobFileName() not in updatedJobFiles
                             updatedJobFiles.add(parent)
-                            openParentsHash.pop(job.attrib["parent"])
+                            openParentsHash.pop(job.getParentJobFile())
                         if not noCheckPoints: #If no checkpoint then this is all unneccesary 
                             writeJobs([ parent, job ], noCheckPoints=False)
                     #Else if no parent then we're at the end at we need not check point further
                     totalJobFiles -= 1
                     jobRemover.deleteJob(job)
                          
-            elif job.attrib["colour"] == "red": #Job failed
-                logger.critical("Job: %s failed" % getJobFileName(job))
+            elif job.getColour() == Job.red: #Job failed
+                logger.critical("Job: %s failed" % job.getJobFileName())
                 reportJobLogFile(job)
                 #Checks
-                assert len(job.find("children").findall("child")) == 0
-                assert int(job.attrib["child_count"]) == int(job.attrib["black_child_count"])
+                assert job.getNumberOfChildCommandsToIssue() == 0
+                assert job.getIssuedChildCount() == job.getCompletedChildCount()
                 
-                remainingRetryCount = int(job.attrib["remaining_retry_count"])
+                remainingRetryCount = job.getRemainingRetryCount()
                 if remainingRetryCount > 0: #Give it another try, maybe there is a bad node somewhere
-                    job.attrib["remaining_retry_count"] = str(remainingRetryCount-1)
-                    logger.critical("Job: %s will be restarted, it has %s goes left" % (getJobFileName(job), job.attrib["remaining_retry_count"]))
+                    job.setRemainingRetryCount(job.getRemainingRetryCount()-1)
+                    logger.critical("Job: %s will be restarted, it has %s goes left" % (job.getJobFileName(), job.getRemainingRetryCount()))
                     makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetryCount == 0
-                    logger.critical("Job: %s is completely failed" % getJobFileName(job))
+                    logger.critical("Job: %s is completely failed" % job.getJobFileName())
                     
             else: #This case should only occur after failure
-                logger.debug("Job: %s is already dead, we'll get rid of it" % getJobFileName(job))
-                assert job.attrib["colour"] == "dead"
+                logger.debug("Job: %s is already dead, we'll get rid of it" % job.getJobFileName())
+                assert job.getColour() == Job.dead
                 totalJobFiles -= 1
                 jobRemover.deleteJob(job)
                    

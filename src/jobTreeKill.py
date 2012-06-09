@@ -46,8 +46,8 @@ def main():
     logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)
     config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
     batchSystem = loadTheBatchSystem(config) #This should automatically kill the existing jobs.. so we're good.
-    for job in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
-        batchSystem.killJobs(job)
+    for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
+        batchSystem.killJobs(jobID)
     logger.info("All jobs SHOULD have been killed")
 
 def _test():

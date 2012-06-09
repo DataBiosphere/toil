@@ -109,9 +109,7 @@ def main():
     if len(jobFiles) > 0:
         logger.info("Collating the colours of the job tree")
         for job, jobFile, in jobFiles:
-            if not colours.has_key(job.attrib["colour"]):
-                colours[job.attrib["colour"]] = 0
-            colours[job.attrib["colour"]] += 1
+            colours[job.getColour()] += 1
     else:
         logger.info("There are no jobs to collate")
     
@@ -119,11 +117,11 @@ def main():
     (len(jobFiles), options.jobTree)
     
     for colour in colours.keys():
-        print "\tColour: %s, number of jobs: %s" % (colour, colours[colour])
+        print "\tColour: %s, number of jobs: %s" % (Job.translateColourToString(colour), colours[colour])
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job, jobFile in jobFiles:
-            if job.attrib["colour"] == "red":
+            if job.getColour() == Job.red:
                 if os.path.isfile(getLogFileName(job)):
                     def fn(string):
                         print string
@@ -139,12 +137,12 @@ def main():
         fileHandle.write("node[];\n")
         nodeNames = {} #Hash of node names to nodes
         if not options.leaves:
-            jobFiles = [ (job, jobFile) for (job, jobFile) in jobFiles if job.attrib["colour"] != "grey" ]
+            jobFiles = [ (job, jobFile) for (job, jobFile) in jobFiles if job.getColour() != Job.grey ]
         for job, jobFile in jobFiles:
-            colour = job.attrib["colour"]
+            colour = job.getColour()
             command = "None"
-            if len(job.find("followOns").findall("followOn")) > 0:
-                command = job.find("followOns").findall("followOn")[-1].attrib["command"]
+            if job.getNumberOfFollowOnCommandsToIssue() > 0:
+                command = job.getNextFollowOnCommandToIssue()[0]
                 if command[:10] == "scriptTree":
                     try:
                         stack = loadStack(command)
@@ -158,8 +156,8 @@ def main():
         fileHandle.write("edge[dir=forward];\n")
         for job, jobFile in jobFiles:
             nodeName = nodeNames[jobFile]
-            if "parent" in job.attrib.keys():
-                parentNodeName = nodeNames[job.attrib["parent"]]
+            if job.getParentJobFile() != None:
+                parentNodeName = nodeNames[job.getParentJobFile()]
                 fileHandle.write("n%sn -- n%sn;\n" % (parentNodeName, nodeName))
         fileHandle.write("}\n")
         fileHandle.close()
