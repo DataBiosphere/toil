@@ -38,10 +38,10 @@ def main():
     unittest.main()
 
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', "fooprof")
-    import pstats
-    p = pstats.Stats('fooprof')
-    p.strip_dirs().sort_stats(-1).print_stats()
-    print p
-    #main()
+    #import cProfile
+    #cProfile.run('main()', "fooprof")
+    #import pstats
+    #p = pstats.Stats('fooprof')
+    #p.strip_dirs().sort_stats(-1).print_stats()
+    #print p
+    main()
