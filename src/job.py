@@ -1,8 +1,8 @@
 
 import marshal as pickler
-#import cPickle as cPickle
-#import pickle as cPickle
-#import json as cPickle    
+#import cPickle as pickler
+#import pickle as pickler
+#import json as pickler    
 import os
 
 def readJob(jobFile):
