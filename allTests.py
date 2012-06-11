@@ -46,11 +46,10 @@ def main():
     return len(i.failures) + len(i.errors)
         
 if __name__ == '__main__':
-    import cProfile
-    cProfile.run('main()', "fooprof")
-    import pstats
-    p = pstats.Stats('fooprof')
-    p.strip_dirs().sort_stats(-1).print_stats()
-    print p
-    #import sys
-    #sys.exit(main())
+    #import cProfile
+    #cProfile.run('main()', "fooprof")
+    #import pstats
+    #p = pstats.Stats('fooprof')
+    #p.strip_dirs().sort_stats(-1).print_stats()
+    import sys
+    sys.exit(main())

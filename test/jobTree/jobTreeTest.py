@@ -41,14 +41,14 @@ class TestCase(unittest.TestCase):
             (self.jobTreeDir, logName, batchSystem, tree, maxJobs, maxThreads, size, cpusPerJob, sleepTime)
             system(commandLine)
         
-        fn("comb", 10, 100, 100, 1, 5)
-        fn("comb", 200, 100, 100, 20, 5)
+        fn("comb", 10, 100, 100, 1, 10)
+        fn("comb", 200, 100, 100, 20, 10)
        
-        fn("fly", 10, 8, 100, 1, 3)
-        fn("fly", 10, 8, 100, 2, 3)
+        fn("fly", 10, 8, 100, 1, 10)
+        fn("fly", 10, 8, 100, 2, 10)
         
-        fn("balanced", 5, 10, 100, 1, 2)
-        fn("balanced", 5, 10, 100, 3, 2)
+        fn("balanced", 5, 10, 100, 1, 10)
+        fn("balanced", 5, 10, 100, 3, 10)
         
     def testJobTree_dependencies_singleMachine(self):
         self.dependenciesTest(batchSystem="singleMachine")
