@@ -266,7 +266,9 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
         memory = float(config.attrib["default_memory"])
     if cpu == None or cpu == sys.maxint:
         cpu = float(config.attrib["default_cpu"])
-    job = Job(command=command, memory=memory, cpu=cpu, parentJobFile=None, config=config) 
+    job = Job(command=command, memory=memory, cpu=cpu, parentJobFile=None, 
+              globalTempDir=config.attrib["job_file_tree"].getTempDirectory(), 
+              retryCount=int(config.attrib["retry_count"]))
     writeJob(job)
     logger.info("Added the first job")
     

@@ -470,7 +470,9 @@ def mainLoop(config, batchSystem):
                     logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(unbornChildren)))
                     newChildren = []
                     for unbornCommand, unbornMemory, unbornCpu in unbornChildren:
-                        newJob = Job(unbornCommand, unbornMemory, unbornCpu, job.getJobFileName(), config)
+                        newJob = Job(unbornCommand, unbornMemory, unbornCpu, job.getJobFileName(), 
+                                     globalTempDir=config.attrib["job_file_tree"].getTempDirectory(), 
+                                     retryCount=int(config.attrib["retry_count"]))
                         totalJobFiles += 1
                         newChildren.append(newJob)
                     job.setIssuedChildCount(childCount + len(newChildren))
