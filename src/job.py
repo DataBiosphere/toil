@@ -1,13 +1,13 @@
-try:
-    import cPickle
-except ImportError:
-    import pickle as cPickle
-    
+
+import marshal as pickler
+#import cPickle as cPickle
+#import pickle as cPickle
+#import json as cPickle    
 import os
 
 def readJob(jobFile):
     fileHandle = open(jobFile, 'r')
-    job = cPickle.load(fileHandle)
+    job = convertJsonJobToJob(pickler.load(fileHandle))
     fileHandle.close()
     return job
 
@@ -16,6 +16,31 @@ def getJobFileName(globalTempDir):
 
 def getJobStatsFileName(globalTempDir):
     return os.path.join(globalTempDir, "stats.xml")
+
+def convertToJobToJson(job):
+    jsonJob = [ job.globalTempDir,
+                job.remainingRetryCount,
+                job.colour,
+                job.parentJobFile,
+                job.issuedChildCount,
+                job.completedChildCount,
+                job.childCommandsToIssue,
+                job.followOnCommandsToIssue,
+                job.messages ]
+    return jsonJob
+
+def convertJsonJobToJob(jsonJob):
+    job = Job("", 0, 0, None, "", 0)
+    job.globalTempDir = jsonJob[0] 
+    job.remainingRetryCount = jsonJob[1] 
+    job.colour = jsonJob[2] 
+    job.parentJobFile = jsonJob[3] 
+    job.issuedChildCount = jsonJob[4] 
+    job.completedChildCount = jsonJob[5] 
+    job.childCommandsToIssue = jsonJob[6] 
+    job.followOnCommandsToIssue = jsonJob[7] 
+    job.messages = jsonJob[8] 
+    return job
 
 class Job:
     #Colours for job
@@ -32,9 +57,9 @@ class Job:
                    Job.red:"red", Job.dead:"dead" }
         return colours[colour]
     
-    def __init__(self, command, memory, cpu, parentJobFile, config):
-        self.globalTempDir = config.attrib["job_file_tree"].getTempDirectory()
-        self.remainingRetryCount = int(config.attrib["retry_count"])
+    def __init__(self, command, memory, cpu, parentJobFile, globalTempDir, retryCount):
+        self.globalTempDir = globalTempDir
+        self.remainingRetryCount = retryCount
         self.colour = Job.grey
         self.parentJobFile = parentJobFile
         self.issuedChildCount = 0
@@ -46,7 +71,7 @@ class Job:
     
     def write(self, jobFile):
         fileHandle = open(jobFile, 'w')
-        cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+        pickler.dump(convertToJobToJson(self), fileHandle)
         fileHandle.close() 
     
     def getJobFileName(self):
