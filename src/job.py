@@ -59,7 +59,7 @@ class Job:
         return self.globalTempDir
         
     def getJobStatsFileName(self):
-        return getStatsFileName(self.globalTempDir)
+        return getJobStatsFileName(self.globalTempDir)
     
     def getRemainingRetryCount(self):
         return self.remainingRetryCount

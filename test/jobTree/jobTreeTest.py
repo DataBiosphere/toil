@@ -66,25 +66,6 @@ class TestCase(unittest.TestCase):
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
 
-def checkEndStateOfJobTree(jobTreeDir):
-    """Checks the state of the jobtree after successful exit by the job tree master.
-    Return True, if there are no remaining job files.
-    """
-    #jobFiles = os.listdir(os.path.join(jobTreeDir, "jobs"))
-    jobFiles = TempFileTree(os.path.join(jobTreeDir, "jobs")).listFiles()
-    if len(jobFiles) > 0:
-        for absFileName in jobFiles:
-            assert os.path.isdir(absFileName)
-            for jobFile in os.listdir(absFileName):
-                if "job.xml" == jobFile[:7]:
-                    job = ET.parse(os.path.join(absFileName, jobFile)).getroot()
-                    assert job.attrib["colour"] in ("red", "blue")
-                    if job.attrib["colour"] == "red":
-                        assert job.attrib["remaining_retry_count"] == "0"
-        return False
-    else:
-        return True
-
 def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
     command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
     system(command)

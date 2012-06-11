@@ -88,14 +88,11 @@ class JobRemover:
                     os.remove(getJobFileName(globalTempDir))
                     fileTree.destroyTempDir(globalTempDir)
                     inputQueue.task_done()
-                    
-        return
    
         self.worker = Process(target=jobDeleter, 
                               args=(self.inputQueue, config.attrib.has_key("stats"), 
                                     getStatsFileName(config.attrib["job_tree"]), 
                                     getJobFileDirName(config.attrib["job_tree"])))
-        #worker.setDaemon(True)
         self.worker.start()
     
     def deleteJob(self, job):
@@ -106,7 +103,6 @@ class JobRemover:
             self.deleteJob(job.getGlobalTempDirName())
             
     def join(self):
-        return
         self.inputQueue.join()
         self.worker.terminate()
     
@@ -492,7 +488,7 @@ def mainLoop(config, batchSystem):
                         updatedJobFiles.add(job)
                         logger.debug("Filtering out stub job")
                     else:
-                        logger.debug("Job: %s has a new command that we can now issue" % getJobFileName(job))
+                        logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
                         ##Reset the job run info
                         job.setRemainingRetryCount(int(config.attrib["retry_count"]))
                         makeGreyAndReissueJob(job)
@@ -527,7 +523,7 @@ def mainLoop(config, batchSystem):
                 remainingRetryCount = job.getRemainingRetryCount()
                 if remainingRetryCount > 0: #Give it another try, maybe there is a bad node somewhere
                     job.setRemainingRetryCount(job.getRemainingRetryCount()-1)
-                    logger.critical("Job: %s will be restarted, it has %s goes left" % (job.getJobFileName(), job.getRemainingRetryCount()))
+                    logger.critical("Job: %s will be restarted, it has %s goes left out of %i" % (job.getJobFileName(), job.getRemainingRetryCount(), int(config.attrib["retry_count"])))
                     makeGreyAndReissueJob(job)
                 else:
                     assert remainingRetryCount == 0

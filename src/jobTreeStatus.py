@@ -34,7 +34,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getLogFileName, getJobFileName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getParasolResultsFileName, getConfigFileName
 from jobTree.src.master import readJob
 from jobTree.src.jobTreeSlave import loadStack
 
@@ -122,12 +122,12 @@ def main():
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job, jobFile in jobFiles:
             if job.getColour() == Job.red:
-                if os.path.isfile(getLogFileName(job)):
+                if os.path.isfile(job.getLogFileName()):
                     def fn(string):
                         print string
-                    logFile(getLogFileName(job), fn)
+                    logFile(job.getLogFileName(), fn)
                 else:
-                    logger.info("Log file for job %s is not present" % getJobFileName(job))
+                    logger.info("Log file for job %s is not present" % job.getJobFileName())
                     
     i = 0            
     if options.graphFile != None:

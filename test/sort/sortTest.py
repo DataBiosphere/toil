@@ -26,8 +26,7 @@ class TestCase(unittest.TestCase):
     def testScriptTree_SortSimple(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        return
-        scriptTree_SortTest(self.testNo, "singleMachine", retryCount=10)
+        scriptTree_SortTest(self.testNo, "singleMachine")
     
     def testScriptTree_SortGridEngine(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
@@ -44,7 +43,7 @@ class TestCase(unittest.TestCase):
     def testScriptTree_SortAcid(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        scriptTree_SortTest(self.testNo, "acid_test", retryCount=10)
+        scriptTree_SortTest(self.testNo, "acid_test")
 
 #The following functions test the functions in the test!
     
@@ -107,7 +106,7 @@ class TestCase(unittest.TestCase):
             assert midPoint >= 0
             system("rm -rf %s" % tempDir)
             
-def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000, retryCount=0):
+def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000, retryCount=99):
     """Tests scriptTree/jobTree by sorting a file in parallel.
     """
     for test in xrange(testNo):

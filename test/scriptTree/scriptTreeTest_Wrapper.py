@@ -109,8 +109,7 @@ class ChildTarget(Target):
         self.treePointer = treePointer
          
     def run(self):
-        self.addChildCommand("jobTreeTest_CommandFirst.py --job JOB_FILE --treePointer %s" %\
-                             self.treePointer, 10)
+        self.addChildCommand("echo HELLO")
         logger.info("Added the child command and finished ChildTarget.run()")
         
         

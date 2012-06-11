@@ -176,12 +176,13 @@ def main():
         
         startTime = time.time() 
         while True:
+            job.popNextFollowOnCommandToIssue() #Start by removing the first job
+            
             ##########################################
             #Global temp dir
             ##########################################
             
             depth = job.getNumberOfFollowOnCommandsToIssue()
-            assert depth >= 1
             globalTempDir = os.path.join(job.getGlobalTempDirName(), str(depth))
             if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
                 os.mkdir(globalTempDir)
@@ -233,7 +234,6 @@ def main():
             #Cleanup a successful job
             ##########################################
             
-            job.popNextFollowOnCommandToIssue()
             job.setColour(Job.black)
             system("rm -rf %s/*" % (localTempDir))
             
@@ -292,7 +292,7 @@ def main():
         ##########################################
        
         if job.getColour()== Job.black and job.getNumberOfFollowOnCommandsToIssue() == 0:
-            nestedGlobalTempDir = os.path.join(job.getGlobalTempDirName(), "1")
+            nestedGlobalTempDir = os.path.join(job.getGlobalTempDirName(), "0")
             assert os.path.exists(nestedGlobalTempDir)
             system("rm -rf %s" % nestedGlobalTempDir)
             if os.path.exists(job.getLogFileName()):
