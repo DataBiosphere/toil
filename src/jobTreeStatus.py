@@ -109,6 +109,8 @@ def main():
     if len(jobFiles) > 0:
         logger.info("Collating the colours of the job tree")
         for job, jobFile, in jobFiles:
+            if not colours.has_key(job.getColour()):
+                colours[job.getColour()] == 0
             colours[job.getColour()] += 1
     else:
         logger.info("There are no jobs to collate")
