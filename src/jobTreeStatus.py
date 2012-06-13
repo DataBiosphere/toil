@@ -36,6 +36,7 @@ from sonLib.bioio import TempFileTree
 
 from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getParasolResultsFileName, getConfigFileName
 from jobTree.src.master import readJob
+from jobTree.src.job import Job
 from jobTree.src.jobTreeSlave import loadStack
 
 def parseJobFile(absFileName):
