@@ -125,12 +125,14 @@ def main():
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job, jobFile in jobFiles:
             if job.getColour() == Job.red:
+                print "A red job %s had %i follow ons and %i children" % \
+                (job.getNumberOfFollowOnCommandsToIssue(), job.getNumberOfChildCommandsToIssue())
                 if os.path.isfile(job.getLogFileName()):
                     def fn(string):
                         print string
                     logFile(job.getLogFileName(), fn)
                 else:
-                    logger.info("Log file for job %s is not present" % job.getJobFileName())
+                    print "Log file for job %s is not present" % job.getJobFileName()
                     
     i = 0            
     if options.graphFile != None:
