@@ -126,7 +126,7 @@ def main():
         for job, jobFile in jobFiles:
             if job.getColour() == Job.red:
                 print "A red job %s had %i follow ons and %i children" % \
-                (job.getNumberOfFollowOnCommandsToIssue(), job.getNumberOfChildCommandsToIssue())
+                (job.getJobFileName(), job.getNumberOfFollowOnCommandsToIssue(), job.getNumberOfChildCommandsToIssue())
                 if os.path.isfile(job.getLogFileName()):
                     def fn(string):
                         print string
