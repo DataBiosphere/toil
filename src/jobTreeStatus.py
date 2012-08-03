@@ -128,7 +128,7 @@ def main():
                 print "A red job %s had %i follow ons and %i children" % \
                 (job.getJobFileName(), job.getNumberOfFollowOnCommandsToIssue(), job.getNumberOfChildCommandsToIssue())
                 if job.getNumberOfFollowOnCommandsToIssue() > 0:
-                    print "The next follow-on job: %s" % job.getNextFollowOnCommandToIssue()
+                    print "The next follow-on job command: %s, memory: %s, cpu: %s" % job.getNextFollowOnCommandToIssue()
                 if os.path.isfile(job.getLogFileName()):
                     def fn(string):
                         print string
