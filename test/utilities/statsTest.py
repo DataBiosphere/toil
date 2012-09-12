@@ -26,12 +26,12 @@ class TestCase(unittest.TestCase):
             tempFile = getTempFile(rootDir=tempDir)
             outputFile = getTempFile(rootDir=tempDir)
             jobTreeDir = os.path.join(tempDir, "jobTree")
-            lines=100000
+            lines=10000
             maxLineLength=10
             N=1000
             makeFileToSort(tempFile, lines, maxLineLength)
             #Sort the file
-            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %s --stats --jobTime 0.5" % (jobTreeDir, tempFile, N)
+            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %s --stats --jobTime 0.5 --retryCount 99" % (jobTreeDir, tempFile, N)
             system(command)
             #Now get the stats
             system("jobTreeStats --jobTree %s --outputFile %s" % (jobTreeDir, outputFile))

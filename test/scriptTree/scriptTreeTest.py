@@ -27,7 +27,7 @@ class TestCase(unittest.TestCase):
         """Uses the jobTreeTest code to test the scriptTree Target wrapper.
         """
         for test in xrange(self.testNo):
-            command = "scriptTreeTest_Wrapper.py --jobTree %s --logLevel=INFO --retryCount=10" % self.jobTreeDir
+            command = "scriptTreeTest_Wrapper.py --jobTree %s --logLevel=DEBUG --retryCount=99" % self.jobTreeDir
             system(command)
             runJobTreeStatusAndFailIfNotComplete(self.jobTreeDir)
     
@@ -35,7 +35,7 @@ class TestCase(unittest.TestCase):
         """Tests that the global and local temp dirs of a job behave as expected.
         """
         for test in xrange(self.testNo):
-            command = "scriptTreeTest_Wrapper2.py --jobTree %s --logLevel=INFO --retryCount=0" % self.jobTreeDir
+            command = "scriptTreeTest_Wrapper2.py --jobTree %s --logLevel=DEBUG --retryCount=99" % self.jobTreeDir
             system(command)
             runJobTreeStatusAndFailIfNotComplete(self.jobTreeDir)
                    

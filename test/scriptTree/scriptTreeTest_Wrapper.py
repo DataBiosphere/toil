@@ -8,8 +8,31 @@ import os
 import random
 from optparse import OptionParser
 
-from jobTree.test.jobTree.jobTreeTest import makeFileTree
-from jobTree.test.jobTree.jobTreeTest_CommandFirst import makeTreePointer
+import xml.etree.ElementTree as ET
+
+def makeFileTree(rootFile, remainingDepth, tempFileTree):
+    """Makes a random tree of linked files.
+    """  
+    tree = ET.Element("tree")
+    tree.attrib["count"] = "0"
+    children = ET.SubElement(tree, "children")
+    if remainingDepth > 0:
+        for i in xrange(random.choice(xrange(1, 10))):
+            childFile = tempFileTree.getTempFile()
+            ET.SubElement(children, "child", { "file":childFile })
+            makeFileTree(childFile, remainingDepth-1, tempFileTree)
+    fileHandle = open(rootFile, 'w')
+    ET.ElementTree(tree).write(fileHandle)
+    fileHandle.close()
+
+def makeTreePointer(treeNode, tempFile):
+    tree = ET.Element("tree_pointer")
+    tree.attrib["file"] = treeNode
+    ET.SubElement(tree, "children")
+    fileHandle = open(tempFile, 'w')
+    ET.ElementTree(tree).write(fileHandle)
+    fileHandle.close()
+    return tempFile
 
 from sonLib.bioio import logger
 from sonLib.bioio import TempFileTree
@@ -48,6 +71,9 @@ class SetupFileTree(Target):
         
         logger.info("We've set up the file tree")
         
+        if random.random() > 0.5:
+            raise RuntimeError()
+        
         ##########################################
         #Issue the child and follow on jobs
         ##########################################
@@ -69,6 +95,10 @@ class DestructFileTree(Target):
         logger.info("At the end, this is the contents of the global temp dir...")
         system("ls -l %s" % self.getGlobalTempDir())
         logger.info("And done....")
+        
+        if random.random() > 0.5:
+            raise RuntimeError()
+        
         self.tempFileTree.destroyTempFiles()
  
 class ChildTarget(Target):
@@ -79,8 +109,7 @@ class ChildTarget(Target):
         self.treePointer = treePointer
          
     def run(self):
-        self.addChildCommand("jobTreeTest_CommandFirst.py --job JOB_FILE --treePointer %s" %\
-                             self.treePointer, 10)
+        self.addChildCommand("echo HELLO")
         logger.info("Added the child command and finished ChildTarget.run()")
         
         
@@ -108,6 +137,8 @@ class Target2(Target):
         self.setFollowOnTarget(Target3(self.tempFileName))
         assert self.requestedMemory <= self.getMemory()
         assert self.requestedCpu <= self.getCpu()
+        if random.random() > 0.5:
+            raise RuntimeError()
         
       
 class Target3(Target):

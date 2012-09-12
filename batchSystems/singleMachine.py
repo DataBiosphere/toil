@@ -20,74 +20,86 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
+import sys
 import os
 import random
 import subprocess
 import time
-from threading import Thread
-from Queue import Queue, Empty
 
+#from threading import Thread, Lock
+#from Queue import Queue
+from Queue import Empty
 from sonLib.bioio import logger
- 
+from multiprocessing import Process
+from multiprocessing import JoinableQueue as Queue
+
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from sonLib.bioio import getTempFile
 from sonLib.bioio import system
 
-class Worker(Thread):
-    def __init__(self, inputQueue, outputQueue):
-        Thread.__init__(self)
-        self.inputQueue = inputQueue
-        self.outputQueue = outputQueue
-        
-    def run(self):
-        while True:
-            command, logFile, jobID = self.inputQueue.get()
-            logger.info("Starting a job with ID %s", jobID)
-            #fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
-            tempLogFile = getTempFile()
-            fileHandle = open(tempLogFile, 'w')
-            process = subprocess.Popen(command, shell=True, stdout = fileHandle, stderr = fileHandle)
-            sts = os.waitpid(process.pid, 0)
-            fileHandle.close()
-            #fnull.close()
-            if os.path.exists(tempLogFile):
-                system("mv %s %s" % (tempLogFile, logFile))
-            self.outputQueue.put((command, sts[1], jobID))
-            self.inputQueue.task_done()
-            logger.info("Finished a job with ID %s", jobID)
+from jobTree.src.jobTreeSlave import main as slaveMain
+   
+def worker(inputQueue, outputQueue):
+    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
+    while True:
+        args = inputQueue.get()
+        if args == None: #Case where we are reducing threads for max number of CPUs
+            inputQueue.task_done()
+            return
+        command, jobID, threadsToStart = args
+        sys.argv = command.split()[2:]
+        try:
+            slaveMain()
+            returnValue = 0
+        except:
+            returnValue = 1
+        outputQueue.put((jobID, returnValue, threadsToStart))
+        inputQueue.task_done()
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
     give it as they come in, but in parallel.
     """
-    def __init__(self, config, workerClass=Worker):
+    def __init__(self, config, workerFn=worker):
         AbstractBatchSystem.__init__(self, config) #Call the parent constructor
         self.jobIndex = 0
         self.jobs = {}
         self.maxThreads = int(config.attrib["max_threads"])
+        self.maxCpus = int(config.attrib["max_jobs"])
+        logger.info("Setting up the thread pool with %i threads given the max threads %i and the max cpus %i" % (min(self.maxThreads, self.maxCpus), self.maxThreads, self.maxCpus))
+        self.maxThreads = min(self.maxThreads, self.maxCpus)
+        self.cpusPerThread = float(self.maxCpus) / float(self.maxThreads)
+        assert self.cpusPerThread >= 1
         assert self.maxThreads >= 1
-        
         self.inputQueue = Queue()
         self.outputQueue = Queue()
-        for i in xrange(int(config.attrib["max_threads"])): #Setup the threads
-            worker = workerClass(self.inputQueue, self.outputQueue)
-            worker.setDaemon(True)
+        self.workerFn = workerFn
+        for i in xrange(self.maxThreads): #Setup the threads
+            worker = Process(target=workerFn, args=(self.inputQueue, self.outputQueue))
+            worker.daemon = True
             worker.start()
 
-    def issueJobs(self, commands):
+    def issueJob(self, command, memory, cpu):
         """Runs the jobs right away.
         """
-        issuedJobs = {}
-        for command, memory, cpu, logFile in commands: #Add the commands to the queue
-            assert memory != None
-            assert cpu != None
-            assert logFile != None
-            logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
-            self.jobs[self.jobIndex] = command
-            issuedJobs[self.jobIndex] = command
-            self.inputQueue.put((command, logFile, self.jobIndex))
-            self.jobIndex += 1
-        return issuedJobs
+        assert memory != None
+        assert cpu != None
+        if cpu > self.maxCpus:
+            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
+        assert(cpu <= self.maxCpus)
+        logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
+        self.jobs[self.jobIndex] = command
+        i = self.jobIndex
+        #Deal with the max cpus calculation
+        k = 0
+        while cpu > self.cpusPerThread:
+            self.inputQueue.put(None)
+            cpu -= self.cpusPerThread
+            k += 1
+        assert k < self.maxThreads
+        self.inputQueue.put((command, self.jobIndex, k))
+        self.jobIndex += 1
+        return i
     
     def killJobs(self, jobIDs):
         """As jobs are already run, this method has no effect.
@@ -104,51 +116,45 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         return dict()
     
-    def getUpdatedJobs(self):
+    def getUpdatedJob(self, maxWait):
         """Returns a map of the run jobs and the return value of their processes.
         """
-        runJobs = {}
+        i = None
         try:
-            while True:
-                command, exitValue, jobID = self.outputQueue.get_nowait()
-                runJobs[jobID] = exitValue
-                self.jobs.pop(jobID)
-                logger.debug("Ran the command: %s with exit value: %i" % (command, exitValue))
-                self.outputQueue.task_done()
+            jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
+            i = (jobID, exitValue)
+            self.jobs.pop(jobID)
+            logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
+            for j in xrange(threadsToStart):
+                worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
+                worker.daemon = True
+                worker.start()
+            self.outputQueue.task_done()
         except Empty:
             pass
-        return runJobs
-    
-    def getWaitDuration(self):
-        """As the main process is serial, we can make this zero.
-        """
-        return 0.0
+        return i
     
     def getRescueJobFrequency(self):
         """This should not really occur, wihtout an error. To exercise the 
-        system we allow it every minute. 
+        system we allow it every 90 minutes. 
         """
-        return 1800  
-
-class BadWorker(Thread):
+        return 5600  
+    
+def badWorker(inputQueue, outputQueue):
     """This is used to test what happens if we fail and restart jobs
     """
-    def __init__(self, inputQueue, outputQueue):
-        Thread.__init__(self)
-        self.inputQueue = inputQueue
-        self.outputQueue = outputQueue
-        
-    def run(self):
-        while True:
-            command, logFile, jobID = self.inputQueue.get()
-            assert logFile != None
-            fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
-            #Run to first calculate the runtime..
-            process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
-            if random.choice((False, True)):
-                time.sleep(random.random()*5) #Sleep up to 5 seconds before trying to kill it
-                process.kill()
-            process.wait()
-            fnull.close()
-            self.outputQueue.put((command, process.returncode, jobID))
-            self.inputQueue.task_done()
+    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
+    while True:
+        args = inputQueue.get()
+        if args == None: #Case where we are reducing threads for max number of CPUs
+            inputQueue.task_done()
+            return
+        command, jobID, threadsToStart = args
+        #Run to first calculate the runtime..
+        process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
+        if random.choice((False, True)):
+            time.sleep(random.random())
+            process.kill()
+        process.wait()
+        outputQueue.put((jobID, process.returncode, threadsToStart))
+        inputQueue.task_done()

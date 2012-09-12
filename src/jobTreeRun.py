@@ -25,22 +25,24 @@
 
 import os
 import sys 
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 import cPickle
 from optparse import OptionParser
 
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
-from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, BadWorker
+from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
+from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 
-from jobTree.src.master import createJob
+from jobTree.src.job import Job
+
 from jobTree.src.master import mainLoop
-from jobTree.src.master import writeJobs
+from jobTree.src.master import writeJob
+from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getParasolResultsFileName, getConfigFileName, getJobFileDirName
 
-from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions
+from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
 from sonLib.bioio import system
-
 
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 
                rescueJobFrequency=None):
@@ -57,7 +59,6 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
     system(command)
     logger.info("Ran the jobtree apparently okay")
     
-
 def commandAvailable(executable):
     return 0 == os.system("which %s > /dev/null 2> /dev/null" % executable)
 
@@ -86,12 +87,13 @@ try and restart the jobs in it",
                       help="The type of batch system to run the job(s) with, currently can be 'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default",
                       default=detectQueueSystem())
     
+    parser.add_option("--parasolCommand", dest="parasolCommand",
+                      help="The command to run the parasol program default=%default",
+                      default="parasol")
+    
     parser.add_option("--retryCount", dest="retryCount", 
                       help="Number of times to try a failing job before giving up and labelling job failed. default=%default",
                       default=0)
-    
-    parser.add_option("--waitDuration", dest="waitDuration", 
-                      help="Period of time to pause after updating the running jobs (default is set by batch system)")
     
     parser.add_option("--rescueJobsFrequency", dest="rescueJobsFrequency", 
                       help="Period of time to wait (in seconds) between checking for missing/overlong jobs (default is set by the batch system)")
@@ -134,58 +136,83 @@ try and restart the jobs in it",
                       help="Report the log files of all jobs, not just that fail. default=%default",
                       default=False)
     
-def setupTempFileTrees(config):
-    """Load the temp file trees
-    """
-    config.attrib["job_file_dir"] = TempFileTree(config.attrib["job_file_dir"])
-    config.attrib["temp_dir_dir"] = TempFileTree(config.attrib["temp_dir_dir"])
-    config.attrib["log_file_dir"] = TempFileTree(config.attrib["log_file_dir"])
-    config.attrib["slave_log_file_dir"] = TempFileTree(config.attrib["slave_log_file_dir"])
-    logger.info("Setup the temp file trees")
+    parser.add_option("--noCheckPoints", dest="noCheckPoints", action="store_true",
+                      help="Switch off checkpointing in the master to speed up job processing default=%default",
+                      default=False)
     
 def loadTheBatchSystem(config):
     """Load the batch system.
     """
     batchSystemString = config.attrib["batch_system"]
-    if batchSystemString == "parasol":
-        batchSystem = ParasolBatchSystem(config)
-        logger.info("Using the parasol batch system")
-    elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
-        batchSystem = SingleMachineBatchSystem(config)
-        logger.info("Using the single machine batch system")
-    elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
-        batchSystem = GridengineBatchSystem(config)
-        logger.info("Using the grid engine machine batch system")
-    elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-        batchSystem = SingleMachineBatchSystem(config, workerClass=BadWorker)
-        config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
-    else:
-        raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+    def batchSystemConstructionFn(batchSystemString):
+        batchSystem = None
+        if batchSystemString == "parasol":
+            batchSystem = ParasolBatchSystem(config)
+            logger.info("Using the parasol batch system")
+        elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
+            batchSystem = SingleMachineBatchSystem(config)
+            logger.info("Using the single machine batch system")
+        elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
+            batchSystem = GridengineBatchSystem(config)
+            logger.info("Using the grid engine machine batch system")
+        elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
+            batchSystem = SingleMachineBatchSystem(config, workerFn=badWorker)
+            config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
+        return batchSystem
+    batchSystem = batchSystemConstructionFn(batchSystemString)
+    if batchSystem == None:
+        batchSystems = batchSystemString.split()
+        if len(batchSystems) not in (3, 4):
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+        maxMemoryForBatchSystem1 = float(batchSystems[2])
+        maxJobs = sys.maxint
+        if len(batchSystems) == 4:
+            maxJobs = int(batchSystems[3])
+        #Hack the max jobs argument
+        oldMaxJobs = config.attrib["max_jobs"]
+        config.attrib["max_jobs"] = str(maxJobs)
+        batchSystem1 = batchSystemConstructionFn(batchSystems[0])
+        config.attrib["max_jobs"] = str(oldMaxJobs)
+        batchSystem2 = batchSystemConstructionFn(batchSystems[1])
+        
+        #Throw up if we can't make the batch systems
+        if batchSystem1 == None or batchSystem2 == None:
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
+        
+        batchSystem = CombinedBatchSystem(config, batchSystem1, batchSystem2, lambda command, memory, cpu : memory <= maxMemoryForBatchSystem1)
     return batchSystem
 
 def loadEnvironment(config):
     """Puts the environment in the pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
-    fileHandle = open(config.attrib["environment_file"], 'w')
+    fileHandle = open(getEnvironmentFileName(config.attrib["job_tree"]), 'w')
     cPickle.dump(os.environ, fileHandle)
     fileHandle.close()
     logger.info("Written the environment for the jobs to the environment file")
+
+def writeConfig(config):
+    #Write the config file to disk
+    fileHandle = open(getConfigFileName(config.attrib["job_tree"]), 'w')
+    tree = ET.ElementTree(config)
+    tree.write(fileHandle)
+    fileHandle.close()
+    logger.info("Written the config file")
 
 def reloadJobTree(jobTree):
     """Load the job tree from a dir.
     """
     logger.info("The job tree appears to already exist, so we'll reload it")
-    assert os.path.isfile(os.path.join(jobTree, "config.xml")) #A valid job tree must contain the config file
-    assert os.path.isfile(os.path.join(jobTree, "environ.pickle")) #A valid job tree must contain a pickle file which encodes the path environment of the job
-    assert os.path.isfile(os.path.join(jobTree, "jobNumber.xml")) #A valid job tree must contain a file which is updated with the number of jobs that have been run.
-    assert os.path.isdir(os.path.join(jobTree, "jobs")) #A job tree must have a directory of jobs.
-    assert os.path.isdir(os.path.join(jobTree, "tempDirDir")) #A job tree must have a directory of temporary directories (for jobs to make temp files in).
-    assert os.path.isdir(os.path.join(jobTree, "logFileDir")) #A job tree must have a directory of log files.
-    assert os.path.isdir(os.path.join(jobTree, "slaveLogFileDir")) #A job tree must have a directory of slave log files.
+    assert os.path.isfile(getConfigFileName(jobTree)) #A valid job tree must contain the config file
+    assert os.path.isfile(getEnvironmentFileName(jobTree)) #A valid job tree must contain a pickle file which encodes the path environment of the job
+    assert os.path.isdir(getJobFileDirName(jobTree)) #A job tree must have a directory of jobs.
+    
     config = ET.parse(os.path.join(jobTree, "config.xml")).getroot()
-    setupTempFileTrees(config)
+    config.attrib["log_level"] = getLogLevelString()
+    writeConfig(config) #This updates the on disk config file with the new logging setting
+    
     batchSystem = loadTheBatchSystem(config)
+    config.attrib["job_file_tree"] = TempFileTree(getJobFileDirName(jobTree))
     logger.info("Reloaded the jobtree")
     return config, batchSystem
 
@@ -194,14 +221,9 @@ def createJobTree(options):
     options.jobTree = os.path.abspath(options.jobTree)
     os.mkdir(options.jobTree)
     config = ET.Element("config")
-    config.attrib["environment_file"] = os.path.join(options.jobTree, "environ.pickle")
-    config.attrib["job_number_file"] = os.path.join(options.jobTree, "jobNumber.xml")
-    config.attrib["job_file_dir"] = os.path.join(options.jobTree, "jobs")
-    config.attrib["temp_dir_dir"] = os.path.join(options.jobTree, "tempDirDir")
-    config.attrib["log_file_dir"] = os.path.join(options.jobTree, "logFileDir")
-    config.attrib["slave_log_file_dir"] = os.path.join(options.jobTree, "slaveLogFileDir")
-    config.attrib["results_file"] = os.path.join(options.jobTree, "results.txt")
-    config.attrib["scratch_file"] = os.path.join(options.jobTree, "scratch.txt")
+    config.attrib["log_level"] = getLogLevelString()
+    config.attrib["job_tree"] = options.jobTree
+    config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["retry_count"] = str(int(options.retryCount))
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
@@ -211,39 +233,27 @@ def createJobTree(options):
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
     config.attrib["max_jobs"] = str(int(options.maxJobs))
     config.attrib["max_threads"] = str(int(options.maxThreads))
-    config.attrib["reportAllJobLogFiles"] = str(int(options.reportAllJobLogFiles))
+    if options.noCheckPoints:
+        config.attrib["no_check_points"] = ""
+    if options.reportAllJobLogFiles:
+        config.attrib["reportAllJobLogFiles"] = ""
     if options.stats:
-        config.attrib["stats"] = os.path.join(options.jobTree, "stats.xml")
-        fileHandle = open(config.attrib["stats"], 'w')
+        config.attrib["stats"] = ""
+        fileHandle = open(getStatsFileName(options.jobTree), 'w')
         fileHandle.write("<stats>")
         fileHandle.close()
     #Load the batch system.
     batchSystem = loadTheBatchSystem(config)
     
-    #Set the two parameters determining the polling frequency of the system.
-    config.attrib["wait_duration"] = str(float(batchSystem.getWaitDuration()))
-    if options.waitDuration != None:
-        config.attrib["wait_duration"] = str(float(options.waitDuration))
-        
+    #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
     
-    #Write the config file to disk
-    fileHandle = open(os.path.join(options.jobTree, "config.xml"), 'w')
+    writeConfig(config)
     
-    tree = ET.ElementTree(config)
-    tree.write(fileHandle)
-    fileHandle.close()
-    logger.info("Written the config file")
-    
-    #Set up the jobNumber file
-    fileHandle = open(config.attrib["job_number_file"], 'w')
-    ET.ElementTree(ET.Element("job_number", { "job_number":'0' })).write(fileHandle)
-    fileHandle.close()
-    
-    #Setup the temp file trees.
-    setupTempFileTrees(config)
+    #Setup the temp file tree.
+    config.attrib["job_file_tree"] = TempFileTree(getJobFileDirName(options.jobTree))
     
     logger.info("Finished the job tree setup")
     return config, batchSystem
@@ -252,12 +262,14 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
     """Adds the first job to to the jobtree.
     """
     logger.info("Adding the first job")
-    if memory == None:
-        memory = config.attrib["default_memory"]
-    if cpu == None:
-        cpu = config.attrib["default_cpu"]
-    job = createJob({ "command":command, "memory":str(int(memory)), "cpu":str(int(cpu)), "time":str(float(time)) }, None, config)
-    writeJobs([job])
+    if memory == None or memory == sys.maxint:
+        memory = float(config.attrib["default_memory"])
+    if cpu == None or cpu == sys.maxint:
+        cpu = float(config.attrib["default_cpu"])
+    job = Job(command=command, memory=memory, cpu=cpu, parentJobFile=None, 
+              globalTempDir=config.attrib["job_file_tree"].getTempDirectory(), 
+              retryCount=int(config.attrib["retry_count"]))
+    writeJob(job)
     logger.info("Added the first job")
     
 def runJobTreeScript(options):

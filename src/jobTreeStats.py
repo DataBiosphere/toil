@@ -26,7 +26,7 @@
 import sys
 import os
 
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 from xml.dom import minidom #For making stuff pretty
 
 from sonLib.bioio import logger
@@ -35,6 +35,8 @@ from sonLib.bioio import logFile
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
+
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
 
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.
@@ -83,8 +85,8 @@ def main():
     #Read the stats and config
     ##########################################  
     
-    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
-    stats = ET.parse(os.path.join(options.jobTree, "stats.xml")).getroot()
+    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
+    stats = ET.parse(getStatsFileName(options.jobTree)).getroot()
     
     ##########################################
     #Collate the stats and report
@@ -103,12 +105,15 @@ def main():
         itemClocks.sort()
         itemWaits = [ round(round(float(item.attrib["time"])) - round(float(item.attrib["clock"]))) for item in items ]
         itemWaits.sort()
+        itemMemory = [ round(float(item.attrib["memory"])) for item in items ]
+        itemMemory.sort()
         assert len(itemClocks) == len(itemTimes)
         assert len(itemClocks) == len(itemWaits)
         if len(itemTimes) == 0:
             itemTimes.append(0)
             itemClocks.append(0)
             itemWaits.append(0)
+            itemMemory.append(0)
         return ET.SubElement(element, itemName, { "total_number":str(len(items)),
                                                "total_time":str(sum(itemTimes)),
                                                "median_time":str(itemTimes[len(itemTimes)/2]),
@@ -124,7 +129,12 @@ def main():
                                                "median_wait":str(itemWaits[len(itemWaits)/2]),
                                                "average_wait":str(sum(itemWaits)/len(itemWaits)),
                                                "min_wait":str(min(itemWaits)),
-                                               "max_wait":str(max(itemWaits))
+                                               "max_wait":str(max(itemWaits)),
+                                               "total_memory":str(sum(itemMemory)),
+                                               "median_memory":str(itemMemory[len(itemMemory)/2]),
+                                               "average_memory":str(sum(itemMemory)/len(itemMemory)),
+                                               "min_memory":str(min(itemMemory)),
+                                               "max_memory":str(max(itemMemory))
                                                 })
     
     def fn2(element, containingItems, containingItemName, getFn):
@@ -153,25 +163,13 @@ def main():
     slaves = stats.findall("slave")
     fn(collatedStatsTag, slaves, "slave")
     
-    #Add job info
-    jobs = []
-    for slave in slaves:
-        jobs += slave.findall("job")
-    def fn3(slave):
-        return slave.findall("job")
-    fn2(fn(collatedStatsTag, jobs, "job"), slaves, "slave", fn3)
-    
     #Add aggregated target info
     targets = []
-    for job in jobs:
-        for stack in job.findall("stack"):
-            targets += stack.findall("target")
+    for slave in slaves:
+        targets += slave.findall("target")
     def fn4(job):
-        targets = []
-        for stack in job.findall("stack"):
-            targets += stack.findall("target")
-        return targets
-    fn2(fn(collatedStatsTag, targets, "target"), jobs, "job", fn4)   
+        return list(slave.findall("target"))
+    fn2(fn(collatedStatsTag, targets, "target"), slaves, "slave", fn4)   
     
     #Get info for each target
     targetNames = set()
@@ -182,8 +180,8 @@ def main():
     for targetName in targetNames:
         targetTypes = [ target for target in targets if target.attrib["class"] == targetName ]
         targetTypeTag = fn(targetTypesTag, targetTypes, targetName)
-        estimatedRunTimes = [ float(target.attrib["e_time"]) for target in targetTypes ]
-        targetTypeTag.attrib["estimated_time"] = str(sum(estimatedRunTimes)/len(estimatedRunTimes))
+        #estimatedRunTimes = [ float(target.attrib["e_time"]) for target in targetTypes ]
+        #targetTypeTag.attrib["estimated_time"] = str(sum(estimatedRunTimes)/len(estimatedRunTimes))
     
     def prettify(elem):
         """Return a pretty-printed XML string for the Element.

@@ -131,7 +131,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
-        self.scratchFile = self.config.attrib["scratch_file"]
         self.currentjobs = set()
         self.obtainSystemConstants()
         self.jobIDs = dict()
@@ -159,6 +158,14 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.currentjobs.add(jobID)
         self.newJobsQueue.put((sgeJobID, index))
         
+    def issueJob(self, command, memory, cpu, logFile):
+        qsubline = prepareQsub(cpu, memory)
+        qsubline.extend(['-o', logFile, '-e', logFile, command])
+        result = qsub(qsubline)
+        jobs = dict()
+        self.addJob(command, result, jobs)
+        return jobs.keys()[0]
+
     def issueJobs(self, jobCommands):
         """Issues grid engine with job commands.
         """
@@ -242,6 +249,18 @@ class GridengineBatchSystem(AbstractBatchSystem):
                 times[self.jobIDs[(items[0], items[9])]] = time.time() - jobstart 
 
         return times
+    
+    def getUpdatedJob(self, maxWait):
+        i = None
+        try:
+            (job, task, retcode) = self.updatedJobsQueue.get(timeout=maxWait)
+            self.updatedJobsQueue.task_done()
+            i = (self.jobIDs[(job, task)], retcode)
+            self.currentjobs -= set([self.jobIDs[(job, task)]])
+        except Empty:
+            pass
+
+        return i
     
     def getUpdatedJobs(self):
         retcodes = {}

@@ -4,6 +4,7 @@
 """
 from optparse import OptionParser
 import os
+import random
 import shutil
 from sonLib.bioio import getTempFile
 from jobTree.scriptTree.target import Target
@@ -32,6 +33,8 @@ class Cleanup(Target):
         self.outputFile = outputFile
     
     def run(self):
+        if random.random() > 0.5:
+            raise RuntimeError()
         shutil.copyfile(self.tempOutputFile, self.outputFile)
 
 class Down(Target):
@@ -52,6 +55,8 @@ class Down(Target):
         self.outputFile = outputFile
     
     def run(self):
+        if random.random() > 0.5:
+            raise RuntimeError()
         length = self.fileEnd - self.fileStart
         self.logToMaster("Am running a down target with length: %i from input file: %s" % (length, self.inputFile))
         assert length >= 0
@@ -80,6 +85,8 @@ class Up(Target):
         self.outputFile = outputFile
         
     def run(self):
+        if random.random() > 0.5:
+            raise RuntimeError()
         merge(self.inputFile1, self.inputFile2, self.outputFile)
         self.logToMaster("Am running an up target with input files: %s and %s" % (self.inputFile1, self.inputFile2))
         

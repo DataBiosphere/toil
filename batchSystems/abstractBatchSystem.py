@@ -32,9 +32,8 @@ class AbstractBatchSystem:
         """
         self.config = config
     
-    def issueJobs(self, commands):
-        """Issues the following commands, returning a map of commands
-        and jobIDs. Each command is a tuple of the (command, memory, cpu, log-file), where command
+    def issueJob(self, command, memory, cpu):
+        """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
@@ -58,17 +57,11 @@ class AbstractBatchSystem:
         """
         raise RuntimeError("Abstract method")
     
-    def getUpdatedJobs(self):
-        """Gets a list of jobs that have updated there status,
-        according to the job manager. The return value is a 
-        map of jobIDs and exit values of the processes.
-        """
-        raise RuntimeError("Abstract method")
-    
-    def getWaitDuration(self):
-        """Gets the period of time (floating point, seconds) to pause after updating the running jobs.
-        This gives the batch system a bit of a breather, and can avoid to much
-        IO thrashing. This duration may be overidden by a command line input.
+    def getUpdatedJob(self, maxWait):
+        """Gets a job that has updated its status,
+        according to the job manager. Max wait gives the number of seconds to pause 
+        waiting for a result. If a result is available returns (jobID, exitValue)
+        else it returns None.
         """
         raise RuntimeError("Abstract method")
     

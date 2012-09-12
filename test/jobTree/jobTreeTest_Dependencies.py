@@ -2,15 +2,15 @@
 """ Test program designed to catch two bugs encountered when developing
 progressive cactus:
 1) spawning a daemon process causes indefinite jobtree hangs
-2) jobtree does not parallelize jobs in certain types of
+2) jobtree does not properly parallelize jobs in certain types of
 recursions
 
-These cases can be tested for by checking the timestamps output
-by this program.  If jobs get hung up until the daemon process
+If jobs get hung up until the daemon process
 finsishes, that would be a case of bug 1).  If jobs do not
 get issued in parallel (ie the begin UP does not happen
 concurrently for the leaves of the comb tree), then that is
-a case of bug 2)
+a case of bug 2).  This is now verified if a log file is 
+specified (--logFile [path] option)
 
 --Glenn Hickey
 """
@@ -20,10 +20,11 @@ from time import sleep
 import random
 import datetime
 import sys
+import math
 
 from sonLib.bioio import system
 from optparse import OptionParser
-import xml.etree.ElementTree as ET
+import xml.etree.cElementTree as ET
 
 from jobTree.src.bioio import getLogLevelString
 from jobTree.src.bioio import logger
@@ -82,7 +83,7 @@ def starTree(n = 10):
     return t
 
 # odd numbers are leaves
-def combTree(n = 10):
+def combTree(n = 100):
     t = dict()
     for i in range(0,n):
         if i % 2 == 0:
@@ -112,17 +113,18 @@ def flyTree():
     return t
 
 class FirstJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         sleep(1)
         self.addChildTarget(DownJob(self.tree, self.event,
-                                    self.sleepTime, self.startTime))
+                                    self.sleepTime, self.startTime, self.cpu))
 
         self.setFollowOnTarget(LastJob())
 
@@ -135,12 +137,13 @@ class LastJob(Target):
         pass
     
 class DownJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         writeLog(self, "begin Down: %s" % self.event, self.startTime)
@@ -149,50 +152,107 @@ class DownJob(Target):
             writeLog(self, "add %s as child of %s" % (child, self.event),
                      self.startTime)
             self.addChildTarget(DownJob(self.tree, child,
-                                        self.sleepTime, self.startTime))
+                                        self.sleepTime, self.startTime, self.cpu))
 
         if len(children) == 0:
             self.setFollowOnTarget(UpJob(self.tree, self.event,
-                                         self.sleepTime, self.startTime))
+                                         self.sleepTime, self.startTime, self.cpu))
         return 0
     
 class UpJob(Target):
-    def __init__(self, tree, event, sleepTime, startTime):
-        Target.__init__(self)
+    def __init__(self, tree, event, sleepTime, startTime, cpu):
+        Target.__init__(self, cpu=cpu)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
+        self.cpu = cpu
 
     def run(self):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
 
         sleep(self.sleepTime)
-        spawnDaemon("sleep 33.666")       
+        spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))       
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 
+# let k = maxThreads.  we make sure that jobs are fired in batches of k
+# so the first k jobs all happen within epsilon time of each other, 
+# same for the next k jobs and so on.  we allow at most alpha time
+# between the different batches (ie between k+1 and k).  
+def checkLog(options):
+    epsilon = float(options.sleepTime) / 2.0
+    alpha = options.sleepTime * 2.0
+    logFile = open(options.logFile, "r")    
+    stamps = []
+    for logLine in logFile:
+        if "begin UP" in logLine:
+            chunks = logLine.split()
+            assert len(chunks) == 10
+            timeString = chunks[6]
+            timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
+            timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
+            timeObj.second + timeObj.microsecond / 1000000.
+            stamps.append(timeStamp)
+    
+    stamps.sort()
+    
+    maxThreads = int(options.maxThreads)
+    maxCpus = int(options.maxJobs)
+    maxConcurrentJobs = min(maxThreads, maxCpus)
+    cpusPerThread = float(maxCpus) / maxConcurrentJobs
+    cpusPerJob = int(options.cpusPerJob)
+    assert cpusPerJob >= 1
+    assert cpusPerThread >= 1
+    threadsPerJob = 1
+    if cpusPerJob > cpusPerThread:
+        threadsPerJob = math.ceil(cpusPerJob / cpusPerThread)
+    maxConcurrentJobs = int(maxConcurrentJobs / threadsPerJob)
+    #print "Info on jobs", cpusPerThread, cpusPerJob, threadsPerJob, maxConcurrentJobs
+    assert maxConcurrentJobs >= 1
+    for i in range(1,len(stamps)):
+        delta = stamps[i] - stamps[i-1]
+        if i % maxConcurrentJobs != 0:
+            if delta > epsilon:
+                raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
+                             (i, delta, epsilon))
+        elif delta > alpha:
+            raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" % 
+                             (i, delta, alpha))
+            
+    logFile.close()
+    
 def main():
     parser = OptionParser()
     Stack.addJobTreeOptions(parser)
     parser.add_option("--sleepTime", dest="sleepTime", type="int",
-                     help="sleep [default=5] seconds", default="5")
+                     help="sleep [default=5] seconds", default=5)
     parser.add_option("--tree", dest="tree",
                       help="tree [balanced|comb|star|fly]", default="comb")
+    parser.add_option("--size", dest="size", type="int",
+                      help="tree size (for comb or star) [default=10]", 
+                      default=10) 
+    parser.add_option("--cpusPerJob", dest="cpusPerJob",
+                      help="Cpus per job", default="1")
+        
     options, args = parser.parse_args()
     setLoggingFromOptions(options)
 
     startTime = datetime.datetime.now()
 
-    tree = combTree()
     if options.tree == "star":
-        tree = starTree()
+        tree = starTree(options.size)
     elif options.tree == "balanced":
         tree = balancedTree()
     elif options.tree == "fly":
         tree = flyTree()
+    else:
+        tree = combTree(options.size)
     
-    baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime)
+    baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime, int(options.cpusPerJob))
     Stack(baseTarget).startJobTree(options)
+    
+    if options.logFile is not None:
+        checkLog(options)
     
 if __name__ == '__main__':
     from jobTree.test.jobTree.jobTreeTest_Dependencies import *

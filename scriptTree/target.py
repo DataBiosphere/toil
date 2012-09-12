@@ -33,8 +33,8 @@ class Target:
         self.__followOn = None
         self.__children = []
         self.__childCommands = []
-        self.__time = time
         self.__memory = memory
+        self.__time = time #This parameter is no longer used.
         self.__cpu = cpu
         self.globalTempDir = None
         if self.__module__ == "__main__":
@@ -60,7 +60,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Adds the child target to be run as child of this target.
         """
         self.__children.append(childTarget)
-        
+    
     def addChildCommand(self, childCommand, runTime=sys.maxint):
         """A command to be run as child of the job tree.
         """

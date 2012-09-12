@@ -21,6 +21,7 @@
 
 import unittest
 from jobTree.test.jobTree.jobTreeTest import TestCase as jobTreeTest
+from jobTree.test.jobTree.jobTest import TestCase as jobTest
 from jobTree.test.scriptTree.scriptTreeTest import TestCase as scriptTreeTest
 from jobTree.test.sort.sortTest import TestCase as sortTest
 from jobTree.test.utilities.statsTest import TestCase as statsTest
@@ -29,21 +30,26 @@ from jobTree.test.utilities.statsTest import TestCase as statsTest
 from sonLib.bioio import parseSuiteTestOptions
 
 def allSuites():
+    jobTestSuite = unittest.makeSuite(jobTest, 'test')
     jobTreeTestSuite = unittest.makeSuite(jobTreeTest, 'test')
     scriptTreeSuite = unittest.makeSuite(scriptTreeTest, 'test')
     sortSuite = unittest.makeSuite(sortTest, 'test')
     statsSuite = unittest.makeSuite(statsTest, 'test')
-    allTests = unittest.TestSuite((jobTreeTestSuite, scriptTreeSuite, sortSuite, statsSuite))
+    allTests = unittest.TestSuite((jobTestSuite, jobTreeTestSuite, scriptTreeSuite, sortSuite, statsSuite))
     return allTests
         
 def main(): 
     parseSuiteTestOptions()
-    
     suite = allSuites()
     runner = unittest.TextTestRunner()
     i = runner.run(suite)
     return len(i.failures) + len(i.errors)
         
 if __name__ == '__main__':
+    #import cProfile
+    #cProfile.run('main()', "fooprof")
+    #import pstats
+    #p = pstats.Stats('fooprof')
+    #p.strip_dirs().sort_stats(-1).print_stats()
     import sys
     sys.exit(main())
