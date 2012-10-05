@@ -23,7 +23,7 @@ The basic pattern provided by jobTree is as follows:
 
 1. You have a job running on your cluster which requires further parallelisation. 
 2. You create a list of jobs to perform this parallelisation. These are the 'child' jobs of your process, we call them collectively the 'children'.
-3. You create a 'follow-on' job, to be performed after all the children have successfully completed. This job is responsible for cleaning up the input files created for the children and doing any further processing. **Children should not cleanup files created by parents**, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
+3. You create a 'follow-on' job, to be performed after all the children have successfully completed. This job is responsible for cleaning up the input files created for the children and doing any further processing. Children should not cleanup files created by parents, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
 4. You end your current job successfully.
 5. The batch system runs the children. These jobs may in turn have children and follow-on jobs.
 6. Upon completion of all the children (and children's children and follow-ons, collectively descendants) the follow-on job is run. The follow-on job may create more children.
