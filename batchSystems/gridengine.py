@@ -31,6 +31,7 @@ from threading import Thread
 from sonLib.bioio import logger
 from sonLib.bioio import system
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from jobTree.src.master import getParasolResultsFileName
 
 from jobTree.batchSystems.multijob import MultiTarget
 
@@ -127,7 +128,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
     
     def __init__(self, config):
         AbstractBatchSystem.__init__(self, config) #Call the parent constructor
-        self.gridengineResultsFile = config.attrib["results_file"]
+        self.gridengineResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
