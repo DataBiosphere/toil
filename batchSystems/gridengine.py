@@ -84,7 +84,7 @@ def qsub(qsubline):
     return result
 
 def getjobexitcode(sgeJobID):
-	job, task = sgeJobID
+        job, task = sgeJobID
         args = ["qacct", "-j", str(job)]
         if task is not None:
              args.extend(["-t", str(task)])
@@ -103,8 +103,8 @@ class Worker(Thread):
         self.newJobsQueue = newJobsQueue
         self.updatedJobsQueue = updatedJobsQueue
         self.currentjobs = list()
-	self.runningjobs = set()
-	self.boss = boss
+        self.runningjobs = set()
+        self.boss = boss
         
     def run(self):
         while True:
@@ -112,20 +112,20 @@ class Worker(Thread):
             while not self.newJobsQueue.empty():
                 self.currentjobs.append(self.newJobsQueue.get())
 
-	    # Launch jobs as necessary:
-	    while len(self.currentjobs) > 0 and len(self.runningjobs) < int(self.boss.config.attrib["max_jobs"]):
-		jobID, qsubline = self.currentjobs.pop()
-	        sgeJobID = qsub(qsubline)
-	        self.boss.jobIDs[(sgeJobID, None)] = jobID
-	        self.boss.sgeJobIDs[jobID] = (sgeJobID, None)
-		self.runningjobs.add((sgeJobID, None))
+            # Launch jobs as necessary:
+            while len(self.currentjobs) > 0 and len(self.runningjobs) < int(self.boss.config.attrib["max_jobs"]):
+                jobID, qsubline = self.currentjobs.pop()
+                sgeJobID = qsub(qsubline)
+                self.boss.jobIDs[(sgeJobID, None)] = jobID
+                self.boss.sgeJobIDs[jobID] = (sgeJobID, None)
+                self.runningjobs.add((sgeJobID, None))
 
             # Test known job list
             for sgeJobID in list(self.runningjobs):
                 exit = getjobexitcode(sgeJobID)
                 if exit is not None:
                     self.updatedJobsQueue.put((sgeJobID, exit))
-		    self.runningjobs.remove(sgeJobID)
+                    self.runningjobs.remove(sgeJobID)
 
             time.sleep(10)
 
@@ -163,7 +163,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         qsubline = prepareQsub(cpu, memory) + [command]
         self.newJobsQueue.put((jobID, qsubline))
         logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
-	return jobID
+        return jobID
 
     def getSgeID(self, jobID):
         if not jobID in self.sgeJobIDs:
