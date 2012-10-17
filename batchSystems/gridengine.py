@@ -65,8 +65,8 @@ class MemoryString:
         return cmp(self.bytes, other.bytes)
 
 def prepareQsub(cpu, mem):
-    qsubline = list(["qsub","-b","y","-terse","-j" ,"y", "-cwd","-v", 
-                     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]])
+    qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd","-v", 
+                     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]]
     reqline = list()
     if cpu is not None:
         reqline.append("p="+str(cpu))
@@ -84,7 +84,8 @@ def qsub(qsubline):
     logger.debug("Got the job id: %s" % (str(result)))
     return result
 
-def getjobexitcode(job, task):
+def getjobexitcode(sgeJobID):
+	job, task = sgeJobID
         args = ["qacct", "-j", str(job)]
         if task is not None:
              args.extend(["-t", str(task)])
@@ -98,28 +99,35 @@ def getjobexitcode(job, task):
         return None
 
 class Worker(Thread):
-    def __init__(self, inputQueue, outputQueue, boss):
+    def __init__(self, newJobsQueue, updatedJobsQueue, boss):
         Thread.__init__(self)
-        self.inputQueue = inputQueue
-        self.outputQueue = outputQueue
-        self.currentjobs = set()
-        
+        self.newJobsQueue = newJobsQueue
+        self.updatedJobsQueue = updatedJobsQueue
+        self.currentjobs = list()
+	self.runningjobs = set()
+	self.boss = boss
         
     def run(self):
         while True:
-            # Load new job ids 
-            while not self.inputQueue.empty():
-                self.currentjobs.add(self.inputQueue.get())
+            # Load new job ids:
+            while not self.newJobsQueue.empty():
+                self.currentjobs.append(self.newJobsQueue.get())
+
+	    # Launch jobs as necessary:
+	    while len(self.currentjobs) > 0 and len(self.runningjobs) < int(self.boss.config.attrib["max_jobs"]):
+		jobID, qsubline = self.currentjobs.pop()
+	        sgeJobID = qsub(qsubline)
+	        self.boss.jobIDs[(sgeJobID, None)] = jobID
+	        self.boss.sgeJobIDs[jobID] = (sgeJobID, None)
+		self.runningjobs.add((sgeJobID, None))
 
             # Test known job list
-            finishedJobs = []
-            for (job, task) in self.currentjobs:
-                exit = getjobexitcode(job, task)
+            for sgeJobID in list(self.runningjobs):
+                exit = getjobexitcode(sgeJobID)
                 if exit is not None:
-                    self.outputQueue.put((job, task, exit))
-                    finishedJobs.append((job, task))
+                    self.updatedJobsQueue.put((sgeJobID, exit))
+		    self.runningjobs.remove(sgeJobID)
 
-            self.currentjobs -= set(finishedJobs)
             time.sleep(10)
 
 class GridengineBatchSystem(AbstractBatchSystem):
@@ -148,56 +156,15 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
-    def addJob(self, command, sgeJobID, issuedJobs, index=None):
+    def issueJob(self, command, memory, cpu):
         jobID = self.nextJobID
         self.nextJobID += 1
-        self.jobIDs[(sgeJobID, index)] = jobID
-        self.sgeJobIDs[jobID] = (sgeJobID, index) 
-        assert jobID not in issuedJobs.keys()
-        issuedJobs[jobID] = command
-        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+
         self.currentjobs.add(jobID)
-        self.newJobsQueue.put((sgeJobID, index))
-        
-    def issueJob(self, command, memory, cpu, logFile):
-        qsubline = prepareQsub(cpu, memory)
-        qsubline.extend(['-o', logFile, '-e', logFile, command])
-        result = qsub(qsubline)
-        jobs = dict()
-        self.addJob(command, result, jobs)
-        return jobs.keys()[0]
-
-    def issueJobs(self, jobCommands):
-        """Issues grid engine with job commands.
-        """
-        issuedJobs = dict()
-        requirements = dict()
-        for command, memory, cpu, outfile in jobCommands:
-            if cpu > self.maxCPU:
-                RuntimeError("Job requested more CPUs than available on any node in the farm") 
-            if memory > self.maxMEM.bytes:
-                RuntimeError("Job requested more memory than available on any node in the farm")
-            if not (cpu, memory) in requirements:
-                requirements[cpu, memory] = []
-            requirements[cpu, memory].append((command, outfile))
-
-        for cpu, memory in requirements:
-            jobs = requirements[cpu, memory]
-            if len(jobs) == 1:
-                    (command, outfile) = jobs[0]
-                    qsubline = prepareQsub(cpu, memory)
-                    qsubline.extend(['-o', outfile, '-e', outfile, command])
-                    result = qsub(qsubline)
-                    self.addJob(command, result, issuedJobs)
-            else: 
-                    target = MultiTarget(jobs)
-                    multicommand = target.makeRunnable(self.config.attrib["log_file_dir"])
-                    qsubline = prepareQsub(cpu, memory)
-                    qsubline.extend(["-o", "/dev/null", "-e", "/dev/null", "-t","1-%i" % len(jobs), multicommand])
-                    result = qsub(qsubline)
-                    for index in range(len(jobs)):
-                            self.addJob(jobs[index][0], result, issuedJobs, index=index + 1)
-        return issuedJobs
+        qsubline = prepareQsub(cpu, memory) + [command]
+        self.newJobsQueue.put((jobID, qsubline))
+        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+	return jobID
 
     def getSgeID(self, jobID):
         if not jobID in self.sgeJobIDs:
@@ -221,9 +188,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
         toKill = set(jobIDs)
         while len(toKill) > 0:
-            for jobID in toKill:
-                (job,task) = self.sgeJobIDs[jobID]
-                if getjobexitcode(job, task) is None:
+            for jobID in list(toKill):
+                if getjobexitcode(self.sgeJobIDs[jobID]) is not None:
                     toKill.remove(jobID)
 
             if len(toKill) > 0:
@@ -254,23 +220,14 @@ class GridengineBatchSystem(AbstractBatchSystem):
     def getUpdatedJob(self, maxWait):
         i = None
         try:
-            (job, task, retcode) = self.updatedJobsQueue.get(timeout=maxWait)
+            sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
             self.updatedJobsQueue.task_done()
-            i = (self.jobIDs[(job, task)], retcode)
-            self.currentjobs -= set([self.jobIDs[(job, task)]])
+            i = (self.jobIDs[sgeJobID], retcode)
+            self.currentjobs -= set([self.jobIDs[sgeJobID]])
         except Empty:
             pass
 
         return i
-    
-    def getUpdatedJobs(self):
-        retcodes = {}
-        while not self.updatedJobsQueue.empty():
-            (job, task, retcode) = self.updatedJobsQueue.get()
-            retcodes[self.jobIDs[(job, task)]] =  retcode
-
-        self.currentjobs -= set(retcodes.keys())
-        return retcodes
     
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)
