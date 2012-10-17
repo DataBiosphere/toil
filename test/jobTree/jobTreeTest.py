@@ -34,7 +34,6 @@ class TestCase(unittest.TestCase):
    
     # only done in singleMachine for now.  Experts can run manually on other systems if they choose
     def dependenciesTest(self, batchSystem="singleMachine"):
-        return
         def fn(tree, maxJobs, maxThreads, size, cpusPerJob, sleepTime):
             system("rm -rf %s" % self.jobTreeDir)
             logName = self.tempFileTree.getTempFile(suffix="_comblog.txt", makeDir=False)
