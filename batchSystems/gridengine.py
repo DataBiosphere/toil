@@ -65,7 +65,7 @@ class MemoryString:
         return cmp(self.bytes, other.bytes)
 
 def prepareQsub(cpu, mem):
-    qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd","-v", "-o", "/dev/null", "-e", "/dev/null",
+    qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd", "-o", "/dev/null", "-e", "/dev/null", "-v",
                      "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]]
     reqline = list()
     if cpu is not None:
