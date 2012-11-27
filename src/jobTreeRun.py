@@ -28,7 +28,7 @@ import sys
 import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
-from optparse import OptionParser
+from optparse import OptionParser, OptionContainer
 
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
@@ -73,7 +73,7 @@ def addOptions(parser):
     # Wrapper function that allows jobTree to be used with both the optparse and 
     # argparse option parsing modules
     addLoggingOptions(parser) # This adds the logging stuff.
-    if isinstance(parser, OptionParser):
+    if isinstance(parser, OptionContainer):
         addOptions_optparse(parser)
     elif isinstance(parser, ArgumentParser):
         addOptions_argparse(parser)
