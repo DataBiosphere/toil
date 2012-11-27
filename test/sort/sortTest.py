@@ -106,7 +106,7 @@ class TestCase(unittest.TestCase):
             assert midPoint >= 0
             system("rm -rf %s" % tempDir)
             
-def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000, retryCount=99):
+def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000):
     """Tests scriptTree/jobTree by sorting a file in parallel.
     """
     for test in xrange(testNo):
@@ -120,8 +120,17 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
         l.sort()
         fileHandle.close()
         #Sort the file
-        command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxJobs 20 --retryCount %i" % (jobTreeDir, tempFile, N, batchSystem, retryCount)
-        system(command)
+        while True:
+            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxJobs 20 --retryCount 2" % (jobTreeDir, tempFile, N, batchSystem) #, retryCount)
+            system(command)
+            try:
+                system("jobTreeStatus --jobTree %s --failIfNotComplete" % jobTreeDir)
+                break
+            except:
+                print "The jobtree failed and will be restarted"
+                #raise RuntimeError()
+                continue
+                
         #Now check the file is properly sorted..
         #Now get the sorted file
         fileHandle = open(tempFile, 'r')

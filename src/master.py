@@ -217,11 +217,15 @@ def fixJobsList(config, jobFiles):
     """
     for updatingFileName in jobFiles[:]:
         if ".updating" == updatingFileName[-9:]: #Things crashed while the state was updating, so we should remove the 'updating' and '.new' files
+            logger.critical("Found a .updating file: %s" % updatingFileName)
             fileHandle = open(updatingFileName, 'r')
             for fileName in fileHandle.readline().split():
                 if os.path.isfile(fileName):
+                    logger.critical("File %s was listed in an updating file and will be removed %s" % fileName)
                     config.attrib["job_file_tree"].destroyTempFile(fileName)
                     jobFiles.remove(fileName)
+                else:
+                    logger.critical("File %s was listed in an updating file but does not exist %s" % fileName)
             fileHandle.close()
             config.attrib["job_file_tree"].destroyTempFile(updatingFileName)
             jobFiles.remove(updatingFileName)
@@ -235,13 +239,13 @@ def fixJobsList(config, jobFiles):
                 jobFiles.append(originalFileName)
             logger.critical("Fixing the file: %s from %s" % (originalFileName, fileName))
 
-def restartFailedJobs(config, jobFiles):
+def resetFailedJobs(config, jobFiles):
     """Traverses through the file tree and resets the restart count of all jobs.
     """
     for absFileName in jobFiles:
         if os.path.isfile(absFileName):
             job = readJob(absFileName)
-            logger.info("Restarting job: %s" % job.getJobFileName())
+            logger.info("Resetting job: %s" % job.getJobFileName())
             job.setRemainingRetryCount(int(config.attrib["retry_count"]))
             if job.getColour() == Job.red:
                 job.setColour(Job.grey)
@@ -400,7 +404,7 @@ def mainLoop(config, batchSystem):
     logger.info("Fixed the job files using any .old files")
     
     #Get jobs that were running, or that had failed reset to 'grey' status
-    restartFailedJobs(config, jobFiles)
+    resetFailedJobs(config, jobFiles)
     logger.info("Reworked failed jobs")
     
     openParentsHash = {} #Parents that are already in memory, saves loading and reloading
@@ -567,7 +571,7 @@ def mainLoop(config, batchSystem):
     logger.info("Finished the main loop, now must finish deleting files")
     startTimeForRemovingFiles = time.time()
     jobRemover.join()
-    logger.critical("It took %i seconds to finish deleting files" % (time.time() - startTimeForRemovingFiles))    
+    logger.info("It took %i seconds to finish deleting files" % (time.time() - startTimeForRemovingFiles))    
     
     if stats:
         fileHandle = open(getStatsFileName(config.attrib["job_tree"]), 'ab')

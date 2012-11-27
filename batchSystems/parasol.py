@@ -105,9 +105,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
         time.sleep(5) #Give batch system a second to sort itself out.
         logger.info("Removed any old jobs from the queue")
         #Reset the job queue and results
-        exitValue = popenParasolCommand("%s -results=%s freeBatch" % (self.parasolCommand, self.parasolResultsFile), False)[0]
+        exitValue = popenParasolCommand("%s -results=%s clear sick" % (self.parasolCommand, self.parasolResultsFile), False)[0]
         if exitValue != None:
-            logger.critical("Could not reset the parasol batch %s" % self.parasolResultsFile)
+            logger.critical("Could not clear sick status of the parasol batch %s" % self.parasolResultsFile)
+        exitValue = popenParasolCommand("%s -results=%s flushResults" % (self.parasolCommand, self.parasolResultsFile), False)[0]
+        if exitValue != None:
+            logger.critical("Could not flush the parasol batch %s" % self.parasolResultsFile)
         open(self.parasolResultsFile, 'w').close()
         logger.info("Reset the results queue")
         #Stuff to allow max cpus to be work
@@ -216,7 +219,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     
     def getRescueJobFrequency(self):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
+        making it expensive. 
         """
         return 5400 #Once every 90 minutes
         
