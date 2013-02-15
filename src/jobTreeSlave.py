@@ -271,6 +271,8 @@ def main():
             writeJob(job) #Checkpoint
             logger.info("Updated the status of the job to grey and starting the next job")
         
+        
+        
         #Write back the job file with the updated jobs, using the checkpoint method.
         writeJob(job)
         
