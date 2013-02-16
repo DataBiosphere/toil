@@ -164,25 +164,26 @@ class Stack:
             if self.target.isGlobalTempDirSet():
                 followOn.setGlobalTempDir(self.target.getGlobalTempDir())
             followOnStack = Stack(followOn)
-            job.addFollowOnCommand((followOnStack.makeRunnable(self.globalTempDir),
-                                    followOnStack.getMemory(defaultMemory),
-                                    followOnStack.getCpu(defaultCpu)))
+            job.followOnCommands.append((followOnStack.makeRunnable(self.globalTempDir),
+                                         followOnStack.getMemory(defaultMemory),
+                                         followOnStack.getCpu(defaultCpu)))
         
         #Now add the children to the newChildren stack
         newChildren = self.target.getChildren()
         newChildren.reverse()
+        assert len(job.children) == 0
         while len(newChildren) > 0:
             childStack = Stack(newChildren.pop())
-            job.addChildCommand((childStack.makeRunnable(self.globalTempDir),
+            job.children.append((childStack.makeRunnable(self.globalTempDir),
                      childStack.getMemory(defaultMemory),
                      childStack.getCpu(defaultCpu)))
         
          #Now build jobs for each child command
         for childCommand, runTime in self.target.getChildCommands():
-            job.addChildCommand((childCommand, defaultMemory, defaultCpu))
+            job.children.append((childCommand, defaultMemory, defaultCpu))
             
         for message in self.target.getMasterLoggingMessages():
-            job.addMessage(message)
+            job.messages.append(message)
         
         #Finish up the stats
         if stats != None:
