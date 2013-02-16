@@ -118,77 +118,72 @@ class JobBatcher:
         jobFile = self.jobIDsToJobsHash.pop(jobID)
         return jobFile
     
+def listChildDirs(jobFile):
+    l = []
+    for f in os.listdir(job.jobDir):
+        system("rm -rf %s" % f)
+        try:
+            int(f)
+            l.append(f)
+        except ValueError:
+            pass
+    return l
+
+def processAnyUpdatingFile(jobFile):
+    if os.path.isfile(jobFile + ".updating"):
+        logger.critical("There was an .updating file for job: %s" % jobFile)
+        if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
+            logger.critical("There was a .new file for the job: %s" % jobFile)
+            os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
+        os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
+        for f in listChildDirs(job.jobDir):
+            logger.critical("Removing broken child %s\n" % f)
+            system("rm -rf %s" % f)
+        assert os.path.isfile(jobFile)
+        logger.critical("We've reverted to the original job file: %s" % jobFile)
+        return True
+    return False
+
+def processAnyNewFile(jobFile):
+    if os.path.isfile(jobFile + ".new"): #The job was not properly updated before crashing
+        logger.critical("There was a .new file for the job and no .updating file %s" % jobFile)
+        if os.path.isfile(jobFile):
+            os.remove(jobFile)
+        os.rename(jobFile + ".new", jobFile)
+        return True
+    return False
+    
 def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts):
     """Function reads a processed job file and updates it state.
     """
     jobFile = jobBatcher.removeJobID(jobID)
-    
-    jobFileIsPresent = os.path.isfile(jobFile)
-    updatingFileIsPresent = os.path.isfile(jobFile + ".updating")
-    newFileIsPresent = os.path.isfile(jobFile + ".new")
-    
-    if resultStatus == 0 and updatingFileIsPresent:
-        logger.critical("Despite the batch system claiming success there is an .updating file present: %s" % (jobFile + ".updating"))
-        
-    if resultStatus == 0 and newFileIsPresent:
-        logger.critical("Despite the batch system claiming success there is a .new file present: %s" % (jobFile + ".new"))
-
-    if not jobFileIsPresent and not newFileIsPresent: #The job is done
+    updatingFilePresent = processAnyUpdatingFile(jobFile)
+    newFilePresent = processAnyNewFile(jobFile)
+    if os.path.isfile(jobFile):        
+        job = readJob(jobFile)
+        assert job not in updatedJobFiles
+        updatedJobFiles.add(job) #Now we know the job is done we can add it to the list of updated job files
+        logger.debug("Added job: %s to active jobs" % jobFile)
+        if resultStatus != 0 or newFilePresent or updatingFilePresent:
+            if os.path.exists(job.getLogFileName()):
+                logger.critical("Log file of failed job: %s", jobFile)
+                logFile(job.getLogFileName(), logger.critical)
+            else:
+                logger.critical("No log file is present, despite job failing: %s", jobFile)
+            logger.critical("Due to the failure of the slave we reducing it remaining retry count: %s" % jobFile)
+            job.remainingRetryCount -= 1     
+    else:  #The job is done
         if resultStatus != 0:
             logger.critical("Despite the batch system claiming failure the job %s seems to have finished and been removed" % jobFile)
-            if os.path.exists(job.getLogFileName()):
-                logFile(job.getLogFileName(), logger.critical)
         #Deal with parent
         parentJob = childJobFileToParentJob.pop(jobFile)
         childCounts[parentJob] -= 1
         assert childCounts[parentJob] >= 0
         if childCounts[parentJob] == 0: #Job is done
             childCounts.pop(parentJob)
-            logger.debug("Parent job %s has has all its children run successfully", parentJobFile)
-            assert parentJobFile not in updatedJobFiles
-            updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files    
-        return
-    
-    if resultStatus != 0 or newFileIsPresent or updatingFileIsPresent: #Job not successful according to batchsystem, or according to the existance of a .new or .updating file
-        if updatingFileIsPresent: #The job failed while attempting to write the job file.
-            logger.critical("There was an .updating file for the crashed job: %s" % jobFile)
-            if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
-                logger.critical("There was an .new file for the crashed job: %s" % jobFile)
-                os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
-            os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
-            assert os.path.isfile(jobFile)
-            job = readJob(jobFile) #The original must still be there.
-            assert len(job.children) == 0
-            for f in os.listdir(job.jobDir):
-                try:
-                    int(f)
-                    logger.critical("Removing broken child %s\n" % f)
-                    system("rm -rf %s" % f)
-                except ValueError:
-                    pass
-            logger.critical("We've reverted to the original job file and marked it as failed: %s" % jobFile)
-        else:
-            if newFileIsPresent: #The job was not properly updated before crashing
-                logger.critical("There is a valid .new file %s" % jobFile)
-                if os.path.isfile(jobFile):
-                    os.remove(jobFile)
-                os.rename(jobFile + ".new", jobFile)
-                job = readJob(jobFile)
-            else:
-                logger.critical("There was no valid .new file %s" % jobFile)
-                assert os.path.isfile(jobFile)
-                job = readJob(jobFile) #The job may have failed before or after creating this file, we check the state.
-        job.remainingRetryCount -= 1
-    else:
-        job = readJob(jobFile)
-        
-    #Check for existance of log file and log if present
-    if os.path.exists(job.getLogFileName()):
-        logFile(job.getLogFileName(), logger.critical)
-
-    assert job not in updatedJobFiles
-    updatedJobFiles.add(job) #Now we know the job is done we can add it to the list of updated job files
-    logger.debug("Added job: %s to active jobs" % jobFile)
+            logger.debug("Parent job %s has has all its children run successfully", parentJob.getJobFile())
+            assert parentJob not in updatedJobFiles
+            updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files  
     
 def killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem):
     """Kills the given set of jobs and then sends them for processing
@@ -246,47 +241,11 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
     killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
-def fixJobsList(config, jobFiles):
-    """Traverses through and finds any .old files, using there saved state to recover a 
-    valid state of the job tree.
-    """
-    for updatingFileName in jobFiles[:]:
-        if ".updating" == updatingFileName[-9:]: #Things crashed while the state was updating, so we should remove the 'updating' and '.new' files
-            logger.critical("Found a .updating file: %s" % updatingFileName)
-            fileHandle = open(updatingFileName, 'r')
-            for fileName in fileHandle.readline().split():
-                if os.path.isfile(fileName):
-                    logger.critical("File %s was listed in an updating file and will be removed %s" % fileName)
-                    config.attrib["job_file_tree"].destroyTempFile(fileName)
-                    jobFiles.remove(fileName)
-                else:
-                    logger.critical("File %s was listed in an updating file but does not exist %s" % fileName)
-            fileHandle.close()
-            config.attrib["job_file_tree"].destroyTempFile(updatingFileName)
-            jobFiles.remove(updatingFileName)
-    
-    for fileName in jobFiles[:]: #Else any '.new' files will be switched in place of the original file. 
-        if fileName[-4:] == '.new':
-            originalFileName = fileName[:-4]
-            os.rename(fileName, originalFileName)
-            jobFiles.remove(fileName)
-            if originalFileName not in jobFiles:
-                jobFiles.append(originalFileName)
-            logger.critical("Fixing the file: %s from %s" % (originalFileName, fileName))
-
-def getJobFiles2(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
-    if os.path.exists(getJobFileName(jobTreeJobsRoot)):
-        pass
-    for childDir in getChildDirs(jobTreeJobsRoot) 
-
-def getJobsFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
-    
-    
+def __parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
     #Read job
-    
-    
+    job = Job.read(jobFile)
     #Get children
-    childJobFiles = reduce(lambda x,y:x+y, [ getJobsFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in getChildDirs(jobTreeJobsRoot) ], [])
+    childJobFiles = reduce(lambda x,y:x+y, [ _parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
     if len(childJobFiles) > 0:
         childCounts[job] = len(childJobFiles)
         for childJobFile in children:
@@ -294,7 +253,18 @@ def getJobsFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, chil
     else:
         updatedJobFiles.append(job)
     return [ job ]
-    
+
+def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+    jobFile = getJobFileName(jobTreeJobsRoot)
+    if processAnyUpdatingFile(jobFile) or processAnyNewFile(jobFile) or os.path.exists(jobFile):
+        return __parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
+    return reduce(lambda x,y:x+y, [ _parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
+
+def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+    if not os.path.exists(jobTreeJobsRoot):
+        return []
+    return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
+
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
     """
@@ -309,7 +279,7 @@ def mainLoop(config, batchSystem):
     logger.info("Checked batch system has no running jobs and no updated jobs")
     
     childJobFileToParentJob, childCounts, updatedJobFiles = {}, {}, set()
-    getJobsFiles(config.attrib["job_file_tree"], updatedJobFile, childJobFileToParentJob, childCounts)
+    parseJobFiles(config.attrib["job_file_tree"], updatedJobFile, childJobFileToParentJob, childCounts)
     jobBatcher = JobBatcher(config, batchSystem)
     
     stats = config.attrib.has_key("stats")
