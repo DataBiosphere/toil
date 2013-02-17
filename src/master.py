@@ -241,11 +241,11 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
     killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
-def __parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
     #Read job
     job = Job.read(jobFile)
     #Get children
-    childJobFiles = reduce(lambda x,y:x+y, [ _parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
+    childJobFiles = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
     if len(childJobFiles) > 0:
         childCounts[job] = len(childJobFiles)
         for childJobFile in children:
@@ -254,16 +254,11 @@ def __parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, c
         updatedJobFiles.append(job)
     return [ job ]
 
-def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
     jobFile = getJobFileName(jobTreeJobsRoot)
     if processAnyUpdatingFile(jobFile) or processAnyNewFile(jobFile) or os.path.exists(jobFile):
-        return __parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
-    return reduce(lambda x,y:x+y, [ _parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
-
-def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
-    if not os.path.exists(jobTreeJobsRoot):
-        return []
-    return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
+        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
+    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
 
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.

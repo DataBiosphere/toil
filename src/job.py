@@ -4,6 +4,8 @@ import marshal as pickler
 #import pickle as pickler
 #import json as pickler    
 import os
+import re
+from jobTree.src.bioio import system
 
 def getJobFileName(jobDir):
     return os.path.join(jobDir, "job")
@@ -34,7 +36,7 @@ class Job:
         """Loads a job from disk.
         """
         fileHandle = open(jobFile, 'r')
-        job = convertJsonJobToJob(pickler.load(fileHandle))
+        job = _convertJsonJobToJob(pickler.load(fileHandle))
         fileHandle.close()
         return job
 
@@ -43,7 +45,7 @@ class Job:
         """
         updatingFile = os.path.join(self.jobDir, "updating")
         open(updatingFile, 'w').close()
-        _write(self, ".new")
+        self._write(".new")
         os.remove(updatingFile)
         os.rename(self.getJobFileName() + ".new", self.getJobFileName())
         return self.getJobFileName()
@@ -51,17 +53,22 @@ class Job:
     def delete(self):
         """Removes from disk atomically, can not then subsequently call read(), write() or addChildren()
         """
-        os.remove(self.getJobFileName) #This is the atomic operation, if this file is not present the job is deleted.
+        os.remove(self.getJobFileName()) #This is the atomic operation, if this file is not present the job is deleted.
         dirToRemove = self.jobDir
         while 1:
-            system("rm -rf %s" % dirToRemove)
-            dirToRemove = os.path.split(self.jobDir)[0]
+            head, tail = os.path.split(dirToRemove)
+            if re.match("t[0-9]+$", tail):
+                system("rm -rf %s" % dirToRemove)
+            else:
+                system("rm -rf %s/*" % dirToRemove) #At the root so stop
+                break
+            dirToRemove = head
             if len(os.listdir(dirToRemove)) != 0:
                 break
     
     def currentDepth(self):
         if len(self.followOnCommands) > 0:
-            return self.followOnCommands[-1][3] + 1
+            return self.followOnCommands[-1][-1]
         return 0
     
     def update(self, retryCount=0):
@@ -79,7 +86,7 @@ class Job:
         
     def _write(self, suffix=""):
         fileHandle = open(self.getJobFileName() + suffix, 'w')
-        pickler.dump(convertJobToJson(self), fileHandle)
+        pickler.dump(_convertJobToJson(self), fileHandle)
         fileHandle.close()
 
 """Private functions
@@ -88,16 +95,16 @@ class Job:
 def _convertJobToJson(job):
     jsonJob = [ job.remainingRetryCount,
                 job.jobDir,
-                job.childCommandsToIssue,
+                job.children,
                 job.followOnCommands,
                 job.messages ]
     return jsonJob
 
 def _convertJsonJobToJob(jsonJob):
-    job = Job("", 0, 0, None, "", 0)
+    job = Job("", 0, 0, 0, None)
     job.remainingRetryCount = jsonJob[0] 
     job.jobDir = jsonJob[1]
-    job.childCommandsToIssue = jsonJob[2] 
+    job.children = jsonJob[2] 
     job.followOnCommands = jsonJob[3] 
     job.messages = jsonJob[4] 
     return job
@@ -105,9 +112,9 @@ def _convertJsonJobToJob(jsonJob):
 def _createTempDirectories(rootDir, number, filesPerDir=4):
     if number > filePerDir:
         if number % filesPerDir != 0:
-            l = createTempDirectories(os.mkdir(os.path.join(rootDir, str(0))), number % filesPerDir, filesPerDir)
+            l = createTempDirectories(os.mkdir(os.path.join(rootDir, "t" + str(0))), number % filesPerDir, filesPerDir)
         else:
             l = []
-        return reduce(lambda x,y:x+y, [ createTempDirectories(os.mkdir(os.path.join(rootDir, str(i+1))), filesPerDir, filesPerDir) for i in range(number/filesPerDir) ], []) 
+        return reduce(lambda x,y:x+y, [ createTempDirectories(os.mkdir(os.path.join(rootDir, "t" + str(i+1))), filesPerDir, filesPerDir) for i in range(number/filesPerDir) ], []) 
     else:
         return [ os.mkdir(os.path.join(rootDir, str(j))) for j in xrange(number) ]
