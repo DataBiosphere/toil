@@ -60,16 +60,6 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
     system(command)
     logger.info("Ran the jobtree apparently okay")
     
-def commandAvailable(executable):
-    return 0 == os.system("which %s > /dev/null 2> /dev/null" % executable)
-
-def detectQueueSystem():
-    if commandAvailable("parasol"):
-        return "parasol"
-    if commandAvailable("qstat"):
-        return "gridEngine"
-    return "singleMachine"
-
 def _addOptions(addOptionFn):    
     addOptionFn("--command", dest="command", default=None,
                       help="The command to run (which will generate subsequent jobs)")
@@ -78,7 +68,7 @@ def _addOptions(addOptionFn):
                             "(this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
                             "job tree, then try and restart the jobs in it"))
-    addOptionFn("--batchSystem", dest="batchSystem", default=detectQueueSystem(),
+    addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default"))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",

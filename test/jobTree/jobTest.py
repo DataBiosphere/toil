@@ -10,24 +10,23 @@ import sys
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger
 
-from jobTree.src.job import Job, readJob
+from jobTree.src.job import Job
 
 class TestCase(unittest.TestCase):
     def testJob(self):
-        tempJobFile = os.path.join(os.getcwd(), "jobTestTempJob")
+        jobDir = os.path.join(os.getcwd(), "testJob")
+        os.mkdir(jobDir) #If directory already exists then the test will fail
         command = "by your command"
         memory = 2^32
         cpu = 1
-        parentFile = "the parent file"
-        globalTempDir = "the_global_temp_dir"
         retryCount = 100
         
         for i in xrange(10):
             startTime = time.time()
             for j in xrange(1000):
-                j = Job(command, memory, cpu, parentFile, globalTempDir, retryCount)
-                j.write(tempJobFile)
-                j = readJob(tempJobFile)
+                j = Job(command, memory, cpu, retryCount, jobDir)
+                j.write()
+                j = Job.read(j.getJobFileName())
             print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             #Would be good to extend this trivial test
         os.remove(tempJobFile)
