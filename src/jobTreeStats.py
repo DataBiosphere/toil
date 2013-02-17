@@ -36,7 +36,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getConfigFileName
 
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.
@@ -53,7 +53,6 @@ def main():
     
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
-    
     
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
