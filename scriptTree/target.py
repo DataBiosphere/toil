@@ -129,6 +129,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
     def killDetachedTarget(self, detachedTargetUuid):
         """Kills a detached target.
         """
+        
         self.__detachedTargetsToKill.append(detachedTargetUuid)
     
 ####
