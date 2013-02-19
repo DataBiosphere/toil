@@ -286,6 +286,7 @@ def main():
     ##########################################
     except: #Case that something goes wrong in slave
         traceback.print_exc(file = slaveHandle)
+        logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
         job = Job.read(jobFile)
         job.remainingRetryCount -= 1
         job.write()
