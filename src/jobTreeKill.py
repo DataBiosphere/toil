@@ -29,7 +29,7 @@ import xml.etree.cElementTree as ET
 from sonLib.bioio import logger
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
-
+from jobTree.src.master import getConfigFileName
 from jobTree.src.jobTreeRun import loadTheBatchSystem
 
 def main():
@@ -44,7 +44,7 @@ def main():
     assert options.jobTree != None #The jobtree should not be null
     assert os.path.isdir(options.jobTree) #The job tree must exist if we are going to kill it.
     logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)
-    config = ET.parse(os.path.join(options.jobTree, "config.xml")).getroot()
+    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
     batchSystem = loadTheBatchSystem(config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
         batchSystem.killJobs(jobID)

@@ -75,8 +75,8 @@ def main():
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
-    from jobTree.src.job import readJob, Job
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, writeJob
+    from jobTree.src.job import Job
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs
     from sonLib.bioio import system
     
     ##########################################
@@ -141,7 +141,7 @@ def main():
         
         config = ET.parse(getConfigFileName(jobTreePath)).getroot()
         setLogLevel(config.attrib["log_level"])
-        job = readJob(jobFile)
+        job = Job.read(jobFile)
         logger.info("Parsed arguments and set up logging")
     
          #Try loop for slave logging
@@ -168,74 +168,67 @@ def main():
         #The next job
         ##########################################
         
-        command, memoryAvailable, cpuAvailable = job.getNextFollowOnCommandToIssue() 
+        def globalTempDirName(job, depth):
+            return job.getGlobalTempDirName() + str(depth)
+        
+        command, memoryAvailable, cpuAvailable, depth = job.followOnCommands[-1]
         defaultMemory = int(config.attrib["default_memory"])
         defaultCpu = int(config.attrib["default_cpu"])
-        assert job.getIssuedChildCount() == job.getCompletedChildCount()
-        assert job.getNumberOfChildCommandsToIssue() == 0
+        assert len(job.children) == 0
         
         startTime = time.time() 
         while True:
-            job.popNextFollowOnCommandToIssue() #Start by removing the first job
+            job.followOnCommands.pop()
             
             ##########################################
             #Global temp dir
             ##########################################
             
-            depth = job.getNumberOfFollowOnCommandsToIssue()
-            globalTempDir = os.path.join(job.getGlobalTempDirName(), str(depth))
+            globalTempDir = globalTempDirName(job, depth)
             if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
                 os.mkdir(globalTempDir)
                 os.chmod(globalTempDir, 0777)
             i = 1
-            while os.path.isdir(os.path.join(job.getGlobalTempDirName(), str(depth+i))):
-                system("rm -rf %s" % os.path.join(job.getGlobalTempDirName(), str(depth+i)))
+            while os.path.isdir(globalTempDirName(job, depth+i)):
+                system("rm -rf %s" % globalTempDirName(job, depth+i))
                 i += 1
+                
+            ##########################################
+            #Old children, not yet deleted
+            #
+            #These may exist because of the lazy cleanup
+            #we do
+            ##########################################
+        
+            for childDir in listChildDirs(job.jobDir):
+                logger.debug("Cleaning up old child %s" % childDir)
+                system("rm -rf %s" % childDir)
         
             ##########################################
             #Run the job
             ##########################################
         
-            try: 
-                if command != "": #Not a stub
-                    if command[:11] == "scriptTree ":
-                        ##########################################
-                        #Run the target
-                        ##########################################
-                        
-                        loadStack(command).execute(job=job, stats=stats,
-                                        localTempDir=localTempDir, globalTempDir=globalTempDir, 
-                                        memoryAvailable=memoryAvailable, cpuAvailable=cpuAvailable, 
-                                        defaultMemory=defaultMemory, defaultCpu=defaultCpu)
-                
-                        ##########################################
-                        #Keep the stack okay
-                        ##########################################
-                        
-                        if job.getNumberOfChildCommandsToIssue() != 0 and depth == job.getNumberOfFollowOnCommandsToIssue(): #This is to keep the stack of follow on jobs consistent.
-                            job.addFollowOnCommand(("", defaultMemory, defaultCpu))
-                            logger.info("Making a stub follow on job")
-                    else: #Is another command
-                        system(command) 
-            except:
-                ##########################################
-                #Deal with failure of the job
-                ##########################################
-                
-                traceback.print_exc(file = slaveHandle)
-                logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
-                #Reload and colour red
-                job = readJob(jobFile) #Reload the job
-                job.setColour(Job.red) #Update the colour
-                slaveFailed = True
-                break
+            if command != "": #Not a stub
+                if command[:11] == "scriptTree ":
+                    ##########################################
+                    #Run the target
+                    ##########################################
+                    
+                    loadStack(command).execute(job=job, stats=stats,
+                                    localTempDir=localTempDir, globalTempDir=globalTempDir, 
+                                    memoryAvailable=memoryAvailable, cpuAvailable=cpuAvailable, 
+                                    defaultMemory=defaultMemory, defaultCpu=defaultCpu, depth=depth)
+            
+                else: #Is another command
+                    system(command) 
             
             ##########################################
-            #Cleanup a successful job
+            #Cleanup/reset a successful job/checkpoint
             ##########################################
             
-            job.setColour(Job.black)
+            job.remainingRetryCount = int(config.attrib["try_count"])
             system("rm -rf %s/*" % (localTempDir))
+            job.update(depth=depth, tryCount=job.remainingRetryCount)
             
             ##########################################
             #Establish if we can run another job
@@ -246,18 +239,16 @@ def main():
                 break
             
             #Deal with children
-            if job.getNumberOfChildCommandsToIssue() > 1: # or totalRuntime + childRuntime > maxTime: #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this slave, its got %i children" % job.getNumberOfChildCommandsToIssue())
+            if len(job.children) >= 1:  #We are going to have to return to the parent
+                logger.info("No more jobs can run in series by this slave, its got %i children" % len(job.children))
                 break
-            elif job.getNumberOfChildCommandsToIssue() == 1: #Only one job, so go ahead and run it on the slave, we've got time.
-                job.addFollowOnCommand(job.removeChildrenToIssue()[0])
             
-            if job.getNumberOfFollowOnCommandsToIssue() == 0:
+            if len(job.followOnCommands) == 0:
                 logger.info("No more jobs can run by this slave as we have exhausted the follow ons")
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
-            command, memory, cpu = job.getNextFollowOnCommandToIssue()
+            command, memory, cpu, depth = job.followOnCommands[-1]
             
             if memory > memoryAvailable:
                 logger.info("We need more memory for the next job, so finishing")
@@ -266,13 +257,7 @@ def main():
                 logger.info("We need more cpus for the next job, so finishing")
                 break
             
-            ##Updated the job so we can start the next loop cycle
-            job.setColour(Job.grey)
-            writeJob(job) #Checkpoint
-            logger.info("Updated the status of the job to grey and starting the next job")
-        
-        #Write back the job file with the updated jobs, using the checkpoint method.
-        writeJob(job)
+            logger.info("Starting the next job")
         
         ##########################################
         #Finish up the stats
@@ -291,16 +276,8 @@ def main():
         #Cleanup global files at the end of the chain
         ##########################################
        
-        if job.getColour()== Job.black and job.getNumberOfFollowOnCommandsToIssue() == 0:
-            nestedGlobalTempDir = os.path.join(job.getGlobalTempDirName(), "0")
-            assert os.path.exists(nestedGlobalTempDir)
-            system("rm -rf %s" % nestedGlobalTempDir)
-            if os.path.exists(job.getLogFileName()):
-                os.remove(job.getLogFileName())
-            if stats != None:
-                assert len(os.listdir(job.getGlobalTempDirName())) == 2 #The job file and the stats file
-            else:
-                assert len(os.listdir(job.getGlobalTempDirName())) == 1 #Just the job file
+        if len(job.followOnCommands) == 0 and len(job.children) == 0:
+            job.delete()            
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
@@ -309,6 +286,10 @@ def main():
     ##########################################
     except: #Case that something goes wrong in slave
         traceback.print_exc(file = slaveHandle)
+        logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
+        job = Job.read(jobFile)
+        job.remainingRetryCount -= 1
+        job.write()
         slaveFailed = True
 
     ##########################################
@@ -323,15 +304,12 @@ def main():
     slaveHandle.close()
     
     #Copy back the log file to the global dir, if needed
-    if config.attrib.has_key("reportAllJobLogFiles") or slaveFailed:
+    if slaveFailed:
         truncateFile(tempSlaveLogFile)
         system("mv %s %s" % (tempSlaveLogFile, job.getLogFileName()))
         
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)
-    
-    if slaveFailed: #Complain if things went wrong
-        raise RuntimeError()
     
 def _test():
     import doctest      
