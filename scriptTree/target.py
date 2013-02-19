@@ -21,6 +21,7 @@
 #THE SOFTWARE.
 
 import sys
+import uuid
 from sonLib.bioio import system
 
 class Target:
@@ -37,6 +38,8 @@ class Target:
         self.__time = time #This parameter is no longer used.
         self.__cpu = cpu
         self.globalTempDir = None
+        self.__detachedTargets = {}
+        self.__detachedTargetsToKill = []
         if self.__module__ == "__main__":
             raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
@@ -114,6 +117,19 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
         """
         self.loggingMessages.append(str(string))
+        
+    def addDetachedTarget(self, detachedTarget):
+        """Adds a target to be run sometime after the current (self) target completes that is not the child or follow-on of this target.
+        An uuid is returned for the detached job, the detached job will run until killDetachedTarget(id) is called.
+        """
+        targetUuid = uuid.uuid4()
+        self.__detachedTargets[targetUuid] = detachedTarget
+        return targetUuid
+    
+    def killDetachedTarget(self, detachedTargetUuid):
+        """Kills a detached target.
+        """
+        self.__detachedTargetsToKill.append(detachedTargetUuid)
     
 ####
 #Private functions
