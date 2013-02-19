@@ -55,10 +55,13 @@ class Job:
         while 1:
             head, tail = os.path.split(dirToRemove)
             if re.match("t[0-9]+$", tail):
-                system("rm -rf %s" % dirToRemove)
+                command = "rm -rf %s" % dirToRemove
             else:
-                system("rm -rf %s/*" % dirToRemove) #At the root so stop
-                break
+                command = "rm -rf %s/*" % dirToRemove #We're at the root
+            try:
+                system(command)
+            except RuntimeError:
+                pass #This is not a big deal, as we expect collisions
             dirToRemove = head
             if len(os.listdir(dirToRemove)) != 0:
                 break
