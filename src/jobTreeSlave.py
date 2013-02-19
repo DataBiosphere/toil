@@ -76,7 +76,7 @@ def main():
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from jobTree.src.job import Job
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile
     from sonLib.bioio import system
     
     ##########################################
@@ -268,9 +268,11 @@ def main():
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
-            fileHandle = open(job.getJobStatsFileName(), 'w')
+            tempStatsFile = getTempStatsFile(jobTreePath)
+            fileHandle = open(tempStatsFile + ".new", "w")
             ET.ElementTree(stats).write(fileHandle)
             fileHandle.close()
+            os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
         
         ##########################################
         #Cleanup global files at the end of the chain

@@ -20,11 +20,11 @@
 #THE SOFTWARE.
 
 import unittest
-from jobTree.test.jobTree.jobTreeTest import TestCase as jobTreeTest
-from jobTree.test.jobTree.jobTest import TestCase as jobTest
-from jobTree.test.scriptTree.scriptTreeTest import TestCase as scriptTreeTest
+from jobTree.test.jobTreeTest import TestCase as jobTreeTest
+from jobTree.test.jobTest import TestCase as jobTest
+from jobTree.test.scriptTreeTest import TestCase as scriptTreeTest
 from jobTree.test.sort.sortTest import TestCase as sortTest
-from jobTree.test.utilities.statsTest import TestCase as statsTest
+from jobTree.test.statsTest import TestCase as statsTest
 #import jobTree.test.jobTreeParasolCrashTest.TestCase as jobTreeParasolCrashTest
 
 from sonLib.bioio import parseSuiteTestOptions

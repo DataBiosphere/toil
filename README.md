@@ -159,13 +159,13 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
     Ideally when issuing children the parent job could just go to sleep on the cluster. But unless it frees the machine it's sleeping on, then the cluster soon jams up with sleeping jobs. This design is a pragmatic way of designing simple parallel code. It isn't heavy duty, it isn't map-reduce, but it has it's niche.
 
-* _What do you mean 'crash only' software?_
+* _How robust is jobTree to failures of nodes and/or the master?_
 
-    This is just a fancy way of saying that jobTree checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a consumer you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
+    JobTree checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
 
 * _How scaleable?_
 
-    Probably not very, but it could be. You should be safe to have a 1000 concurrent jobs running, depending on your file-system and batch system.
+    Probably not very. You should be safe to have a 1000 concurrent jobs running, depending on your file-system and batch system.
 
 * _Can you support my XYZ batch system?_
 

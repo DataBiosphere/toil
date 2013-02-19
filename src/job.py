@@ -27,9 +27,6 @@ class Job:
         
     def getGlobalTempDirName(self):
         return os.path.join(self.jobDir, "gTD")
-        
-    def getJobStatsFileName(self):
-        return os.path.join(self.jobDir, "stats.xml")
     
     @staticmethod
     def read(jobFile):

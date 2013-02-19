@@ -43,3 +43,7 @@ def parasolIsInstalled():
         return system("parasol status") == 0
     except RuntimeError:
         return False
+    
+def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
+    command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
+    system(command)

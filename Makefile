@@ -17,13 +17,13 @@ ${binPath}/multijob : batchSystems/multijob.py
 	mv $@.tmp $@
 	chmod +x $@
 
-${binPath}/jobTreeTest_%.py : test/jobTree/jobTreeTest_%.py
+${binPath}/jobTreeTest_%.py : test/jobTreeTest_%.py
 	mkdir -p $(dir $@)
 	cp $< $@.tmp
 	mv $@.tmp $@
 	chmod +x $@
 
-${binPath}/scriptTreeTest_%.py : test/scriptTree/scriptTreeTest_%.py
+${binPath}/scriptTreeTest_%.py : test/scriptTreeTest_%.py
 	mkdir -p $(dir $@)
 	cp $< $@.tmp
 	mv $@.tmp $@
@@ -40,4 +40,4 @@ clean :
 
 test :
 	#Running python allTests.py
-	PYTHONPATH=.. PATH=../../bin:$$PATH python allTests.py --testLength=SHORT --logDebug
+	PYTHONPATH=.. PATH=../../bin:$$PATH python allTests.py --testLength=SHORT

@@ -35,9 +35,11 @@ import os.path
 import xml.etree.cElementTree as ET
 import time
 import shutil
+import socket
+import random
 from collections import deque
 #from threading import Thread, Queue
-from multiprocessing import Process, JoinableQueue
+from multiprocessing import Process, Queue
 
 from job import Job, getJobFileName
 from sonLib.bioio import logger, getTotalCpuTime
@@ -45,6 +47,10 @@ from sonLib.bioio import logFile
 from sonLib.bioio import system
 from jobTree.src.bioio import workflowRootPath
 from sonLib.bioio import TempFileTree
+
+####
+#Little functions to specify the location of files in the jobTree dir
+####
 
 def getEnvironmentFileName(jobTreePath):
     return os.path.join(jobTreePath, "environ.pickle")
@@ -60,6 +66,66 @@ def getParasolResultsFileName(jobTreePath):
 
 def getConfigFileName(jobTreePath):
     return os.path.join(jobTreePath, "config.xml")
+
+#####
+##The following functions are used for collating stats from the slaves
+####
+
+def getTempStatDirNames():
+    return [ "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+
+def getTempStatsFile(jobTreePath):
+    return os.path.join(jobTreePath, "stats", random.choice(getTempStatDirNames()), random.choice(getTempStatDirNames()), "%s_%s.xml" % (socket.gethostname(), os.getpid()))
+
+def makeTemporaryStatsDirs(jobTreePath):
+    #Temp dirs
+    def fn(dir, subDir):
+        absSubDir = os.path.join(dir, subDir)
+        if not os.path.exists(absSubDir):
+            os.mkdir(absSubDir)
+        return absSubDir
+    statsDir = fn(jobTreePath, "stats")
+    return reduce(lambda x,y: x+y, [ [ fn(absSubDir, subSubDir) for subSubDir in getTempStatDirNames() ] for absSubDir in [ fn(statsDir, subDir) for subDir in getTempStatDirNames() ] ], [])
+
+def statsAggregatorProcess(jobTreePath, tempDirs, stop):
+    #Overall timing 
+    startTime = time.time()
+    startClock = getTotalCpuTime()
+    
+    #Start off the stats file
+    fileHandle = open(getStatsFileName(jobTreePath), 'w')
+    fileHandle.write('<?xml version="1.0" ?><stats>')
+    statsFile = getStatsFileName(jobTreePath)
+    
+    #The main loop
+    while True:
+        def fn():
+            i = 0
+            for dir in tempDirs:
+                for tempFile in os.listdir(dir):
+                    if tempFile[-3:] != "new":
+                        absTempFile = os.path.join(dir, tempFile)
+                        fH = open(absTempFile, 'r')
+                        for line in fH.readlines():
+                            fileHandle.write(line)
+                        fH.close()
+                        os.remove(absTempFile)
+                        i += 1
+            return i
+        if not stop.empty():
+            fn()
+            break
+        if not fn():
+            time.sleep(0.5) #Avoid cycling too fast
+    
+    #Finish the stats file
+    fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
+    fileHandle.close()
+ 
+#####
+##Following encapsulates interations with batch system class.
+####   
+
 
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
@@ -119,7 +185,13 @@ class JobBatcher:
         jobFile = self.jobIDsToJobsHash.pop(jobID)
         return jobFile
     
+####
+#Following functions process finished jobs
+####
+
 def listChildDirs(jobDir):
+    """Directories of child jobs for given job (not recursive).
+    """
     return [ os.path.join(jobDir, f) for f in os.listdir(jobDir) if re.match("t[0-9]+$", f) ]
 
 def processAnyUpdatingFile(jobFile):
@@ -145,6 +217,30 @@ def processAnyNewFile(jobFile):
         os.rename(jobFile + ".new", jobFile)
         return True
     return False
+
+def updateParentStatus(jobFile, updatedJobFiles, childJobFileToParentJob, childCounts):
+    """Update status of parent for finished child job.
+    """
+    while True:
+        if jobFile not in childJobFileToParentJob:
+            assert len(updatedJobFiles) == 0
+            assert len(childJobFileToParentJob) == 0
+            assert len(childCounts) == 0
+            break
+        parentJob = childJobFileToParentJob.pop(jobFile)
+        childCounts[parentJob] -= 1
+        assert childCounts[parentJob] >= 0
+        if childCounts[parentJob] == 0: #Job is done
+            childCounts.pop(parentJob)
+            logger.debug("Parent job %s has all its children run successfully", parentJob.getJobFileName())
+            assert parentJob not in updatedJobFiles
+            if len(parentJob.followOnCommands) > 0:
+                updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files  
+                break
+            else:
+                jobFile = parentJob.getJobFileName()
+        else:
+            break
     
 def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts):
     """Function reads a processed job file and updates it state.
@@ -155,8 +251,6 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJo
     if os.path.isfile(jobFile):        
         job = Job.read(jobFile)
         assert job not in updatedJobFiles
-        updatedJobFiles.add(job) #Now we know the job is done we can add it to the list of updated job files
-        logger.debug("Added job: %s to active jobs" % jobFile)
         if os.path.exists(job.getLogFileName()):
             logger.critical("Log file of failed job: %s", jobFile)
             logFile(job.getLogFileName(), logger.critical)
@@ -165,31 +259,21 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJo
                 logger.critical("No log file is present, despite job failing: %s", jobFile)
             job.remainingRetryCount = max(job.remainingRetryCount-1, 0)    
             logger.critical("Due to the failure of the slave we are reducing the remaining retry count of job %s to %s" % (jobFile, job.remainingRetryCount)) 
+        if len(job.followOnCommands) > 0 or len(job.children) > 0:
+            updatedJobFiles.add(job) #Now we know the job is done we can add it to the list of updated job files
+            logger.debug("Added job: %s to active jobs" % jobFile)
+        else:
+            logger.critical("Job has no follow-ons or children despite job file being present so we'll consider it done: %s" % jobFile)
+            updateParentStatus(jobFile, updatedJobFiles, childJobFileToParentJob, childCounts)
     else:  #The job is done
         if resultStatus != 0:
             logger.critical("Despite the batch system claiming failure the job %s seems to have finished and been removed" % jobFile)
-        #Deal with parent
-        while True:
-            if jobFile not in childJobFileToParentJob:
-                assert len(updatedJobFiles) == 0
-                assert len(childJobFileToParentJob) == 0
-                assert len(childCounts) == 0
-                break
-            parentJob = childJobFileToParentJob.pop(jobFile)
-            childCounts[parentJob] -= 1
-            assert childCounts[parentJob] >= 0
-            if childCounts[parentJob] == 0: #Job is done
-                childCounts.pop(parentJob)
-                logger.debug("Parent job %s has all its children run successfully", parentJob.getJobFileName())
-                assert parentJob not in updatedJobFiles
-                if len(parentJob.followOnCommands) > 0:
-                    updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files  
-                    break
-                else:
-                    jobFile = parentJob.getJobFileName()
-            else:
-                break
-            
+        updateParentStatus(jobFile, updatedJobFiles, childJobFileToParentJob, childCounts)
+
+####
+#Following functions handle error cases for when jobs have gone awry with the batch system.
+####       
+     
 def killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts):
     """Kills the given set of jobs and then sends them for processing
     """
@@ -248,9 +332,15 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem,
     killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
+####
+#Following is used to setup/resume a jobTree
+####
+
 def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, config):
     #Read job
     job = Job.read(getJobFileName(jobTreeJobsRoot))
+    #Reset the job
+    job.children = []
     job.remainingRetryCount = int(config.attrib["try_count"])
     #Get children
     childJobs = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, config) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
@@ -269,6 +359,10 @@ def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, chi
     if processAnyUpdatingFile(jobFile) or processAnyNewFile(jobFile) or os.path.exists(jobFile):
         return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, config)
     return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, config) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
+
+####
+#The main loop
+####
 
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
@@ -290,8 +384,10 @@ def mainLoop(config, batchSystem):
     
     stats = config.attrib.has_key("stats")
     if stats:
-        startTime = time.time()
-        startClock = getTotalCpuTime()
+        stop = Queue()
+        worker = Process(target=statsAggregatorProcess, args=(config.attrib["job_tree"], makeTemporaryStatsDirs(config.attrib["job_tree"]), stop))
+        worker.daemon = True
+        worker.start()
         
     timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
     totalFailedJobs = 0
@@ -357,8 +453,10 @@ def mainLoop(config, batchSystem):
     logger.info("Finished the main loop")   
     
     if stats:
-        fileHandle = open(getStatsFileName(config.attrib["job_tree"]), 'ab')
-        fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
-        fileHandle.close()
+        startTime = time.time()
+        logger.info("Waiting for stats collator process to finish")  
+        stop.put(True)
+        worker.join()
+        logger.info("Stats finished collating in %s seconds" % (time.time() - startTime))  
     
     return totalFailedJobs #Returns number of failed jobs

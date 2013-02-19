@@ -213,9 +213,6 @@ def createJobTree(options):
     config.attrib["max_threads"] = str(int(options.maxThreads))
     if options.stats:
         config.attrib["stats"] = ""
-        fileHandle = open(getStatsFileName(options.jobTree), 'w')
-        fileHandle.write("<stats>")
-        fileHandle.close()
     #Load the batch system.
     batchSystem = loadTheBatchSystem(config)
     
