@@ -6,6 +6,7 @@ import unittest
 import os
 import time
 import sys
+import random
 
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger, system
@@ -19,20 +20,20 @@ class TestCase(unittest.TestCase):
         command = "by your command"
         memory = 2^32
         cpu = 1
-        retryCount = 100
+        tryCount = 100
         
         for i in xrange(10):
             startTime = time.time()
-            for j in xrange(1000):
-                j = Job(command, memory, cpu, retryCount, jobDir)
-                self.assertEquals(j.remainingRetryCount, retryCount)
+            for j in xrange(100):
+                j = Job(command, memory, cpu, tryCount, jobDir)
+                self.assertEquals(j.remainingRetryCount, tryCount)
                 self.assertEquals(j.jobDir, jobDir)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
                 j.write()
                 j = Job.read(j.getJobFileName())
-                self.assertEquals(j.remainingRetryCount, retryCount)
+                self.assertEquals(j.remainingRetryCount, tryCount)
                 self.assertEquals(j.jobDir, jobDir)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
@@ -51,29 +52,31 @@ class TestCase(unittest.TestCase):
         command = "by your command"
         memory = 2^32
         cpu = 1
-        retryCount = 100
+        tryCount = 100
         
-        for i in xrange(10):
+        for i in xrange(40):
             startTime = time.time()
-            for j in xrange(1000):
-                j = Job(command, memory, cpu, retryCount, jobDir)
-                self.assertEquals(j.remainingRetryCount, retryCount)
-                self.assertEquals(j.jobDir, jobDir)
-                self.assertEquals(j.children, [])
-                self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertEquals(j.messages, [])
-                j.write()
-                j = Job.read(j.getJobFileName())
-                self.assertEquals(j.remainingRetryCount, retryCount)
-                self.assertEquals(j.jobDir, jobDir)
-                self.assertEquals(j.children, [])
-                self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertEquals(j.messages, [])
-                self.assertTrue(os.path.exists(j.getJobFileName()))
-                j.delete()
-                self.assertTrue(not os.path.exists(j.getJobFileName()))
-            print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
-            #Would be good to extend this trivial test
+            j = Job(command, memory, cpu, tryCount, jobDir)
+            childNumber = random.choice(range(20))
+            for k in xrange(childNumber):
+                j.children.append((command, memory, cpu))
+            self.assertEquals(len(j.children), childNumber)
+            j.update(tryCount=tryCount, depth=0)
+            j = Job.read(j.getJobFileName())
+            self.assertEquals(len(j.children) + len(j.followOnCommands), childNumber + 1)
+            for childJobFile, memory, cpu in j.children:
+                cJ = Job.read(childJobFile)
+                self.assertEquals(cJ.remainingRetryCount, tryCount)
+                #self.assertEquals(cJ.jobDir, os.path.split(cJ)[0])
+                self.assertEquals(cJ.children, [])
+                self.assertEquals(cJ.followOnCommands, [ (command, memory, cpu, 0)])
+                self.assertEquals(cJ.messages, [])
+                self.assertTrue(os.path.exists(cJ.getJobFileName()))
+                cJ.delete()
+                self.assertTrue(not os.path.exists(cJ.getJobFileName()))
+            self.assertEquals(os.listdir(jobDir), [ "job" ])
+            j.delete()
+            print "It took %f seconds to update jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             
         system("rm -rf %s" % jobDir)
 

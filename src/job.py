@@ -11,8 +11,8 @@ def getJobFileName(jobDir):
     return os.path.join(jobDir, "job")
 
 class Job:
-    def __init__(self, command, memory, cpu, retryCount, jobDir):
-        self.remainingRetryCount = retryCount
+    def __init__(self, command, memory, cpu, tryCount, jobDir):
+        self.remainingRetryCount = tryCount
         self.jobDir = jobDir
         self.children = []
         self.followOnCommands = []
@@ -20,7 +20,7 @@ class Job:
         self.messages = []
     
     def getJobFileName(self):
-        return os.path.join(self.jobDir, "job")
+        return getJobFileName(self.jobDir)
       
     def getLogFileName(self):
         return os.path.join(self.jobDir, "log.txt")
@@ -30,7 +30,7 @@ class Job:
         
     def getJobStatsFileName(self):
         return os.path.join(self.jobDir, "stats.xml")
-
+    
     @staticmethod
     def read(jobFile):
         """Loads a job from disk.
@@ -66,20 +66,15 @@ class Job:
             if len(os.listdir(dirToRemove)) != 0:
                 break
     
-    def currentDepth(self):
-        if len(self.followOnCommands) > 0:
-            return self.followOnCommands[-1][-1]
-        return 0
-    
-    def update(self, retryCount=0):
+    def update(self, depth, tryCount):
         """Creates a set of child jobs for the given job and updates state of job atomically on disk with new children.
         """
         updatingFile = self.getJobFileName() + ".updating"
         open(updatingFile, 'w').close()
         if len(self.children) == 1: #Just make it a follow on
-            self.followOnCommands.append(self.children.pop() + (self.currentDepth() + 1,))
+            self.followOnCommands.append(self.children.pop() + (depth + 1,))
         elif len(self.children) > 1:
-            self.children = [ (Job(command, memory, cpu, retryCount, tempDir).write(), memory, cpu) for (command, memory, cpu), tempDir in zip(createTempDirectories(self.jobDir, self.children), self.children) ]
+            self.children = [ (Job(command, memory, cpu, tryCount, tempDir).write(), memory, cpu) for ((command, memory, cpu), tempDir) in zip(self.children, _createTempDirectories(self.jobDir, len(self.children))) ]
         self._write(".new")
         os.remove(updatingFile)
         os.rename(self.getJobFileName() + ".new", self.getJobFileName())
@@ -110,11 +105,14 @@ def _convertJsonJobToJob(jsonJob):
     return job
         
 def _createTempDirectories(rootDir, number, filesPerDir=4):
-    if number > filePerDir:
+    def fn(i):
+        dirName = os.path.join(rootDir, "t%i" % i)
+        os.mkdir(dirName)
+        return dirName
+    if number > filesPerDir:
         if number % filesPerDir != 0:
-            l = createTempDirectories(os.mkdir(os.path.join(rootDir, "t" + str(0))), number % filesPerDir, filesPerDir)
+            return reduce(lambda x,y:x+y, [ _createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) for i in range(filesPerDir-1) ], _createTempDirectories(fn(0), (number % filesPerDir) + number/filesPerDir, filesPerDir)) 
         else:
-            l = []
-        return reduce(lambda x,y:x+y, [ createTempDirectories(os.mkdir(os.path.join(rootDir, "t" + str(i+1))), filesPerDir, filesPerDir) for i in range(number/filesPerDir) ], []) 
+            return reduce(lambda x,y:x+y, [ _createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) for i in range(filesPerDir) ], []) 
     else:
-        return [ os.mkdir(os.path.join(rootDir, str(j))) for j in xrange(number) ]
+        return [ fn(i) for i in xrange(number) ]

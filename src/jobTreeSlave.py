@@ -76,7 +76,7 @@ def main():
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from jobTree.src.job import Job
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs
     from sonLib.bioio import system
     
     ##########################################
@@ -141,7 +141,7 @@ def main():
         
         config = ET.parse(getConfigFileName(jobTreePath)).getroot()
         setLogLevel(config.attrib["log_level"])
-        job = Job.readJob(jobFile)
+        job = Job.read(jobFile)
         logger.info("Parsed arguments and set up logging")
     
          #Try loop for slave logging
@@ -174,7 +174,7 @@ def main():
         command, memoryAvailable, cpuAvailable, depth = job.followOnCommands[-1]
         defaultMemory = int(config.attrib["default_memory"])
         defaultCpu = int(config.attrib["default_cpu"])
-        assert len(job.childJobs) == 0
+        assert len(job.children) == 0
         
         startTime = time.time() 
         while True:
@@ -189,9 +189,20 @@ def main():
                 os.mkdir(globalTempDir)
                 os.chmod(globalTempDir, 0777)
             i = 1
-            while os.path.isdir(globalTempDir(job, depth+i)):
-                system("rm -rf %s" % globalTempDir(job, depth+i))
+            while os.path.isdir(globalTempDirName(job, depth+i)):
+                system("rm -rf %s" % globalTempDirName(job, depth+i))
                 i += 1
+                
+            ##########################################
+            #Old children, not yet deleted
+            #
+            #These may exist because of the lazy cleanup
+            #we do
+            ##########################################
+        
+            for childDir in listChildDirs(job.jobDir):
+                logger.debug("Cleaning up old child %s" % childDir)
+                system("rm -rf %s" % childDir)
         
             ##########################################
             #Run the job
@@ -206,7 +217,7 @@ def main():
                     loadStack(command).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, globalTempDir=globalTempDir, 
                                     memoryAvailable=memoryAvailable, cpuAvailable=cpuAvailable, 
-                                    defaultMemory=defaultMemory, defaultCpu=defaultCpu)
+                                    defaultMemory=defaultMemory, defaultCpu=defaultCpu, depth=depth)
             
                 else: #Is another command
                     system(command) 
@@ -215,9 +226,9 @@ def main():
             #Cleanup/reset a successful job/checkpoint
             ##########################################
             
-            job.remainingRetryCount = int(config.attrib["retry_count"])
+            job.remainingRetryCount = int(config.attrib["try_count"])
             system("rm -rf %s/*" % (localTempDir))
-            job.update()
+            job.update(depth=depth, tryCount=job.remainingRetryCount)
             
             ##########################################
             #Establish if we can run another job
@@ -275,9 +286,9 @@ def main():
     ##########################################
     except: #Case that something goes wrong in slave
         traceback.print_exc(file = slaveHandle)
-        job = Job.read(job.getJobFileName())
+        job = Job.read(jobFile)
         job.remainingRetryCount -= 1
-        job.update()
+        job.write()
         slaveFailed = True
 
     ##########################################
@@ -292,7 +303,7 @@ def main():
     slaveHandle.close()
     
     #Copy back the log file to the global dir, if needed
-    if config.attrib.has_key("reportAllJobLogFiles") or slaveFailed:
+    if slaveFailed:
         truncateFile(tempSlaveLogFile)
         system("mv %s %s" % (tempSlaveLogFile, job.getLogFileName()))
         

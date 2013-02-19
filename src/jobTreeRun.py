@@ -38,7 +38,6 @@ from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.src.job import Job
 
 from jobTree.src.master import mainLoop
-from jobTree.src.master import writeJob
 from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getConfigFileName, getJobFileDirName
 
 from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
@@ -136,7 +135,7 @@ def loadTheBatchSystem(config):
             logger.info("Using the grid engine machine batch system")
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
             batchSystem = SingleMachineBatchSystem(config, workerFn=badWorker)
-            config.attrib["retry_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
+            config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
         return batchSystem
     batchSystem = batchSystemConstructionFn(batchSystemString)
     if batchSystem == None:
@@ -186,7 +185,7 @@ def reloadJobTree(jobTree):
     assert os.path.isfile(getEnvironmentFileName(jobTree)) #A valid job tree must contain a pickle file which encodes the path environment of the job
     assert os.path.isdir(getJobFileDirName(jobTree)) #A job tree must have a directory of jobs.
     
-    config = ET.parse(os.path.join(jobTree, "config.xml")).getroot()
+    config = ET.parse(getConfigFileName(jobTree)).getroot()
     config.attrib["log_level"] = getLogLevelString()
     writeConfig(config) #This updates the on disk config file with the new logging setting
     
@@ -203,7 +202,7 @@ def createJobTree(options):
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["job_tree"] = options.jobTree
     config.attrib["parasol_command"] = options.parasolCommand
-    config.attrib["retry_count"] = str(int(options.retryCount))
+    config.attrib["try_count"] = str(int(options.retryCount) + 1)
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
     config.attrib["job_time"] = str(float(options.jobTime))
@@ -239,8 +238,8 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
     if cpu == None or cpu == sys.maxint:
         cpu = float(config.attrib["default_cpu"])
     job = Job(command=command, memory=memory, cpu=cpu, 
-              retryCount=int(config.attrib["retry_count"]), config.attrib["job_file_tree"])
-    job.update()
+              tryCount=int(config.attrib["try_count"]), jobDir=getJobFileDirName(config.attrib["job_tree"]))
+    job.write()
     logger.info("Added the first job")
     
 def runJobTreeScript(options):

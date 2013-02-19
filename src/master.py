@@ -30,6 +30,7 @@ and then restarted at will (see the accompanying tests).
 
 import os
 import sys
+import re
 import os.path 
 import xml.etree.cElementTree as ET
 import time
@@ -38,7 +39,7 @@ from collections import deque
 #from threading import Thread, Queue
 from multiprocessing import Process, JoinableQueue
 
-from job import Job
+from job import Job, getJobFileName
 from sonLib.bioio import logger, getTotalCpuTime
 from sonLib.bioio import logFile
 from sonLib.bioio import system
@@ -69,7 +70,7 @@ class JobBatcher:
         self.jobIDsToJobsHash = {}
         self.batchSystem = batchSystem
         self.jobsIssued = 0
-        self.jobTreeSlavePath = os.path.join(workflowRootPath(), "bin", "jobTreeSlave")
+        self.jobTreeSlavePath = os.path.join(workflowRootPath(), "src", "jobTreeSlave.py")
         self.rootPath = os.path.split(workflowRootPath())[0]
         
     def issueJob(self, jobFile, memory, cpu):
@@ -118,16 +119,8 @@ class JobBatcher:
         jobFile = self.jobIDsToJobsHash.pop(jobID)
         return jobFile
     
-def listChildDirs(jobFile):
-    l = []
-    for f in os.listdir(job.jobDir):
-        system("rm -rf %s" % f)
-        try:
-            int(f)
-            l.append(f)
-        except ValueError:
-            pass
-    return l
+def listChildDirs(jobDir):
+    return [ os.path.join(jobDir, f) for f in os.listdir(jobDir) if re.match("t[0-9]+$", f) ]
 
 def processAnyUpdatingFile(jobFile):
     if os.path.isfile(jobFile + ".updating"):
@@ -135,11 +128,11 @@ def processAnyUpdatingFile(jobFile):
         if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
             logger.critical("There was a .new file for the job: %s" % jobFile)
             os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
-        os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
-        for f in listChildDirs(job.jobDir):
+        for f in listChildDirs(os.path.split(jobFile)[0]):
             logger.critical("Removing broken child %s\n" % f)
             system("rm -rf %s" % f)
         assert os.path.isfile(jobFile)
+        os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
         logger.critical("We've reverted to the original job file: %s" % jobFile)
         return True
     return False
@@ -160,40 +153,52 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJo
     updatingFilePresent = processAnyUpdatingFile(jobFile)
     newFilePresent = processAnyNewFile(jobFile)
     if os.path.isfile(jobFile):        
-        job = readJob(jobFile)
+        job = Job.read(jobFile)
         assert job not in updatedJobFiles
         updatedJobFiles.add(job) #Now we know the job is done we can add it to the list of updated job files
         logger.debug("Added job: %s to active jobs" % jobFile)
+        if os.path.exists(job.getLogFileName()):
+            logger.critical("Log file of failed job: %s", jobFile)
+            logFile(job.getLogFileName(), logger.critical)
         if resultStatus != 0 or newFilePresent or updatingFilePresent:
-            if os.path.exists(job.getLogFileName()):
-                logger.critical("Log file of failed job: %s", jobFile)
-                logFile(job.getLogFileName(), logger.critical)
-            else:
+            if not os.path.exists(job.getLogFileName()):
                 logger.critical("No log file is present, despite job failing: %s", jobFile)
-            logger.critical("Due to the failure of the slave we reducing it remaining retry count: %s" % jobFile)
-            job.remainingRetryCount -= 1     
+            job.remainingRetryCount = max(job.remainingRetryCount-1, 0)    
+            logger.critical("Due to the failure of the slave we are reducing the remaining retry count of job %s to %s" % (jobFile, job.remainingRetryCount)) 
     else:  #The job is done
         if resultStatus != 0:
             logger.critical("Despite the batch system claiming failure the job %s seems to have finished and been removed" % jobFile)
         #Deal with parent
-        parentJob = childJobFileToParentJob.pop(jobFile)
-        childCounts[parentJob] -= 1
-        assert childCounts[parentJob] >= 0
-        if childCounts[parentJob] == 0: #Job is done
-            childCounts.pop(parentJob)
-            logger.debug("Parent job %s has has all its children run successfully", parentJob.getJobFile())
-            assert parentJob not in updatedJobFiles
-            updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files  
-    
-def killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem):
+        while True:
+            if jobFile not in childJobFileToParentJob:
+                assert len(updatedJobFiles) == 0
+                assert len(childJobFileToParentJob) == 0
+                assert len(childCounts) == 0
+                break
+            parentJob = childJobFileToParentJob.pop(jobFile)
+            childCounts[parentJob] -= 1
+            assert childCounts[parentJob] >= 0
+            if childCounts[parentJob] == 0: #Job is done
+                childCounts.pop(parentJob)
+                logger.debug("Parent job %s has all its children run successfully", parentJob.getJobFileName())
+                assert parentJob not in updatedJobFiles
+                if len(parentJob.followOnCommands) > 0:
+                    updatedJobFiles.add(parentJob) #Now we know the job is done we can add it to the list of updated job files  
+                    break
+                else:
+                    jobFile = parentJob.getJobFileName()
+            else:
+                break
+            
+def killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts):
     """Kills the given set of jobs and then sends them for processing
     """
     if len(jobsToKill) > 0:
         batchSystem.killJobs(jobsToKill)
         for jobID in jobsToKill:
-            processFinishedJob(jobID, 1, updatedJobFiles, jobBatcher)
+            processFinishedJob(jobID, 1, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts)
 
-def reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem):
+def reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts):
     """Check each issued job - if it is running for longer than desirable.. issue a kill instruction.
     Wait for the job to die then we pass the job to processFinishedJob.
     """
@@ -210,10 +215,12 @@ def reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem):
                 logger.critical("The job: %s has been running for: %s seconds, more than the max job duration: %s, we'll kill it" % \
                             (jobBatcher.getJob(jobID), str(runningJobs[jobID]), str(maxJobDuration)))
                 jobsToKill.append(jobID)
-        killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
+        killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts)
 
 reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
-def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimesMissing=3):
+def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, 
+                       childJobFileToParentJob, childCounts,
+                       killAfterNTimesMissing=3):
     """Check all the current job ids are in the list of currently running batch system jobs. 
     If a job is missing, we mark it as so, if it is missing for a number of runs of 
     this function (say 10).. then we try deleting the job (though its probably lost), we wait
@@ -238,27 +245,30 @@ def reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, killAfterNTimes
         if timesMissing == killAfterNTimesMissing:
             reissueMissingJobs_missingHash.pop(jobID)
             jobsToKill.append(jobID)
-    killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem)
+    killJobs(jobsToKill, updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts)
     return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
-def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, config):
     #Read job
-    job = Job.read(jobFile)
+    job = Job.read(getJobFileName(jobTreeJobsRoot))
+    job.remainingRetryCount = int(config.attrib["try_count"])
     #Get children
-    childJobFiles = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
-    if len(childJobFiles) > 0:
-        childCounts[job] = len(childJobFiles)
-        for childJobFile in children:
-            childJobFileToParentJob[job] = childJobFile
-    else:
-        updatedJobFiles.append(job)
+    childJobs = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, config) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
+    if len(childJobs) > 0:
+        childCounts[job] = len(childJobs)
+        for childJob in childJobs:
+            childJobFileToParentJob[childJob.getJobFileName()] = job 
+    elif len(job.followOnCommands) > 0:
+        updatedJobFiles.add(job)
+    else: #Job is stub with nothing left to do, so ignore
+        return []
     return [ job ]
 
-def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, config):
     jobFile = getJobFileName(jobTreeJobsRoot)
     if processAnyUpdatingFile(jobFile) or processAnyNewFile(jobFile) or os.path.exists(jobFile):
-        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
-    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
+        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, config)
+    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, config) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
 
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
@@ -274,8 +284,9 @@ def mainLoop(config, batchSystem):
     logger.info("Checked batch system has no running jobs and no updated jobs")
     
     childJobFileToParentJob, childCounts, updatedJobFiles = {}, {}, set()
-    parseJobFiles(config.attrib["job_file_tree"], updatedJobFile, childJobFileToParentJob, childCounts)
+    parseJobFiles(getJobFileDirName(config.attrib["job_tree"]), updatedJobFiles, childJobFileToParentJob, childCounts, config)
     jobBatcher = JobBatcher(config, batchSystem)
+    logger.info("Found %s jobs to start and %i parent jobs with children to run" % (len(updatedJobFiles), len(childCounts)))
     
     stats = config.attrib.has_key("stats")
     if stats:
@@ -287,35 +298,35 @@ def mainLoop(config, batchSystem):
     logger.info("Starting the main loop")
     while True: 
         if len(updatedJobFiles) > 0:
-            logger.debug("Built the jobs list, currently have %i job files, %i jobs to update and %i jobs currently issued" % (totalJobFiles, len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
-        
-        for message in job.messages:
-            logger.critical("Got message from job: %s", message)
-        job.messages = []
+            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % (len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
         
         for job in list(updatedJobFiles):
             updatedJobFiles.remove(job)
             
+            for message in job.messages:
+                logger.critical("Got message from job: %s", message)
+            job.messages = []
+            
             if len(job.children) > 0:
-                logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(unbornChildren)))
+                logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(job.children)))
                 children = job.children
                 job.children = []
-                job.update()
+                job.write()
                 for childJobFile, memory, cpu in children:
                     childJobFileToParentJob[childJobFile] = job
                 assert job not in childCounts
                 childCounts[job] = len(children)
                 jobBatcher.issueJobs(children)
             else:
+                assert len(job.followOnCommands) > 0
                 if job.remainingRetryCount > 0:
                     logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
-                    assert len(job.followOnCommands) > 0
-                    memory, cpu = job.followOnCommands[-1][1:2]
-                    jobBatcher.issueJob(job.getJobFileName, memory, cpu)
+                    memory, cpu = job.followOnCommands[-1][1:3]
+                    jobBatcher.issueJob(job.getJobFileName(), memory, cpu)
                 else:
                     totalFailedJobs += 1
                     logger.critical("Job: %s is completely failed" % job.getJobFileName())
-                   
+               
         if len(updatedJobFiles) == 0:
             if jobBatcher.getNumberOfJobsIssued() == 0:
                 logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
@@ -328,15 +339,15 @@ def mainLoop(config, batchSystem):
                         logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
                     else:
                         logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobBatcher.getJob(jobID), result))  
-                    processFinishedJob(jobID, result, updatedJobFiles, jobBatcher)
+                    processFinishedJob(jobID, result, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts)
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
         
         if len(updatedJobFiles) == 0 and time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
-            reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem)
+            reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts)
             logger.info("Reissued any over long jobs")
             
-            hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem)
+            hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts)
             if hasNoMissingJobs:
                 timeSinceJobsLastRescued = time.time()
             else:

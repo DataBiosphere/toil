@@ -130,7 +130,7 @@ class Stack:
 
     def execute(self, job, stats, localTempDir, globalTempDir, 
                 memoryAvailable, cpuAvailable,
-                defaultMemory, defaultCpu):
+                defaultMemory, defaultCpu, depth):
         self.tempDirAccessed = False
         self.localTempDir = localTempDir
         self.globalTempDir = globalTempDir
@@ -166,7 +166,8 @@ class Stack:
             followOnStack = Stack(followOn)
             job.followOnCommands.append((followOnStack.makeRunnable(self.globalTempDir),
                                          followOnStack.getMemory(defaultMemory),
-                                         followOnStack.getCpu(defaultCpu)))
+                                         followOnStack.getCpu(defaultCpu),
+                                         depth))
         
         #Now add the children to the newChildren stack
         newChildren = self.target.getChildren()

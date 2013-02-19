@@ -1,5 +1,5 @@
 binPath = ./bin
-files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeSlave jobTreeStats multijob jobTreeTest_Dependencies.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
+files:=jobTreeRun jobTreeStatus jobTreeKill jobTreeStats multijob jobTreeTest_Dependencies.py scriptTreeTest_Wrapper.py scriptTreeTest_Wrapper2.py scriptTreeTest_Sort.py
 
 .PHONY: all test clean
 

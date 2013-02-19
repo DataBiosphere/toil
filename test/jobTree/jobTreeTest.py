@@ -37,7 +37,7 @@ class TestCase(unittest.TestCase):
         def fn(tree, maxJobs, maxThreads, size, cpusPerJob, sleepTime):
             system("rm -rf %s" % self.jobTreeDir)
             logName = self.tempFileTree.getTempFile(suffix="_comblog.txt", makeDir=False)
-            commandLine = "jobTreeTest_Dependencies.py --jobTree %s --logFile %s --batchSystem '%s' --tree %s --maxJobs %s --maxThreads %s --size %s --cpusPerJob=%s --sleepTime %s" % \
+            commandLine = "jobTreeTest_Dependencies.py --logDebug --jobTree %s --logFile %s --batchSystem '%s' --tree %s --maxJobs %s --maxThreads %s --size %s --cpusPerJob=%s --sleepTime %s" % \
             (self.jobTreeDir, logName, batchSystem, tree, maxJobs, maxThreads, size, cpusPerJob, sleepTime)
             system(commandLine)
         
