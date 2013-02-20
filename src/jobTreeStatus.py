@@ -33,7 +33,8 @@ from sonLib.bioio import logFile
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
-from jobTree.src.master import getJobFileDirName, getConfigFileName, listChildDirs
+from jobTree.src.master import getJobFileDirName, getConfigFileName
+from jobTree.src.master import listChildDirs as listChildDirsUnsafe
 from jobTree.src.job import Job, getJobFileName
 
 def parseJobFile(absFileName):
@@ -43,6 +44,12 @@ def parseJobFile(absFileName):
     except IOError:
         logger.info("Encountered error while parsing job file %s, so we will ignore it" % absFileName)
     return None
+
+def listChildDirs(jobDir):
+    try:
+        return listChildDirsUnsafe(jobDir)
+    except:
+        return []
 
 def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
     #Read job
@@ -114,7 +121,7 @@ def main():
     
     failedJobs = [ job for job in updatedJobFiles | set(childCounts.keys()) if job.remainingRetryCount == 0 ]
            
-    print "There are %i active jobs, %i parent jobs with children, %i totally failed jobs and %i empty jobs (i.e. finished by not cleaned up) currently in job tree: %s" % \
+    print "There are %i active jobs, %i parent jobs with children, %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) currently in job tree: %s" % \
     (len(updatedJobFiles), len(childCounts), len(failedJobs), len(shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
@@ -122,7 +129,9 @@ def main():
             if os.path.isfile(job.getLogFileName()):
                 print "Log file of failed job: %s" % job.getJobFileName()
             else:
-                print "Log file for job %s is not present" % job.getJobFileName()    
+                print "Log file for job %s is not present" % job.getJobFileName() 
+        if len(failedJobs) == 0:
+            print "There are no failed jobs to report"   
     
     if (len(updatedJobFiles) + len(childCounts)) != 0 and options.failIfNotComplete:
         sys.exit(1)
