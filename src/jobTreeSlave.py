@@ -29,6 +29,7 @@ import cPickle
 import traceback
 import time
 import socket
+from multiprocessing import Process
 
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
@@ -177,6 +178,7 @@ def main():
         assert len(job.children) == 0
         
         startTime = time.time() 
+        detachedFn, detachedFnsToKill = None, []
         while True:
             job.followOnCommands.pop()
             
@@ -214,11 +216,12 @@ def main():
                     #Run the target
                     ##########################################
                     
-                    loadStack(command).execute(job=job, stats=stats,
+                    detachedFn, detachedFnsToKill = loadStack(command).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, globalTempDir=globalTempDir, 
                                     memoryAvailable=memoryAvailable, cpuAvailable=cpuAvailable, 
                                     defaultMemory=defaultMemory, defaultCpu=defaultCpu, depth=depth)
-            
+                    
+                
                 else: #Is another command
                     system(command) 
             
@@ -231,11 +234,22 @@ def main():
             job.update(depth=depth, tryCount=job.remainingRetryCount)
             
             ##########################################
+            #Kill any detached functions specified
+            ##########################################
+            
+            for uuid in detachedFnsToKill:
+                open(os.path.join(jobTreePath, "detachedFnsToKill", str(uuid)), 'w').close()
+            
+            ##########################################
             #Establish if we can run another job
             ##########################################
             
             if time.time() - startTime > maxTime:
                 logger.info("We are breaking because the maximum time the job should run for has been exceeded")
+                break
+            
+            if detachedFn != None:
+                logger.info("We have a detached function to run")
                 break
             
             #Deal with children
@@ -309,10 +323,26 @@ def main():
     if slaveFailed:
         truncateFile(tempSlaveLogFile)
         system("mv %s %s" % (tempSlaveLogFile, job.getLogFileName()))
-        
+    
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)
     
+    ##########################################
+    #Run any detached fn
+    ##########################################
+    
+    if detachedFn != None:
+        uuid, fn = detachedFn
+        uuidFile = os.path.join(jobTreePath, "detachedFns", str(uuid)) 
+        open(uuidFile, 'w').close()
+        worker = Process(target=fn, args=())
+        worker.daemon = True
+        worker.start()
+        while True:
+            if not os.path.exists(uuidFile):
+                worker.
+                #Kill function
+            
 def _test():
     import doctest      
     return doctest.testmod()

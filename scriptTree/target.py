@@ -38,8 +38,8 @@ class Target:
         self.__time = time #This parameter is no longer used.
         self.__cpu = cpu
         self.globalTempDir = None
-        self.__detachedTargets = {}
-        self.__detachedTargetsToKill = []
+        self.__detachedFn = None
+        self.__detachedFnsToKill = []
         if self.__module__ == "__main__":
             raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
@@ -118,20 +118,16 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         self.loggingMessages.append(str(string))
         
-    def addDetachedTarget(self, detachedTarget):
-        """Adds a target to be run sometime after the current (self) target completes that is not the child or follow-on of this target.
-        An uuid is returned for the detached job, the detached job will run until killDetachedTarget(id) is called.
+    def setDetachedFn(self, uuid, fn):
+        """Sets a function to be run after everything else in the target has finished.
         """
-        targetUuid = uuid.uuid4()
-        self.__detachedTargets[targetUuid] = detachedTarget
-        return targetUuid
+        self.__detachedFn = (uuid, fn)
     
-    def killDetachedTarget(self, detachedTargetUuid):
+    def killDetachedFn(self, detachedTargetUuid):
         """Kills a detached target.
         """
+        self.__detachedFnsToKill.append(detachedTargetUuid)
         
-        self.__detachedTargetsToKill.append(detachedTargetUuid)
-    
 ####
 #Private functions
 #### 
