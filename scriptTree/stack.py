@@ -184,7 +184,7 @@ class Stack:
             job.children.append((childCommand, defaultMemory, defaultCpu))
             
         for message in self.target.getMasterLoggingMessages():
-            job.messages.append(message)   
+            job.messages.append(message)
         
         #Finish up the stats
         if stats != None:
@@ -194,8 +194,6 @@ class Stack:
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = ".".join((self.target.__class__.__name__,))
             stats.attrib["memory"] = str(totalMemoryUsage)
-            
-        return self.target.__detachedFn, self.target.__detachedFnsToKill
     
     def verifyJobTreeOptions(self, options):
         """ verifyJobTreeOptions() returns None if all necessary values

@@ -21,7 +21,6 @@
 #THE SOFTWARE.
 
 import sys
-import uuid
 from sonLib.bioio import system
 
 class Target:
@@ -38,8 +37,6 @@ class Target:
         self.__time = time #This parameter is no longer used.
         self.__cpu = cpu
         self.globalTempDir = None
-        self.__detachedFn = None
-        self.__detachedFnsToKill = []
         if self.__module__ == "__main__":
             raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
@@ -117,17 +114,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
         """
         self.loggingMessages.append(str(string))
-        
-    def setDetachedFn(self, uuid, fn):
-        """Sets a function to be run after everything else in the target has finished.
-        """
-        self.__detachedFn = (uuid, fn)
     
-    def killDetachedFn(self, detachedTargetUuid):
-        """Kills a detached target.
-        """
-        self.__detachedFnsToKill.append(detachedTargetUuid)
-        
 ####
 #Private functions
 #### 

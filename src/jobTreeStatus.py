@@ -44,11 +44,11 @@ def parseJobFile(absFileName):
         logger.info("Encountered error while parsing job file %s, so we will ignore it" % absFileName)
     return None
 
-def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
     #Read job
     job = parseJobFile(getJobFileName(jobTreeJobsRoot))
     #Get children
-    childJobs = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
+    childJobs = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
     if len(childJobs) > 0:
         childCounts[job] = len(childJobs)
         for childJob in childJobs:
@@ -56,14 +56,15 @@ def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, ch
     elif len(job.followOnCommands) > 0:
         updatedJobFiles.add(job)
     else: #Job is stub with nothing left to do, so ignore
+        shellJobs.add(job)
         return []
     return [ job ]
 
-def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts):
+def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
     jobFile = getJobFileName(jobTreeJobsRoot)
     if os.path.exists(jobFile):
-        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts)
-    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
+        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs)
+    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
 
 def main():
     """Reports the state of the job tree.
@@ -108,13 +109,13 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    childJobFileToParentJob, childCounts, updatedJobFiles = {}, {}, set()
-    parseJobFiles(getJobFileDirName(options.jobTree), updatedJobFiles, childJobFileToParentJob, childCounts)
+    childJobFileToParentJob, childCounts, updatedJobFiles, shellJobs = {}, {}, set(), set()
+    parseJobFiles(getJobFileDirName(options.jobTree), updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs)
     
     failedJobs = [ job for job in updatedJobFiles | set(childCounts.keys()) if job.remainingRetryCount == 0 ]
            
-    print "There are %i active jobs, %i parent jobs with children and %i totally failed jobs currently in job tree: %s" % \
-    (len(updatedJobFiles), len(childCounts), len(failedJobs), options.jobTree)
+    print "There are %i active jobs, %i parent jobs with children, %i totally failed jobs and %i empty jobs (i.e. finished by not cleaned up) currently in job tree: %s" % \
+    (len(updatedJobFiles), len(childCounts), len(failedJobs), len(shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in set(updatedJobFiles | set(childCounts.keys())):
