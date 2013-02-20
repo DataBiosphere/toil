@@ -118,7 +118,7 @@ def main():
     (len(updatedJobFiles), len(childCounts), len(failedJobs), len(shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
-        for job in set(updatedJobFiles | set(childCounts.keys())):
+        for job in failedJobs:
             if os.path.isfile(job.getLogFileName()):
                 print "Log file of failed job: %s" % job.getJobFileName()
             else:
