@@ -41,7 +41,7 @@ def parseJobFile(absFileName):
     try:
         job = Job.read(absFileName)
         return job
-    except IOError:
+    except:
         logger.info("Encountered error while parsing job file %s, so we will ignore it" % absFileName)
     return None
 
@@ -49,7 +49,8 @@ def listChildDirs(jobDir):
     try:
         return listChildDirsUnsafe(jobDir)
     except:
-        return []
+        logger.info("Encountered error while parsing job dir %s, so we will ignore it" % jobDir)
+    return []
 
 def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
     #Read job
