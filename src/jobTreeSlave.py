@@ -75,6 +75,7 @@ def main():
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
+    from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
     from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile
     from sonLib.bioio import system
@@ -111,9 +112,7 @@ def main():
         
     #Dir to put all the temp files in.
     localSlaveTempDir = getTempDirectory()
-    localTempDir = os.path.join(localSlaveTempDir, "localTempDir") 
-    os.mkdir(localTempDir)
-    os.chmod(localTempDir, 0777)
+    localTempDir = makeSubDir(os.path.join(localSlaveTempDir, "localTempDir"))
     
     ##########################################
     #Setup the logging
@@ -184,10 +183,7 @@ def main():
             #Global temp dir
             ##########################################
             
-            globalTempDir = globalTempDirName(job, depth)
-            if not os.path.isdir(globalTempDir): #Ensures that the global temp dirs of each level are kept separate.
-                os.mkdir(globalTempDir)
-                os.chmod(globalTempDir, 0777)
+            globalTempDir = makeSubDir(globalTempDirName(job, depth))
             i = 1
             while os.path.isdir(globalTempDirName(job, depth+i)):
                 system("rm -rf %s" % globalTempDirName(job, depth+i))
