@@ -128,7 +128,8 @@ def main():
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
             if os.path.isfile(job.getLogFileName()):
-                print "Log file of failed job: %s" % job.getJobFileName()
+                print "Log file of failed job: %s" % job.getLogFileName()
+                logFile(job.getLogFileName(), logger.critical)
             else:
                 print "Log file for job %s is not present" % job.getJobFileName() 
         if len(failedJobs) == 0:
