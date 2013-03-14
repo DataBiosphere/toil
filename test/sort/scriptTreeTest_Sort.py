@@ -56,7 +56,7 @@ class Down(Target):
     
     def run(self):
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
         length = self.fileEnd - self.fileStart
         self.logToMaster("Am running a down target with length: %i from input file: %s" % (length, self.inputFile))
         assert length >= 0
