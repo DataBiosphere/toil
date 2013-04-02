@@ -408,7 +408,7 @@ def mainLoop(config, batchSystem):
             updatedJobFiles.remove(job)
             
             for message in job.messages:
-                logger.critical("Got message from job: %s", message)
+                logger.critical("Got message from job at time: %s : %s" % (time.time(), message))
             job.messages = []
             
             if len(job.children) > 0:
