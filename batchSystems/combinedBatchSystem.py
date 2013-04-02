@@ -76,7 +76,7 @@ class CombinedBatchSystem(AbstractBatchSystem):
     def getUpdatedJob(self, maxWait):
         endTime = time.time() + maxWait
         while 1:
-            updatedJob = self.batchSystem2.getUpdatedJob(0)
+            updatedJob = self.batchSystem2.getUpdatedJob(0) #Small positive values of wait seem to 
             if updatedJob != None:
                 return (self._jobIDForBatchSystem2(updatedJob[0]), updatedJob[1])
             updatedJob = self.batchSystem1.getUpdatedJob(0)

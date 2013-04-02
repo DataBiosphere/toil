@@ -119,10 +119,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     def getUpdatedJob(self, maxWait):
         """Returns a map of the run jobs and the return value of their processes.
         """
-        try:
-            jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
-        except Empty:
+        i = self.getFromQueueSafely(self.outputQueue, maxWait)
+        if i == None:
             return None
+        jobID, exitValue, threadsToStart = i
         self.jobs.pop(jobID)
         logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
         for j in xrange(threadsToStart):

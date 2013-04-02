@@ -217,15 +217,12 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return times
     
     def getUpdatedJob(self, maxWait):
-        i = None
-        try:
-            sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
-            self.updatedJobsQueue.task_done()
-            i = (self.jobIDs[sgeJobID], retcode)
-            self.currentjobs -= set([self.jobIDs[sgeJobID]])
-        except Empty:
-            pass
-
+        i = self.getFromQueueSafely(self.outputQueue, maxWait)
+        if i == None:
+            return None
+        sgeJobID, retcode = i
+        self.updatedJobsQueue.task_done()
+        self.currentjobs -= set([self.jobIDs[sgeJobID]])
         return i
     
     def getWaitDuration(self):

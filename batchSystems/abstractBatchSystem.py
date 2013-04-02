@@ -20,6 +20,8 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
+from Queue import Empty
+
 class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
@@ -70,6 +72,20 @@ class AbstractBatchSystem:
         missing/overlong jobs.
         """
         raise RuntimeError("Abstract method")
+    
+    
+    def getFromQueueSafely(self, queue, maxWait):
+        """Returns an object from the given queue, avoiding a nasty bug in some versions of the multiprocessing queue python
+        """
+        if maxWait <= 0:
+            try:
+                return queue.get(block=False)
+            except Empty:
+                return None
+        try:
+            return queue.get(timeout=maxWait)
+        except Empty:
+            return None
 
 def main():
     pass
