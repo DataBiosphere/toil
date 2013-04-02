@@ -36,18 +36,16 @@ class CombinedBatchSystem(AbstractBatchSystem):
         self.batchSystemChoiceFn = batchSystemChoiceFn
         
     def _jobIDForBatchSystem1(self, id):
-        #assert "first" not in str(id)
-        return (1, id) #"first_" + str(id)
+        return (1, id)
     
     def _isJobIDForBatchSystem1(self, id):
-        return id[0] == 1 #"first" in str(id)
+        return id[0] == 1 
     
     def _jobIDForBatchSystem2(self, id):
-        #assert "second" not in str(id)
-        return (2, id) #"second_" + str(id)
+        return (2, id)
     
     def _isJobIDForBatchSystem2(self, id):
-        return id[0] == 2 #"second" in str(id)
+        return id[0] == 2 
     
     def _strip(self, id):
         return id[1]
