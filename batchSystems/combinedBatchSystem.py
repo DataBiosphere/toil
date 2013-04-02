@@ -34,32 +34,56 @@ class CombinedBatchSystem(AbstractBatchSystem):
         self.batchSystem1 = batchSystem1
         self.batchSystem2 = batchSystem2
         self.batchSystemChoiceFn = batchSystemChoiceFn
+        
+    def _jobIDForBatchSystem1(self, id):
+        #assert "first" not in str(id)
+        return (1, id) #"first_" + str(id)
+    
+    def _isJobIDForBatchSystem1(self, id):
+        return id[0] == 1 #"first" in str(id)
+    
+    def _jobIDForBatchSystem2(self, id):
+        #assert "second" not in str(id)
+        return (2, id) #"second_" + str(id)
+    
+    def _isJobIDForBatchSystem2(self, id):
+        return id[0] == 2 #"second" in str(id)
+    
+    def _strip(self, id):
+        return id[1]
 
     def issueJob(self, command, memory, cpu):
         if self.batchSystemChoiceFn(command, memory, cpu):
-            return self.batchSystem1.issueJob(command, memory, cpu)
+            return self._jobIDForBatchSystem1(self.batchSystem1.issueJob(command, memory, cpu))
         else:
-            return self.batchSystem2.issueJob(command, memory, cpu)
+            return self._jobIDForBatchSystem2(self.batchSystem2.issueJob(command, memory, cpu))
         
     def killJobs(self, jobIDs):
-        self.batchSystem1.killJobs(jobIDs)
-        self.batchSystem2.killJobs(jobIDs)
+        l, l2 = [], []
+        for jobID in jobIDs:
+            if self._isJobIDForBatchSystem1(jobID):
+                l.append(self._strip(jobID))
+            else:
+                assert self._isJobIDForBatchSystem2(jobID)
+                l2.append(self._strip(jobID))
+        self.batchSystem1.killJobs(l)
+        self.batchSystem2.killJobs(l2)
     
     def getIssuedJobIDs(self):
-        return self.batchSystem1.getIssuedJobIDs() + self.batchSystem2.getIssuedJobIDs()
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getIssuedJobIDs() ] + [ self._isJobIDForBatchSystem2(id) for id in self.batchSystem2.getIssuedJobIDs() ]
     
     def getRunningJobIDs(self):
-        return self.batchSystem1.getRunningJobIDs() + self.batchSystem2.getRunningJobIDs()
-    
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getRunningJobIDs() ] + [ self._isJobIDForBatchSystem2(id) for id in self.batchSystem2.getRunningJobIDs() ]
+   
     def getUpdatedJob(self, maxWait):
         endTime = time.time() + maxWait
         while 1:
             updatedJob = self.batchSystem2.getUpdatedJob(0)
             if updatedJob != None:
-                return updatedJob
+                return (self._jobIDForBatchSystem2(updatedJob[0]), updatedJob[1])
             updatedJob = self.batchSystem1.getUpdatedJob(0)
             if updatedJob != None:
-                return updatedJob
+                return (self._jobIDForBatchSystem1(updatedJob[0]), updatedJob[1])
             remaining = endTime - time.time()
             if remaining <= 0:
                 return None

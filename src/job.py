@@ -10,6 +10,9 @@ from jobTree.src.bioio import system
 def getJobFileName(jobDir):
     return os.path.join(jobDir, "job")
 
+def getJobLogFileName(jobDir):
+    return os.path.join(jobDir, "log.txt")
+
 class Job:
     def __init__(self, command, memory, cpu, tryCount, jobDir):
         self.remainingRetryCount = tryCount
@@ -23,7 +26,7 @@ class Job:
         return getJobFileName(self.jobDir)
       
     def getLogFileName(self):
-        return os.path.join(self.jobDir, "log.txt")
+        return getJobLogFileName(self.jobDir)
         
     def getGlobalTempDirName(self):
         return os.path.join(self.jobDir, "gTD")

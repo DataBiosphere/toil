@@ -52,7 +52,7 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
         rescueJobFrequencyString = "--rescueJobsFrequency %s" % float(rescueJobFrequency)
     else:
         rescueJobFrequencyString = ""
-    command = "jobTree --command \"%s\" --jobTree %s --logLevel %s \
+    command = "jobTreeRun --command \"%s\" --jobTree %s --logLevel %s \
 --retryCount %i --batchSystem %s %s" % \
             (command, jobTreeDir,  logLevel, retryCount, batchSystem, rescueJobFrequencyString)
     logger.info("Running command : %s" % command)

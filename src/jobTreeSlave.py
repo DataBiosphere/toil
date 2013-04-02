@@ -77,7 +77,7 @@ def main():
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile, setupJobAfterFailure
     from sonLib.bioio import system
     
     ##########################################
@@ -126,6 +126,35 @@ def main():
     origStdOut = sys.stdout
     sys.stderr = slaveHandle 
     sys.stdout = slaveHandle
+    
+    ##########################################
+    #Parse input files
+    ##########################################
+    
+    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
+    setLogLevel(config.attrib["log_level"])
+    job = Job.read(jobFile)
+    logger.info("Parsed arguments and set up logging")
+
+     #Try loop for slave logging
+    ##########################################
+    #Setup the stats, if requested
+    ##########################################
+    
+    if config.attrib.has_key("stats"):
+        startTime = time.time()
+        startClock = getTotalCpuTime()
+        stats = ET.Element("slave")
+    else:
+        stats = None
+    
+    ##########################################
+    #The max time 
+    ##########################################
+    
+    maxTime = float(config.attrib["job_time"])
+    assert maxTime > 0.0
+    assert maxTime < sys.maxint
 
     ##########################################
     #Slave log file trapped from here on in
@@ -133,35 +162,6 @@ def main():
 
     slaveFailed = False
     try:
-    
-        ##########################################
-        #Parse input files
-        ##########################################
-        
-        config = ET.parse(getConfigFileName(jobTreePath)).getroot()
-        setLogLevel(config.attrib["log_level"])
-        job = Job.read(jobFile)
-        logger.info("Parsed arguments and set up logging")
-    
-         #Try loop for slave logging
-        ##########################################
-        #Setup the stats, if requested
-        ##########################################
-        
-        if config.attrib.has_key("stats"):
-            startTime = time.time()
-            startClock = getTotalCpuTime()
-            stats = ET.Element("slave")
-        else:
-            stats = None
-        
-        ##########################################
-        #The max time 
-        ##########################################
-        
-        maxTime = float(config.attrib["job_time"])
-        assert maxTime > 0.0
-        assert maxTime < sys.maxint
         
         ##########################################
         #The next job
@@ -286,7 +286,7 @@ def main():
         traceback.print_exc(file = slaveHandle)
         logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
         job = Job.read(jobFile)
-        job.remainingRetryCount -= 1
+        setupJobAfterFailure(job, config)
         job.write()
         slaveFailed = True
 

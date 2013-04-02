@@ -34,7 +34,7 @@ class Cleanup(Target):
     
     def run(self):
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This is a test error and not a failure of the tests
         shutil.copyfile(self.tempOutputFile, self.outputFile)
 
 class Down(Target):

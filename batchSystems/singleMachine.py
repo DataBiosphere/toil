@@ -119,26 +119,24 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     def getUpdatedJob(self, maxWait):
         """Returns a map of the run jobs and the return value of their processes.
         """
-        i = None
         try:
             jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
-            i = (jobID, exitValue)
-            self.jobs.pop(jobID)
-            logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
-            for j in xrange(threadsToStart):
-                worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
-                worker.daemon = True
-                worker.start()
-            self.outputQueue.task_done()
         except Empty:
-            pass
-        return i
+            return None
+        self.jobs.pop(jobID)
+        logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
+        for j in xrange(threadsToStart):
+            worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
+            worker.daemon = True
+            worker.start()
+        self.outputQueue.task_done()
+        return (jobID, exitValue)
     
     def getRescueJobFrequency(self):
         """This should not really occur, wihtout an error. To exercise the 
         system we allow it every 90 minutes. 
         """
-        return 5600  
+        return 5400  
     
 def badWorker(inputQueue, outputQueue):
     """This is used to test what happens if we fail and restart jobs
