@@ -70,10 +70,10 @@ class CombinedBatchSystem(AbstractBatchSystem):
         self.batchSystem2.killJobs(l2)
     
     def getIssuedJobIDs(self):
-        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getIssuedJobIDs() ] + [ self._isJobIDForBatchSystem2(id) for id in self.batchSystem2.getIssuedJobIDs() ]
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getIssuedJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getIssuedJobIDs() ]
     
     def getRunningJobIDs(self):
-        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getRunningJobIDs() ] + [ self._isJobIDForBatchSystem2(id) for id in self.batchSystem2.getRunningJobIDs() ]
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getRunningJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getRunningJobIDs() ]
    
     def getUpdatedJob(self, maxWait):
         endTime = time.time() + maxWait
