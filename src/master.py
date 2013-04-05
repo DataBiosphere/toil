@@ -447,7 +447,7 @@ def mainLoop(config, batchSystem):
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
             else:
-                logger.debug("Waited but no job was finished, still have %i jobs issued" % jobBatcher.getNumberOfJobsIssued())
+                #logger.debug("Waited but no job was finished, still have %i jobs issued" % jobBatcher.getNumberOfJobsIssued())
                 if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
                     reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts)
                     logger.info("Reissued any over long jobs")
