@@ -134,6 +134,7 @@ def main():
     config = ET.parse(getConfigFileName(jobTreePath)).getroot()
     setLogLevel(config.attrib["log_level"])
     job = Job.read(jobFile)
+    job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
     logger.info("Parsed arguments and set up logging")
 
      #Try loop for slave logging
@@ -274,7 +275,7 @@ def main():
         #Cleanup global files at the end of the chain
         ##########################################
        
-        if len(job.followOnCommands) == 0 and len(job.children) == 0:
+        if len(job.followOnCommands) == 0 and len(job.children) == 0 and len(job.messages) == 0:
             job.delete()            
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))

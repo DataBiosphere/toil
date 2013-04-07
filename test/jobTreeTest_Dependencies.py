@@ -187,8 +187,8 @@ def checkLog(options):
     for logLine in logFile:
         if "begin UP" in logLine:
             chunks = logLine.split()
-            assert len(chunks) == 10
-            timeString = chunks[6]
+            assert len(chunks) == 12
+            timeString = chunks[8]
             timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
             timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
             timeObj.second + timeObj.microsecond / 1000000.
