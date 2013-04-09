@@ -66,7 +66,10 @@ class Job:
             except RuntimeError:
                 pass #This is not a big deal, as we expect collisions
             dirToRemove = head
-            if len(os.listdir(dirToRemove)) != 0:
+            try:
+                if len(os.listdir(dirToRemove)) != 0:
+                    break
+            except os.error: #In case stuff went wrong, but as this is not critical we let it slide
                 break
     
     def update(self, depth, tryCount):

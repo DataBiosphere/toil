@@ -68,12 +68,15 @@ def getConfigFileName(jobTreePath):
     return os.path.join(jobTreePath, "config.xml")
 
 def setupJobAfterFailure(job, config):
-    job.remainingRetryCount = max(0, job.remainingRetryCount-1)
-    logger.critical("Due to failure we are reducing the remaining retry count of job %s to %s" % (job.getJobFileName(), job.remainingRetryCount)) 
-    #Set the default memory to be at least as large as the default, in case this was a malloc failure (we do this because of the combined
-    #batch system)
-    job.followOnCommands[-1] = (job.followOnCommands[-1][0], max(job.followOnCommands[-1][1], float(config.attrib["default_memory"]))) + job.followOnCommands[-1][2:]
-    logger.critical("We have set the default memory of the failed job to %s bytes" % job.followOnCommands[-1][1])
+    if len(job.followOnCommands) > 0:
+        job.remainingRetryCount = max(0, job.remainingRetryCount-1)
+        logger.critical("Due to failure we are reducing the remaining retry count of job %s to %s" % (job.getJobFileName(), job.remainingRetryCount)) 
+        #Set the default memory to be at least as large as the default, in case this was a malloc failure (we do this because of the combined
+        #batch system)
+        job.followOnCommands[-1] = (job.followOnCommands[-1][0], max(job.followOnCommands[-1][1], float(config.attrib["default_memory"]))) + job.followOnCommands[-1][2:]
+        logger.critical("We have set the default memory of the failed job to %s bytes" % job.followOnCommands[-1][1])
+    else:
+        logger.critical("The job %s has no follow on jobs to reset" % job.getJobFileName())
 
 #####
 ##The following functions are used for collating stats from the slaves
@@ -350,6 +353,7 @@ def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, ch
     #Read job
     job = Job.read(getJobFileName(jobTreeJobsRoot))
     #Reset the job
+    job.messages = []
     job.children = []
     job.remainingRetryCount = int(config.attrib["try_count"])
     #Get children
@@ -417,7 +421,6 @@ def mainLoop(config, batchSystem):
                 logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(job.children)))
                 children = job.children
                 job.children = []
-                job.write()
                 for childJobFile, memory, cpu in children:
                     childJobFileToParentJob[childJobFile] = job
                 assert job not in childCounts
@@ -444,7 +447,7 @@ def mainLoop(config, batchSystem):
                     if result == 0:
                         logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
                     else:
-                        logger.critical("Batch system is reporting that the job %s failed with exit value %i" % (jobBatcher.getJob(jobID), result))  
+                        logger.critical("Batch system is reporting that the job %s %s failed with exit value %i" % (jobID, jobBatcher.getJob(jobID), result))  
                     processFinishedJob(jobID, result, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts, config)
                 else:
                     logger.info("A result seems to already have been processed: %i" % jobID)
