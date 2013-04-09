@@ -410,59 +410,58 @@ def mainLoop(config, batchSystem):
         if len(updatedJobFiles) > 0:
             logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % (len(updatedJobFiles), jobBatcher.getNumberOfJobsIssued()))
         
-        for job in list(updatedJobFiles):
-            updatedJobFiles.remove(job)
-            
-            for message in job.messages:
-                logger.critical("Got message from job at time: %s : %s" % (time.time(), message))
-            job.messages = []
-            
-            if len(job.children) > 0:
-                logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(job.children)))
-                children = job.children
-                job.children = []
-                for childJobFile, memory, cpu in children:
-                    childJobFileToParentJob[childJobFile] = job
-                assert job not in childCounts
-                childCounts[job] = len(children)
-                jobBatcher.issueJobs(children)
-            else:
-                assert len(job.followOnCommands) > 0
-                if job.remainingRetryCount > 0:
-                    logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
-                    memory, cpu = job.followOnCommands[-1][1:3]
-                    jobBatcher.issueJob(job.getJobFileName(), memory, cpu)
+            for job in updatedJobFiles:         
+                for message in job.messages:
+                    logger.critical("Got message from job at time: %s : %s" % (time.time(), message))
+                job.messages = []
+                
+                if len(job.children) > 0:
+                    logger.debug("Job: %s has %i children to schedule" % (job.getJobFileName(), len(job.children)))
+                    children = job.children
+                    job.children = []
+                    for childJobFile, memory, cpu in children:
+                        childJobFileToParentJob[childJobFile] = job
+                    assert job not in childCounts
+                    childCounts[job] = len(children)
+                    jobBatcher.issueJobs(children)
                 else:
-                    totalFailedJobs += 1
-                    logger.critical("Job: %s is completely failed" % job.getJobFileName())
-               
-        if len(updatedJobFiles) == 0:
-            if jobBatcher.getNumberOfJobsIssued() == 0:
-                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
-                break 
-            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
-            if updatedJob != None: 
-                jobID, result = updatedJob
-                if jobBatcher.hasJob(jobID): 
-                    if result == 0:
-                        logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
+                    assert len(job.followOnCommands) > 0
+                    if job.remainingRetryCount > 0:
+                        logger.debug("Job: %s has a new command that we can now issue" % job.getJobFileName())
+                        memory, cpu = job.followOnCommands[-1][1:3]
+                        jobBatcher.issueJob(job.getJobFileName(), memory, cpu)
                     else:
-                        logger.critical("Batch system is reporting that the job %s %s failed with exit value %i" % (jobID, jobBatcher.getJob(jobID), result))  
-                    processFinishedJob(jobID, result, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts, config)
+                        totalFailedJobs += 1
+                        logger.critical("Job: %s is completely failed" % job.getJobFileName())
+            updatedJobFiles = set() #We've considered them all, so reset
+             
+        if jobBatcher.getNumberOfJobsIssued() == 0:
+            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
+            break 
+        
+        updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+        if updatedJob != None: 
+            jobID, result = updatedJob
+            if jobBatcher.hasJob(jobID): 
+                if result == 0:
+                    logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))   
                 else:
-                    logger.info("A result seems to already have been processed: %i" % jobID)
+                    logger.critical("Batch system is reporting that the job %s %s failed with exit value %i" % (jobID, jobBatcher.getJob(jobID), result))  
+                processFinishedJob(jobID, result, updatedJobFiles, jobBatcher, childJobFileToParentJob, childCounts, config)
             else:
-                #logger.debug("Waited but no job was finished, still have %i jobs issued" % jobBatcher.getNumberOfJobsIssued())
-                if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
-                    reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts)
-                    logger.info("Reissued any over long jobs")
-                    
-                    hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, config, childCounts)
-                    if hasNoMissingJobs:
-                        timeSinceJobsLastRescued = time.time()
-                    else:
-                        timeSinceJobsLastRescued += 60 #This means we'll try again in a minute, providing things are quiet
-                    logger.info("Rescued any (long) missing jobs")
+                logger.critical("A result seems to already have been processed: %i" % jobID)
+        else:
+            #logger.debug("Waited but no job was finished, still have %i jobs issued" % jobBatcher.getNumberOfJobsIssued())
+            if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only rescue jobs every N seconds, and when we have apparently exhausted the current job supply
+                reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts)
+                logger.info("Reissued any over long jobs")
+                
+                hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, config, childCounts)
+                if hasNoMissingJobs:
+                    timeSinceJobsLastRescued = time.time()
+                else:
+                    timeSinceJobsLastRescued += 60 #This means we'll try again in a minute, providing things are quiet
+                logger.info("Rescued any (long) missing jobs")
     
     logger.info("Finished the main loop")   
     
