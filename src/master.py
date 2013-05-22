@@ -456,7 +456,7 @@ def mainLoop(config, batchSystem):
                 reissueOverLongJobs(updatedJobFiles, jobBatcher, config, batchSystem, childJobFileToParentJob, childCounts)
                 logger.info("Reissued any over long jobs")
                 
-                hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, config, childCounts)
+                hasNoMissingJobs = reissueMissingJobs(updatedJobFiles, jobBatcher, batchSystem, childJobFileToParentJob, childCounts, config)
                 if hasNoMissingJobs:
                     timeSinceJobsLastRescued = time.time()
                 else:
