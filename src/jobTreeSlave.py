@@ -29,6 +29,7 @@ import cPickle
 import traceback
 import time
 import socket
+import logging
 
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
@@ -80,7 +81,7 @@ def main():
     from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile, setupJobAfterFailure
     from sonLib.bioio import system
     
-    ##########################################
+    ########################################## 
     #Input args
     ##########################################
     
@@ -121,7 +122,9 @@ def main():
     #Setup the logging
     tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
     slaveHandle = open(tempSlaveLogFile, 'w')
-    redirectLoggerStreamHandlers(sys.stderr, slaveHandle)
+    for handler in list(logger.handlers): #Remove old handlers
+        logger.removeHandler(handler)
+    logger.addHandler(logging.StreamHandler(slaveHandle))
     origStdErr = sys.stderr
     origStdOut = sys.stdout
     sys.stderr = slaveHandle 
