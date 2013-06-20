@@ -133,8 +133,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
     """The interface for gridengine.
     """
     
-    def __init__(self, config):
-        AbstractBatchSystem.__init__(self, config) #Call the parent constructor
+    def __init__(self, config, maxCpus, maxMemory):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.gridengineResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -156,6 +156,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
     def issueJob(self, command, memory, cpu):
+        self.checkResourceRequest(memory, cpu)
         jobID = self.nextJobID
         self.nextJobID += 1
 

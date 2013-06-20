@@ -24,7 +24,7 @@
 """ 
 
 import os
-
+import sys
 import xml.etree.cElementTree as ET
 from sonLib.bioio import logger
 from sonLib.bioio import getBasicOptionParser
@@ -33,14 +33,22 @@ from jobTree.src.master import getConfigFileName
 from jobTree.src.jobTreeRun import loadTheBatchSystem
 
 def main():
-    parser = getBasicOptionParser("usage: %prog [options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
                       help="Directory containing the job tree to kill")
     
     options, args = parseBasicOptions(parser)
+    
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
+    
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
+        
     logger.info("Parsed arguments")
-    assert len(args) == 0 #This program takes no arguments
     assert options.jobTree != None #The jobtree should not be null
     assert os.path.isdir(options.jobTree) #The job tree must exist if we are going to kill it.
     logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)

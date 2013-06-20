@@ -26,13 +26,25 @@ class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
     """
-    def __init__(self, config): 
+    def __init__(self, config, maxCpus, maxMemory): 
         """This method must be called.
         The config object is setup by the jobTreeSetup script and
         has configuration parameters for the job tree. You can add stuff
         to that script to get parameters for your batch system.
         """
         self.config = config
+        self.maxCpus = maxCpus
+        self.maxMemory = maxMemory
+        
+    def checkResourceRequest(self, memory, cpu):
+        """Check resource request is not greater than that available.
+        """
+        assert memory != None
+        assert cpu != None
+        if cpu > self.maxCpus:
+            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
+        if memory > self.maxMemory:
+            raise RuntimeError("Requesting more memory than available. Requested: %s, Available: %s" % (memory, self.maxMemory))
     
     def issueJob(self, command, memory, cpu):
         """Issues the following command returning a unique jobID. Command

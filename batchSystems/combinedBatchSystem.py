@@ -30,7 +30,7 @@ class CombinedBatchSystem(AbstractBatchSystem):
     """Takes two batch systems and a choice function to decide which to issue to.
     """
     def __init__(self, config, batchSystem1, batchSystem2, batchSystemChoiceFn):
-        AbstractBatchSystem.__init__(self, config) #Call the parent constructor
+        AbstractBatchSystem.__init__(self, config, 0, 0) #Call the parent constructor
         self.batchSystem1 = batchSystem1
         self.batchSystem2 = batchSystem2
         self.batchSystemChoiceFn = batchSystemChoiceFn

@@ -97,14 +97,29 @@ def _addOptions(addOptionFn):
                             "by default is 2^31 = 2 gigabytes, default=%default"))
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
                       help="The default the number of cpus to dedicate a job. default=%default")
-    addOptionFn("--maxJobs", dest="maxJobs", default=sys.maxint,
-                      help=("The maximum number of jobs to issue to the batch system at any "
+    addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
+                      help=("The maximum number of cpus to request from the batch system at any "
                             "one time. default=%default"))
+    addOptionFn("--maxMemory", dest="maxMemory", default=sys.maxint,
+                      help=("The maximum amount of memory to request from the batch system at any one time. default=%default"))
     addOptionFn("--maxThreads", dest="maxThreads", default=4,
                       help=("The maximum number of threads to use when running in single "
                             "machine mode. default=%default"))
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by jobTreeStats. default=%default")
+    addOptionFn("--bigBatchSystem", dest="bigBatchSystem", default=None, #detectQueueSystem(),
+                      help=("The batch system to run for jobs with larger memory/cpus requests, currently can be "
+                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default"))
+    addOptionFn("--bigMemoryThreshold", dest="bigMemoryThreshold", default=sys.maxint, #detectQueueSystem(),
+                      help=("The memory threshold to submit to the big queue. default=%default"))
+    addOptionFn("--bigCpuThreshold", dest="bigCpuThreshold", default=sys.maxint, #detectQueueSystem(),
+                      help=("The cpu threshold to submit to the big queue. default=%default"))
+    addOptionFn("--bigMaxCpus", dest="bigMaxCpus", default=sys.maxint,
+                      help=("The maximum number of big batch system cpus to allow at "
+                            "one time on the big queue. default=%default"))
+    addOptionFn("--bigMaxMemory", dest="bigMaxMemory", default=sys.maxint,
+                      help=("The maximum amount of memory to request from the big batch system at any one time. "
+                      "default=%default"))
         
 def addOptions(parser):
     # Wrapper function that allows jobTree to be used with both the optparse and 
@@ -121,43 +136,31 @@ def addOptions(parser):
 def loadTheBatchSystem(config):
     """Load the batch system.
     """
-    batchSystemString = config.attrib["batch_system"]
-    def batchSystemConstructionFn(batchSystemString):
+    def batchSystemConstructionFn(batchSystemString, maxCpus, maxMemory):
         batchSystem = None
         if batchSystemString == "parasol":
-            batchSystem = ParasolBatchSystem(config)
+            batchSystem = ParasolBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the parasol batch system")
         elif batchSystemString == "single_machine" or batchSystemString == "singleMachine":
-            batchSystem = SingleMachineBatchSystem(config)
+            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the single machine batch system")
         elif batchSystemString == "gridengine" or batchSystemString == "gridEngine":
-            batchSystem = GridengineBatchSystem(config)
+            batchSystem = GridengineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the grid engine machine batch system")
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-            batchSystem = SingleMachineBatchSystem(config, workerFn=badWorker)
             config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
+            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+        else:
+            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
         return batchSystem
-    batchSystem = batchSystemConstructionFn(batchSystemString)
-    if batchSystem == None:
-        batchSystems = batchSystemString.split()
-        if len(batchSystems) not in (3, 4):
-            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
-        maxMemoryForBatchSystem1 = float(batchSystems[2])
-        maxJobs = sys.maxint
-        if len(batchSystems) == 4:
-            maxJobs = int(batchSystems[3])
-        #Hack the max jobs argument
-        oldMaxJobs = config.attrib["max_jobs"]
-        config.attrib["max_jobs"] = str(maxJobs)
-        batchSystem1 = batchSystemConstructionFn(batchSystems[0])
-        config.attrib["max_jobs"] = str(oldMaxJobs)
-        batchSystem2 = batchSystemConstructionFn(batchSystems[1])
-        
-        #Throw up if we can't make the batch systems
-        if batchSystem1 == None or batchSystem2 == None:
-            raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
-        
-        batchSystem = CombinedBatchSystem(config, batchSystem1, batchSystem2, lambda command, memory, cpu : memory <= maxMemoryForBatchSystem1)
+    batchSystem = batchSystemConstructionFn(config.attrib["batch_system"], int(config.attrib["max_cpus"]), int(config.attrib["max_memory"]))
+    if "secondary_batch_system" in config.attrib:
+        bigMemoryThreshold = int(config.attrib["big_memory_threshold"])
+        bigCpuThreshold = int(config.attrib["big_cpu_threshold"])
+        bigMaxCpus = int(config.attrib["big_max_cpus"])
+        bigMaxMemory = int(config.attrib["big_max_memory"])
+        bigBatchSystem = batchSystemConstructionFn(config.attrib["secondary_batch_system"], maxCpus=bigMaxCpus, maxMemory=bigMaxMemory)
+        batchSystem = CombinedBatchSystem(config, batchSystem, bigBatchSystem, lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
 def loadEnvironment(config):
@@ -209,8 +212,16 @@ def createJobTree(options):
     config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
     config.attrib["default_memory"] = str(int(options.defaultMemory))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["max_jobs"] = str(int(options.maxJobs))
+    config.attrib["max_cpus"] = str(int(options.maxCpus))
+    config.attrib["max_memory"] = str(int(options.maxMemory))
     config.attrib["max_threads"] = str(int(options.maxThreads))
+    if options.bigBatchSystem != None:
+        config.attrib["big_batch_system"] = options.bigBatchSystem
+        config.attrib["big_memory_threshold"] = str(int(options.bigMemoryThreshold))
+        config.attrib["big_cpu_threshold"] = str(int(options.bigCpuThreshold))
+        config.attrib["big_max_cpus"] = str(int(options.bigMaxCpus))
+        config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
+        
     if options.stats:
         config.attrib["stats"] = ""
     #Load the batch system.
@@ -271,6 +282,14 @@ def main():
     
     if len(args) != 0:
         parser.error("Unrecognised input arguments: %s" % " ".join(args))
+        
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
+    
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
         
     ##########################################
     #Now run the job tree construction/master

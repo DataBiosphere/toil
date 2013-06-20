@@ -92,8 +92,10 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
     """
-    def __init__(self, config):
-        AbstractBatchSystem.__init__(self, config) #Call the parent constructor
+    def __init__(self, config, maxCpus, maxMemory):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
+        if maxMemory != sys.maxint:
+            logger.critical("A max memory has been specified for the parasol batch system class of %i, but currently this batchsystem interface does not support such limiting" % maxMemory)
         #Keep the name of the results file for the pstat2 command..
         self.parasolCommand = config.attrib["parasol_command"]
         self.parasolResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
@@ -122,14 +124,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
         worker.daemon = True
         worker.start()
         self.usedCpus = 0
-        self.maxCpus = int(config.attrib["max_jobs"])
         self.jobIDsToCpu = {}
          
     def issueJob(self, command, memory, cpu):
         """Issues parasol with job commands.
         """
-        assert memory != None
-        assert cpu != None
+        self.checkResourceRequest(memory, cpu)
         pattern = re.compile("your job ([0-9]+).*")
         parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
         #Deal with the cpus

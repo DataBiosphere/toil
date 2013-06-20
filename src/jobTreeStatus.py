@@ -82,7 +82,7 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog [options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
                       help="Directory containing the job tree")
@@ -97,11 +97,14 @@ def main():
     
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
-    assert len(args) == 0
     
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
+    
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
     
     ##########################################
     #Do some checks.

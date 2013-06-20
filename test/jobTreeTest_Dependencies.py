@@ -197,7 +197,7 @@ def checkLog(options):
     stamps.sort()
     
     maxThreads = int(options.maxThreads)
-    maxCpus = int(options.maxJobs)
+    maxCpus = int(options.maxCpus)
     maxConcurrentJobs = min(maxThreads, maxCpus)
     cpusPerThread = float(maxCpus) / maxConcurrentJobs
     cpusPerJob = int(options.cpusPerJob)

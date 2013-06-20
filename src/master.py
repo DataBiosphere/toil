@@ -141,7 +141,6 @@ class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
     """
     def __init__(self, config, batchSystem):
-        self.maxCpus = int(config.attrib["max_jobs"])
         self.jobTree = config.attrib["job_tree"]
         self.jobIDsToJobsHash = {}
         self.batchSystem = batchSystem
@@ -153,8 +152,6 @@ class JobBatcher:
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        if cpu > self.maxCpus:
-            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
         jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.jobTreeSlavePath, self.rootPath, self.jobTree, jobFile)
         jobID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobIDsToJobsHash[jobID] = jobFile

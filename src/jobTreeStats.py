@@ -46,7 +46,7 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
                       help="Directory containing the job tree")
@@ -56,11 +56,14 @@ def main():
     
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
-    assert len(args) == 0
     
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
+        
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
     
     ##########################################
     #Do some checks.
@@ -155,7 +158,7 @@ def main():
                                                      "job_time":config.attrib["job_time"],
                                                      "default_memory":config.attrib["default_memory"],
                                                      "default_cpu":config.attrib["default_cpu"],
-                                                     "max_jobs":config.attrib["max_jobs"],
+                                                     "max_cpus":config.attrib["max_cpus"],
                                                      "max_threads":config.attrib["max_threads"] })
     
     #Add slave info
