@@ -154,12 +154,12 @@ def loadTheBatchSystem(config):
             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
         return batchSystem
     batchSystem = batchSystemConstructionFn(config.attrib["batch_system"], int(config.attrib["max_cpus"]), int(config.attrib["max_memory"]))
-    if "secondary_batch_system" in config.attrib:
+    if "big_batch_system" in config.attrib:
         bigMemoryThreshold = int(config.attrib["big_memory_threshold"])
         bigCpuThreshold = int(config.attrib["big_cpu_threshold"])
         bigMaxCpus = int(config.attrib["big_max_cpus"])
         bigMaxMemory = int(config.attrib["big_max_memory"])
-        bigBatchSystem = batchSystemConstructionFn(config.attrib["secondary_batch_system"], maxCpus=bigMaxCpus, maxMemory=bigMaxMemory)
+        bigBatchSystem = batchSystemConstructionFn(config.attrib["big_batch_system"], maxCpus=bigMaxCpus, maxMemory=bigMaxMemory)
         batchSystem = CombinedBatchSystem(config, batchSystem, bigBatchSystem, lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
