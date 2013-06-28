@@ -36,7 +36,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getParasolResultsFileName, getConfigFileName
+from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getStatsFileName, getConfigFileName
 
 def main():
     """Reports stats on the job-tree, use in conjunction with --stats options to jobTree.
@@ -46,7 +46,7 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
                       help="Directory containing the job tree")
@@ -54,14 +54,16 @@ def main():
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     
-    
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
-    assert len(args) == 0
     
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
+        
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
     
     ##########################################
     #Do some checks.
@@ -75,10 +77,10 @@ def main():
     if not os.path.isdir(options.jobTree):
         raise RuntimeError("The given job dir tree does not exist: %s" % options.jobTree)
     
-    if not os.path.isfile(os.path.join(options.jobTree, "config.xml")):
+    if not os.path.isfile(getConfigFileName(options.jobTree)):
         raise RuntimeError("A valid job tree must contain the config file")
     
-    if not os.path.isfile(os.path.join(options.jobTree, "stats.xml")):
+    if not os.path.isfile(getStatsFileName(options.jobTree)):
         raise RuntimeError("The job-tree was run without the --stats flag, so no stats were created")
     
     ##########################################
@@ -156,7 +158,7 @@ def main():
                                                      "job_time":config.attrib["job_time"],
                                                      "default_memory":config.attrib["default_memory"],
                                                      "default_cpu":config.attrib["default_cpu"],
-                                                     "max_jobs":config.attrib["max_jobs"],
+                                                     "max_cpus":config.attrib["max_cpus"],
                                                      "max_threads":config.attrib["max_threads"] })
     
     #Add slave info

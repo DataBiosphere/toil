@@ -15,7 +15,7 @@ class Setup(Target):
     """Sets up the sort.
     """
     def __init__(self, inputFile, N):
-        Target.__init__(self, time=0.00025, memory=1000000000, cpu=1)
+        Target.__init__(self, cpu=1)
         self.inputFile = inputFile
         self.N = N
     
@@ -34,7 +34,7 @@ class Cleanup(Target):
     
     def run(self):
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This is a test error and not a failure of the tests
         shutil.copyfile(self.tempOutputFile, self.outputFile)
 
 class Down(Target):
@@ -56,7 +56,7 @@ class Down(Target):
     
     def run(self):
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
         length = self.fileEnd - self.fileStart
         self.logToMaster("Am running a down target with length: %i from input file: %s" % (length, self.inputFile))
         assert length >= 0
@@ -86,7 +86,7 @@ class Up(Target):
         
     def run(self):
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
         merge(self.inputFile1, self.inputFile2, self.outputFile)
         self.logToMaster("Am running an up target with input files: %s and %s" % (self.inputFile1, self.inputFile2))
         

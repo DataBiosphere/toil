@@ -20,17 +20,31 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
+from Queue import Empty
+
 class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
     """
-    def __init__(self, config): 
+    def __init__(self, config, maxCpus, maxMemory): 
         """This method must be called.
         The config object is setup by the jobTreeSetup script and
         has configuration parameters for the job tree. You can add stuff
         to that script to get parameters for your batch system.
         """
         self.config = config
+        self.maxCpus = maxCpus
+        self.maxMemory = maxMemory
+        
+    def checkResourceRequest(self, memory, cpu):
+        """Check resource request is not greater than that available.
+        """
+        assert memory != None
+        assert cpu != None
+        if cpu > self.maxCpus:
+            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
+        if memory > self.maxMemory:
+            raise RuntimeError("Requesting more memory than available. Requested: %s, Available: %s" % (memory, self.maxMemory))
     
     def issueJob(self, command, memory, cpu):
         """Issues the following command returning a unique jobID. Command
@@ -70,6 +84,20 @@ class AbstractBatchSystem:
         missing/overlong jobs.
         """
         raise RuntimeError("Abstract method")
+    
+    
+    def getFromQueueSafely(self, queue, maxWait):
+        """Returns an object from the given queue, avoiding a nasty bug in some versions of the multiprocessing queue python
+        """
+        if maxWait <= 0:
+            try:
+                return queue.get(block=False)
+            except Empty:
+                return None
+        try:
+            return queue.get(timeout=maxWait)
+        except Empty:
+            return None
 
 def main():
     pass

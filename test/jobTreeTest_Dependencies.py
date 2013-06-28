@@ -187,8 +187,8 @@ def checkLog(options):
     for logLine in logFile:
         if "begin UP" in logLine:
             chunks = logLine.split()
-            assert len(chunks) == 10
-            timeString = chunks[6]
+            assert len(chunks) == 12
+            timeString = chunks[8]
             timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
             timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
             timeObj.second + timeObj.microsecond / 1000000.
@@ -197,7 +197,7 @@ def checkLog(options):
     stamps.sort()
     
     maxThreads = int(options.maxThreads)
-    maxCpus = int(options.maxJobs)
+    maxCpus = int(options.maxCpus)
     maxConcurrentJobs = min(maxThreads, maxCpus)
     cpusPerThread = float(maxCpus) / maxConcurrentJobs
     cpusPerJob = int(options.cpusPerJob)
@@ -255,7 +255,7 @@ def main():
         checkLog(options)
     
 if __name__ == '__main__':
-    from jobTree.test.jobTree.jobTreeTest_Dependencies import *
+    from jobTree.test.jobTreeTest_Dependencies import *
     main()
     
     

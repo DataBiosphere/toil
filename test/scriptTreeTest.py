@@ -9,7 +9,7 @@ from sonLib.bioio import TestStatus
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import system
 from sonLib.bioio import getTempDirectory
-from jobTree.test.jobTree.jobTreeTest import runJobTreeStatusAndFailIfNotComplete
+from jobTree.src.common import runJobTreeStatusAndFailIfNotComplete
  
 class TestCase(unittest.TestCase):
     

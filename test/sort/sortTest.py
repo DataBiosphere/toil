@@ -121,7 +121,7 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
         fileHandle.close()
         #Sort the file
         while True:
-            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxJobs 20 --retryCount 2" % (jobTreeDir, tempFile, N, batchSystem) #, retryCount)
+            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxCpus 20 --retryCount 2" % (jobTreeDir, tempFile, N, batchSystem) #, retryCount)
             system(command)
             try:
                 system("jobTreeStatus --jobTree %s --failIfNotComplete" % jobTreeDir)

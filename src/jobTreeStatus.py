@@ -32,20 +32,47 @@ from sonLib.bioio import logFile
 
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
-from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName, getParasolResultsFileName, getConfigFileName
-from jobTree.src.master import readJob
-from jobTree.src.job import Job
-from jobTree.src.jobTreeSlave import loadStack
+from jobTree.src.master import getJobFileDirName, getConfigFileName
+from jobTree.src.master import listChildDirs as listChildDirsUnsafe
+from jobTree.src.job import Job, getJobFileName
 
 def parseJobFile(absFileName):
     try:
-        job = readJob(absFileName)
+        job = Job.read(absFileName)
         return job
-    except IOError:
+    except:
         logger.info("Encountered error while parsing job file %s, so we will ignore it" % absFileName)
     return None
+
+def listChildDirs(jobDir):
+    try:
+        return listChildDirsUnsafe(jobDir)
+    except:
+        logger.info("Encountered error while parsing job dir %s, so we will ignore it" % jobDir)
+    return []
+
+def _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
+    #Read job
+    job = parseJobFile(getJobFileName(jobTreeJobsRoot))
+    #Get children
+    childJobs = reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs) for childDir in listChildDirs(jobTreeJobsRoot) ], [])
+    if len(childJobs) > 0:
+        childCounts[job] = len(childJobs)
+        for childJob in childJobs:
+            childJobFileToParentJob[childJob.getJobFileName()] = job
+    elif len(job.followOnCommands) > 0:
+        updatedJobFiles.add(job)
+    else: #Job is stub with nothing left to do, so ignore
+        shellJobs.add(job)
+        return []
+    return [ job ]
+
+def parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs):
+    jobFile = getJobFileName(jobTreeJobsRoot)
+    if os.path.exists(jobFile):
+        return _parseJobFiles(jobTreeJobsRoot, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs)
+    return reduce(lambda x,y:x+y, [ parseJobFiles(childDir, updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs) for childDir in listChildDirs(jobTreeJobsRoot) ], [])    
 
 def main():
     """Reports the state of the job tree.
@@ -55,13 +82,7 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog [options] \nThe colours returned indicate the state of the job.\n\
-\twhite: job has not been started yet\n\
-\tgrey: job is issued to batch system\n\
-\tred: job failed\n\
-\tblue: job has children currently being processed\n\
-\tblack: job has finished and will be processed (transient state)\n\
-\tdead: job is totally finished and is awaiting deletion (transient state)", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
                       help="Directory containing the job tree")
@@ -70,24 +91,20 @@ def main():
                       help="Print loads of information, particularly all the log files of errors. default=%default",
                       default=False)
     
-    parser.add_option("--graph", dest="graphFile", default=None,
-                      help="Prints info on the current job tree graph in the given file, in dot format.")
-    
-    parser.add_option("--leaves", dest="leaves", action="store_true",
-                      help="Prints leaves of the tree in the graph file. default=%default",
-                      default=False)
-    
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
                       help="Return exit value of 1 if job tree jobs not all completed. default=%default",
                       default=False)
     
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
-    assert len(args) == 0
     
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
+    
+    assert len(args) <= 1 #Only jobtree may be specified as argument
+    if len(args) == 1: #Allow jobTree directory as arg
+        options.jobTree = args[0]
     
     ##########################################
     #Do some checks.
@@ -103,73 +120,25 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobFiles = [ os.path.join(jobDir, "job.xml") for jobDir in TempFileTree(getJobFileDirName(options.jobTree)).listFiles() ]
-    jobFiles = [ (job, jobFile) for (job, jobFile) in zip([  parseJobFile(absFileName) for absFileName in jobFiles ], jobFiles) if job != None ]
-    colours = {}
+    childJobFileToParentJob, childCounts, updatedJobFiles, shellJobs = {}, {}, set(), set()
+    parseJobFiles(getJobFileDirName(options.jobTree), updatedJobFiles, childJobFileToParentJob, childCounts, shellJobs)
     
-    if len(jobFiles) > 0:
-        logger.info("Collating the colours of the job tree")
-        for job, jobFile, in jobFiles:
-            if not colours.has_key(job.getColour()):
-                colours[job.getColour()] = 0
-            colours[job.getColour()] += 1
-    else:
-        logger.info("There are no jobs to collate")
-    
-    print "There are %i jobs currently in job tree: %s" % \
-    (len(jobFiles), options.jobTree)
-    
-    for colour in colours.keys():
-        print "\tColour: %s, number of jobs: %s" % (Job.translateColourToString(colour), colours[colour])
+    failedJobs = [ job for job in updatedJobFiles | set(childCounts.keys()) if job.remainingRetryCount == 0 ]
+           
+    print "There are %i active jobs, %i parent jobs with children, %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) currently in job tree: %s" % \
+    (len(updatedJobFiles), len(childCounts), len(failedJobs), len(shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
-        for job, jobFile in jobFiles:
-            if job.getColour() == Job.red:
-                print "A red job %s had %i follow ons and %i children" % \
-                (job.getJobFileName(), job.getNumberOfFollowOnCommandsToIssue(), job.getNumberOfChildCommandsToIssue())
-                if job.getNumberOfFollowOnCommandsToIssue() > 0:
-                    print "The next follow-on job command: %s, memory: %s, cpu: %s" % job.getNextFollowOnCommandToIssue()
-                if os.path.isfile(job.getLogFileName()):
-                    def fn(string):
-                        print string
-                    logFile(job.getLogFileName(), fn)
-                else:
-                    print "Log file for job %s is not present" % job.getJobFileName()
-                    
-    i = 0            
-    if options.graphFile != None:
-        fileHandle = open(options.graphFile, 'w')
-        fileHandle.write("graph G {\n")
-        fileHandle.write("overlap=false\n")
-        fileHandle.write("node[];\n")
-        nodeNames = {} #Hash of node names to nodes
-        if not options.leaves:
-            jobFiles = [ (job, jobFile) for (job, jobFile) in jobFiles if job.getColour() != Job.grey ]
-        for job, jobFile in jobFiles:
-            colour = job.getColour()
-            command = "None"
-            if job.getNumberOfFollowOnCommandsToIssue() > 0:
-                command = job.getNextFollowOnCommandToIssue()[0]
-                if command[:10] == "scriptTree":
-                    try:
-                        stack = loadStack(command)
-                        target = stack.stack[-1]
-                        command = str(target.__class__)
-                    except IOError:
-                        command = "Gone"
-            fileHandle.write("n%sn [label=\"%s %s\"];\n" % (i, colour, command))
-            nodeNames[jobFile] = i
-            i = i+1
-        fileHandle.write("edge[dir=forward];\n")
-        for job, jobFile in jobFiles:
-            nodeName = nodeNames[jobFile]
-            if job.getParentJobFile() != None:
-                parentNodeName = nodeNames[job.getParentJobFile()]
-                fileHandle.write("n%sn -- n%sn;\n" % (parentNodeName, nodeName))
-        fileHandle.write("}\n")
-        fileHandle.close()
+        for job in failedJobs:
+            if os.path.isfile(job.getLogFileName()):
+                print "Log file of failed job: %s" % job.getLogFileName()
+                logFile(job.getLogFileName(), logger.critical)
+            else:
+                print "Log file for job %s is not present" % job.getJobFileName() 
+        if len(failedJobs) == 0:
+            print "There are no failed jobs to report"   
     
-    if len(jobFiles) != 0 and options.failIfNotComplete:
+    if (len(updatedJobFiles) + len(childCounts)) != 0 and options.failIfNotComplete:
         sys.exit(1)
     
 def _test():

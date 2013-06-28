@@ -138,7 +138,7 @@ class Target2(Target):
         assert self.requestedMemory <= self.getMemory()
         assert self.requestedCpu <= self.getCpu()
         if random.random() > 0.5:
-            raise RuntimeError()
+            raise RuntimeError() #This is a test error
         
       
 class Target3(Target):
@@ -168,6 +168,6 @@ def _test():
     return doctest.testmod()
 
 if __name__ == '__main__':
-    from jobTree.test.scriptTree.scriptTreeTest_Wrapper import *
+    from jobTree.test.scriptTreeTest_Wrapper import *
     _test()
     main()

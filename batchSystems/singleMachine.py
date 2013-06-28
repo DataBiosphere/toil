@@ -60,17 +60,19 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
     give it as they come in, but in parallel.
     """
-    def __init__(self, config, workerFn=worker):
-        AbstractBatchSystem.__init__(self, config) #Call the parent constructor
+    def __init__(self, config, maxCpus, maxMemory, workerFn=worker):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.jobIndex = 0
         self.jobs = {}
         self.maxThreads = int(config.attrib["max_threads"])
-        self.maxCpus = int(config.attrib["max_jobs"])
         logger.info("Setting up the thread pool with %i threads given the max threads %i and the max cpus %i" % (min(self.maxThreads, self.maxCpus), self.maxThreads, self.maxCpus))
         self.maxThreads = min(self.maxThreads, self.maxCpus)
         self.cpusPerThread = float(self.maxCpus) / float(self.maxThreads)
+        self.memoryPerThread = self.maxThreads + float(self.maxMemory) / float(self.maxThreads) #Add the maxThreads to avoid losing memory by rounding.
         assert self.cpusPerThread >= 1
         assert self.maxThreads >= 1
+        assert self.maxMemory >= 1
+        assert self.memoryPerThread >= 1
         self.inputQueue = Queue()
         self.outputQueue = Queue()
         self.workerFn = workerFn
@@ -82,19 +84,16 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     def issueJob(self, command, memory, cpu):
         """Runs the jobs right away.
         """
-        assert memory != None
-        assert cpu != None
-        if cpu > self.maxCpus:
-            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
-        assert(cpu <= self.maxCpus)
+        self.checkResourceRequest(memory, cpu)
         logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
         self.jobs[self.jobIndex] = command
         i = self.jobIndex
         #Deal with the max cpus calculation
         k = 0
-        while cpu > self.cpusPerThread:
+        while cpu > self.cpusPerThread or memory > self.memoryPerThread:
             self.inputQueue.put(None)
             cpu -= self.cpusPerThread
+            memory -= self.memoryPerThread
             k += 1
         assert k < self.maxThreads
         self.inputQueue.put((command, self.jobIndex, k))
@@ -119,26 +118,24 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     def getUpdatedJob(self, maxWait):
         """Returns a map of the run jobs and the return value of their processes.
         """
-        i = None
-        try:
-            jobID, exitValue, threadsToStart = self.outputQueue.get(timeout=maxWait)
-            i = (jobID, exitValue)
-            self.jobs.pop(jobID)
-            logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
-            for j in xrange(threadsToStart):
-                worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
-                worker.daemon = True
-                worker.start()
-            self.outputQueue.task_done()
-        except Empty:
-            pass
-        return i
+        i = self.getFromQueueSafely(self.outputQueue, maxWait)
+        if i == None:
+            return None
+        jobID, exitValue, threadsToStart = i
+        self.jobs.pop(jobID)
+        logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
+        for j in xrange(threadsToStart):
+            worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
+            worker.daemon = True
+            worker.start()
+        self.outputQueue.task_done()
+        return (jobID, exitValue)
     
     def getRescueJobFrequency(self):
         """This should not really occur, wihtout an error. To exercise the 
         system we allow it every 90 minutes. 
         """
-        return 5600  
+        return 5400  
     
 def badWorker(inputQueue, outputQueue):
     """This is used to test what happens if we fail and restart jobs

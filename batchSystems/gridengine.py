@@ -133,8 +133,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
     """The interface for gridengine.
     """
     
-    def __init__(self, config):
-        AbstractBatchSystem.__init__(self, config) #Call the parent constructor
+    def __init__(self, config, maxCpus, maxMemory):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.gridengineResultsFile = getParasolResultsFileName(config.attrib["job_tree"])
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -156,6 +156,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
     def issueJob(self, command, memory, cpu):
+        self.checkResourceRequest(memory, cpu)
         jobID = self.nextJobID
         self.nextJobID += 1
 
@@ -217,15 +218,12 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return times
     
     def getUpdatedJob(self, maxWait):
-        i = None
-        try:
-            sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
-            self.updatedJobsQueue.task_done()
-            i = (self.jobIDs[sgeJobID], retcode)
-            self.currentjobs -= set([self.jobIDs[sgeJobID]])
-        except Empty:
-            pass
-
+        i = self.getFromQueueSafely(self.outputQueue, maxWait)
+        if i == None:
+            return None
+        sgeJobID, retcode = i
+        self.updatedJobsQueue.task_done()
+        self.currentjobs -= set([self.jobIDs[sgeJobID]])
         return i
     
     def getWaitDuration(self):
