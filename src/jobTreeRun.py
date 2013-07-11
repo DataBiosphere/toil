@@ -152,7 +152,7 @@ def loadTheBatchSystem(config):
             config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
         elif batchSystemString == "lsf" or batchSystemString == "LSF":
-            batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+            batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the lsf batch system")
         else:
             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)

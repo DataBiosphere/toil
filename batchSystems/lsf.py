@@ -67,13 +67,11 @@ class MemoryString:
 
 def prepareBsub(cpu, mem):
 	mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ 1000000)) + '000'
-	cpu = '' if cpu is None else '-n ' + str(int(cpu))	
-	#bsubline = [mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
+	cpu = '' if cpu is None else '-n ' + str(int(cpu))
 	bsubline = ["bsub", mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
 	return bsubline
 
 def bsub(bsubline):
-    logger.info("**"+" ".join(bsubline))
     process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
     liney = process.stdout.readline()
     logger.info("BSUB: " + liney)
@@ -141,7 +139,7 @@ class Worker(Thread):
                 self.currentjobs.append(self.newJobsQueue.get())
 
             # Launch jobs as necessary:
-            while len(self.currentjobs) > 0 and len(self.runningjobs) < int(self.boss.config.attrib["max_jobs"]):
+            while len(self.currentjobs) > 0:
                 jobID, bsubline = self.currentjobs.pop()
                 lsfJobID = bsub(bsubline)
                 self.boss.jobIDs[(lsfJobID, None)] = jobID
@@ -243,8 +241,7 @@ class LSFBatchSystem(AbstractBatchSystem):
                 jobstart = jobstart + ' ' + items[9]
                 jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
                 jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                times[self.jobIDs[(items[0])]] = time.time() - jobstart 
-                logger.info("** " + jobstart)
+                times[self.jobIDs[(items[0])]] = time.time() - jobstart
         return times
     
     def getUpdatedJob(self, maxWait):
