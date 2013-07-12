@@ -34,6 +34,7 @@ from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
+from jobTree.batchSystems.lsf import LSFBatchSystem
 
 from jobTree.src.job import Job
 
@@ -69,7 +70,7 @@ def _addOptions(addOptionFn):
                             "job tree, then try and restart the jobs in it"))
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
-                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default"))
+                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'. default=%default"))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
                       help="The command to run the parasol program default=%default")
     addOptionFn("--retryCount", dest="retryCount", default=0,
@@ -150,6 +151,9 @@ def loadTheBatchSystem(config):
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
             config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+        elif batchSystemString == "lsf" or batchSystemString == "LSF":
+            batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+            logger.info("Using the lsf batch system")
         else:
             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
         return batchSystem

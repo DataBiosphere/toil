@@ -73,7 +73,8 @@ def setupJobAfterFailure(job, config):
         logger.critical("Due to failure we are reducing the remaining retry count of job %s to %s" % (job.getJobFileName(), job.remainingRetryCount)) 
         #Set the default memory to be at least as large as the default, in case this was a malloc failure (we do this because of the combined
         #batch system)
-        job.followOnCommands[-1] = (job.followOnCommands[-1][0], max(job.followOnCommands[-1][1], float(config.attrib["default_memory"]))) + job.followOnCommands[-1][2:]
+        #tk2 edit here to double memory request when retrying a command
+        job.followOnCommands[-1] = (job.followOnCommands[-1][0], max(job.followOnCommands[-1][1], float(config.attrib["default_memory"]))*2) + job.followOnCommands[-1][2:]
         logger.critical("We have set the default memory of the failed job to %s bytes" % job.followOnCommands[-1][1])
     else:
         logger.critical("The job %s has no follow on jobs to reset" % job.getJobFileName())
