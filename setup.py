@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 import subprocess
 import distutils.command.build
 
@@ -27,6 +27,7 @@ setup(name="jobTree",
     packages=["jobTree", "jobTree.src", "jobTree.test", "jobTree.batchSystems",
     "jobTree.scriptTree"],
     package_dir= {"": ".."},
+    install_requires=["sonLib"],
     # Hook the build command to also build with make
     cmdclass={"build": BuildWithMake},
     # Install all the executable scripts somewhere on the PATH
