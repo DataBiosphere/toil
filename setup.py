@@ -2,9 +2,9 @@
 
 from setuptools import setup
 import subprocess
-import distutils.command.build
+import distutils.command.build_py
 
-class BuildWithMake(distutils.command.build.build):
+class BuildWithMake(distutils.command.build_py.build_py):
     """
     Build using make.
     Then do the default build logic.
@@ -15,7 +15,7 @@ class BuildWithMake(distutils.command.build.build):
         subprocess.check_call(["make"])
         
         # Keep installing the Python stuff
-        distutils.command.build.build.run(self)
+        distutils.command.build_py.build_py.run(self)
 
 
 setup(name="jobTree",
@@ -29,7 +29,7 @@ setup(name="jobTree",
     package_dir= {"": ".."},
     install_requires=["sonLib"],
     # Hook the build command to also build with make
-    cmdclass={"build": BuildWithMake},
+    cmdclass={"build_py": BuildWithMake},
     # Install all the executable scripts somewhere on the PATH
     scripts=["bin/jobTreeKill", "bin/jobTreeStatus", 
     "bin/scriptTreeTest_Sort.py", "bin/jobTreeRun", 
