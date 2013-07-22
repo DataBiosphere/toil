@@ -26,7 +26,6 @@ setup(name="jobTree",
     url="http://hgwdev.cse.ucsc.edu/~benedict/code/jobTree.html",
     packages=["jobTree", "jobTree.src", "jobTree.test", "jobTree.batchSystems",
     "jobTree.scriptTree"],
-    package_dir= {"": ".."},
     install_requires=["sonLib"],
     # Hook the build command to also build with make
     cmdclass={"build_py": BuildWithMake},
