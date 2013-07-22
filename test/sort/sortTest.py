@@ -139,11 +139,12 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
         checkEqual(l, l2)
         system("rm -rf %s" % tempDir)
             
-def checkEqual(one, two):
-    if one != two:
-        print "one", one
-        print "two", two
-    assert one == two
+def checkEqual(i, j):
+    if i != j:
+        print "lengths", len(i), len(j)
+        print "true", i
+        print "false", j
+    assert i == j
         
 def loadFile(file):
     fileHandle = open(file, 'r')

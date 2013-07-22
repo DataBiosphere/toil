@@ -152,6 +152,9 @@ def badWorker(inputQueue, outputQueue):
         if random.choice((False, True)):
             time.sleep(random.random())
             process.kill()
-        process.wait()
-        outputQueue.put((jobID, process.returncode, threadsToStart))
+            process.wait()
+            outputQueue.put((jobID, 1, threadsToStart))
+        else:
+            process.wait()
+            outputQueue.put((jobID, process.returncode, threadsToStart))
         inputQueue.task_done()
