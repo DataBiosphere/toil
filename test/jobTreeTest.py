@@ -23,7 +23,7 @@ class TestCase(unittest.TestCase):
     
     def setUp(self):
         unittest.TestCase.setUp(self)
-        self.jobTreeDir = os.path.join(os.getcwd(), "jobTree") #A directory for the job tree to be created in
+        self.jobTreeDir = os.path.join(os.getcwd(), "testJobTree") #A directory for the job tree to be created in
         self.tempFileTreeDir = os.path.join(os.getcwd(), "tempFileTree") #Ensures that file tree is visible
         self.tempFileTree = TempFileTree(self.tempFileTreeDir) #A place to get temp files from
     

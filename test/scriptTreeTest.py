@@ -17,7 +17,7 @@ class TestCase(unittest.TestCase):
         unittest.TestCase.setUp(self)
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
         self.tempDir = getTempDirectory(os.getcwd())
-        self.jobTreeDir = os.path.join(self.tempDir, "jobTree") #A directory for the job tree to be created in
+        self.jobTreeDir = os.path.join(self.tempDir, "testJobTree") #A directory for the job tree to be created in
     
     def tearDown(self):
         unittest.TestCase.tearDown(self)
