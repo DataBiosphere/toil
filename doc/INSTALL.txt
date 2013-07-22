@@ -7,7 +7,9 @@ The directory containing both sonLib and jobTree should be on your python path. 
 PYTHONPATH=${PYTHONPATH}:FOO where FOO/jobTree is the path containing the base directory of jobTree. 
 
 (2) Build the code:
-Type 'make all' in the base directory, this just puts some stuff that is currently all python based in the bin dir. In the future there might be some actual compiliation.
+Type 'make all' in the base directory, this just puts some stuff that is currently all python based in the bin dir. 
+In the future there might be some actual compiliation. Now ensure this directory is on your path.
+
 
 (3) Test the code:
 	python allTests.py or 'make test'.
