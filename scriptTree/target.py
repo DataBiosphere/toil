@@ -23,7 +23,7 @@
 import sys
 from sonLib.bioio import system
 
-class Target:
+class Target(object):
     """Each job wrapper extends this class.
     """
     

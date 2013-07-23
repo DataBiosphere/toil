@@ -48,7 +48,7 @@ from jobTree.src.master import mainLoop
 
 from jobTree.scriptTree.target import Target
 
-class Stack:
+class Stack(object):
     """Holds together a stack of targets and runs them.
     The only public methods are documented at the top of this file..
     """

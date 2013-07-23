@@ -25,7 +25,7 @@ class TestCase(unittest.TestCase):
             tempDir = getTempDirectory(os.getcwd())
             tempFile = getTempFile(rootDir=tempDir)
             outputFile = getTempFile(rootDir=tempDir)
-            jobTreeDir = os.path.join(tempDir, "jobTree")
+            jobTreeDir = os.path.join(tempDir, "testJobTree")
             lines=10000
             maxLineLength=10
             N=1000
