@@ -139,12 +139,12 @@ def main():
     #Close stdout and immediately open a file, stealing its descriptor.
     #Not thread safe.
     os.close(1)
-    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREATE)
+    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
     
     #Close stderr and immediately open a file, stealing its descriptor.
     #Not thread safe.
     os.close(2)
-    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREATE)
+    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
     
     for handler in list(logger.handlers): #Remove old handlers
         logger.removeHandler(handler)
