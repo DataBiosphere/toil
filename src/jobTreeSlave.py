@@ -119,16 +119,40 @@ def main():
     #Setup the logging
     ##########################################
     
-    #Setup the logging
+    #Setup the logging. This is mildly tricky because we don't just want to
+    #redirect stdout and stderr for this Python process; we want to redirect it
+    #for this process and all children. Consequently, we can't just replace
+    #sys.stdout and sys.stderr; we need to mess with the underlying OS-level
+    #file descriptors. See <http://stackoverflow.com/a/11632982/402891>
+    
+    #When we start, standard input is file descriptor 0, standard output is
+    #file descriptor 1, and standard error is file descriptor 2.
+
+    #What file do we want to point FDs 1 and 2 to?    
     tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
-    slaveHandle = open(tempSlaveLogFile, 'w')
+    
+    #Save the original stdout and stderr (by opening new file descriptors to the
+    #same files)
+    origStdOut = os.dup(1)
+    origStdErr = os.dup(2)
+    
+    #Close stdout and immediately open a file, stealing its descriptor.
+    #Not thread safe.
+    os.close(1)
+    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREATE)
+    
+    #Close stderr and immediately open a file, stealing its descriptor.
+    #Not thread safe.
+    os.close(2)
+    os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREATE)
+    
     for handler in list(logger.handlers): #Remove old handlers
         logger.removeHandler(handler)
-    logger.addHandler(logging.StreamHandler(slaveHandle))
-    origStdErr = sys.stderr
-    origStdOut = sys.stdout
-    sys.stderr = slaveHandle 
-    sys.stdout = slaveHandle
+    
+    #Add the new handler. The sys.stderr stream has been redirected by swapping
+    #the file descriptor out from under it.
+    logger.addHandler(logging.StreamHandler(sys.stderr))
+
     
     ##########################################
     #Parse input files
@@ -283,7 +307,7 @@ def main():
     #Where slave goes wrong
     ##########################################
     except: #Case that something goes wrong in slave
-        traceback.print_exc(file = slaveHandle)
+        traceback.print_exc()
         logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
         job = Job.read(jobFile)
         setupJobAfterFailure(job, config)
@@ -295,11 +319,25 @@ def main():
     ##########################################
     
     #Close the slave logging
-    slaveHandle.flush()
-    sys.stderr = origStdErr
-    sys.stdout = origStdOut
-    redirectLoggerStreamHandlers(slaveHandle, sys.stderr)
-    slaveHandle.close()
+    #Flush at the Python level
+    sys.stdout.flush()
+    sys.stderr.flush()
+    #Flush at the OS level
+    os.fsync(1)
+    os.fsync(2)
+    
+    #Close standard output descriptor and immediately dupe our original stdout
+    #file, which should take file descriptor 1 again. Not thread safe.
+    os.close(1)
+    os.dup(origStdOut)
+    
+    #Close standard error descriptor and immediately dupe our original stderr
+    #file, which should take file descriptor 2 again. Not thread safe.
+    os.close(2)
+    os.dup(origStdOut)
+    
+    #sys.stdout and sys.stderr don't need to be modified at all. We don't need
+    #to call redirectLoggerStreamHandlers since they still log to sys.stderr
     
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
