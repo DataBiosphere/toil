@@ -142,7 +142,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                self.outputQueue1.task_done()
             except Empty:
                 break
-        while self.usedCpus + cpu > self.maxCpus: #If we are still waiting
+        while self.usedCpus > self.maxCpus: #If we are still waiting
             self.usedCpus -= self.jobIDsToCpu.pop(self.outputQueue1.get())
             assert self.usedCpus >= 0
             self.outputQueue1.task_done()
