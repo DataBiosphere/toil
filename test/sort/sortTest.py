@@ -112,7 +112,7 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
     for test in xrange(testNo):
         tempDir = getTempDirectory(os.getcwd())
         tempFile = getTempFile(rootDir=tempDir)
-        jobTreeDir = os.path.join(tempDir, "jobTree")
+        jobTreeDir = os.path.join(tempDir, "testJobTree")
         makeFileToSort(tempFile, lines=lines, maxLineLength=maxLineLength)
         #First make our own sorted version
         fileHandle = open(tempFile, 'r')
