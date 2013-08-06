@@ -136,22 +136,22 @@ def main():
     origStdOut = os.dup(1)
     origStdErr = os.dup(2)
     
-    # Open the file to send stdout/stderr to.
+    #Open the file to send stdout/stderr to.
     logDescriptor = os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
 
-    # Replace standard output with a descriptor for the log file
+    #Replace standard output with a descriptor for the log file
     os.dup2(logDescriptor, 1)
     
-    # Replace standard error with a descriptor for the log file
+    #Replace standard error with a descriptor for the log file
     os.dup2(logDescriptor, 2)
     
-    # Since we only opened the file once, all the descriptors duped from the
-    # original will share offset information, and won't clobber each others'
-    # writes. See <http://stackoverflow.com/a/5284108/402891>. This shouldn't
-    # matter, since O_APPEND seeks to the end of the file before every write,
-    # but maybe there's something odd going on...
+    #Since we only opened the file once, all the descriptors duped from the
+    #original will share offset information, and won't clobber each others'
+    #writes. See <http://stackoverflow.com/a/5284108/402891>. This shouldn't
+    #matter, since O_APPEND seeks to the end of the file before every write, but
+    #maybe there's something odd going on...
     
-    # Close the descriptor we used to open the file
+    #Close the descriptor we used to open the file
     os.close(logDescriptor)
     
     for handler in list(logger.handlers): #Remove old handlers
@@ -161,7 +161,7 @@ def main():
     #the file descriptor out from under it.
     logger.addHandler(logging.StreamHandler(sys.stderr))
 
-    # Put a message at the top of the log, just to make sure it's working.
+    #Put a message at the top of the log, just to make sure it's working.
     print "---JOBTREE SLAVE OUTPUT LOG---"
     sys.stdout.flush()
     
@@ -340,21 +340,21 @@ def main():
     os.fsync(1)
     os.fsync(2)
     
-    # Close redirected stdout and replace with the original standard output.
+    #Close redirected stdout and replace with the original standard output.
     os.dup2(origStdOut, 1)
     
-    # Close redirected stderr and replace with the original standard error.
+    #Close redirected stderr and replace with the original standard error.
     os.dup2(origStdOut, 2)
     
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
     
-    # Close our extra handles to the original standard output and standard error
-    # streams, so we don't leak file handles.
+    #Close our extra handles to the original standard output and standard error
+    #streams, so we don't leak file handles.
     os.close(origStdOut)
     os.close(origStdErr)
     
-    # Now our file handles are in exactly the state they were in before.
+    #Now our file handles are in exactly the state they were in before.
     
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
