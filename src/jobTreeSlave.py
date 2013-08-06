@@ -147,8 +147,12 @@ def main():
     
     # Since we only opened the file once, all the descriptors duped from the
     # original will share offset information, and won't clobber each others'
-    # writes. See <http://stackoverflow.com/a/5284108/402891>.
+    # writes. See <http://stackoverflow.com/a/5284108/402891>. This shouldn't
+    # matter, since O_APPEND seeks to the end of the file before every write,
+    # but maybe there's something odd going on...
     
+    # Close the descriptor we used to open the file
+    os.close(logDescriptor)
     
     for handler in list(logger.handlers): #Remove old handlers
         logger.removeHandler(handler)
@@ -157,6 +161,11 @@ def main():
     #the file descriptor out from under it.
     logger.addHandler(logging.StreamHandler(sys.stderr))
 
+    # Put a message at the top of the log, just to make sure it's working.
+    print "---JOBTREE SLAVE OUTPUT LOG---"
+    sys.stdout.flush()
+    
+    
     
     ##########################################
     #Parse input files
