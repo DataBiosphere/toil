@@ -25,6 +25,7 @@ import os
 import random
 import subprocess
 import time
+import traceback
 
 #from threading import Thread, Lock
 #from Queue import Queue
@@ -40,7 +41,6 @@ from sonLib.bioio import system
 from jobTree.src.jobTreeSlave import main as slaveMain
    
 def worker(inputQueue, outputQueue):
-    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
     while True:
         args = inputQueue.get()
         if args == None: #Case where we are reducing threads for max number of CPUs
@@ -48,12 +48,8 @@ def worker(inputQueue, outputQueue):
             return
         command, jobID, threadsToStart = args
         sys.argv = command.split()[2:]
-        try:
-            slaveMain()
-            returnValue = 0
-        except:
-            returnValue = 1
-        outputQueue.put((jobID, returnValue, threadsToStart))
+        slaveMain()
+        outputQueue.put((jobID, 0, threadsToStart))
         inputQueue.task_done()
         
 class SingleMachineBatchSystem(AbstractBatchSystem):
