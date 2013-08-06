@@ -349,6 +349,13 @@ def main():
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
     
+    # Close our extra handles to the original standard output and standard error
+    # streams, so we don't leak file handles.
+    os.close(origStdOut)
+    os.close(origStdErr)
+    
+    # Now our file handles are in exactly the state they were in before.
+    
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
         truncateFile(tempSlaveLogFile)
