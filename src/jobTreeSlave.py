@@ -166,7 +166,8 @@ def main():
     setLogLevel(config.attrib["log_level"])
     job = Job.read(jobFile)
     job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
-    job.children = []
+    job.children = [] #Similarly, this is where old children are flushed out.
+    job.write() #Update status, to avoid reissuing children after running a follow on below.
     if os.path.exists(job.getLogFileName()): #This cleans the old log file
         os.remove(job.getLogFileName())
     logger.info("Parsed arguments and set up logging")
