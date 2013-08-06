@@ -174,7 +174,7 @@ def main():
     
     #Log the number of open file descriptors so we can tell if we're leaking
     #them.
-    logger.debug("Next available descriptor: {}".format(nextOpenDescriptor())
+    logger.debug("Next available descriptor: {}".format(nextOpenDescriptor()))
     
     ##########################################
     #Parse input files
