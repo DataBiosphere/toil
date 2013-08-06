@@ -64,6 +64,13 @@ def loadPickleFile(pickleFile):
     fileHandle.close()
     return i
     
+def nextOpenDescriptor():
+    """Gets the number of the next available file descriptor.
+    """
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    os.close(descriptor)
+    return descriptor
+    
 def main():
     sys.path.append(sys.argv[1])
     sys.argv.remove(sys.argv[1])
@@ -165,7 +172,9 @@ def main():
     print "---JOBTREE SLAVE OUTPUT LOG---"
     sys.stdout.flush()
     
-    
+    #Log the number of open file descriptors so we can tell if we're leaking
+    #them.
+    logger.debug("Next available descriptor: {}".format(nextOpenDescriptor())
     
     ##########################################
     #Parse input files
