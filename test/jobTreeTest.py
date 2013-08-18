@@ -57,10 +57,12 @@ class TestCase(unittest.TestCase):
         self.dependenciesTest(batchSystem="singleMachine", furtherOptionsString="--bigBatchSystem singleMachine --bigMemoryThreshold 1000000")
         
     def testJobTree_dependencies_parasol(self):
+        return
         if parasolIsInstalled():
             self.dependenciesTest(batchSystem="parasol")
             
     def testJobTree_dependencies_gridengine(self):
+        return
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
 
