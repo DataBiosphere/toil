@@ -98,35 +98,102 @@ def getjobexitcode(sgeJobID):
         return None
 
 class Worker(Thread):
-    def __init__(self, newJobsQueue, updatedJobsQueue, boss):
+    def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
         Thread.__init__(self)
         self.newJobsQueue = newJobsQueue
         self.updatedJobsQueue = updatedJobsQueue
-        self.currentjobs = list()
-        self.runningjobs = set()
+        self.killQueue = killQueue
+        self.killedJobsQueue = killedJobsQueue
+        self.waitingJobs = list()
+        self.runningJobs = set()
         self.boss = boss
+        self.allocatedCpus = dict()
+        self.sgeJobIDs = dict()
+
+    def getRunningJobIDs(self):
+        times = {}
+        currentjobs = dict((self.sgeJobIDs[x], x) for x in self.runningJobs)
+        process = subprocess.Popen(["qstat"], stdout = subprocess.PIPE)
+        stdout, stderr = process.communicate()
         
+        for currline in stdout.split('\n'):
+            items = curline.strip().split()
+            if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
+                jobstart = " ".join(items[5:7])
+                jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
+                times[currentjobs[(items[0],items[9])]] = time.time() - jobstart 
+
+        return times
+
+    def getSgeID(self, jobID):
+        if not jobID in self.sgeJobIDs:
+             RuntimeError("Unknown jobID, could not be converted")
+
+        (job,task) = self.sgeJobIDs[jobID]
+        if task is None:
+             return str(job) 
+        else:
+             return str(job) + "." + str(task)
+
+    def forgetJob(self, jobID):
+        self.runningJobs.remove(jobID)
+        del self.allocatedCpus[jobID]
+        del self.sgeJobIDs[jobID]
+
+    def killJobs(self):
+        # Load hit list:
+        killList = list()
+        while not self.killQueue.empty():
+            killList.append(self.killQueue.get())
+
+        # Do the dirty job
+        for jobID in list(killList):
+            if jobID in self.runningJobs:
+                process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
+            else:
+                if jobID in self.waitingJobs:
+                    self.waitingJobs.remove(jobID)
+                self.killedJobsQueue.put(jobID)
+                killList.remove(jobID)
+
+        # Wait to confirm the kill
+        while len(killList) > 0:
+            for jobID in list(killList):
+                if getjobexitcode(self.sgeJobIDs[jobID]) is not None:
+                    self.killedJobsQueue.put(jobID)
+                    killList.remove(jobID)
+                    self.forgetJob(jobID)
+
+            if len(killList) > 0:
+                logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
+                time.sleep(5)
+
+    def createJobs(self):
+        # Load new job ids:
+        while not self.newJobsQueue.empty():
+            self.waitingJobs.append(self.newJobsQueue.get())
+
+        # Launch jobs as necessary:
+        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCpus):
+            jobID, cpu, memory, command = self.waitingJobs.pop(0)
+            qsubline = prepareQsub(cpu, memory) + [command]
+            sgeJobID = qsub(qsubline)
+            self.sgeJobIDs[jobID] = (sgeJobID, None)
+            self.runningJobs.add(jobID)
+            self.allocatedCpus[jobID] = cpu
+
+    def checkOnJobs(self):
+        for jobID in list(self.runningJobs):
+            exit = getjobexitcode(self.sgeJobIDs[jobID])
+            if exit is not None:
+                self.updatedJobsQueue.put((jobID, exit))
+                self.forgetJob(jobID)
+    
     def run(self):
         while True:
-            # Load new job ids:
-            while not self.newJobsQueue.empty():
-                self.currentjobs.append(self.newJobsQueue.get())
-
-            # Launch jobs as necessary:
-            while len(self.currentjobs) > 0 and len(self.runningjobs) < int(self.boss.config.attrib["max_jobs"]):
-                jobID, qsubline = self.currentjobs.pop()
-                sgeJobID = qsub(qsubline)
-                self.boss.jobIDs[(sgeJobID, None)] = jobID
-                self.boss.sgeJobIDs[jobID] = (sgeJobID, None)
-                self.runningjobs.add((sgeJobID, None))
-
-            # Test known job list
-            for sgeJobID in list(self.runningjobs):
-                exit = getjobexitcode(sgeJobID)
-                if exit is not None:
-                    self.updatedJobsQueue.put((sgeJobID, exit))
-                    self.runningjobs.remove(sgeJobID)
-
+            self.killJobs()
+            self.createJobs()
+            self.checkOnJobs()
             time.sleep(10)
 
 class GridengineBatchSystem(AbstractBatchSystem):
@@ -141,13 +208,13 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()
         self.obtainSystemConstants()
-        self.jobIDs = dict()
-        self.sgeJobIDs = dict()
         self.nextJobID = 0
 
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
-        self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self)
+        self.killQueue = Queue()
+        self.killedJobsQueue = Queue()
+        self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self.killQueue, self.killedJobsQueue, self)
         self.worker.setDaemon(True)
         self.worker.start()
         
@@ -161,69 +228,45 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.nextJobID += 1
 
         self.currentjobs.add(jobID)
-        qsubline = prepareQsub(cpu, memory) + [command]
-        self.newJobsQueue.put((jobID, qsubline))
+        self.newJobsQueue.put((jobID, cpu, memory, command))
         logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
 
-    def getSgeID(self, jobID):
-        if not jobID in self.sgeJobIDs:
-             RuntimeError("Unknown jobID, could not be converted")
-
-        (job,task) = self.sgeJobIDs[jobID]
-        if task is None:
-             return str(job) 
-        else:
-             return str(job) + "." + str(task)
-    
     def killJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
         for jobID in jobIDs:
-            self.currentjobs.remove(jobID)
-            process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
-            del self.jobIDs[self.sgeJobIDs[jobID]]
-            del self.sgeJobIDs[jobID]
+            self.killQueue.put(jobID)
 
-        toKill = set(jobIDs)
-        while len(toKill) > 0:
-            for jobID in list(toKill):
-                if getjobexitcode(self.sgeJobIDs[jobID]) is not None:
-                    toKill.remove(jobID)
+        killList = set(jobIDs)
+        while len(killList) > 0:
+            while True:
+                i = self.getFromQueueSafely(self.killedJobsQueue, maxWait)
+                if i is not None:
+                    killList.remove(jobID)
+                    self.currentjobs.remove(jobID)
+                else:
+                    break
 
-            if len(toKill) > 0:
-                logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
-                time.sleep(5)
+        if len(killList) > 0:
+            time.sleep(5)
     
     def getIssuedJobIDs(self):
-        """Gets the list of jobs issued to parasol.
+        """Gets the list of jobs issued to SGE.
         """
-        #Example issued job, first field is jobID, last is the results file
-        #31816891 localhost  benedictpaten 2009/07/23 10:54:09 python ~/Desktop/out.txt           
-        return self.currentjobs
+        return list(self.currentjobs)
     
     def getRunningJobIDs(self):
-        times = {}
-        currentjobs = set(self.sgeJobIDs[x] for x in self.getIssuedJobIDs())
-        process = subprocess.Popen(["qstat"], stdout = subprocess.PIPE)
-        
-        for currline in process.stdout:
-            items = curline.strip().split()
-            if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
-                jobstart = " ".join(items[5:7])
-                jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                times[self.jobIDs[(items[0], items[9])]] = time.time() - jobstart 
-
-        return times
+        return self.worker.getRunningJobIDs()
     
     def getUpdatedJob(self, maxWait):
-        i = self.getFromQueueSafely(self.outputQueue, maxWait)
+        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
         if i == None:
             return None
-        sgeJobID, retcode = i
+        jobID, retcode = i
         self.updatedJobsQueue.task_done()
-        self.currentjobs -= set([self.jobIDs[sgeJobID]])
+        self.currentjobs.remove(jobID)
         return i
     
     def getWaitDuration(self):
