@@ -72,6 +72,7 @@ def prepareQsub(cpu, mem):
         reqline.append("p="+str(cpu))
     if mem is not None:
         reqline.append("vf="+str(mem/ 1024)+"K")
+	reqline.append("h_vmem"+str(mem/ 1024)+"K")
     if len(reqline) > 0:
         qsubline.extend(["-hard","-l", ",".join(reqline)])
     return qsubline
