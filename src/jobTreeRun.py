@@ -28,7 +28,7 @@ import sys
 import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
-from optparse import OptionParser, OptionContainer
+from optparse import OptionParser, OptionContainer, OptionGroup
 
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
@@ -126,9 +126,12 @@ def addOptions(parser):
     # argparse option parsing modules
     addLoggingOptions(parser) # This adds the logging stuff.
     if isinstance(parser, OptionContainer):
-        _addOptions(parser.add_option)
+        group = OptionGroup(parser, "Jobtree Options", "The options specific to running the jobTree aspects of a script")
+        _addOptions(group.add_option)
+        parser.add_option_group(group)
     elif isinstance(parser, ArgumentParser):
-        _addOptions(parser.add_argument)
+        group = parser.add_argument_group("Jobtree Options", "The options specific to running the jobTree aspects of a script")
+        _addOptions(group.add_argument)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
