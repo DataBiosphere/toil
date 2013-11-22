@@ -59,7 +59,7 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
     system(command)
     logger.info("Ran the jobtree apparently okay")
     
-def _addOptions(addOptionFn):    
+def _addOptions(addOptionFn, defaultStr):    
     addOptionFn("--command", dest="command", default=None,
                       help="The command to run (which will generate subsequent jobs)")
     addOptionFn("--jobTree", dest="jobTree", default=None,
@@ -69,57 +69,57 @@ def _addOptions(addOptionFn):
                             "job tree, then try and restart the jobs in it"))
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
-                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default"))
+                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%s" % defaultStr))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
-                      help="The command to run the parasol program default=%default")
+                      help="The command to run the parasol program default=%s" % defaultStr)
     addOptionFn("--retryCount", dest="retryCount", default=0,
                       help=("Number of times to try a failing job before giving up and "
-                            "labelling job failed. default=%default"))
+                            "labelling job failed. default=%s" % defaultStr))
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", 
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs (default is set by the batch system)"))
     addOptionFn("--maxJobDuration", dest="maxJobDuration", default=str(sys.maxint),
                       help=("Maximum runtime of a job (in seconds) before we kill it "
                             "(this is an approximate time, and the actual time before killing "
-                            "the job may be longer). default=%default"))
+                            "the job may be longer). default=%s" % defaultStr))
     addOptionFn("--jobTime", dest="jobTime", default=30,
                       help=("The approximate time (in seconds) that you'd like a list of child "
                             "jobs to be run serially before being parallised. "
                             "This parameter allows one to avoid over parallelising tiny jobs, and "
                             "therefore paying significant scheduling overhead, by running tiny "
-                            "jobs in series on a single node/core of the cluster. default=%default"))
+                            "jobs in series on a single node/core of the cluster. default=%s" % defaultStr))
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=50120,
                       help=("The maximum size of a log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
-                            "kilobytes, default=%default"))
+                            "kilobytes, default=%s" % defaultStr))
     addOptionFn("--defaultMemory", dest="defaultMemory", default=2147483648,
                       help=("The default amount of memory to request for a job (in bytes), "
-                            "by default is 2^31 = 2 gigabytes, default=%default"))
+                            "by default is 2^31 = 2 gigabytes, default=%s" % defaultStr))
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
-                      help="The default the number of cpus to dedicate a job. default=%default")
+                      help="The default the number of cpus to dedicate a job. default=%s" % defaultStr)
     addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
                       help=("The maximum number of cpus to request from the batch system at any "
-                            "one time. default=%default"))
+                            "one time. default=%s" % defaultStr))
     addOptionFn("--maxMemory", dest="maxMemory", default=sys.maxint,
-                      help=("The maximum amount of memory to request from the batch system at any one time. default=%default"))
+                      help=("The maximum amount of memory to request from the batch system at any one time. default=%s" % defaultStr))
     addOptionFn("--maxThreads", dest="maxThreads", default=4,
                       help=("The maximum number of threads to use when running in single "
-                            "machine mode. default=%default"))
+                            "machine mode. default=%s" % defaultStr))
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
-                      help="Records statistics about the job-tree to be used by jobTreeStats. default=%default")
+                      help="Records statistics about the job-tree to be used by jobTreeStats. default=%s" % defaultStr)
     addOptionFn("--bigBatchSystem", dest="bigBatchSystem", default=None, #detectQueueSystem(),
                       help=("The batch system to run for jobs with larger memory/cpus requests, currently can be "
-                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%default"))
+                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%s" % defaultStr))
     addOptionFn("--bigMemoryThreshold", dest="bigMemoryThreshold", default=sys.maxint, #detectQueueSystem(),
-                      help=("The memory threshold to submit to the big queue. default=%default"))
+                      help=("The memory threshold to submit to the big queue. default=%s" % defaultStr))
     addOptionFn("--bigCpuThreshold", dest="bigCpuThreshold", default=sys.maxint, #detectQueueSystem(),
-                      help=("The cpu threshold to submit to the big queue. default=%default"))
+                      help=("The cpu threshold to submit to the big queue. default=%s" % defaultStr))
     addOptionFn("--bigMaxCpus", dest="bigMaxCpus", default=sys.maxint,
                       help=("The maximum number of big batch system cpus to allow at "
-                            "one time on the big queue. default=%default"))
+                            "one time on the big queue. default=%s" % defaultStr))
     addOptionFn("--bigMaxMemory", dest="bigMaxMemory", default=sys.maxint,
                       help=("The maximum amount of memory to request from the big batch system at any one time. "
-                      "default=%default"))
+                      "default=%s" % defaultStr))
         
 def addOptions(parser):
     # Wrapper function that allows jobTree to be used with both the optparse and 
@@ -127,11 +127,11 @@ def addOptions(parser):
     addLoggingOptions(parser) # This adds the logging stuff.
     if isinstance(parser, OptionContainer):
         group = OptionGroup(parser, "Jobtree Options", "The options specific to running the jobTree aspects of a script")
-        _addOptions(group.add_option)
+        _addOptions(group.add_option, "%default")
         parser.add_option_group(group)
     elif isinstance(parser, ArgumentParser):
         group = parser.add_argument_group("Jobtree Options", "The options specific to running the jobTree aspects of a script")
-        _addOptions(group.add_argument)
+        _addOptions(group.add_argument, "%(default)s")
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
