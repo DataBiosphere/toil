@@ -62,11 +62,11 @@ def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem=
 def _addOptions(addOptionFn, defaultStr):    
     addOptionFn("--command", dest="command", default=None,
                       help="The command to run (which will generate subsequent jobs)")
-    addOptionFn("--jobTree", dest="jobTree", default=None,
+    addOptionFn("--jobTree", dest="jobTree", default="./jobTree",
                       help=("Directory in which to place job management files "
                             "(this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
-                            "job tree, then try and restart the jobs in it"))
+                            "job tree, then try and restart the jobs in it default=%s" % defaultStr))
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%s" % defaultStr))
