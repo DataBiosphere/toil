@@ -111,9 +111,9 @@ def _addOptions(addOptionFn, defaultStr):
                       help=("The batch system to run for jobs with larger memory/cpus requests, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%s" % defaultStr))
     addOptionFn("--bigMemoryThreshold", dest="bigMemoryThreshold", default=sys.maxint, #detectQueueSystem(),
-                      help=("The memory threshold to submit to the big queue. default=%s" % defaultStr))
+                      help=("The memory threshold above which to submit to the big queue. default=%s" % defaultStr))
     addOptionFn("--bigCpuThreshold", dest="bigCpuThreshold", default=sys.maxint, #detectQueueSystem(),
-                      help=("The cpu threshold to submit to the big queue. default=%s" % defaultStr))
+                      help=("The cpu threshold above which to submit to the big queue. default=%s" % defaultStr))
     addOptionFn("--bigMaxCpus", dest="bigMaxCpus", default=sys.maxint,
                       help=("The maximum number of big batch system cpus to allow at "
                             "one time on the big queue. default=%s" % defaultStr))
