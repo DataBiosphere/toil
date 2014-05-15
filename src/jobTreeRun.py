@@ -42,7 +42,7 @@ from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getConf
 
 from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
-from sonLib.bioio import system
+from sonLib.bioio import system, absSymPath
 
 def runJobTree(command, jobTreeDir, logLevel="DEBUG", retryCount=0, batchSystem="single_machine", 
                rescueJobFrequency=None):
@@ -201,7 +201,7 @@ def reloadJobTree(jobTree):
 
 def createJobTree(options):
     logger.info("Starting to create the job tree setup for the first time")
-    options.jobTree = os.path.abspath(options.jobTree)
+    options.jobTree = absSymPath(options.jobTree)
     os.mkdir(options.jobTree)
     os.mkdir(getJobFileDirName(options.jobTree))
     config = ET.Element("config")

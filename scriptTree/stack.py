@@ -36,7 +36,7 @@ from sonLib.bioio import setLogLevel
 from sonLib.bioio import setLoggingFromOptions
 from sonLib.bioio import getTempFile
 from sonLib.bioio import getTempDirectory 
-from sonLib.bioio import system
+from sonLib.bioio import system, absSymPath
 from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
 from jobTree.src.jobTreeRun import addOptions
@@ -81,7 +81,7 @@ class Stack(object):
         """
         self.verifyJobTreeOptions(options)
         setLoggingFromOptions(options)
-        options.jobTree = os.path.abspath(options.jobTree)
+        options.jobTree = absSymPath(options.jobTree)
         if os.path.isdir(options.jobTree):
             config, batchSystem = reloadJobTree(options.jobTree)
         else:

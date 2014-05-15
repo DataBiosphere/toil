@@ -29,6 +29,6 @@ def workflowRootPath():
     """Function for finding external location.
     """
     import jobTree.scriptTree.target
-    i = os.path.abspath(jobTree.scriptTree.target.__file__)
+    i = absSymPath(jobTree.scriptTree.target.__file__)
     return os.path.split(os.path.split(i)[0])[0]
 
