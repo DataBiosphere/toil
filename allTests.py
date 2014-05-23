@@ -27,24 +27,49 @@ from jobTree.test.sort.sortTest import TestCase as sortTest
 from jobTree.test.statsTest import TestCase as statsTest
 #import jobTree.test.jobTreeParasolCrashTest.TestCase as jobTreeParasolCrashTest
 
-from sonLib.bioio import parseSuiteTestOptions
+from sonLib.bioio import parseSuiteTestOptions, getBasicOptionParser
 
-def allSuites():
-    jobTestSuite = unittest.makeSuite(jobTest, 'test')
-    jobTreeTestSuite = unittest.makeSuite(jobTreeTest, 'test')
-    scriptTreeSuite = unittest.makeSuite(scriptTreeTest, 'test')
-    sortSuite = unittest.makeSuite(sortTest, 'test')
-    statsSuite = unittest.makeSuite(statsTest, 'test')
-    allTests = unittest.TestSuite((jobTestSuite, jobTreeTestSuite, scriptTreeSuite, sortSuite, statsSuite))
+def allSuites(options):
+    tests = []
+    if 'job' in options.tests:
+        tests.append(unittest.makeSuite(jobTest, 'test'))
+    if 'jobTree' in options.tests:
+        tests.append(unittest.makeSuite(jobTreeTest, 'test'))
+    if 'scriptTree' in options.tests:
+        tests.append(unittest.makeSuite(scriptTreeTest, 'test'))
+    if 'sort' in options.tests:
+        tests.append(unittest.makeSuite(sortTest, 'test'))
+    if 'stats' in options.tests:
+        tests.append(unittest.makeSuite(statsTest, 'test'))
+    allTests = unittest.TestSuite(tests)
     return allTests
-        
-def main(): 
-    parseSuiteTestOptions()
-    suite = allSuites()
+
+def initializeOptions(parser):
+    parser.add_option('--tests',
+                      help=('comma separated list of tests. omit to test all. '
+                            'possbile tests: '
+                            '[job, jobTree, scriptTree, sort, stats]'))
+
+def checkOptions(options, parser):
+    tests = ['job', 'jobTree', 'scriptTree', 'sort', 'stats']
+    if options.tests is None:
+        options.tests = tests
+    else:
+        requested_tests = options.tests.split(',')
+        for t in requested_tests:
+            if t not in tests:
+                parser.error('Unknown test %s. Must be from %s'
+                             % (t, str(tests)))
+
+def main():
+    parser = getBasicOptionParser()
+    initializeOptions(parser)
+    options, args = parseSuiteTestOptions(parser)
+    suite = allSuites(options)
     runner = unittest.TextTestRunner()
     i = runner.run(suite)
     return len(i.failures) + len(i.errors)
-        
+
 if __name__ == '__main__':
     #import cProfile
     #cProfile.run('main()', "fooprof")
