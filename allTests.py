@@ -65,6 +65,7 @@ def main():
     parser = getBasicOptionParser()
     initializeOptions(parser)
     options, args = parseSuiteTestOptions(parser)
+    checkOptions(options, parser)
     suite = allSuites(options)
     runner = unittest.TextTestRunner()
     i = runner.run(suite)
