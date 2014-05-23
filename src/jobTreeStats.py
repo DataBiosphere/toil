@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-"""Reports the state of your given job tree.
+""" Reports the state of your given job tree.
 """
 
 import sys
@@ -39,6 +39,32 @@ from sonLib.bioio import TempFileTree
 from jobTree.src.master import getEnvironmentFileName, getJobFileDirName
 from jobTree.src.master import getStatsFileName, getConfigFileName
 
+class JTTag(object):
+  def __init__(self, tree):
+    """ Given an ElementTree tag, build a convenience object.
+    """
+    for name in ['total_time', 'median_clock', 'total_memory', 'median_wait',
+                'total_number', 'average_time', 'median_memory',
+                'min_number_per_slave', 'average_wait', 'total_clock',
+                'median_time', 'min_time', 'min_wait', 'max_clock',
+                'max_wait', 'total_wait', 'min_clock', 'average_memory',
+                'max_number_per_slave', 'max_memory', 'min_clock',
+                'average_memory', 'max_number_per_slave', 'max_memory',
+                'median_number_per_slave', 'average_number_per_slave',
+                'max_time', 'average_clock', 'min_memory'
+                ]:
+      setattr(self, name, self.__get(tree, name))
+      self.name = tree.tag
+  def __get(self, tag, name):
+    if name in tag.attrib:
+      value = tag.attrib[name]
+    else:
+      return float('nan')
+    try:
+      a = float(value)
+    except ValueError:
+      a = float('nan')
+    return a
 
 def initializeOptions(parser):
     ##########################################
@@ -46,9 +72,22 @@ def initializeOptions(parser):
     ##########################################
     parser.add_option("--jobTree", dest="jobTree",
                       help="Directory containing the job tree")
-
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
+    parser.add_option('--raw', action='store_true', default=False,
+                      help='output the raw xml data.')
+    parser.add_option('--pretty', action='store_true', default=False,
+                      help=('if not raw, prettify the numbers to be '
+                            'human readable.'))
+    parser.add_option('--categories',
+                      help=('comma separated list from [time, clock, wait, '
+                            'memory]'))
+    parser.add_option('--sortby', default='time',
+                      help=('how to sort Target list. may be from [time, '
+                            'clock, wait, memory, count]. '
+                            'default=%(default)s'))
+    parser.add_option('--reverse_sort', default=False, action='store_true',
+                      help='reverse sort order.')
 
 def checkOptions(options, args, parser):
     logger.info("Parsed arguments")
@@ -69,14 +108,251 @@ def checkOptions(options, args, parser):
     if not os.path.isfile(getStatsFileName(options.jobTree)):
         parser.error("The job-tree was run without the --stats flag, "
                      "so no stats were created")
+    default_categories = ['time', 'clock', 'wait', 'memory']
+    if options.categories is None:
+        options.categories = default_categories
+    else:
+        options.categories = options.categories.split(',')
+    for c in options.categories:
+        if c not in default_categories:
+            parser.error('Unknown category %s. Must be from %s'
+                         % (c, str(default_categories)))
+    if options.sortby is not None:
+        if (options.sortby not in default_categories and
+            options.sortby != 'count'):
+            parser.error('Unknown --sortby %s. Must be from %s'
+                         % (options.sortby, str(default_categories)))
     logger.info("Checked arguments")
 
-def prettify(elem):
+def prettyXml(elem):
     """Return a pretty-printed XML string for the ElementTree Element.
     """
     rough_string = ET.tostring(elem, 'utf-8')
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="  ")
+
+def padStr(s, field=None):
+  """ Pad the begining of a string with spaces, if necessary.
+  """
+  if field is None:
+    return s
+  else:
+    if len(s) >= field:
+      return s
+    else:
+      return ' ' * (field - len(s)) + s
+
+def prettyMemory(k, field=None, is_bytes=False):
+  """ Given input k as kilobytes, return a nicely formatted string.
+  """
+  from math import floor
+  if is_bytes:
+    k /= 1024
+  if k < 1024:
+    return padStr('%gK' % k, field)
+  if k < (1024 * 1024):
+    return padStr('%.1fM' % (k / 1024.0), field)
+  if k < (1024 * 1024 * 1024):
+    return padStr('%.1fG' % (k / 1024.0 / 1024.0), field)
+  if k < (1024 * 1024 * 1024 * 1024):
+    return padStr('%.1fT' % (k / 1024.0 / 1024.0 / 1024.0), field)
+  if k < (1024 * 1024 * 1024 * 1024 * 1024):
+    return padStr('%.1fP' % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
+
+def prettyTime(t, field=None):
+  """ Given input t as seconds, return a nicely formatted string.
+  """
+  from math import floor
+  plural_dict = {True: 's', False: ''}
+  if t < 120:
+    return padStr('%ds' % t, field)
+  if t < 120 * 60:
+    m = floor(t / 60.)
+    s = t % 60
+    return padStr('%dm%ds' % (m, s), field)
+  if t < 25 * 60 * 60:
+    h = floor(t / 60. / 60.)
+    m = floor((t - (h * 60. * 60.)) / 60.)
+    s = t % 60
+    return padStr('%dh%gm%ds' % (h, m, s), field)
+  if t < 7 * 24 * 60 * 60:
+    d = floor(t / 24. / 60. / 60.)
+    h = floor((t - (d * 24. * 60. * 60.)) / 60. / 60.)
+    m = floor((t
+               - (d * 24. * 60. * 60.)
+               - (h * 60. * 60.))
+              / 60.)
+    s = t % 60
+    d_plural = plural_dict[d > 1]
+    return padStr('%dday%s%dh%dm%ds' % (d, d_plural, h, m, s), field)
+  w = floor(t / 7. / 24. / 60. / 60.)
+  d = floor((t - (w * 7 * 24 * 60 * 60)) / 24. / 60. / 60.)
+  h = floor((t
+             - (w * 7. * 24. * 60. * 60.)
+             - (d * 24. * 60. * 60.))
+            / 60. / 60.)
+  m = floor((t
+             - (w * 7. * 24. * 60. * 60.)
+             - (d * 24. * 60. * 60.)
+             - (h * 60. * 60.))
+            / 60.)
+  s = t % 60
+  w_plural = plural_dict[w > 1]
+  d_plural = plural_dict[d > 1]
+  return padStr('%dweek%s%dday%s%dh%dm%ds' % (w, w_plural, d,
+                                             d_plural, h, m, s), field)
+
+def reportTime(t, options, field=None):
+  """ Given t seconds, report back the correct format as string.
+  """
+  if options.pretty:
+    return prettyTime(t, field=field)
+  else:
+    if field is not None:
+      return '%*.2f' % (field, t)
+    else:
+      return '%.2f' % t
+
+def reportMemory(k, options, field=None, is_bytes=False):
+  """ Given k kilobytes, report back the correct format as string.
+  """
+  if options.pretty:
+    return prettyMemory(k, field=field, is_bytes=is_bytes)
+  else:
+    if is_bytes:
+      k /= 1024
+    if field is not None:
+      return '%*gK' % (field, k)
+    else:
+      return '%gK' % k
+
+def reportNumber(n, options, field=None):
+  """ Given n an integer, report back the correct format as string.
+  """
+  if field is not None:
+    return '%*g' % (field, n)
+  else:
+    return '%g' % n
+
+def refineData(root, options):
+  """ walk the root and gather up the important bits.
+  """
+  slave = JTTag(root.find('slave'))
+  target = JTTag(root.find('target'))
+  target_types_tree = root.find('target_types')
+  target_types = []
+  for child in target_types_tree:
+    target_types.append(JTTag(child))
+  return root, slave, target, target_types
+
+def sprintTag(key, tag, options):
+  """ Print out a JTTag()
+  """
+  header = '  %7s ' % 'Count'
+  sub_header = '  %7s ' % 'n'
+  tag_str = '  %s' % reportNumber(tag.total_number, options, field=7)
+  out_str = ''
+  if key == 'target':
+    out_str += ' %-12s | %7s%7s%7s%7s ' % ('Slave Jobs', 'min',
+                                           'med', 'ave', 'max')
+    slave_str = '%s| \n' % (' ' * 14)
+    for t in [tag.min_number_per_slave, tag.median_number_per_slave,
+              tag.average_number_per_slave, tag.max_number_per_slave]:
+      slave_str += reportNumber(t, options, field=7)
+    out_str += slave_str + '\n'
+  if 'time' in options.categories:
+    header += '| %40s ' % 'Time'
+    sub_header += '| %10s%10s%10s%10s ' % ('min', 'med', 'ave', 'max')
+    tag_str += ' | '
+    for t in [tag.min_time, tag.median_time,
+              tag.average_time, tag.max_time]:
+      tag_str += reportTime(t, options, field=10)
+  if 'clock' in options.categories:
+    header += '| %40s ' % 'Clock'
+    sub_header += '| %10s%10s%10s%10s ' % ('min', 'med', 'ave', 'max')
+    tag_str += ' | '
+    for t in [tag.min_clock, tag.median_clock,
+              tag.average_clock, tag.max_clock]:
+      tag_str += reportTime(t, options, field=10)
+  if 'wait' in options.categories:
+    header += '| %40s ' % 'Wait'
+    sub_header += '| %10s%10s%10s%10s ' % ('min', 'med', 'ave', 'max')
+    tag_str += ' | '
+    for t in [tag.min_wait, tag.median_wait,
+              tag.average_wait, tag.max_wait]:
+      tag_str += reportTime(t, options, field=10)
+  if 'memory' in options.categories:
+    header += '| %40s ' % 'Memory'
+    sub_header += '| %10s%10s%10s%10s ' % ('min', 'med', 'ave', 'max')
+    tag_str += ' | '
+    for t in [tag.min_memory, tag.median_memory,
+              tag.average_memory, tag.max_memory]:
+      tag_str += reportMemory(t, options, field=10)
+  out_str += header + '\n'
+  out_str += sub_header + '\n'
+  out_str += tag_str + '\n'
+  return out_str
+
+def get(tree, name):
+  """ Return a float value attribute NAME from TREE.
+  """
+  if name in tree.attrib:
+    value = tree.attrib[name]
+  else:
+    return float('nan')
+  try:
+    a = float(value)
+  except ValueError:
+    a = float('nan')
+  return a
+
+def sortTargets(target_types, options):
+  """ Return a target_types all sorted.
+  """
+  if options.sortby == 'time':
+    return sorted(target_types, key=lambda tag: tag.median_time,
+                  reverse=options.reverse_sort)
+  elif options.sortby == 'alpha':
+    return sorted(target_types, key=lambda tag: tag.name,
+                  reverse=options.reverse_sort)
+  elif options.sortby == 'clock':
+    return sorted(target_types, key=lambda tag: tag.median_clock,
+                  reverse=options.reverse_sort)
+  elif options.sortby == 'wait':
+    return sorted(target_types, key=lambda tag: tag.median_wait,
+                  reverse=options.reverse_sort)
+  elif options.sortby == 'memory':
+    return sorted(target_types, key=lambda tag: tag.median_memory,
+                  reverse=options.reverse_sort)
+  elif options.sortby == 'count':
+    return sorted(target_types, key=lambda tag: tag.total_number,
+                  reverse=options.reverse_sort)
+
+def reportPrettyData(root, slave, target, target_types, options):
+  """ print the important bits out.
+  """
+  out_str = 'Batch System: %s\n' % root.attrib['batch_system']
+  out_str += ('Default CPU: %s  Default Memory: %s\n'
+              'Job Time: %s  Max CPUs: %s  Max Threads: %s\n' % (
+      reportNumber(get(root, 'default_cpu'), options),
+      reportMemory(get(root, 'default_memory'), options, is_bytes=True),
+      reportTime(get(root, 'job_time'), options),
+      reportNumber(get(root, 'max_cpus'), options),
+      reportNumber(get(root, 'max_threads'), options),
+      ))
+  out_str += ('Total Clock: %s  Total Runtime: %s\n' % (
+          reportTime(get(root, 'total_clock'), options),
+          reportTime(get(root, 'total_run_time'), options),
+          ))
+  out_str += 'Slave\n'
+  out_str += sprintTag('slave', slave, options)
+  out_str += 'Target\n'
+  out_str += sprintTag('target', target, options)
+  target_types = sortTargets(target_types, options)
+  for t in target_types:
+    out_str += ' %s\n' % t.name
+    out_str += sprintTag(t.name, t, options)
+  return out_str
 
 def buildElement(element, items, itemName):
     """ Create an element for output.
@@ -185,17 +461,22 @@ def processData(config, stats, options):
         targetTypeTag = buildElement(targetTypesTag, targetTypes, targetName)
     return collatedStatsTag
 
-def reportData(collatedStatsTag, options):
+def reportData(xml_tree, options):
     # Now dump it all out to file
+    if options.raw:
+        out_str = prettyXml(xml_tree)
+    else:
+        root, slave, target, target_types = refineData(xml_tree, options)
+        out_str = reportPrettyData(root, slave, target, target_types, options)
     if options.outputFile != None:
         fileHandle = open(options.outputFile, 'w')
-        fileHandle.write(prettify(collatedStatsTag))
+        fileHandle.write(out_str)
         fileHandle.close()
     # Now dump onto the screen
-    print prettify(collatedStatsTag)
+    print out_str
 
 def main():
-    """Reports stats on the job-tree, use with --stats option to jobTree.
+    """ Reports stats on the job-tree, use with --stats option to jobTree.
     """
 
     parser = getBasicOptionParser(
