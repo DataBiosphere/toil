@@ -122,7 +122,7 @@ def checkOptions(options, args, parser):
         if (options.sortby not in defaultCategories and
             options.sortby not in extraSort):
             parser.error("Unknown --sortby %s. Must be from %s"
-                         % (options.sortby, str(defaultCategories)))
+                         % (options.sortby, str(defaultCategories + extraSort)))
     logger.info("Checked arguments")
 
 def prettyXml(elem):
