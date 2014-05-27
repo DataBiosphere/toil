@@ -421,6 +421,22 @@ def createSummary(element, containingItems, containingItemName, getFn):
     element.attrib["max_number_per_%s" %
                    containingItemName] = str(max(itemCounts))
 
+def getSettings(options):
+    config_file = getConfigFileName(options.jobTree)
+    stats_file = getStatsFileName(options.jobTree)
+    try:
+        config = ET.parse(config_file).getroot()
+    except ET.ParseError:
+        sys.stderr.write('The config file xml, %s, is empty.\n' % config_file)
+        raise
+    try:
+        stats = ET.parse(stats_file).getroot()
+    except ET.ParseError:
+        sys.stderr.write('The job tree stats file is empty. Either the job '
+                         'has crashed, or no jobs have completed yet.\n')
+        sys.exit(0)
+    return config, stats
+
 def processData(config, stats, options):
     ##########################################
     # Collate the stats and report
@@ -485,8 +501,7 @@ def main():
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
-    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
-    stats = ET.parse(getStatsFileName(options.jobTree)).getroot()
+    config, stats = getSettings(options)
     collatedStatsTag = processData(config, stats, options)
     reportData(collatedStatsTag, options)
 
