@@ -76,7 +76,7 @@ def initializeOptions(parser):
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
                       help="output the raw xml data.")
-    parser.add_option("--pretty", action="store_true", default=False,
+    parser.add_option("--pretty", "--human", action="store_true", default=False,
                       help=("if not raw, prettify the numbers to be "
                             "human readable."))
     parser.add_option("--categories",
