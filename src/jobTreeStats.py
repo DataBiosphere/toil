@@ -108,7 +108,8 @@ def initializeOptions(parser):
                       help=("how to sort Target list. may be from [min, "
                             "med, ave, max, total]. "
                             "default=%(default)s"))
-    parser.add_option("--reverse_sort", default=False, action="store_true",
+    parser.add_option("--sortReverse", "--reverseSort", default=False,
+                      action="store_true",
                       help="reverse sort order.")
 
 def checkOptions(options, args, parser):
@@ -370,6 +371,7 @@ def decorateSubHeader(title, columnWidths, options):
                 s += "%*s*" % (width - 1, field)
             else:
                 s += "%*s" % (width, field)
+        s += " "
         return s
 
 def get(tree, name):
@@ -398,29 +400,29 @@ def sortTargets(targetTypes, options):
         return sorted(
             targetTypes,
             key=lambda tag: getattr(tag, "%s_time" % sortField),
-            reverse=options.reverse_sort)
+            reverse=options.sortReverse)
     elif options.sortCategory == "clock":
         return sorted(
             targetTypes,
             key=lambda tag: getattr(tag, "%s_clock" % sortField),
-            reverse=options.reverse_sort)
+            reverse=options.sortReverse)
     elif options.sortCategory == "wait":
         return sorted(
             targetTypes,
             key=lambda tag: getattr(tag, "%s_wait" % sortField),
-            reverse=options.reverse_sort)
+            reverse=options.sortReverse)
     elif options.sortCategory == "memory":
         return sorted(
             targetTypes,
             key=lambda tag: getattr(tag, "%s_memory" % sortField),
-            reverse=options.reverse_sort)
+            reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
         return sorted(
             targetTypes, key=lambda tag: tag.name,
-            reverse=options.reverse_sort)
+            reverse=options.sortReverse)
     elif options.sortCategory == "count":
         return sorted(targetTypes, key=lambda tag: tag.total_number,
-                      reverse=options.reverse_sort)
+                      reverse=options.sortReverse)
 
 def reportPrettyData(root, slave, target, target_types, options):
     """ print the important bits out.
