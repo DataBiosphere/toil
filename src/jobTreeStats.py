@@ -268,14 +268,14 @@ def reportMemory(k, options, field=None, isBytes=False):
     """ Given k kilobytes, report back the correct format as string.
     """
     if options.pretty:
-        return prettyMemory(k, field=field, isBytes=isBytes)
+        return prettyMemory(int(k), field=field, isBytes=isBytes)
     else:
         if isBytes:
-            k /= 1024
+            k /= 1024.
         if field is not None:
-            return "%*gK" % (field, k)
+            return "%*dK" % (field - 1, k)
         else:
-            return "%gK" % k
+            return "%dK" % int(k)
 
 def reportNumber(n, options, field=None):
     """ Given n an integer, report back the correct format as string.
@@ -381,17 +381,15 @@ def decorateTitle(title, options):
 def decorateSubHeader(title, columnWidths, options):
     """ Add a marker to the correct field if the title is sorted on.
     """
-    if title.lower() != options.sortCategory:
-        return "| %*s%*s%*s%*s%*s " % (columnWidths.getWidth(title, "min"),
-                                       "min",
-                                       columnWidths.getWidth(title, "med"),
-                                       "med",
-                                       columnWidths.getWidth(title, "ave"),
-                                       "ave",
-                                       columnWidths.getWidth(title, "max"),
-                                       "max",
-                                       columnWidths.getWidth(title, "total"),
-                                       "total")
+    title = title.lower()
+    if title != options.sortCategory:
+        s = "| %*s%*s%*s%*s%*s " % (
+            columnWidths.getWidth(title, "min"), "min",
+            columnWidths.getWidth(title, "med"), "med",
+            columnWidths.getWidth(title, "ave"), "ave",
+            columnWidths.getWidth(title, "max"), "max",
+            columnWidths.getWidth(title, "total"), "total")
+        return s
     else:
         s = "| "
         for field, width in [("min", columnWidths.getWidth(title, "min")),
@@ -497,11 +495,11 @@ def updateColumnWidths(tag, cw, options):
                 t = getattr(tag, "%s_%s" % (longforms[field], category))
                 if category in ["time", "clock", "wait"]:
                     s = reportTime(t, options,
-                                   field=cw.getWidth(category, field))
+                                   field=cw.getWidth(category, field)).strip()
                 else:
                     s = reportMemory(t, options,
-                                   field=cw.getWidth(category, field))
-                if len(s.strip()) >= cw.getWidth(category, field):
+                                     field=cw.getWidth(category, field)).strip()
+                if len(s) >= cw.getWidth(category, field):
                     cw.setWidth(category, field, len(s) + 1)
 
 def buildElement(element, items, itemName):
