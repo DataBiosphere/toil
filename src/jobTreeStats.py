@@ -22,11 +22,14 @@
 
 """ Reports the state of your given job tree.
 """
-
-import sys
+import cPickle
 import os
+from random import choice
+import string
+import sys
+import time
 
-import xml.etree.cElementTree as ET
+import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
 
 from sonLib.bioio import logger
@@ -38,6 +41,7 @@ from sonLib.bioio import TempFileTree
 
 from jobTree.src.master import getEnvironmentFileName, getJobFileDirName
 from jobTree.src.master import getStatsFileName, getConfigFileName
+from jobTree.src.master import getStatsCacheFileName
 
 class JTTag(object):
     """ Convenience object that stores xml attributes as object attributes.
@@ -111,6 +115,8 @@ def initializeOptions(parser):
     parser.add_option("--sortReverse", "--reverseSort", default=False,
                       action="store_true",
                       help="reverse sort order.")
+    parser.add_option("--cache", default=False, action="store_true",
+                      help="stores a cache to speed up data display.")
 
 def checkOptions(options, args, parser):
     """ Check options, throw parser.error() if something goes wrong
@@ -638,6 +644,104 @@ def reportData(xml_tree, options):
     # Now dump onto the screen
     print out_str
 
+def getNullFile():
+    """ Guaranteed to return a file path that does not exist.
+    """
+    charSet = string.ascii_lowercase + '0123456789'
+    nullFile = 'null_%s' % ''.join(choice(charSet) for x in xrange(6))
+    while os.path.exists(nullFile):
+        nullFile = 'null_%s' % ''.join(choice(charSet) for x in xrange(6))
+    return nullFile
+
+def getPreferredStatsCacheFileName(options):
+    """ Determine if the jobtree or the os.getcwd() version should be used.
+    """
+    null_file = getNullFile()
+    location_jt = getStatsCacheFileName(options.jobTree)
+    location_local = os.path.abspath(os.path.join(os.getcwd(),
+                                                  '.stats_cache.pickle'))
+    try:
+        loc_file = open(location_local, 'r')
+        data, loc = cPickle.load(loc_file)
+        if getStatsFileName(options.jobTree) != loc:
+            # local cache is from looking up a different jobTree
+            location_local = null_file
+    except EOFError:
+        sys.stderr.write('Problem loading the cache. Rerun without --cache\n')
+    if os.path.exists(location_jt) and not os.path.exists(location_local):
+        return location_jt
+    elif not os.path.exists(location_jt) and os.path.exists(location_local):
+        return location_local
+    elif os.path.exists(location_jt) and os.path.exists(location_local):
+        mtime_jt = os.path.getmtime(location_jt)
+        mtime_local = os.path.getmtime(location_local)
+        if mtime_jt > mtime_local:
+            return location_jt
+        else:
+            return location_local
+    else:
+        return null_file
+
+def unpackData(options):
+    """unpackData() opens up the pickle of the last run and pulls out
+    all the relevant data.
+    """
+    cache_file = getPreferredStatsCacheFileName(options)
+    if not os.path.exists(cache_file):
+        return None
+    if os.path.exists(cache_file):
+        f = open(cache_file, 'r')
+        try:
+            data, location = cPickle.load(f)
+        except EOFError:
+            sys.stderr.write('Problem loading the cache. '
+                             'Rerun without --cache\n')
+        f.close()
+        if location == getStatsFileName(options.jobTree):
+            return data
+    return None
+
+def packData(data, options):
+    """ packData stores all of the data in the appropriate pickle cache file.
+    """
+    stats_file = getStatsFileName(options.jobTree)
+    cache_file = getStatsCacheFileName(options.jobTree)
+    try:
+        # try to write to the jobTree directory
+        payload = (data, stats_file)
+        f = open(cache_file, 'wb')
+        cPickle.dump(payload, f, 2)  # 2 is binary format
+        f.close()
+    except IOError:
+        if not options.cache:
+            return
+        # try to write to the current working directory if --cache
+        cache_file = os.path.abspath(os.path.join(os.getcwd(),
+                                                  '.stats_cache.pickle'))
+        payload = (data, stats_file)
+        f = open(cache_file, 'wb')
+        cPickle.dump(payload, f, 2)  # 2 is binary format
+        f.close()
+
+def cacheAvailable(options):
+    """ Check to see if a cache is available, return it.
+    """
+    print 'checking avaialble'
+    cache_file = getPreferredStatsCacheFileName(options)
+    if not os.path.exists(cache_file):
+        print 'preferred cache doesnt exist: %s' % cache_file
+        return None
+    if not os.path.exists(getStatsFileName(options.jobTree)):
+        print 'stats file doesnt exist'
+        return None
+    mtime_stats = os.path.getmtime(getStatsFileName(options.jobTree))
+    mtime_cache = os.path.getmtime(cache_file)
+    if mtime_stats > mtime_cache:
+        # recompute cache
+        print 'stats are newer than cache'
+        return None
+    return unpackData(options)
+
 def main():
     """ Reports stats on the job-tree, use with --stats option to jobTree.
     """
@@ -647,9 +751,13 @@ def main():
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
-    config, stats = getSettings(options)
-    collatedStatsTag = processData(config, stats, options)
+    collatedStatsTag = cacheAvailable(options)
+    if collatedStatsTag is None:
+        sys.exit(0)
+        config, stats = getSettings(options)
+        collatedStatsTag = processData(config, stats, options)
     reportData(collatedStatsTag, options)
+    packData(collatedStatsTag, options)
 
 def _test():
     import doctest
