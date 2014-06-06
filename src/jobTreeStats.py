@@ -143,7 +143,8 @@ def checkOptions(options, args, parser):
     if options.categories is None:
         options.categories = defaultCategories
     else:
-        options.categories = options.categories.split(",")
+        options.categories = map(lambda x: x.lower(),
+                                 options.categories.split(","))
     for c in options.categories:
         if c not in defaultCategories:
             parser.error("Unknown category %s. Must be from %s"
