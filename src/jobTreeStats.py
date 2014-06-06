@@ -77,16 +77,28 @@ class ColumnWidths(object):
     Helps make things pretty.
     """
     def __init__(self):
-        self.count = 10
-        self.min = 10
-        self.med = 10
-        self.ave = 10
-        self.max = 10
-        self.total = 10
-    def title(self):
+        self.categories = ["time", "clock", "wait", "memory"]
+        self.fields_count = ["count", "min", "med", "ave", "max", "total"]
+        self.fields = ["min", "med", "ave", "max", "total"]
+        self.data = {}
+        for category in self.categories:
+            for field in self.fields_count:
+                self.setWidth(category, field, 8)
+    def title(self, category):
         """ Return the total printed length of this category item.
         """
-        return self.min + self.med + self.ave + self.max + self.total
+        return sum(
+            map(lambda x: self.getWidth(category, x), self.fields))
+    def getWidth(self, category, field):
+        category = category.lower()
+        return self.data["%s_%s" % (category, field)]
+    def setWidth(self, category, field, width):
+        category = category.lower()
+        self.data["%s_%s" % (category, field)] = width
+    def report(self):
+        for c in self.categories:
+            for f in self.fields:
+                print '%s %s %d' % (c, f, self.getWidth(c, f))
 
 def initializeOptions(parser):
     ##########################################
@@ -302,48 +314,56 @@ def sprintTag(key, tag, options, columnWidths=None):
             slave_str += reportNumber(t, options, field=7)
         out_str += slave_str + "\n"
     if "time" in options.categories:
-        header += "| %*s " % (columnWidths.title(),
+        header += "| %*s " % (columnWidths.title("time"),
                               decorateTitle("Time", options))
         sub_header += decorateSubHeader("Time", columnWidths, options)
         tag_str += " | "
-        for t, width in [(tag.min_time, columnWidths.min),
-                         (tag.median_time, columnWidths.med),
-                         (tag.average_time, columnWidths.ave),
-                         (tag.max_time, columnWidths.max),
-                         (tag.total_time, columnWidths.total)]:
+        for t, width in [
+            (tag.min_time, columnWidths.getWidth("time", "min")),
+            (tag.median_time, columnWidths.getWidth("time", "med")),
+            (tag.average_time, columnWidths.getWidth("time", "ave")),
+            (tag.max_time, columnWidths.getWidth("time", "max")),
+            (tag.total_time, columnWidths.getWidth("time", "total")),
+            ]:
             tag_str += reportTime(t, options, field=width)
     if "clock" in options.categories:
-        header += "| %*s " % (columnWidths.title(),
+        header += "| %*s " % (columnWidths.title("clock"),
                               decorateTitle("Clock", options))
         sub_header += decorateSubHeader("Clock", columnWidths, options)
         tag_str += " | "
-        for t, width in [(tag.min_clock, columnWidths.min),
-                         (tag.median_clock, columnWidths.med),
-                         (tag.average_clock, columnWidths.ave),
-                         (tag.max_clock, columnWidths.max),
-                         (tag.total_clock, columnWidths.total)]:
+        for t, width in [
+            (tag.min_clock, columnWidths.getWidth("clock", "min")),
+            (tag.median_clock, columnWidths.getWidth("clock", "med")),
+            (tag.average_clock, columnWidths.getWidth("clock", "ave")),
+            (tag.max_clock, columnWidths.getWidth("clock", "max")),
+            (tag.total_clock, columnWidths.getWidth("clock", "total")),
+            ]:
             tag_str += reportTime(t, options, field=width)
     if "wait" in options.categories:
-        header += "| %*s " % (columnWidths.title(),
+        header += "| %*s " % (columnWidths.title("wait"),
                               decorateTitle("Wait", options))
         sub_header += decorateSubHeader("Wait", columnWidths, options)
         tag_str += " | "
-        for t, width in [(tag.min_wait, columnWidths.min),
-                         (tag.median_wait, columnWidths.med),
-                         (tag.average_wait, columnWidths.ave),
-                         (tag.max_wait, columnWidths.max),
-                         (tag.total_wait, columnWidths.total)]:
+        for t, width in [
+            (tag.min_wait, columnWidths.getWidth("wait", "min")),
+            (tag.median_wait, columnWidths.getWidth("wait", "med")),
+            (tag.average_wait, columnWidths.getWidth("wait", "ave")),
+            (tag.max_wait, columnWidths.getWidth("wait", "max")),
+            (tag.total_wait, columnWidths.getWidth("wait", "total")),
+            ]:
             tag_str += reportTime(t, options, field=width)
     if "memory" in options.categories:
-        header += "| %*s " % (columnWidths.title(),
+        header += "| %*s " % (columnWidths.title("memory"),
                               decorateTitle("Memory", options))
         sub_header += decorateSubHeader("Memory", columnWidths, options)
         tag_str += " | "
-        for t, width in [(tag.min_memory, columnWidths.min),
-                         (tag.median_memory, columnWidths.med),
-                         (tag.average_memory, columnWidths.ave),
-                         (tag.max_memory, columnWidths.max),
-                         (tag.total_memory, columnWidths.total)]:
+        for t, width in [
+            (tag.min_memory, columnWidths.getWidth("memory", "min")),
+            (tag.median_memory, columnWidths.getWidth("memory", "med")),
+            (tag.average_memory, columnWidths.getWidth("memory", "ave")),
+            (tag.max_memory, columnWidths.getWidth("memory", "max")),
+            (tag.total_memory, columnWidths.getWidth("memory", "total")),
+            ]:
             tag_str += reportMemory(t, options, field=width)
     out_str += header + "\n"
     out_str += sub_header + "\n"
@@ -362,18 +382,23 @@ def decorateSubHeader(title, columnWidths, options):
     """ Add a marker to the correct field if the title is sorted on.
     """
     if title.lower() != options.sortCategory:
-        return "| %*s%*s%*s%*s%*s " % (columnWidths.min, "min",
-                                       columnWidths.med, "med",
-                                       columnWidths.ave, "ave",
-                                       columnWidths.max, "max",
-                                       columnWidths.total, "total")
+        return "| %*s%*s%*s%*s%*s " % (columnWidths.getWidth(title, "min"),
+                                       "min",
+                                       columnWidths.getWidth(title, "med"),
+                                       "med",
+                                       columnWidths.getWidth(title, "ave"),
+                                       "ave",
+                                       columnWidths.getWidth(title, "max"),
+                                       "max",
+                                       columnWidths.getWidth(title, "total"),
+                                       "total")
     else:
         s = "| "
-        for field, width in [("min", columnWidths.min),
-                             ("med", columnWidths.med),
-                             ("ave", columnWidths.ave),
-                             ("max", columnWidths.max),
-                             ("total", columnWidths.total)]:
+        for field, width in [("min", columnWidths.getWidth(title, "min")),
+                             ("med", columnWidths.getWidth(title, "med")),
+                             ("ave", columnWidths.getWidth(title, "ave")),
+                             ("max", columnWidths.getWidth(title, "max")),
+                             ("total", columnWidths.getWidth(title, "total"))]:
             if options.sortField == field:
                 s += "%*s*" % (width - 1, field)
             else:
@@ -403,25 +428,15 @@ def sortTargets(targetTypes, options):
                  "total": "total",
                  "max": "max",}
     sortField = longforms[options.sortField]
-    if options.sortCategory == "time":
+    if (options.sortCategory == "time" or
+        options.sortCategory == "clock" or
+        options.sortCategory == "wait" or
+        options.sortCategory == "memory"
+        ):
         return sorted(
             targetTypes,
-            key=lambda tag: getattr(tag, "%s_time" % sortField),
-            reverse=options.sortReverse)
-    elif options.sortCategory == "clock":
-        return sorted(
-            targetTypes,
-            key=lambda tag: getattr(tag, "%s_clock" % sortField),
-            reverse=options.sortReverse)
-    elif options.sortCategory == "wait":
-        return sorted(
-            targetTypes,
-            key=lambda tag: getattr(tag, "%s_wait" % sortField),
-            reverse=options.sortReverse)
-    elif options.sortCategory == "memory":
-        return sorted(
-            targetTypes,
-            key=lambda tag: getattr(tag, "%s_memory" % sortField),
+            key=lambda tag: getattr(tag, "%s_%s"
+                                    % (sortField, options.sortCategory)),
             reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
         return sorted(
@@ -471,42 +486,23 @@ def computeColumnWidths(target_types, slave, target, options):
 def updateColumnWidths(tag, cw, options):
     """ Update the column width attributes for this tag"s fields.
     """
-    if "time" in options.categories:
-        for t, width in [(tag.min_time, "min"),
-                         (tag.median_time, "med"),
-                         (tag.average_time, "ave"),
-                         (tag.max_time, "max"),
-                         (tag.total_time, "total")]:
-            s = reportTime(t, options, field=getattr(cw, width))
-            if len(s.strip()) >= getattr(cw, width):
-                setattr(cw, width, len(s) + 1)
-    if "clock" in options.categories:
-        for t, width in [(tag.min_clock, "min"),
-                         (tag.median_clock, "med"),
-                         (tag.average_clock, "ave"),
-                         (tag.max_clock, "max"),
-                         (tag.total_clock, "total")]:
-            s= reportTime(t, options, field=getattr(cw, width))
-            if len(s.strip()) >= getattr(cw, width):
-                setattr(cw, width, len(s) + 1)
-    if "wait" in options.categories:
-        for t, width in [(tag.min_wait, "min"),
-                         (tag.median_wait, "med"),
-                         (tag.average_wait, "ave"),
-                         (tag.max_wait, "max"),
-                         (tag.total_wait, "total")]:
-            s= reportTime(t, options, field=getattr(cw, width))
-            if len(s.strip()) >= getattr(cw, width):
-                setattr(cw, width, len(s) + 1)
-    if "memory" in options.categories:
-        for t, iwdth in [(tag.min_memory, "min"),
-                         (tag.median_memory, "med"),
-                         (tag.average_memory, "ave"),
-                         (tag.max_memory, "max"),
-                         (tag.total_memory, "total")]:
-            s = reportMemory(t, options, field=getattr(cw, width))
-            if len(s.strip()) >= getattr(cw, width):
-                setattr(cw, width, len(s) + 1)
+    longforms = {"med": "median",
+                 "ave": "average",
+                 "min": "min",
+                 "total": "total",
+                 "max": "max",}
+    for category in ["time", "clock", "wait", "memory"]:
+        if category in options.categories:
+            for field in ["min", "med", "ave", "max", "total"]:
+                t = getattr(tag, "%s_%s" % (longforms[field], category))
+                if category in ["time", "clock", "wait"]:
+                    s = reportTime(t, options,
+                                   field=cw.getWidth(category, field))
+                else:
+                    s = reportMemory(t, options,
+                                   field=cw.getWidth(category, field))
+                if len(s.strip()) >= cw.getWidth(category, field):
+                    cw.setWidth(category, field, len(s) + 1)
 
 def buildElement(element, items, itemName):
     """ Create an element for output.
@@ -648,10 +644,10 @@ def reportData(xml_tree, options):
 def getNullFile():
     """ Guaranteed to return a file path that does not exist.
     """
-    charSet = string.ascii_lowercase + '0123456789'
-    nullFile = 'null_%s' % ''.join(choice(charSet) for x in xrange(6))
+    charSet = string.ascii_lowercase + "0123456789"
+    nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
     while os.path.exists(nullFile):
-        nullFile = 'null_%s' % ''.join(choice(charSet) for x in xrange(6))
+        nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
     return nullFile
 
 def getPreferredStatsCacheFileName(options):
@@ -660,15 +656,15 @@ def getPreferredStatsCacheFileName(options):
     null_file = getNullFile()
     location_jt = getStatsCacheFileName(options.jobTree)
     location_local = os.path.abspath(os.path.join(os.getcwd(),
-                                                  '.stats_cache.pickle'))
+                                                  ".stats_cache.pickle"))
     try:
-        loc_file = open(location_local, 'r')
+        loc_file = open(location_local, "r")
         data, loc = cPickle.load(loc_file)
         if getStatsFileName(options.jobTree) != loc:
             # local cache is from looking up a different jobTree
             location_local = null_file
     except EOFError:
-        sys.stderr.write('Problem loading the cache. Rerun without --cache\n')
+        sys.stderr.write("Problem loading the cache. Rerun without --cache\n")
     if os.path.exists(location_jt) and not os.path.exists(location_local):
         return location_jt
     elif not os.path.exists(location_jt) and os.path.exists(location_local):
@@ -691,12 +687,12 @@ def unpackData(options):
     if not os.path.exists(cache_file):
         return None
     if os.path.exists(cache_file):
-        f = open(cache_file, 'r')
+        f = open(cache_file, "r")
         try:
             data, location = cPickle.load(f)
         except EOFError:
-            sys.stderr.write('Problem loading the cache. '
-                             'Rerun without --cache\n')
+            sys.stderr.write("Problem loading the cache. "
+                             "Rerun without --cache\n")
         f.close()
         if location == getStatsFileName(options.jobTree):
             return data
@@ -710,7 +706,7 @@ def packData(data, options):
     try:
         # try to write to the jobTree directory
         payload = (data, stats_file)
-        f = open(cache_file, 'wb')
+        f = open(cache_file, "wb")
         cPickle.dump(payload, f, 2)  # 2 is binary format
         f.close()
     except IOError:
@@ -718,28 +714,24 @@ def packData(data, options):
             return
         # try to write to the current working directory if --cache
         cache_file = os.path.abspath(os.path.join(os.getcwd(),
-                                                  '.stats_cache.pickle'))
+                                                  ".stats_cache.pickle"))
         payload = (data, stats_file)
-        f = open(cache_file, 'wb')
+        f = open(cache_file, "wb")
         cPickle.dump(payload, f, 2)  # 2 is binary format
         f.close()
 
 def cacheAvailable(options):
     """ Check to see if a cache is available, return it.
     """
-    print 'checking avaialble'
     cache_file = getPreferredStatsCacheFileName(options)
     if not os.path.exists(cache_file):
-        print 'preferred cache doesnt exist: %s' % cache_file
         return None
     if not os.path.exists(getStatsFileName(options.jobTree)):
-        print 'stats file doesnt exist'
         return None
     mtime_stats = os.path.getmtime(getStatsFileName(options.jobTree))
     mtime_cache = os.path.getmtime(cache_file)
     if mtime_stats > mtime_cache:
         # recompute cache
-        print 'stats are newer than cache'
         return None
     return unpackData(options)
 
