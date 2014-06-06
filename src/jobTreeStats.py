@@ -273,7 +273,7 @@ def reportMemory(k, options, field=None, isBytes=False):
         if isBytes:
             k /= 1024.
         if field is not None:
-            return "%*dK" % (field - 1, k)
+            return "%*dK" % (field - 1, k)  # -1 for the K
         else:
             return "%dK" % int(k)
 
