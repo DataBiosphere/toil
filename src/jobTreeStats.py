@@ -661,8 +661,9 @@ def getPreferredStatsCacheFileName(options):
         if getStatsFileName(options.jobTree) != loc:
             # local cache is from looking up a different jobTree
             location_local = null_file
-    except EOFError:
+    except (EOFError, IOError):
         sys.stderr.write("Problem loading the cache. Rerun without --cache\n")
+        return null_file
     if os.path.exists(location_jt) and not os.path.exists(location_local):
         return location_jt
     elif not os.path.exists(location_jt) and os.path.exists(location_local):
