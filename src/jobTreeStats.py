@@ -650,19 +650,18 @@ def getNullFile():
 
 def getPreferredStatsCacheFileName(options):
     """ Determine if the jobtree or the os.getcwd() version should be used.
+    If no good option exists it will return a nonexistent file path.
     """
     null_file = getNullFile()
     location_jt = getStatsCacheFileName(options.jobTree)
     location_local = os.path.abspath(os.path.join(os.getcwd(),
                                                   ".stats_cache.pickle"))
-    try:
+    if os.path.exists(location_local):
         loc_file = open(location_local, "r")
         data, loc = cPickle.load(loc_file)
         if getStatsFileName(options.jobTree) != loc:
             # local cache is from looking up a different jobTree
             location_local = null_file
-    except EOFError:
-        sys.stderr.write("Problem loading the cache. Rerun without --cache\n")
     if os.path.exists(location_jt) and not os.path.exists(location_local):
         return location_jt
     elif not os.path.exists(location_jt) and os.path.exists(location_local):
@@ -710,7 +709,7 @@ def packData(data, options):
     except IOError:
         if not options.cache:
             return
-        # try to write to the current working directory if --cache
+        # try to write to the current working directory only if --cache
         cache_file = os.path.abspath(os.path.join(os.getcwd(),
                                                   ".stats_cache.pickle"))
         payload = (data, stats_file)
@@ -744,7 +743,6 @@ def main():
     checkOptions(options, args, parser)
     collatedStatsTag = cacheAvailable(options)
     if collatedStatsTag is None:
-        sys.exit(0)
         config, stats = getSettings(options)
         collatedStatsTag = processData(config, stats, options)
     reportData(collatedStatsTag, options)
