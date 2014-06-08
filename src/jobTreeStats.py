@@ -688,8 +688,8 @@ def unpackData(options):
         try:
             data, location = cPickle.load(f)
         except EOFError:
-            sys.stderr.write("Problem loading the cache. "
-                             "Rerun without --cache\n")
+            # bad cache.
+            return None
         f.close()
         if location == getStatsFileName(options.jobTree):
             return data
