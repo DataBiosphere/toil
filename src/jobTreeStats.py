@@ -273,7 +273,7 @@ def reportMemory(k, options, field=None, isBytes=False):
         if isBytes:
             k /= 1024.
         if field is not None:
-            return "%*dK" % (field - 1, k)  # -1 for the K
+            return "%*dK" % (field - 1, k)  # -1 for the "K"
         else:
             return "%dK" % int(k)
 
@@ -286,7 +286,7 @@ def reportNumber(n, options, field=None):
         return "%g" % n
 
 def refineData(root, options):
-    """ walk the root and gather up the important bits.
+    """ walk down from the root and gather up the important bits.
     """
     slave = JTTag(root.find("slave"))
     target = JTTag(root.find("target"))
@@ -297,7 +297,7 @@ def refineData(root, options):
     return root, slave, target, targetTypes
 
 def sprintTag(key, tag, options, columnWidths=None):
-    """ Print out a JTTag().
+    """ Generate a pretty-print ready string from a JTTag().
     """
     if columnWidths is None:
         columnWidths = ColumnWidths()
@@ -371,7 +371,7 @@ def sprintTag(key, tag, options, columnWidths=None):
     return out_str
 
 def decorateTitle(title, options):
-    """ Add a marker to title if the title is sorted on.
+    """ Add a marker to TITLE if the TITLE is sorted on.
     """
     if title.lower() == options.sortCategory:
         return "%s*" % title
@@ -379,7 +379,7 @@ def decorateTitle(title, options):
         return title
 
 def decorateSubHeader(title, columnWidths, options):
-    """ Add a marker to the correct field if the title is sorted on.
+    """ Add a marker to the correct field if the TITLE is sorted on.
     """
     title = title.lower()
     if title != options.sortCategory:
@@ -482,7 +482,7 @@ def computeColumnWidths(target_types, slave, target, options):
     return cw
 
 def updateColumnWidths(tag, cw, options):
-    """ Update the column width attributes for this tag"s fields.
+    """ Update the column width attributes for this tag's fields.
     """
     longforms = {"med": "median",
                  "ave": "average",
@@ -500,6 +500,7 @@ def updateColumnWidths(tag, cw, options):
                     s = reportMemory(t, options,
                                      field=cw.getWidth(category, field)).strip()
                 if len(s) >= cw.getWidth(category, field):
+                    # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
 
 def buildElement(element, items, itemName):
@@ -569,6 +570,8 @@ def createSummary(element, containingItems, containingItemName, getFn):
                    containingItemName] = str(max(itemCounts))
 
 def getSettings(options):
+    """ Collect and return the stats and config data.
+    """
     config_file = getConfigFileName(options.jobTree)
     stats_file = getStatsFileName(options.jobTree)
     try:
@@ -577,18 +580,21 @@ def getSettings(options):
         sys.stderr.write("The config file xml, %s, is empty.\n" % config_file)
         raise
     try:
-        stats = ET.parse(stats_file).getroot() #Try parsing the whole file. 
-    except ET.ParseError: #If it doesn't work then we build the file incrementally
-        sys.stderr.write("The job tree stats file is incomplete or corrupt, we'll try instead to parse what's in the file incrementally until we reach an error\n")
-        fH = open(stats, 'r') #Open the file for editing
+        stats = ET.parse(stats_file).getroot() # Try parsing the whole file.
+    except ET.ParseError: # If it doesn't work then we build the file incrementally
+        sys.stderr.write("The job tree stats file is incomplete or corrupt, "
+                         "we'll try instead to parse what's in the file "
+                         "incrementally until we reach an error.\n")
+        fH = open(stats, 'r') # Open the file for editing
         stats = ET.Element("stats")
         try:
             for event, elem in ET.iterparse(fH):
                 if elem.tag == 'slave':
                     stats.append(elem)
         except ET.ParseError:
-            pass #Do nothing at this point
-        fH.close()
+            pass # Do nothing at this point
+        finally:
+            fH.close()
     return config, stats
 
 def processData(config, stats, options):
@@ -647,33 +653,39 @@ def reportData(xml_tree, options):
     print out_str
 
 def getNullFile():
-    """ Guaranteed to return a file path that does not exist.
+    """ Guaranteed to return a valid path to a file that does not exist.
     """
     charSet = string.ascii_lowercase + "0123456789"
+    prefix = os.path.getcwd()
     nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
-    while os.path.exists(nullFile):
+    while os.path.exists(os.path.join(prefix, nullFile)):
         nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
-    return nullFile
+    return os.path.join(os.path.getcwd(), nullFile)
 
 def getPreferredStatsCacheFileName(options):
     """ Determine if the jobtree or the os.getcwd() version should be used.
-    If no good option exists it will return a nonexistent file path.
+    If no good option exists, return a nonexistent file path.
+    Note you MUST check to see if the return value exists before using.
     """
     null_file = getNullFile()
     location_jt = getStatsCacheFileName(options.jobTree)
     location_local = os.path.abspath(os.path.join(os.getcwd(),
                                                   ".stats_cache.pickle"))
+    # start by looking for the current directory cache.
     if os.path.exists(location_local):
         loc_file = open(location_local, "r")
         data, loc = cPickle.load(loc_file)
         if getStatsFileName(options.jobTree) != loc:
-            # local cache is from looking up a different jobTree
+            # the local cache is from looking up a *different* jobTree
             location_local = null_file
     if os.path.exists(location_jt) and not os.path.exists(location_local):
+        # use the jobTree directory version
         return location_jt
     elif not os.path.exists(location_jt) and os.path.exists(location_local):
+        # use the os.getcwd() version
         return location_local
     elif os.path.exists(location_jt) and os.path.exists(location_local):
+        # check file modify times and use the most recent version
         mtime_jt = os.path.getmtime(location_jt)
         mtime_local = os.path.getmtime(location_local)
         if mtime_jt > mtime_local:
@@ -697,7 +709,8 @@ def unpackData(options):
         except EOFError:
             # bad cache.
             return None
-        f.close()
+        finally:
+            f.close()
         if location == getStatsFileName(options.jobTree):
             return data
     return None
@@ -727,16 +740,18 @@ def packData(data, options):
 def cacheAvailable(options):
     """ Check to see if a cache is available, return it.
     """
+    if not os.path.exists(getStatsFileName(options.jobTree)):
+        return None
     cache_file = getPreferredStatsCacheFileName(options)
     if not os.path.exists(cache_file):
         return None
-    if not os.path.exists(getStatsFileName(options.jobTree)):
-        return None
+    # check the modify times on the files, see if the cache should be recomputed
     mtime_stats = os.path.getmtime(getStatsFileName(options.jobTree))
     mtime_cache = os.path.getmtime(cache_file)
     if mtime_stats > mtime_cache:
         # recompute cache
         return None
+    # cache is fresh, return the cache
     return unpackData(options)
 
 def main():
