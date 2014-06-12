@@ -656,11 +656,11 @@ def getNullFile():
     """ Guaranteed to return a valid path to a file that does not exist.
     """
     charSet = string.ascii_lowercase + "0123456789"
-    prefix = os.path.getcwd()
+    prefix = os.getcwd()
     nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
     while os.path.exists(os.path.join(prefix, nullFile)):
         nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
-    return os.path.join(os.path.getcwd(), nullFile)
+    return os.path.join(os.getcwd(), nullFile)
 
 def getPreferredStatsCacheFileName(options):
     """ Determine if the jobtree or the os.getcwd() version should be used.
