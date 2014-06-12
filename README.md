@@ -238,7 +238,7 @@ The important arguments to **jobTreeStats** are:
 
 ##Overview of jobTree
 
-The following sections are for people creating jobTree scripts and as general information. The presentation docs/jobTreeSlides.pdf is also a quite useful, albeit slightly out of date, guide to using jobTree. -
+The following sections are for people creating jobTree scripts and as general information. The presentation **[docs/jobTreeSlides.pdf](https://github.com/benedictpaten/jobTree/blob/master/doc/jobTreeSlides.pdf)** is also a quite useful, albeit slightly out of date, guide to using jobTree. -
 
 Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
