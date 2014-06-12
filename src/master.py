@@ -112,9 +112,10 @@ def statsAggregatorProcess(jobTreePath, tempDirs, stop):
     statsFile = getStatsFileName(jobTreePath)
 
     #The main loop
+    timeSinceOutFileLastFlushed = time.time()
     while True:
-        def fn():
-            i = 0
+        def scanDirectoriesAndScrapeStats():
+            numberOfFilesProcessed = 0
             for dir in tempDirs:
                 for tempFile in os.listdir(dir):
                     if tempFile[-3:] != "new":
@@ -124,13 +125,16 @@ def statsAggregatorProcess(jobTreePath, tempDirs, stop):
                             fileHandle.write(line)
                         fH.close()
                         os.remove(absTempFile)
-                        i += 1
-            return i
-        if not stop.empty():
-            fn()
+                        numberOfFilesProcessed += 1
+            return numberOfFilesProcessed 
+        if not stop.empty(): #This is a indirect way of getting a message to the process to exit
+            scanDirectoriesAndScrapeStats()
             break
-        if not fn():
+        if scanDirectoriesAndScrapeStats() == 0:
             time.sleep(0.5) #Avoid cycling too fast
+        if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the results file every minute
+            fileHandle.flush() 
+            timeSinceOutFileLastFlushed = time.time()
 
     #Finish the stats file
     fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))

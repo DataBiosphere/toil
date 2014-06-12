@@ -577,11 +577,18 @@ def getSettings(options):
         sys.stderr.write("The config file xml, %s, is empty.\n" % config_file)
         raise
     try:
-        stats = ET.parse(stats_file).getroot()
-    except ET.ParseError:
-        sys.stderr.write("The job tree stats file is empty. Either the job "
-                         "has crashed, or no jobs have completed yet.\n")
-        sys.exit(0)
+        stats = ET.parse(stats_file).getroot() #Try parsing the whole file. 
+    except ET.ParseError: #If it doesn't work then we build the file incrementally
+        sys.stderr.write("The job tree stats file is incomplete or corrupt, we'll try instead to parse what's in the file incrementally until we reach an error\n")
+        fH = open(stats, 'r') #Open the file for editing
+        stats = ET.Element("stats")
+        try:
+            for event, elem in ET.iterparse(fH):
+                if elem.tag == 'slave':
+                    stats.append(elem)
+        except ET.ParseError:
+            pass #Do nothing at this point
+        fH.close()
     return config, stats
 
 def processData(config, stats, options):
