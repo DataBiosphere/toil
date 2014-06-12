@@ -34,7 +34,7 @@ class Target(object):
         self.__children = []
         self.__childCommands = []
         self.__memory = memory
-        self.__time = time #This parameter is no longer used.
+        self.__time = time #This parameter is no longer used by the batch system.
         self.__cpu = cpu
         self.globalTempDir = None
         if self.__module__ == "__main__":

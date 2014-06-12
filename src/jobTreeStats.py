@@ -104,8 +104,8 @@ def initializeOptions(parser):
     ##########################################
     # Construct the arguments.
     ##########################################
-    parser.add_option("--jobTree", dest="jobTree",
-                      help="Directory containing the job tree")
+    parser.add_option("--jobTree", dest="jobTree", default='./jobTree',
+                      help="Directory containing the job tree. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
@@ -134,6 +134,9 @@ def checkOptions(options, args, parser):
     """ Check options, throw parser.error() if something goes wrong
     """
     logger.info("Parsed arguments")
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
     assert len(args) <= 1  # Only jobtree may be specified as argument
     if len(args) == 1:  # Allow jobTree directory as arg
         options.jobTree = args[0]
@@ -580,7 +583,7 @@ def getSettings(options):
         stats = ET.parse(stats_file).getroot() #Try parsing the whole file. 
     except ET.ParseError: #If it doesn't work then we build the file incrementally
         sys.stderr.write("The job tree stats file is incomplete or corrupt, we'll try instead to parse what's in the file incrementally until we reach an error\n")
-        fH = open(stats, 'r') #Open the file for editing
+        fH = open(stats_file, 'r') #Open the file for editing
         stats = ET.Element("stats")
         try:
             for event, elem in ET.iterparse(fH):

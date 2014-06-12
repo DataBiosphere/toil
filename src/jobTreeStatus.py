@@ -85,10 +85,10 @@ def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
-                      help="Directory containing the job tree")
+                      help="Directory containing the job tree. The jobTree location can also be specified as the argument to the script. default=%default", default='./jobTree')
     
     parser.add_option("--verbose", dest="verbose", action="store_true",
-                      help="Print loads of information, particularly all the log files of errors. default=%default",
+                      help="Print loads of information, particularly all the log files of jobs that failed. default=%default",
                       default=False)
     
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
