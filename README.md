@@ -24,19 +24,98 @@ Type 'make all' in the base directory, this just puts some stuff that is current
 
 ##Running and examining a jobTree script
 
-The following walks through running a jobTree script and using command-line tools to analyse the status of a run and its performance characteristics.
+The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats** to analyse the status, restart and print performance statistics, respectively, about a run.
 
-Once jobTree is installed, running a jobTree script is performed by executing the script, e.g.:
+Once jobTree is installed, running a jobTree script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
 
+<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --jobTree bar/jobTree --batchSystem parasol --logLevel INFO --stats</code>
 
-When a jobTree script finishes it will print:
+Which in this case uses the parasol batch system, and INFO level logging and where foo is the file to sort and bar/jobTree is the location of a directory (which should not already exist) from which the batch will be managed. Details of the jobTree options are described below; the stats option is used to gather statistics about the jobs in a run.
 
+The script will return a zero exit value if the jobTree system is successfully able to run to completion, else it will create an exception. If the script fails because a job failed then the log file information of the job will be reported to std error. 
+The jobTree directory (here 'bar/jobTree') is not automatically deleted regardless of success or failure, and contains a record of the jobs run, which can be enquired about using the **jobTreeStatus** command. e.g.
 
+<code>[]$jobTreeStatus bar/jobTree --verbose</code>
 
-leave behind a jobTree directory (the name of which can be specified as an option to the script, by default it is "./jobTree"). 
-If a jobTree script fails it can be restarted using the "jobTreeRun" command, which takes a jobTree 
+```
+There are 0 active jobs, 0 parent jobs with children, 0 totally failed jobs and 0 empty jobs (i.e. finished but not cleaned up) curre
+ntly in job tree: jobTree
+There are no failed jobs to report
+```
 
-A jobTree script will have a series of jobTree parameters. 
+If a job failed, this provides a convenient way to reprint the error. The following are the important options to **jobTreeStatus**:
+
+    --jobTree=JOBTREE     Directory containing the job tree. The jobTree location can also be specified as the argument to the script. default=./jobTree
+    --verbose             Print loads of information, particularly all the log
+                        files of jobs that failed. default=False
+    --failIfNotComplete   Return exit value of 1 if job tree jobs not all
+                        completed. default=False
+
+If a job in the script failed or the system goes down, you may wish to retry the job after fixing the error. This can be achieved by restarting the script with the **jobTreeRun** command which will restart an existing jobTree.
+
+<code>[]$ jobTreeRun --jobTree bar/jobTree --logLevel INFO</code>
+
+It will always attempt to restart the jobs from the previous point of failure. 
+
+If the script was run with the **--stats** option then **jobTreeStats** can be run on the pipeline do generate information about the performance of the run, in terms of how many jobs were run, how long they executed for and how much CPU time/wait time was involved, e.g.:
+
+<code>[]$jobTreeStats bar/jobTree</code>
+
+```
+Batch System: singleMachine
+Default CPU: 1  Default Memory: 2097152K
+Job Time: 0.50  Max CPUs: 9.22337e+18  Max Threads: 4
+Total Clock: 0.09  Total Runtime: 7.60
+Slave
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+      365 |     0.01    0.02    0.02    0.06    6.82 |     0.01    0.01    0.01    0.04    4.71 |     0.00    0.00    0.01    0.03    2.11 |   9781248K 13869056K 13799121K 14639104K 5036679168K
+Target
+ Slave Jobs   |     min    med    ave    max
+              |       2      2      2      2
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+      367 |     0.00    0.00    0.00    0.03    0.68 |     0.00    0.00    0.00    0.01    0.42 |     0.00    0.00    0.00    0.03    0.26 |   9461760K 13869056K 13787694K 14639104K 5060083712K
+ Cleanup
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+        1 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |  14639104K 14639104K 14639104K 14639104K   14639104K
+ Up
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+      124 |     0.00    0.00    0.00    0.01    0.15 |     0.00    0.00    0.00    0.01    0.12 |     0.00    0.00    0.00    0.01    0.03 |  13713408K 14090240K 14044985K 14581760K 1741578240K
+ Setup
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+        1 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |   9551872K  9551872K  9551872K  9551872K    9551872K
+ Down
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+      241 |     0.00    0.00    0.00    0.03    0.53 |     0.00    0.00    0.00    0.00    0.30 |     0.00    0.00    0.00    0.03    0.23 |   9461760K 13828096K 13669354K 14155776K 3294314496K
+
+```
+
+The breakdown is given per "slave", which is unit of serial execution, and per "target", which corresponds to a scriptTree target (see below).
+Despite its simplicity, we've found this can be **very** useful for tracking down performance issues, particularly when trying out a pipeline on a new system. 
+
+The important arguments to **jobTreeStats** are:
+
+    --outputFile=OUTPUTFILE
+                        File in which to write results
+    --raw                 output the raw xml data.
+    --pretty, --human     if not raw, prettify the numbers to be human readable.
+    --categories=CATEGORIES
+                        comma separated list from [time, clock, wait, memory]
+    --sortCategory=SORTCATEGORY
+                        how to sort Target list. may be from [alpha, time,
+                        clock, wait, memory, count]. default=%(default)s
+    --sortField=SORTFIELD
+                        how to sort Target list. may be from [min, med, ave,
+                        max, total]. default=%(default)s
+    --sortReverse, --reverseSort
+                        reverse sort order.
+    --cache               stores a cache to speed up data display.
+
 
 ##jobTree options
 
@@ -212,12 +291,11 @@ Targets are also provided with two temporary file directories called **localTemp
 
 A job can either be created as a follow-on, or it can be the very first job, or it can be created as a child of another job. Let a job not created as a follow-on be called a 'founder'. Each founder job may have a follow-on job. If it has a follow-on job, this follow-on job may in turn have a follow-on, etc. Thus each founder job defines a chain of follow-ons.  Let a founder job and its maximal sequence of follow-ons be called a 'chain'. Let the last follow-on job in a chain be called the chain's 'closer'. For each chain of targets a temporary directory, **globalTempDir**, is created immediately prior to calling the founder target's run method, this directory and its contents then persist until the completion of closer target's run method. Thus the **globalTempDir** is a scratch directory in which temporary results can be stored on disk between target jobs in a chain. Furthermore, files created in this directory can be passed to the children of target jobs in the chain, allowing results to be transmitted from a target job to its children.
 
-##Running a scriptTree pipeline:
+##Creating a scriptTree script:
 
-ScriptTree targets are serialized (written and retrieved from disk) so that they can be executed in parallel on cluster of different machines. Thankfully, this is mostly transparent to the user, except for the fact that targets must be 'pickled' (see python docs), which creates a few constraints upon what can and can not be passed to and stored by a target. 
-
+ScriptTree targets are serialized (written and retrieved from disk) so that they can be executed in parallel on a cluster of different machines. Thankfully, this is mostly transparent to the user, except for the fact that targets must be 'pickled' (see python docs), which creates a few constraints upon what can and can not be passed to and stored by a target. 
 Currently the preferred way to run a pipeline is to create an executable python script.
-An example of this is shown in **tests/sorts/scriptTreeTest_Sort.py**. 
+For example, see **tests/sorts/scriptTreeTest_Sort.py**. 
 
 The first line to notice is:
 
@@ -270,20 +348,6 @@ One final important detail, the lines:
 ```
 
 reload the objects in the module, such that their module names will be absolute (this is necessary for the serialization that is used). Targets in other classes that are imported do not need to be reloaded in this way.
-
-The script can then be run, for example using the command: 
-
-<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --jobTree bar/jobTree --batchSystem parasol --logLevel INFO</code>
-
-Which in this case uses parasol and INFO level logging and where foo is the file to sort and bar/jobTree is the location of a directory (which should not already exist) from which the batch will be managed.
-
-The script will return a zero exit value if the jobTree system is successfully able to run to completion, else it will create an exception. The directory 'bar/jobTree', is not automatically deleted and contains a record of the jobs run, which can be enquired about using the **jobTreeStatus.py** command. 
-
-If the script fails because a target failed then the script will return a non-zero exit value and log file information will be reported to std error (these errors can also be retrieved using the jobTreeStatus command). If you wish to retry the job after fixing the error then the batch can be restarted by calling
-
-<code>[]$ jobTreeRun --jobTree bar/jobTree --logLevel INFO</code>
-
-Which will attempt to restart the jobs from the previous point of failure.
 
 ##Atomicity
 jobTree and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until jobTree knows your children have been completed okay you can not assume that your Target has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
