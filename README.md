@@ -1,21 +1,166 @@
 #jobTree
-10/07/2009, revised 09/17/2010.
+10/07/2009, revised 09/17/2010, 06/12/2014
 
 ##Author
-Benedict Paten (benedict@soe.ucsc.edu)
-
-##Installation
-
-For install instructions see doc/install.txt
-
+Benedict Paten (benedict@soe.ucsc.edu), Dent Earl, Daniel Zerbino, other UCSC people.
 
 ##Requirements
 
 * Python 2.5 or later, but less than 3.0
-* sonLib https://github.com/benedictpaten/sonLib
+
+##Installation
+
+1. Install sonLib. See https://github.com/benedictpaten/sonLib
+
+2. Place the directory containing the jobTree in the same directory as sonLib. 
+The directory containing both sonLib and jobTree should be on your python path. i.e.
+PYTHONPATH=${PYTHONPATH}:FOO where FOO/jobTree is the path containing the base directory of jobTree. 
+
+3. Build the code:
+Type 'make all' in the base directory, this just puts some stuff that is currently all python based in the bin dir. In the future there might be some actual compilation.
+
+4. Test the code:
+	python allTests.py or 'make test'.
+
+##Running and examining a jobTree script
+
+The following walks through running a jobTree script and using command-line tools to analyse the status of a run and its performance characteristics.
+
+Once jobTree is installed, running a jobTree script is performed by executing the script, e.g.:
 
 
-##Introduction
+When a jobTree script finishes it will print:
+
+
+
+leave behind a jobTree directory (the name of which can be specified as an option to the script, by default it is "./jobTree"). 
+If a jobTree script fails it can be restarted using the "jobTreeRun" command, which takes a jobTree 
+
+A jobTree script will have a series of jobTree parameters. 
+
+##jobTree options
+
+   A jobTree script will have the following command-line options.
+   
+    Options that control logging.
+
+    --logOff            Turn off logging. (default is CRITICAL)
+    --logInfo           Turn on logging at INFO level. (default is CRITICAL)
+    --logDebug          Turn on logging at DEBUG level. (default is CRITICAL)
+    --logLevel=LOGLEVEL
+                        Log at level (may be either OFF/INFO/DEBUG/CRITICAL).
+                        (default is CRITICAL)
+    --logFile=LOGFILE   File to log in
+    --rotatingLogging   Turn on rotating logging, which prevents log files
+                        getting too big.
+                        
+   Options to specify the location of the jobTree and turn on stats
+    collation about the performance of jobs.
+
+    --jobTree=JOBTREE   Directory in which to place job management files and
+                        the global accessed temporary file directories(this
+                        needs to be globally accessible by all machines
+                        running jobs). If you pass an existing directory it
+                        will check if it's a valid existing job tree, then try
+                        and restart the jobs in it. The default=./jobTree
+    --stats             Records statistics about the job-tree to be used by
+                        jobTreeStats. default=False
+
+   Options for specifying the batch system, and arguments to the
+    batch system/big batch system (see below).
+
+    --batchSystem=BATCHSYSTEM
+                        The type of batch system to run the job(s) with,
+                        currently can be
+                        'singleMachine'/'parasol'/'acidTest'/'gridEngine'.
+                        default=singleMachine
+    --maxThreads=MAXTHREADS
+                        The maximum number of threads (technically processes
+                        at this point) to use when running in single machine
+                        mode. Increasing this will allow more jobs to run
+                        concurrently when running on a single machine.
+                        default=4
+    --parasolCommand=PARASOLCOMMAND
+                        The command to run the parasol program default=parasol
+
+    Options to specify default cpu/memory requirements (if not
+    specified by the jobs themselves), and to limit the total amount of
+    memory/cpu requested from the batch system.
+
+    --defaultMemory=DEFAULTMEMORY
+                        The default amount of memory to request for a job (in
+                        bytes), by default is 2^31 = 2 gigabytes,
+                        default=2147483648
+    --defaultCpu=DEFAULTCPU
+                        The default the number of cpus to dedicate a job.
+                        default=1
+    --maxCpus=MAXCPUS   The maximum number of cpus to request from the batch
+                        system at any one time. default=9223372036854775807
+    --maxMemory=MAXMEMORY
+                        The maximum amount of memory to request from the batch
+                        system at any one time. default=9223372036854775807
+
+   Options for rescuing/killing/restarting jobs, includes options for jobs that either run too long/fail or get lost (some
+    batch systems have issues!).
+
+    --retryCount=RETRYCOUNT
+                        Number of times to retry a failing job before giving
+                        up and labeling job failed. default=0
+    --maxJobDuration=MAXJOBDURATION
+                        Maximum runtime of a job (in seconds) before we kill
+                        it (this is a lower bound, and the actual time before
+                        killing the job may be longer).
+                        default=9223372036854775807
+    --rescueJobsFrequency=RESCUEJOBSFREQUENCY
+                        Period of time to wait (in seconds) between checking
+                        for missing/overlong jobs, that is jobs which get lost
+                        by the batch system. Expert parameter. (default is set
+                        by the batch system)
+
+  jobTree big batch system options; jobTree can employ a secondary batch system for running large
+    memory/cpu jobs using the following arguments.
+
+    --bigBatchSystem=BIGBATCHSYSTEM
+                        The batch system to run for jobs with larger
+                        memory/cpus requests, currently can be
+                        'singleMachine'/'parasol'/'acidTest'/'gridEngine'.
+                        default=none
+    --bigMemoryThreshold=BIGMEMORYTHRESHOLD
+                        The memory threshold above which to submit to the big
+                        queue. default=9223372036854775807
+    --bigCpuThreshold=BIGCPUTHRESHOLD
+                        The cpu threshold above which to submit to the big
+                        queue. default=9223372036854775807
+    --bigMaxCpus=BIGMAXCPUS
+                        The maximum number of big batch system cpus to allow
+                        at one time on the big queue.
+                        default=9223372036854775807
+    --bigMaxMemory=BIGMAXMEMORY
+                        The maximum amount of memory to request from the big
+                        batch system at any one time.
+                        default=9223372036854775807
+
+    Miscellaneous options.
+
+    --jobTime=JOBTIME   The approximate time (in seconds) that you'd like a
+                        list of child jobs to be run serially before being
+                        parallelized. This parameter allows one to avoid over
+                        parallelizing tiny jobs, and therefore paying
+                        significant scheduling overhead, by running tiny jobs
+                        in series on a single node/core of the cluster.
+                        default=30
+    --maxLogFileSize=MAXLOGFILESIZE
+                        The maximum size of a job log file to keep (in bytes),
+                        log files larger than this will be truncated to the
+                        last X bytes. Default is 50 kilobytes, default=50120
+    --command=COMMAND   The command to run (which will generate subsequent
+                        jobs). This is deprecated
+
+
+##Overview of jobTree
+
+The following sections are for people creating jobTree scripts and as general information. The presentation docs/jobTreeSlides.pdf is also a quite useful, albeit slightly out of date, guide to using jobTree. -
+
 Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
 
@@ -29,7 +174,7 @@ The basic pattern provided by jobTree is as follows:
 6. Upon completion of all the children (and children's children and follow-ons, collectively descendants) the follow-on job is run. The follow-on job may create more children.
 
 ##scriptTree
-ScriptTree provides a simple Python interface to jobTree, and is the preferred way to use jobTree. 
+ScriptTree provides a Python interface to jobTree, and is now the only way to interface with jobTree (previously you could manipulate XML files, but I've removed that functionality as I improved the underlying system).
 
 Aside from being the interface to jobTree, scriptTree was designed to remediate some of the pain of writing wrapper scripts for cluster jobs, via the extension of a simple python wrapper class (called a 'Target' to avoid confusion with the more general use of the word 'job') which does much of the work for you.  Using scriptTree, you can describe your script as a series of these classes which link together, with all the arguments and options specified in one place. The script then, using the magic of python pickles, generates all the wrappers dynamically and clean them up when done.
 
@@ -58,7 +203,7 @@ class Setup(Target):
         self.setFollowOnTarget(Cleanup(tempOutputFile, self.inputFile))
 ```
 
-The constructor (**__init__()**) assigns some variables to the class. When invoking the constructor of the base class (which should be the first thing the target does), you can optionally pass time (in seconds), memory (in bytes) and cpu parameters. The time parameter is your estimate of how long the target will run, and allows the scheduler to be more efficient. The memory and cpu parameters allow you to guarantee resources for a target.
+The constructor (**__init__()**) assigns some variables to the class. When invoking the constructor of the base class (which should be the first thing the target does), you can optionally pass time (in seconds), memory (in bytes) and cpu parameters. The time parameter is your estimate of how long the target will run - UPDATE: IT IS CURRENTLY UNUSED BY THE SCHEDULAR. The memory and cpu parameters allow you to guarantee resources for a target.
 
 The run method is where the variables assigned by the constructor are used and where in general actual work is done.
 Aside from doing the specific work of the target (in this case creating a temporary file to hold some intermediate output), the run method is also where children and a follow-on job are created, using **addChildTarget()** and **setFollowOnTarget()**. A job may have arbitrary numbers of children, but one or zero follow-on jobs. 
@@ -141,7 +286,7 @@ If the script fails because a target failed then the script will return a non-ze
 Which will attempt to restart the jobs from the previous point of failure.
 
 ##Atomicity
-jobTree and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until jobTree knows your children have been completed okay you can not assume that your job (if using scriptTree, Target) has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
+jobTree and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until jobTree knows your children have been completed okay you can not assume that your Target has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
          
 1. **Never cleans up / alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
 2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the job tree master process. 
@@ -154,10 +299,7 @@ jobTree and scriptTree are designed to be robust, so that individuals jobs (targ
 ##Environment
 jobTree replicates the environment in which jobTree or scriptTree is invoked and provides this environment to all the jobs/targets. This ensures uniformity of the environment variables for every job.
 
-##Probably FAQ's:
-* _Why do we use this pattern?_
-
-    Ideally when issuing children the parent job could just go to sleep on the cluster. But unless it frees the machine it's sleeping on, then the cluster soon jams up with sleeping jobs. This design is a pragmatic way of designing simple parallel code. It isn't heavy duty, it isn't map-reduce, but it has it's niche.
+##FAQ's:
 
 * _How robust is jobTree to failures of nodes and/or the master?_
 
@@ -165,9 +307,9 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
 * _How scaleable?_
 
-    Probably not very. You should be safe to have a 1000 concurrent jobs running, depending on your file-system and batch system.
+    We have tested having 1000 concurrent jobs running on our cluster. This will depend on the underlying batch system being used.
 
-* _Can you support my XYZ batch system?_
+* _Can you support the XYZ batch system?_
 
     See the abstract base class 'AbstractBatchSystem' in the code to see what's required. You'll probably need to speak to me as I haven't attempted to comprehensively document these functions, though it's pretty straight forward.
 
