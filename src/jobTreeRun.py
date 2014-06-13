@@ -34,6 +34,7 @@ from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
+from jobTree.batchSystems.lsf import LSFBatchSystem
 
 from jobTree.src.job import Job
 
@@ -72,7 +73,7 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn = addGroupFn("jobTree options for specifying the batch system", "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
-                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'. default=%s" % defaultStr))
+                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'. default=%s" % defaultStr))
     addOptionFn("--maxThreads", dest="maxThreads", default=4,
                       help=("The maximum number of threads (technically processes at this point) to use when running in single "
                             "machine mode. Increasing this will allow more jobs to run concurrently when running on a single machine. default=%s" % defaultStr))
@@ -168,6 +169,9 @@ def loadTheBatchSystem(config):
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
             config.attrib["try_count"] = str(32) #The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs before this becomes probable
             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+        elif batchSystemString == "lsf" or batchSystemString == "LSF":
+            batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
+            logger.info("Using the lsf batch system")
         else:
             raise RuntimeError("Unrecognised batch system: %s" % batchSystemString)
         return batchSystem
