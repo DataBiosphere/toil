@@ -1,4 +1,6 @@
 #jobTree
+Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, parasol and on multi-core machines.
+
 10/07/2009, revised 09/17/2010, 06/12/2014
 
 ##Authors
@@ -24,7 +26,7 @@ Type 'make all' in the base directory, this just puts some stuff that is current
 
 ##Running and examining a jobTree script
 
-The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats** to analyse the status, restart and print performance statistics, respectively, about a run.
+The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats**, which are used to analyse the status, restart and print performance statistics, respectively, about a run.
 
 Once jobTree is installed, running a jobTree script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
 
