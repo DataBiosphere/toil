@@ -375,7 +375,7 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
 * _Can you support the XYZ batch system?_
 
-    See the abstract base class 'AbstractBatchSystem' in the code to see what's required. You'll probably need to speak to me as I haven't attempted to comprehensively document these functions, though it's pretty straight forward.
+    See the abstract base class '[AbstractBatchSystem](https://github.com/benedictpaten/jobTree/blob/master/batchSystems/abstractBatchSystem.py)' in the code to see what functions need to be implemented. It's reasonably straight forward.
 
 * _Is there an API for the jobTree top level commands?_
 
