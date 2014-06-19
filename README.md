@@ -263,7 +263,7 @@ This inherited template pattern has the following advantages:
 2. You write less boiler plate.
 3. You can organise all the input arguments and options in one place.
 
-The best way to learn how to use script tree is to look at an example. The following is taken from <code>jobTree.test.sort.scriptTreeTest_Sort.py</code> which provides a complete script for performing a parallel merge sort. 
+The best way to learn how to use script tree is to look at an example. The following is taken from (an old version of) <code>jobTree.test.sort.scriptTreeTest_Sort.py</code> which provides a complete script for performing a parallel merge sort. 
 
 Below is the first 'Target' of this script inherited from the base class 'jobTree.scriptTree.Target'. Its job is to setup the merge sort.
 
@@ -290,6 +290,29 @@ Aside from doing the specific work of the target (in this case creating a tempor
 Targets are also provided with two temporary file directories called **localTempDir** and **globalTempDir**, which can be accessed with the methods **getLocalTempDir()** and **getGlobalTempDir()**, respectively. The **localTempDir** is the path to a temporary directory that is local to the machine on which the target is being executed and that will exist only for the length of the run method. It is useful for storing interim results that are computed during runtime. All files in this directory are guaranteed to be removed once the run method has finished - even if your target crashes. 
 
 A job can either be created as a follow-on, or it can be the very first job, or it can be created as a child of another job. Let a job not created as a follow-on be called a 'founder'. Each founder job may have a follow-on job. If it has a follow-on job, this follow-on job may in turn have a follow-on, etc. Thus each founder job defines a chain of follow-ons.  Let a founder job and its maximal sequence of follow-ons be called a 'chain'. Let the last follow-on job in a chain be called the chain's 'closer'. For each chain of targets a temporary directory, **globalTempDir**, is created immediately prior to calling the founder target's run method, this directory and its contents then persist until the completion of closer target's run method. Thus the **globalTempDir** is a scratch directory in which temporary results can be stored on disk between target jobs in a chain. Furthermore, files created in this directory can be passed to the children of target jobs in the chain, allowing results to be transmitted from a target job to its children.
+
+##Making Functions into Targets
+
+To avoid the need to create a Target class for every job, I've added the ability to wrap functions, hence the code for the setup function described above becomes:
+
+```
+def setup(target, inputFile, N):
+    """Sets up the sort.
+    """
+    tempOutputFile = getTempFile(rootDir=target.getGlobalTempDir())
+    target.addChildTargetFn(down, (inputFile, 0, os.path.getsize(inputFile), N, tempOutputFile))
+    target.setFollowOnFn(cleanup, (tempOutputFile, inputFile))
+```
+
+The code to turn this into a target uses the static method **[Target.makeTargetFnTarget](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L142)**:
+
+```
+Target.makeTargetFnTarget(setup, (fileToSort, N))
+```
+
+Notice that the child and follow-on targets have also been refactored as functions, hence the methods **[addChildTargetFn](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L82)** and **[setFollowOnFn](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L67)**, which take functions as opposed to Target objects.
+
+Note, there are two types of functions you can wrap - **target functions**, whose first argument must be the wrapping target object (the setup function above is an excample of a target function), and plain functions that do not have a reference to the wrapping target.
 
 ##Creating a scriptTree script:
 
