@@ -21,7 +21,10 @@
 #THE SOFTWARE.
 
 import sys
+import marshal
+import types
 from sonLib.bioio import system
+import importlib
 
 class Target(object):
     """Each job wrapper extends this class.
@@ -55,11 +58,31 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         assert self.__followOn == None
         self.__followOn = followOn
-        
+
+    def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Sets a follow on target fn. See FunctionWrappingTarget.
+        """
+        self.setFollowOnTarget(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu))
+
+    def setFollowOnTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Sets a follow on target fn. See TargetFunctionWrappingTarget.
+        """
+        self.setFollowOnTarget(TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)) 
+
     def addChildTarget(self, childTarget):
         """Adds the child target to be run as child of this target.
         """
         self.__children.append(childTarget)
+    
+    def addChildFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Adds a child fn. See FunctionWrappingTarget.
+        """
+        self.addChildTarget(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu))
+
+    def addChildTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Adds a child target fn. See TargetFunctionWrappingTarget.
+        """
+        self.addChildTarget(TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)) 
     
     def addChildCommand(self, childCommand, runTime=sys.maxint):
         """A command to be run as child of the job tree.
@@ -114,6 +137,17 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
         """
         self.loggingMessages.append(str(string))
+        
+    @staticmethod
+    def makeTargetFnTarget(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Makes a Target out of a target function! 
+        In a target function, the first argument to the function will be a reference to the wrapping target, allowing
+        the function to create children/follow ons.
+        
+        Convenience function for constructor of TargetFunctionWrappingTarget
+        """
+        return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
+    
     
 ####
 #Private functions
@@ -134,3 +168,30 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         
     def getMasterLoggingMessages(self):
         return self.loggingMessages[:]
+
+class FunctionWrappingTarget(Target):
+    """Target used to wrap a function.
+    
+    Function can not be nested function or class function, currently.
+    """
+    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        Target.__init__(self, time=time, memory=time, cpu=time)
+        self.fnModule = str(fn.__module__) #Module of function
+        self.fnName = str(fn.__name__) #Name of function
+        self.args=args
+        self.kwargs=kwargs
+        
+    def run(self):
+        func = getattr(importlib.import_module(self.fnModule), self.fnName)
+        func(*self.args, **self.kwargs)
+
+class TargetFunctionWrappingTarget(FunctionWrappingTarget):
+    """Target used to wrap a function.
+    A target function is a function which takes as its first argument a reference
+    to the wrapping target.
+    
+    Target function can not be closure.
+    """
+    def run(self):
+        func = getattr(importlib.import_module(self.fnModule), self.fnName)
+        func(*((self,) + tuple(self.args)), **self.kwargs)
