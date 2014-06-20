@@ -139,7 +139,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         self.loggingMessages.append(str(string))
         
     @staticmethod
-    def makeTargetFnTarget(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def makeTargetFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         """Makes a Target out of a target function! 
         In a target function, the first argument to the function will be a reference to the wrapping target, allowing
         the function to create children/follow ons.

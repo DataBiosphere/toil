@@ -86,7 +86,7 @@ def main():
         raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
-    i = Stack(Target.makeTargetFnTarget(setup, (options.fileToSort, int(options.N)))).startJobTree(options)
+    i = Stack(Target.makeTargetFn(setup, (options.fileToSort, int(options.N)))).startJobTree(options)
     
     #if i:
     #    raise RuntimeError("The jobtree contained %i failed jobs" % i)
