@@ -1,5 +1,4 @@
 #jobTree
-10/07/2009, revised 09/17/2010, 06/12/2014
 
 ##Authors
 [Benedict Paten](https://github.com/benedictpaten/), [Dent Earl](https://github.com/dentearl/), [Daniel Zerbino](https://github.com/dzserbino/), [Glenn Hickey](https://github.com/glennhickey/), other UCSC people.
