@@ -1,4 +1,5 @@
 #jobTree
+Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, parasol and on multi-core machines.
 
 ##Authors
 [Benedict Paten](https://github.com/benedictpaten/), [Dent Earl](https://github.com/dentearl/), [Daniel Zerbino](https://github.com/dzserbino/), [Glenn Hickey](https://github.com/glennhickey/), other UCSC people.
@@ -23,7 +24,7 @@ Type 'make all' in the base directory, this just puts some stuff that is current
 
 ##Running and examining a jobTree script
 
-The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats** to analyse the status, restart and print performance statistics, respectively, about a run.
+The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats**, which are used to analyse the status, restart and print performance statistics, respectively, about a run.
 
 Once jobTree is installed, running a jobTree script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
 
@@ -397,7 +398,7 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
 * _Can you support the XYZ batch system?_
 
-    See the abstract base class 'AbstractBatchSystem' in the code to see what's required. You'll probably need to speak to me as I haven't attempted to comprehensively document these functions, though it's pretty straight forward.
+    See the abstract base class '[AbstractBatchSystem](https://github.com/benedictpaten/jobTree/blob/master/batchSystems/abstractBatchSystem.py)' in the code to see what functions need to be implemented. It's reasonably straight forward.
 
 * _Is there an API for the jobTree top level commands?_
 
