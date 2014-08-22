@@ -146,7 +146,7 @@ def addOptions(parser):
         #parser.add_option_group(group)
     elif isinstance(parser, ArgumentParser):
         def addGroup(headingString, bodyString):
-            return parser.add_argument_group(parser, headingString, bodyString).add_argument
+            return parser.add_argument_group(headingString, bodyString).add_argument
         _addOptions(addGroup, "%(default)s")
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
