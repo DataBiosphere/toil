@@ -278,7 +278,7 @@ def processFinishedJob(jobID, resultStatus, updatedJobFiles, jobBatcher, childJo
             logger.debug("Added job: %s to active jobs" % jobFile)
         else:
             for message in job.messages: #This is here because jobs with no children or follow ons may log to master.
-                logger.critical("Got message from job at time: %s : %s" % (time.time(), message))
+                logger.critical("Got message from job at time: %s : %s" % (time.strftime("%m-%d-%Y %H:%M:%S"), message))
             logger.debug("Job has no follow-ons or children despite job file being present so we'll consider it done: %s" % jobFile)
             updateParentStatus(jobFile, updatedJobFiles, childJobFileToParentJob, childCounts)
     else:  #The job is done
@@ -416,7 +416,7 @@ def mainLoop(config, batchSystem):
 
             for job in updatedJobFiles:
                 for message in job.messages:
-                    logger.critical("Got message from job at time: %s : %s" % (time.time(), message))
+                    logger.critical("Got message from job at time: %s : %s" % (time.strftime("%m-%d-%Y %H:%M:%S"), message))
                 job.messages = []
 
                 if len(job.children) > 0:
