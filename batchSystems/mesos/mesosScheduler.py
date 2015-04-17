@@ -1,3 +1,6 @@
+from collections import namedtuple
+import pickle
+
 __author__ = 'CJ'
 import mesos.interface
 import sys
@@ -13,14 +16,19 @@ from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary
 
 
 class MesosScheduler(mesos.interface.Scheduler):
-    def __init__(self, implicitAcknowledgements, executor, job_queues):
+    def __init__(self, implicitAcknowledgements, executor, job_queues, kill_queue, killed_queue, updated_job_queue):
         # question: will job_queues update as they are updated in the batch system?
         # I think so since this is only a pointer.
             self.job_queues = job_queues
-            self.assigned_jobs = []
+            self.assigned_jobIDs = []
+            self.kill_queue = kill_queue
+            self.killed_queue = killed_queue
+            self.updated_job_queue = updated_job_queue
+            self.taskData = {}
+
             self.implicitAcknowledgements = implicitAcknowledgements
             self.executor = executor
-            self.taskData = {}
+
             self.tasksLaunched = 0
             self.tasksFinished = 0
             self.messagesSent = 0
@@ -28,6 +36,13 @@ class MesosScheduler(mesos.interface.Scheduler):
 
     def registered(self, driver, frameworkId, masterInfo):
         print "Registered with framework ID %s" % frameworkId.value
+
+    def reregistered(self, driver, masterInfo):
+        print "I am still registered with the master."
+
+    def executorLost(self, driver, executorId, slaveId, status):
+        print "executor %s lost".format(executorId)
+
 
     def resourceOffers(self, driver, offers):
         # given resources, assign jobs to utilize them.
@@ -53,18 +68,33 @@ class MesosScheduler(mesos.interface.Scheduler):
             job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
             job_types.reverse()
 
+            print "number of job types: " + str(len(job_types)) 
+
             for job_type in job_types:
+                #not part of task object
+                task_cpu = job_type.cpu
+                task_memory = job_type.memory/1000000
+
+                print "inside for loop"
+                print "items in this queue: " + str(not self.job_queues[job_type].empty())
+                print "cpu usage: " + str(job_type.cpu)
+                print "memory usage: " + str(task_memory)
+
+                # FIXME: when running via jobTree script, we dont get inside. So, no jobs assigned. Maybe
+                # FIXME: this is called before jobTree, and mesos doesnt get give another resource offer because this
+                # FIXME: first one is'nt rejected. 
+                #
                 # loop through the resource requirements for queues.
                 # if the requirement matches the offer, loop through the queue and
                 # assign jobTree jobs as tasks until the offer is used up or the queue empties.
 
                 while (not self.job_queues[job_type].empty()) and \
-                                remainingCpus >= job_type.cpu and \
-                                remainingMem >= job_type.memory:
+                                remainingCpus >= task_cpu and \
+                                remainingMem >= task_memory:
 
                     jt_job = self.job_queues[job_type].get()
 
-                    self.assigned_jobs.append(jt_job)
+                    self.assigned_jobIDs.append(jt_job.jobID)
 
                     tid = self.tasksLaunched
                     self.tasksLaunched += 1
@@ -74,16 +104,12 @@ class MesosScheduler(mesos.interface.Scheduler):
 
                     task = mesos_pb2.TaskInfo()
 
-                    #not part of task object
-                    task_cpu = job_type.cpu
-                    task_memory = job_type.memory
-
                     task.task_id.value = str(tid)
                     task.slave_id.value = offer.slave_id.value
                     task.name = "task %d" % tid
 
                     # assigns jobTree command to task
-                    task.data = str(jt_job.command)
+                    task.data = pickle.dumps(jt_job)
 
                     task.executor.MergeFrom(self.executor)
 
@@ -119,8 +145,9 @@ class MesosScheduler(mesos.interface.Scheduler):
 
         if update.state == mesos_pb2.TASK_FINISHED:
             self.tasksFinished += 1
+            self.updated_job_queue.put((int(update.task_id.value), 0))
             # problem: queues are approximate. Just make this queue.empty()?
-            if self.tasksFinished == len(self.assigned_jobs):
+            if self.tasksFinished == len(self.assigned_jobIDs):
                 print "All tasks done, waiting for final framework message"
 
             slave_id, executor_id = self.taskData[update.task_id.value]
@@ -154,15 +181,16 @@ class MesosScheduler(mesos.interface.Scheduler):
             sys.exit(1)
         print "Received message:", repr(str(message))
 
-        if self.messagesReceived == len(self.assigned_jobs):
+        if self.messagesReceived == len(self.assigned_jobIDs):
             if self.messagesReceived != self.messagesSent:
                 print "Sent", self.messagesSent,
                 print "but received", self.messagesReceived
                 sys.exit(1)
-            print "All tasks done, and all messages received, exiting"
-            driver.stop()
+            print "All tasks done, and all messages received, waiting for more tasks"
+            # driver.stop()
 
-
+    def get_running_tasks(self):
+        return self.assigned_jobIDs
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -177,7 +205,7 @@ if __name__ == "__main__":
     queue.put(job1)
     queue.put(job2)
 
-    key = ResourceSummary(memory=1, cpu=1)
+    key = ResourceSummary.ResourceSummary(memory=1, cpu=1)
 
     dictionary = {key:queue}
 
@@ -207,11 +235,11 @@ if __name__ == "__main__":
 
         if not os.getenv("DEFAULT_PRINCIPAL"):
             print "Expecting authentication principal in the environment"
-            sys.exit(1);
+            sys.exit(1)
 
         if not os.getenv("DEFAULT_SECRET"):
             print "Expecting authentication secret in the environment"
-            sys.exit(1);
+            sys.exit(1)
 
         credential = mesos_pb2.Credential()
         credential.principal = os.getenv("DEFAULT_PRINCIPAL")

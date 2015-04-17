@@ -1,15 +1,34 @@
-__author__ = 'CJ'
+#!/usr/bin/env python
+
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import os
 
 import sys
-import mesos.interface
-from subprocess import check_call
-from mesos.interface import mesos_pb2
-from Queue import Queue
 import threading
+import time
+
+import mesos.interface
+from mesos.interface import mesos_pb2
 import mesos.native
+from subprocess import check_call
+import pickle
 
-class TreExecutor(mesos.interface.Executor):
 
+class JobTreeMesosExecutor(mesos.interface.Executor):
     def launchTask(self, driver, task):
         # Create a thread to run the task. Tasks should always be run in new
         # threads or processes, rather than inside launchTask itself.
@@ -21,7 +40,10 @@ class TreExecutor(mesos.interface.Executor):
             update.data = 'data with a \0 byte'
             driver.sendStatusUpdate(update)
 
-            check_call(task.data.value, shell=True)
+            jobTreeJob = pickle.loads( task.data )
+            os.chdir( jobTreeJob.cwd )
+            check_call(jobTreeJob.command, shell=True)
+            # This is where one would perform the requested task.
 
             print "Sending status update..."
             update = mesos_pb2.TaskStatus()
@@ -40,5 +62,5 @@ class TreExecutor(mesos.interface.Executor):
 
 if __name__ == "__main__":
     print "Starting executor"
-    driver = mesos.native.MesosExecutorDriver(TreExecutor)
+    driver = mesos.native.MesosExecutorDriver(JobTreeMesosExecutor())
     sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)

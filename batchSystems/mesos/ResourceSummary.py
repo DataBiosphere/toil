@@ -1,6 +1,7 @@
 __author__ = 'CJ'
-class ResourceSummary:
-    # used to describe resource requirements. Used as key in
-    def __init__(self, memory, cpu):
-        self.memory = memory
-        self.cpu = cpu
+from collections import namedtuple
+
+
+class ResourceSummary(namedtuple("ResourceSummary", ["memory", "cpu"])):
+    pass
+# used to describe resource requirements. Used as key in queue dictionary
