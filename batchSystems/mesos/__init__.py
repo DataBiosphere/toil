@@ -14,34 +14,35 @@ class MesosBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
         # job type queue is a dictionary of queues. Jobs are grouped in queues with resource requirements as keys.
-        self.queue_dictionary = {}
-        self.kill_queue = Queue()
-        self.killed_queue = Queue()
-        self.running_dictionary = {}
+        self.queueDictionary = {}
+        self.killQueue = Queue()
+        self.killedQueue = Queue()
+        self.runningDictionary = {}
         self.updatedJobsQueue = Queue()
-        self.current_jobs = []
+        self.currentJobs = []
         self.nextJobID = 0
-        self.mesos_thread = MesosFrameWorkThread(queue_dictionary=self.queue_dictionary, master_ip="127.0.0.1:5050",
-                                                 kill_queue=self.kill_queue, running_dictionary=self.running_dictionary,
+        self.mesosThread = MesosFrameWorkThread(queue_dictionary=self.queueDictionary, master_ip="127.0.0.1:5050",
+                                                 kill_queue=self.killQueue, running_dictionary=self.runningDictionary,
                                                  updated_job_queue=self.updatedJobsQueue)
-        self.mesos_thread.start()
+        self.mesosThread.setDaemon(True)
+        self.mesosThread.start()
 
     def issueJob(self, command, memory, cpu):
         # puts job into job_type_queue to be run by mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cpu)
         jobID = self.nextJobID
         self.nextJobID += 1
-        self.current_jobs.append(jobID)
+        self.currentJobs.append(jobID)
 
         job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
         job_type = job.resources
 
         # if job type already described, add to queue. If not, create dictionary entry & add.
-        if job_type in self.queue_dictionary:
-            self.queue_dictionary[job_type].put(job)
+        if job_type in self.queueDictionary:
+            self.queueDictionary[job_type].put(job)
         else:
-            self.queue_dictionary[job_type] = Queue()
-            self.queue_dictionary[job_type].put(job)
+            self.queueDictionary[job_type] = Queue()
+            self.queueDictionary[job_type].put(job)
 
         logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
@@ -49,14 +50,14 @@ class MesosBatchSystem(AbstractBatchSystem):
     def killJobs(self, jobIDs):
         # kills jobs described by jobIDs
         for jobID in jobIDs:
-            self.kill_queue.put(jobID)
+            self.killQueue.put(jobID)
 
     def getIssuedJobIDs(self):
         # returning from our local current jobs, not those passed to mesos
-        return list(self.current_jobs)
+        return list(self.currentJobs)
 
     def getRunningJobIDs(self):
-        return self.running_dictionary
+        return self.runningDictionary
 
     def getUpdatedJob(self, maxWait):
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
@@ -64,7 +65,6 @@ class MesosBatchSystem(AbstractBatchSystem):
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
-        print str(self.current_jobs[0])
         return i
 
     def getWaitDuration(self):
@@ -77,17 +77,17 @@ class MesosBatchSystem(AbstractBatchSystem):
         return 1800 #Half an hour
 
     def getJobs(self):
-        return self.queue_dictionary
+        return self.queueDictionary
 
 
 class MesosFrameWorkThread(Thread):
     def __init__(self, queue_dictionary, master_ip, kill_queue, running_dictionary, updated_job_queue):
         Thread.__init__(self)
-        self.kill_queue = kill_queue
-        self.running_dictionary = running_dictionary
-        self.updated_job_queue = updated_job_queue
-        self.queue_dictionary = queue_dictionary
-        self.master_ip = master_ip
+        self.killQueue = kill_queue
+        self.runningDictionary = running_dictionary
+        self.updatedJobQueue = updated_job_queue
+        self.queueDictionary = queue_dictionary
+        self.masterIP = master_ip
 
     def start_framework(self):
 
@@ -130,22 +130,22 @@ class MesosFrameWorkThread(Thread):
             framework.principal = os.getenv("DEFAULT_PRINCIPAL")
 
             driver = MesosSchedulerDriver(
-                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary,
-                               kill_queue=self.kill_queue,
-                               running_dictionary=self.running_dictionary, updated_job_queue=self.updated_job_queue),
+                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queueDictionary,
+                               kill_queue=self.killQueue,
+                               running_dictionary=self.runningDictionary, updated_job_queue=self.updatedJobQueue),
                 framework,
-                self.master_ip,
+                self.masterIP,
                 implicitAcknowledgements,
                 credential)
         else:
             framework.principal = "test-framework-python"
 
             driver = MesosSchedulerDriver(
-                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary,
-                               kill_queue=self.kill_queue,
-                               running_dictionary=self.running_dictionary, updated_job_queue=self.updated_job_queue),
+                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queueDictionary,
+                               kill_queue=self.killQueue,
+                               running_dictionary=self.runningDictionary, updated_job_queue=self.updatedJobQueue),
                 framework,
-                self.master_ip,
+                self.masterIP,
                 implicitAcknowledgements)
 
         driver_result = driver.run()

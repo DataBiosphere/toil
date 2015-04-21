@@ -11,19 +11,13 @@ from mesos.native import MesosSchedulerDriver
 from mesos.interface import mesos_pb2
 from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary
 
-# FIXME: the mesos scheduler needs to run certain commands at an interval (kill jobs, check on jobs), but also
-# FIXME: does other tasks unpredictable (receive resource offers). Just kill jobs on resource offer?
-
 
 class MesosScheduler(mesos.interface.Scheduler):
-        # question: will job_queues update as they are updated in the batch system?
     def __init__(self, implicitAcknowledgements, executor, job_queues, kill_queue, running_dictionary, updated_job_queue):
-        # I think so since this is only a pointer.
-            self.job_queues = job_queues
-            self.assigned_jobIDs = []
-            self.kill_queue = kill_queue
-            self.running_dictionary = running_dictionary
-            self.updated_job_queue = updated_job_queue
+            self.jobQueues = job_queues
+            self.killQueue = kill_queue
+            self.runningDictionary = running_dictionary
+            self.updatedJobQueue = updated_job_queue
             self.taskData = {}
 
             self.implicitAcknowledgements = implicitAcknowledgements
@@ -63,12 +57,10 @@ class MesosScheduler(mesos.interface.Scheduler):
             remainingCpus = offerCpus
             remainingMem = offerMem
 
-            job_types = list(self.job_queues.keys())
+            job_types = list(self.jobQueues.keys())
             # sorts from largest to smallest cpu usage
             job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
             job_types.reverse()
-
-            # print "number of job types: " + str(len(job_types)) 
 
             for job_type in job_types:
                 #not part of task object
@@ -79,15 +71,13 @@ class MesosScheduler(mesos.interface.Scheduler):
                 # if the requirement matches the offer, loop through the queue and
                 # assign jobTree jobs as tasks until the offer is used up or the queue empties.
 
-                while (not self.job_queues[job_type].empty()) and \
+                while (not self.jobQueues[job_type].empty()) and \
                                 remainingCpus >= task_cpu and \
                                 remainingMem >= task_memory:
 
-                    jt_job = self.job_queues[job_type].get()
+                    jt_job = self.jobQueues[job_type].get()
 
-                    self.assigned_jobIDs.append(jt_job.jobID)
-
-                    self.running_dictionary[jt_job.jobID] = 1
+                    self.runningDictionary[jt_job.jobID] = 1
 
                     tid = self.tasksLaunched
                     self.tasksLaunched += 1
@@ -138,9 +128,9 @@ class MesosScheduler(mesos.interface.Scheduler):
 
         if update.state == mesos_pb2.TASK_FINISHED:
             self.tasksFinished += 1
-            self.updated_job_queue.put((int(update.task_id.value), 0))
+            self.updatedJobQueue.put((int(update.task_id.value), 0))
             # problem: queues are approximate. Just make this queue.empty()?
-            if self.tasksFinished == len(self.assigned_jobIDs):
+            if self.tasksFinished == len(self.runningDictionary):
                 print "All tasks done, waiting for final framework message"
 
             slave_id, executor_id = self.taskData[update.task_id.value]
@@ -174,7 +164,7 @@ class MesosScheduler(mesos.interface.Scheduler):
             sys.exit(1)
         print "Received message:", repr(str(message))
 
-        if self.messagesReceived == len(self.assigned_jobIDs):
+        if self.messagesReceived == len(self.runningDictionary):
             if self.messagesReceived != self.messagesSent:
                 print "Sent", self.messagesSent,
                 print "but received", self.messagesReceived
@@ -182,8 +172,6 @@ class MesosScheduler(mesos.interface.Scheduler):
             print "All tasks done, and all messages received, waiting for more tasks"
             # driver.stop()
 
-    def get_running_tasks(self):
-        return self.assigned_jobIDs
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
