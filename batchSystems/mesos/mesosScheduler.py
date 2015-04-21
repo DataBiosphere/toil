@@ -16,13 +16,13 @@ from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary
 
 
 class MesosScheduler(mesos.interface.Scheduler):
-    def __init__(self, implicitAcknowledgements, executor, job_queues, kill_queue, killed_queue, updated_job_queue):
         # question: will job_queues update as they are updated in the batch system?
+    def __init__(self, implicitAcknowledgements, executor, job_queues, kill_queue, running_dictionary, updated_job_queue):
         # I think so since this is only a pointer.
             self.job_queues = job_queues
             self.assigned_jobIDs = []
             self.kill_queue = kill_queue
-            self.killed_queue = killed_queue
+            self.running_dictionary = running_dictionary
             self.updated_job_queue = updated_job_queue
             self.taskData = {}
 
@@ -68,22 +68,13 @@ class MesosScheduler(mesos.interface.Scheduler):
             job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
             job_types.reverse()
 
-            print "number of job types: " + str(len(job_types)) 
+            # print "number of job types: " + str(len(job_types)) 
 
             for job_type in job_types:
                 #not part of task object
                 task_cpu = job_type.cpu
                 task_memory = job_type.memory/1000000
 
-                print "inside for loop"
-                print "items in this queue: " + str(not self.job_queues[job_type].empty())
-                print "cpu usage: " + str(job_type.cpu)
-                print "memory usage: " + str(task_memory)
-
-                # FIXME: when running via jobTree script, we dont get inside. So, no jobs assigned. Maybe
-                # FIXME: this is called before jobTree, and mesos doesnt get give another resource offer because this
-                # FIXME: first one is'nt rejected. 
-                #
                 # loop through the resource requirements for queues.
                 # if the requirement matches the offer, loop through the queue and
                 # assign jobTree jobs as tasks until the offer is used up or the queue empties.
@@ -95,6 +86,8 @@ class MesosScheduler(mesos.interface.Scheduler):
                     jt_job = self.job_queues[job_type].get()
 
                     self.assigned_jobIDs.append(jt_job.jobID)
+
+                    self.running_dictionary[jt_job.jobID] = 1
 
                     tid = self.tasksLaunched
                     self.tasksLaunched += 1

@@ -21,6 +21,8 @@
 #THE SOFTWARE.
 
 import sys
+import os
+import logging
 import marshal
 import types
 from sonLib.bioio import system
@@ -176,7 +178,12 @@ class FunctionWrappingTarget(Target):
     """
     def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         Target.__init__(self, time=time, memory=time, cpu=time)
-        self.fnModule = str(fn.__module__) #Module of function
+        moduleName = fn.__module__
+        if moduleName== '__main__':
+            #looks up corresponding module in sys.modules, gets base name, drops .py
+            moduleName = os.path.basename(sys.modules[moduleName].__file__)
+            moduleName = moduleName[:-3]
+        self.fnModule = str(moduleName) #Module of function
         self.fnName = str(fn.__name__) #Name of function
         self.args=args
         self.kwargs=kwargs
@@ -193,5 +200,8 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     Target function can not be closure.
     """
     def run(self):
-        func = getattr(importlib.import_module(self.fnModule), self.fnName)
+        print "module: "+self.fnModule
+        print "cwd: "+os.getcwd()
+        print "sys Path: "+repr(sys.path)
+        func = getattr(importlib.import_module(self.fnModule), self.fnName) # self.fnName
         func(*((self,) + tuple(self.args)), **self.kwargs)

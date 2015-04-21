@@ -17,15 +17,14 @@ class MesosBatchSystem(AbstractBatchSystem):
         self.queue_dictionary = {}
         self.kill_queue = Queue()
         self.killed_queue = Queue()
+        self.running_dictionary = {}
         self.updatedJobsQueue = Queue()
         self.current_jobs = []
         self.nextJobID = 0
-        print "before thread"
         self.mesos_thread = MesosFrameWorkThread(queue_dictionary=self.queue_dictionary, master_ip="127.0.0.1:5050",
-                                                 kill_queue=self.kill_queue, killed_queue=self.killed_queue,
+                                                 kill_queue=self.kill_queue, running_dictionary=self.running_dictionary,
                                                  updated_job_queue=self.updatedJobsQueue)
         self.mesos_thread.start()
-        print "past thread"
 
     def issueJob(self, command, memory, cpu):
         # puts job into job_type_queue to be run by mesos, AND puts jobID in current_job[]
@@ -45,7 +44,6 @@ class MesosBatchSystem(AbstractBatchSystem):
             self.queue_dictionary[job_type].put(job)
 
         logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
-        print "issued job "+ str(jobID)
         return jobID
 
     def killJobs(self, jobIDs):
@@ -58,7 +56,7 @@ class MesosBatchSystem(AbstractBatchSystem):
         return list(self.current_jobs)
 
     def getRunningJobIDs(self):
-        return self.getRunningJobIDs()
+        return self.running_dictionary
 
     def getUpdatedJob(self, maxWait):
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
@@ -83,10 +81,10 @@ class MesosBatchSystem(AbstractBatchSystem):
 
 
 class MesosFrameWorkThread(Thread):
-    def __init__(self, queue_dictionary, master_ip, kill_queue, killed_queue, updated_job_queue):
+    def __init__(self, queue_dictionary, master_ip, kill_queue, running_dictionary, updated_job_queue):
         Thread.__init__(self)
         self.kill_queue = kill_queue
-        self.killed_queue = killed_queue
+        self.running_dictionary = running_dictionary
         self.updated_job_queue = updated_job_queue
         self.queue_dictionary = queue_dictionary
         self.master_ip = master_ip
@@ -132,8 +130,9 @@ class MesosFrameWorkThread(Thread):
             framework.principal = os.getenv("DEFAULT_PRINCIPAL")
 
             driver = MesosSchedulerDriver(
-                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary, kill_queue=self.kill_queue,
-                               killed_queue=self.killed_queue, updated_job_queue=self.updated_job_queue),
+                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary,
+                               kill_queue=self.kill_queue,
+                               running_dictionary=self.running_dictionary, updated_job_queue=self.updated_job_queue),
                 framework,
                 self.master_ip,
                 implicitAcknowledgements,
@@ -142,8 +141,9 @@ class MesosFrameWorkThread(Thread):
             framework.principal = "test-framework-python"
 
             driver = MesosSchedulerDriver(
-                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary, kill_queue=self.kill_queue,
-                               killed_queue=self.killed_queue, updated_job_queue=self.updated_job_queue),
+                MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=self.queue_dictionary,
+                               kill_queue=self.kill_queue,
+                               running_dictionary=self.running_dictionary, updated_job_queue=self.updated_job_queue),
                 framework,
                 self.master_ip,
                 implicitAcknowledgements)
