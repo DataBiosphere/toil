@@ -1,9 +1,9 @@
-__author__ = 'CJ'
 import os
 import sys
 from jobTree.batchSystems.mesos.mesosScheduler import MesosSchedulerDriver, MesosScheduler
 from jobTree.batchSystems.mesos.JobTreeJob import JobTreeJob
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from jobTree.batchSystems.mesos import mesosExecutor
 from threading import Thread
 from Queue import Queue
 from sonLib.bioio import logger
@@ -89,11 +89,17 @@ class MesosFrameWorkThread(Thread):
         self.queueDictionary = queue_dictionary
         self.masterIP = master_ip
 
+    def executorScriptPath(self):
+        path = mesosExecutor.__file__
+        if path.endswith('.pyc'):
+            path = path[:-1]
+        return path
+
     def start_framework(self):
 
         executor = mesos_pb2.ExecutorInfo()
         executor.executor_id.value = "default"
-        executor.command.value = os.path.abspath("/Users/CJ/git/jobTree/jobTree/batchSystems/mesos/mesosExecutor.py")
+        executor.command.value = self.executorScriptPath()
         executor.name = "Test Executor (Python)"
         executor.source = "python_test"
 
