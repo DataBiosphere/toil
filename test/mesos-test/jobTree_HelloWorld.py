@@ -8,6 +8,7 @@
 from jobTree.scriptTree.target import Target
 from jobTree.scriptTree.stack import Stack
 from optparse import OptionParser
+from time import sleep
 
 
 def hello_world(target):

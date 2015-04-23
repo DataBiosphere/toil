@@ -29,6 +29,19 @@ import pickle
 
 
 class JobTreeMesosExecutor(mesos.interface.Executor):
+    def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
+        print "Registered with framework"
+
+    def reregistered(self, driver, slaveInfo):
+        print "Re-Registered"
+
+    def disconnected(self, driver):
+        print "disconnected from slave"
+
+    def error(self, driver, message):
+        print message
+        self.frameworkMessage(driver, message)
+
     def launchTask(self, driver, task):
         # Create a thread to run the task. Tasks should always be run in new
         # threads or processes, rather than inside launchTask itself.
@@ -40,6 +53,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
             update.data = 'data with a \0 byte'
             driver.sendStatusUpdate(update)
 
+            raise RuntimeError("executor stopped on purpose")
             jobTreeJob = pickle.loads( task.data )
             os.chdir( jobTreeJob.cwd )
             check_call(jobTreeJob.command, shell=True)

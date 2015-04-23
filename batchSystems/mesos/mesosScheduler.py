@@ -37,6 +37,7 @@ class MesosScheduler(mesos.interface.Scheduler):
     def executorLost(self, driver, executorId, slaveId, status):
         print "executor %s lost".format(executorId)
 
+    def reconcile
 
     def resourceOffers(self, driver, offers):
         # given resources, assign jobs to utilize them.
@@ -124,7 +125,8 @@ class MesosScheduler(mesos.interface.Scheduler):
             print "The update data did not match!"
             print "  Expected: 'data with a \\x00 byte'"
             print "  Actual:  ", repr(str(update.data))
-            sys.exit(1)
+            self.updatedJobQueue.put((int(update.task_id.value), 1))
+            # message not going through. What exactly does this mean for the slave?
 
         if update.state == mesos_pb2.TASK_FINISHED:
             self.tasksFinished += 1
@@ -144,9 +146,10 @@ class MesosScheduler(mesos.interface.Scheduler):
         if update.state == mesos_pb2.TASK_LOST or \
            update.state == mesos_pb2.TASK_KILLED or \
            update.state == mesos_pb2.TASK_FAILED:
-            print "Aborting because task %s is in unexpected state %s with message '%s'" \
+            print "not Aborting because task %s is in unexpected state %s with message '%s'" \
                 % (update.task_id.value, mesos_pb2.TaskState.Name(update.state), update.message)
-            driver.abort()
+            # driver.abort()
+            self.updatedJobQueue.put((int(update.task_id.value), 1))
 
         # Explicitly acknowledge the update if implicit acknowledgements
         # are not being used.
@@ -161,9 +164,10 @@ class MesosScheduler(mesos.interface.Scheduler):
             print "The returned message data did not match!"
             print "  Expected: 'data with a \\x00 byte'"
             print "  Actual:  ", repr(str(message))
-            sys.exit(1)
+            print "seems like slave {} not communicating".format(slaveId)
         print "Received message:", repr(str(message))
 
+        # probably doesnt work. running dictionary can shrink.
         if self.messagesReceived == len(self.runningDictionary):
             if self.messagesReceived != self.messagesSent:
                 print "Sent", self.messagesSent,
