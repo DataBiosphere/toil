@@ -84,8 +84,8 @@ def main():
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
-    from jobTree.src.job import Job
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, listChildDirs, getTempStatsFile, setupJobAfterFailure
+    from jobTree.src.job import Job, JobDB
+    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, getTempStatsFile
     from sonLib.bioio import system
     
     ########################################## 
@@ -93,7 +93,7 @@ def main():
     ##########################################
     
     jobTreePath = sys.argv[1]
-    jobFile = sys.argv[2]
+    jobStoreID = sys.argv[2]
     
     ##########################################
     #Load the environment for the job
@@ -183,12 +183,13 @@ def main():
     
     config = ET.parse(getConfigFileName(jobTreePath)).getroot()
     setLogLevel(config.attrib["log_level"])
-    job = Job.read(jobFile)
+    jobDB = JobDB(config, create=False)
+    job = jobDB.load(jobStoreID)
     job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
     job.children = [] #Similarly, this is where old children are flushed out.
-    job.write() #Update status, to avoid reissuing children after running a follow on below.
-    if os.path.exists(job.getLogFileName()): #This cleans the old log file
-        os.remove(job.getLogFileName())
+    jobDB.write(job) #Update status, to avoid reissuing children after running a follow on below.
+    if os.path.exists(jobDB.getJobLogFileName(job.jobStoreID)): #This cleans the old log file
+        os.remove(jobDB.getJobLogFileName(job.jobStoreID))
     logger.info("Parsed arguments and set up logging")
 
      #Try loop for slave logging
@@ -251,9 +252,10 @@ def main():
             #we do
             ##########################################
         
-            for childDir in listChildDirs(job.jobDir):
-                logger.debug("Cleaning up old child %s" % childDir)
-                system("rm -rf %s" % childDir)
+            #for childDir in listChildDirs(job.jobStoreID):
+            #    logger.debug("Cleaning up old child %s" % childDir)
+            #    system("rm -rf %s" % childDir)
+            #    jobDB.delete()
         
             ##########################################
             #Run the job
@@ -279,7 +281,13 @@ def main():
             
             job.remainingRetryCount = int(config.attrib["try_count"])
             system("rm -rf %s/*" % (localTempDir))
-            job.update(depth=depth, tryCount=job.remainingRetryCount)
+            
+            if len(job.children) == 1: #If job has a single child, just make it a follow on
+                job.followOnCommands.append(job.children.pop() + (depth + 1,))
+            
+            childCommands = job.children #This is a hack until we stop overloading the use of this array
+            job.children = []
+            jobDB.update(job=job, childCommands=childCommands)
             
             ##########################################
             #Establish if we can run another job
@@ -333,9 +341,9 @@ def main():
     except: #Case that something goes wrong in slave
         traceback.print_exc()
         logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
-        job = Job.read(jobFile)
-        setupJobAfterFailure(job, config)
-        job.write()
+        job = jobDB.load(jobStoreID)
+        job.setupJobAfterFailure(config)
+        jobDB.write(job)
         slaveFailed = True
 
     ##########################################
@@ -369,7 +377,7 @@ def main():
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
         truncateFile(tempSlaveLogFile)
-        system("mv %s %s" % (tempSlaveLogFile, job.getLogFileName()))
+        system("mv %s %s" % (tempSlaveLogFile, jobDB.getJobLogFileName(job.jobStoreID)))
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)
     
@@ -378,7 +386,7 @@ def main():
         ##########################################
         #Cleanup global files at the end of the chain
         ##########################################
-        job.delete()            
+        jobDB.delete(job)            
         
     
 def _test():

@@ -28,22 +28,21 @@ class TestCase(unittest.TestCase):
         """
         scriptTree_SortTest(self.testNo, "singleMachine")
     
+    """
     def testScriptTree_SortGridEngine(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         if gridEngineIsInstalled():
             scriptTree_SortTest(self.testNo, "gridengine")
             
     def testScriptTree_Parasol(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         if parasolIsInstalled():
             scriptTree_SortTest(self.testNo, "parasol")
     
     def testScriptTree_SortAcid(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         scriptTree_SortTest(self.testNo, "acid_test")
+    """
 
 #The following functions test the functions in the test!
     

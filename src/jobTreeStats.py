@@ -39,7 +39,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName, getJobFileDirName
+from jobTree.src.master import getEnvironmentFileName
 from jobTree.src.master import getStatsFileName, getConfigFileName
 from jobTree.src.master import getStatsCacheFileName
 

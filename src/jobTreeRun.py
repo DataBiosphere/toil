@@ -36,10 +36,10 @@ from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWork
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 
-from jobTree.src.job import Job
+from jobTree.src.job import Job, JobDB
 
 from jobTree.src.master import mainLoop
-from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getConfigFileName, getJobFileDirName
+from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getConfigFileName
 
 from sonLib.bioio import logger, setLoggingFromOptions, addLoggingOptions, getLogLevelString
 from sonLib.bioio import TempFileTree
@@ -208,7 +208,6 @@ def reloadJobTree(jobTree):
     logger.info("The job tree appears to already exist, so we'll reload it")
     assert os.path.isfile(getConfigFileName(jobTree)) #A valid job tree must contain the config file
     assert os.path.isfile(getEnvironmentFileName(jobTree)) #A valid job tree must contain a pickle file which encodes the path environment of the job
-    assert os.path.isdir(getJobFileDirName(jobTree)) #A job tree must have a directory of jobs.
     
     config = ET.parse(getConfigFileName(jobTree)).getroot()
     config.attrib["log_level"] = getLogLevelString()
@@ -222,7 +221,6 @@ def createJobTree(options):
     logger.info("Starting to create the job tree setup for the first time")
     options.jobTree = absSymPath(options.jobTree)
     os.mkdir(options.jobTree)
-    os.mkdir(getJobFileDirName(options.jobTree))
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["job_tree"] = options.jobTree
@@ -267,9 +265,9 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
         memory = float(config.attrib["default_memory"])
     if cpu == None or cpu == sys.maxint:
         cpu = float(config.attrib["default_cpu"])
-    job = Job(command=command, memory=memory, cpu=cpu, 
-              tryCount=int(config.attrib["try_count"]), jobDir=getJobFileDirName(config.attrib["job_tree"]))
-    job.write()
+    jobDB = JobDB(config)
+    job = jobDB.createFirstJob(command=command, memory=memory, cpu=cpu)
+    jobDB.write(job)
     logger.info("Added the first job")
     
 def runJobTreeScript(options):
