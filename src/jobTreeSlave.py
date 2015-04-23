@@ -84,7 +84,8 @@ def main():
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
-    from jobTree.src.job import Job, JobDB
+    from jobTree.src.job import Job
+    from jobTree.src.fileJobStore import FileJobStore
     from jobTree.src.master import getEnvironmentFileName, getConfigFileName, getTempStatsFile
     from sonLib.bioio import system
     
@@ -183,13 +184,13 @@ def main():
     
     config = ET.parse(getConfigFileName(jobTreePath)).getroot()
     setLogLevel(config.attrib["log_level"])
-    jobDB = JobDB(config, create=False)
-    job = jobDB.load(jobStoreID)
+    jobStore = FileJobStore(config, create=False)
+    job = jobStore.load(jobStoreID)
     job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
     job.children = [] #Similarly, this is where old children are flushed out.
-    jobDB.write(job) #Update status, to avoid reissuing children after running a follow on below.
-    if os.path.exists(jobDB.getJobLogFileName(job.jobStoreID)): #This cleans the old log file
-        os.remove(jobDB.getJobLogFileName(job.jobStoreID))
+    jobStore.write(job) #Update status, to avoid reissuing children after running a follow on below.
+    if os.path.exists(jobStore.getJobLogFileName(job.jobStoreID)): #This cleans the old log file
+        os.remove(jobStore.getJobLogFileName(job.jobStoreID))
     logger.info("Parsed arguments and set up logging")
 
      #Try loop for slave logging
@@ -255,7 +256,7 @@ def main():
             #for childDir in listChildDirs(job.jobStoreID):
             #    logger.debug("Cleaning up old child %s" % childDir)
             #    system("rm -rf %s" % childDir)
-            #    jobDB.delete()
+            #    jobStore.delete()
         
             ##########################################
             #Run the job
@@ -287,7 +288,7 @@ def main():
             
             childCommands = job.children #This is a hack until we stop overloading the use of this array
             job.children = []
-            jobDB.update(job=job, childCommands=childCommands)
+            jobStore.update(job=job, childCommands=childCommands)
             
             ##########################################
             #Establish if we can run another job
@@ -341,9 +342,9 @@ def main():
     except: #Case that something goes wrong in slave
         traceback.print_exc()
         logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
-        job = jobDB.load(jobStoreID)
+        job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
-        jobDB.write(job)
+        jobStore.write(job)
         slaveFailed = True
 
     ##########################################
@@ -377,7 +378,7 @@ def main():
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
         truncateFile(tempSlaveLogFile)
-        system("mv %s %s" % (tempSlaveLogFile, jobDB.getJobLogFileName(job.jobStoreID)))
+        system("mv %s %s" % (tempSlaveLogFile, jobStore.getJobLogFileName(job.jobStoreID)))
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)
     
@@ -386,7 +387,7 @@ def main():
         ##########################################
         #Cleanup global files at the end of the chain
         ##########################################
-        jobDB.delete(job)            
+        jobStore.delete(job)            
         
     
 def _test():

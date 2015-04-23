@@ -41,9 +41,9 @@ from collections import deque
 #from threading import Thread, Queue
 from multiprocessing import Process, Queue
 
-from job import Job, JobDB, JobTreeState
-from sonLib.bioio import logger, getTotalCpuTime
-from sonLib.bioio import system
+from job import Job
+from jobTree.src.fileJobStore import FileJobStore
+from sonLib.bioio import logger, getTotalCpuTime, logFile, system
 from jobTree.src.bioio import workflowRootPath
 from sonLib.bioio import TempFileTree
 
@@ -132,9 +132,9 @@ def statsAggregatorProcess(jobTreePath, tempDirs, stop):
 class JobBatcher:
     """Class works with jobBatcherWorker to submit jobs to the batch system.
     """
-    def __init__(self, config, batchSystem, jobDB):
+    def __init__(self, config, batchSystem, jobStore):
         self.config = config
-        self.jobDB = jobDB
+        self.jobStore = jobStore
         self.jobTree = config.attrib["job_tree"]
         self.jobIDsToJobsHash = {}
         self.batchSystem = batchSystem
@@ -193,7 +193,7 @@ class JobBatcher:
         if len(jobsToKill) > 0:
             self.batchSystem.killJobs(jobsToKill)
             for jobID in jobsToKill:
-                self.jobDB.processFinishedJob(self.removeJobID(jobID), 1)
+                self.processFinishedJob(jobID, 1)
     
     #Following functions handle error cases for when jobs have gone awry with the batch system.
             
@@ -245,9 +245,58 @@ class JobBatcher:
         self.killJobs(jobsToKill)
         return len(reissueMissingJobs_missingHash) == 0 #We use this to inform if there are missing jobs
 
-####
-#The main loop
-####
+    def processFinishedJob(self, jobID, resultStatus):
+        """Function reads a processed job file and updates it state.
+        """    
+        jobStoreID = self.removeJobID(jobID)
+        
+        if os.path.exists(self.jobStore.getJobLogFileName(jobStoreID)):
+            logger.critical("The job seems to have left a log file, indicating failure: %s", jobStoreID)
+            logFile(self.jobStore.getJobLogFileName(jobStoreID), logger.critical)
+        
+        if self.jobStore.exists(jobStoreID):
+            job = self.jobStore.load(jobStoreID)
+            assert job not in self.jobStore.jobTreeState.updatedJobs
+            if resultStatus != 0:
+                if not os.path.exists(self.jobStore.getJobLogFileName(jobStoreID)):
+                    logger.critical("No log file is present, despite job failing: %s", jobStoreID)
+                job.setupJobAfterFailure(self.config)
+            if len(job.followOnCommands) > 0 or len(job.children) > 0:
+                self.jobStore.jobTreeState.updatedJobs.add(job) #Now we know the job is done we can add it to the list of updated job files
+                logger.debug("Added job: %s to active jobs" % jobStoreID)
+            else:
+                for message in job.messages: #This is here because jobs with no children or follow ons may log to master.
+                    logger.critical("Got message from job at time: %s : %s" % (time.strftime("%m-%d-%Y %H:%M:%S"), message))
+                logger.debug("Job has no follow-ons or children despite job file being present so we'll consider it done: %s" % jobStoreID)
+                self._updateParentStatus(jobStoreID)
+        else:  #The job is done
+            if resultStatus != 0:
+                logger.critical("Despite the batch system claiming failure the job %s seems to have finished and been removed" % jobStoreID)
+            self._updateParentStatus(jobStoreID)
+            
+    def _updateParentStatus(self, jobStoreID):
+        """Update status of parent for finished child job.
+        """
+        while True:
+            if jobStoreID not in self.jobStore.jobTreeState.childJobStoreIdToParentJob:
+                assert len(self.jobStore.jobTreeState.updatedJobs) == 0
+                assert len(self.jobStore.jobTreeState.childJobStoreIdToParentJob) == 0
+                assert len(self.jobStore.jobTreeState.childCounts) == 0
+                break
+            parentJob = self.jobStore.jobTreeState.childJobStoreIdToParentJob.pop(jobStoreID)
+            self.jobStore.jobTreeState.childCounts[parentJob] -= 1
+            assert self.jobStore.jobTreeState.childCounts[parentJob] >= 0
+            if self.jobStore.jobTreeState.childCounts[parentJob] == 0: #Job is done
+                self.jobStore.jobTreeState.childCounts.pop(parentJob)
+                logger.debug("Parent job %s has all its children run successfully", parentJob.jobStoreID)
+                assert parentJob not in self.jobStore.jobTreeState.updatedJobs
+                if len(parentJob.followOnCommands) > 0:
+                    self.jobStore.jobTreeState.updatedJobs.add(parentJob) #Now we know the job is done we can add it to the list of updated job files
+                    break
+                else:
+                    jobStoreID = parentJob.jobStoreID
+            else:
+                break
 
 def mainLoop(config, batchSystem):
     """This is the main loop from which jobs are issued and processed.
@@ -262,10 +311,10 @@ def mainLoop(config, batchSystem):
     assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
     logger.info("Checked batch system has no running jobs and no updated jobs")
 
-    jobDB = JobDB(config)
-    jobDB.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
-    jobBatcher = JobBatcher(config, batchSystem, jobDB)
-    logger.info("Found %s jobs to start and %i parent jobs with children to run" % (len(jobDB.jobTreeState.updatedJobs), len(jobDB.jobTreeState.childCounts)))
+    jobStore = FileJobStore(config)
+    jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
+    jobBatcher = JobBatcher(config, batchSystem, jobStore)
+    logger.info("Found %s jobs to start and %i parent jobs with children to run" % (len(jobStore.jobTreeState.updatedJobs), len(jobStore.jobTreeState.childCounts)))
 
     stats = config.attrib.has_key("stats")
     if stats:
@@ -278,10 +327,10 @@ def mainLoop(config, batchSystem):
     totalFailedJobs = 0
     logger.info("Starting the main loop")
     while True:
-        if len(jobDB.jobTreeState.updatedJobs) > 0:
-            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % (len(jobDB.jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
+        if len(jobStore.jobTreeState.updatedJobs) > 0:
+            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % (len(jobStore.jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
 
-            for job in jobDB.jobTreeState.updatedJobs:
+            for job in jobStore.jobTreeState.updatedJobs:
                 for message in job.messages:
                     logger.critical("Got message from job at time: %s : %s" % (time.strftime("%m-%d-%Y %H:%M:%S"), message))
                 job.messages = []
@@ -291,9 +340,9 @@ def mainLoop(config, batchSystem):
                     children = job.children
                     job.children = []
                     for childJobStoreID, memory, cpu in children:
-                        jobDB.jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
-                    assert job not in jobDB.jobTreeState.childCounts
-                    jobDB.jobTreeState.childCounts[job] = len(children)
+                        jobStore.jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
+                    assert job not in jobStore.jobTreeState.childCounts
+                    jobStore.jobTreeState.childCounts[job] = len(children)
                     jobBatcher.issueJobs(children)
                 else:
                     assert len(job.followOnCommands) > 0
@@ -304,7 +353,7 @@ def mainLoop(config, batchSystem):
                     else:
                         totalFailedJobs += 1
                         logger.critical("Job: %s is completely failed" % job.jobStoreID)
-            jobDB.jobTreeState.updatedJobs = set() #We've considered them all, so reset
+            jobStore.jobTreeState.updatedJobs = set() #We've considered them all, so reset
 
         if jobBatcher.getNumberOfJobsIssued() == 0:
             logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
@@ -318,7 +367,7 @@ def mainLoop(config, batchSystem):
                     logger.debug("Batch system is reporting that the job %s ended successfully" % jobBatcher.getJob(jobID))
                 else:
                     logger.critical("Batch system is reporting that the job %s %s failed with exit value %i" % (jobID, jobBatcher.getJob(jobID), result))
-                jobDB.processFinishedJob(jobBatcher.removeJobID(jobID), result)
+                jobBatcher.processFinishedJob(jobID, result)
             else:
                 logger.critical("A result seems to already have been processed: %i" % jobID)
         else:

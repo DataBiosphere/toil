@@ -34,7 +34,8 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
 from jobTree.src.master import getConfigFileName
-from jobTree.src.job import Job, JobDB
+from jobTree.src.job import Job
+from jobTree.src.fileJobStore import FileJobStore
 
 def main():
     """Reports the state of the job tree.
@@ -84,30 +85,30 @@ def main():
     ##########################################  
     
     config = ET.parse(getConfigFileName(options.jobTree)).getroot()
-    jobDB = JobDB(config)
-    jobDB.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
+    jobStore = FileJobStore(config)
+    jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
     
-    failedJobs = [ job for job in jobDB.jobTreeState.updatedJobs | \
-                  set(jobDB.jobTreeState.childCounts.keys()) \
+    failedJobs = [ job for job in jobStore.jobTreeState.updatedJobs | \
+                  set(jobStore.jobTreeState.childCounts.keys()) \
                   if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, \
     %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) \
     currently in job tree: %s" % \
-    (len(jobDB.jobTreeState.updatedJobs), len(jobDB.jobTreeState.childCounts), 
-     len(failedJobs), len(jobDB.jobTreeState.shellJobs), options.jobTree)
+    (len(jobStore.jobTreeState.updatedJobs), len(jobStore.jobTreeState.childCounts), 
+     len(failedJobs), len(jobStore.jobTreeState.shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
-            if os.path.isfile(jobDB.getJobLogFileName(job.jobStoreID)):
-                print "Log file of failed job: %s" % jobDB.getJobLogFileName(job.jobStoreID)
-                logFile(jobDB.getJobLogFileName(job.jobStoreID), logger.critical)
+            if os.path.isfile(jobStore.getJobLogFileName(job.jobStoreID)):
+                print "Log file of failed job: %s" % jobStore.getJobLogFileName(job.jobStoreID)
+                logFile(jobStore.getJobLogFileName(job.jobStoreID), logger.critical)
             else:
                 print "Log file for job %s is not present" % job.jobStoreID 
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     
-    if (len(jobDB.jobTreeState.updatedJobs) + len(jobDB.jobTreeState.childCounts)) != 0 and \
+    if (len(jobStore.jobTreeState.updatedJobs) + len(jobStore.jobTreeState.childCounts)) != 0 and \
         options.failIfNotComplete:
         sys.exit(1)
     

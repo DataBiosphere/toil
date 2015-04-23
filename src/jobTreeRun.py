@@ -36,7 +36,8 @@ from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWork
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 
-from jobTree.src.job import Job, JobDB
+from jobTree.src.job import Job
+from jobTree.src.fileJobStore import FileJobStore
 
 from jobTree.src.master import mainLoop
 from jobTree.src.master import getEnvironmentFileName, getStatsFileName, getConfigFileName
@@ -265,9 +266,9 @@ def createFirstJob(command, config, memory=None, cpu=None, time=sys.maxint):
         memory = float(config.attrib["default_memory"])
     if cpu == None or cpu == sys.maxint:
         cpu = float(config.attrib["default_cpu"])
-    jobDB = JobDB(config)
-    job = jobDB.createFirstJob(command=command, memory=memory, cpu=cpu)
-    jobDB.write(job)
+    jobStore = FileJobStore(config)
+    job = jobStore.createFirstJob(command=command, memory=memory, cpu=cpu)
+    jobStore.write(job)
     logger.info("Added the first job")
     
 def runJobTreeScript(options):

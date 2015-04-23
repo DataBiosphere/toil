@@ -12,7 +12,8 @@ from optparse import OptionParser
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger, system
 from jobTree.scriptTree.stack import Stack
-from jobTree.src.job import Job, JobDB
+from jobTree.src.job import Job
+from jobTree.src.fileJobStore import FileJobStore
 from jobTree.src.jobTreeRun import createJobTree
 
 class TestCase(unittest.TestCase):
@@ -23,36 +24,36 @@ class TestCase(unittest.TestCase):
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
         config, batchSystem = createJobTree(options)
-        self.jobDB = JobDB(config)
+        self.jobStore = FileJobStore(config)
         
     def tearDown(self):
         system("rm -rf %s" % self.testJobTree)
     
-    def testJobDBLoadWriteAndDelete(self):        
+    def testJobStoreLoadWriteAndDelete(self):        
         command = "by your command"
         memory = 2^32
         cpu = 1
-        tryCount = int(self.jobDB.config.attrib["try_count"])
+        tryCount = int(self.jobStore.config.attrib["try_count"])
         
         for i in xrange(10):
             startTime = time.time()
             for j in xrange(100):
-                j = self.jobDB.createFirstJob(command, memory, cpu)
+                j = self.jobStore.createFirstJob(command, memory, cpu)
                 self.assertEquals(j.remainingRetryCount, tryCount)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                self.jobDB.write(j)
+                self.jobStore.write(j)
                 jobStoreID = j.jobStoreID
-                j = self.jobDB.load(j.jobStoreID)
+                j = self.jobStore.load(j.jobStoreID)
                 self.assertEquals(j.remainingRetryCount, tryCount)
                 self.assertEquals(j.jobStoreID, jobStoreID)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                self.assertTrue(self.jobDB.exists(j.jobStoreID))
-                self.jobDB.delete(j)
-                self.assertTrue(not self.jobDB.exists(j.jobStoreID))
+                self.assertTrue(self.jobStore.exists(j.jobStoreID))
+                self.jobStore.delete(j)
+                self.assertTrue(not self.jobStore.exists(j.jobStoreID))
             print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             #Would be good to extend this trivial test
         
@@ -60,30 +61,30 @@ class TestCase(unittest.TestCase):
         command = "by your command"
         memory = 2^32
         cpu = 1
-        tryCount = int(self.jobDB.config.attrib["try_count"])
+        tryCount = int(self.jobStore.config.attrib["try_count"])
         
         for i in xrange(40):
             startTime = time.time()
-            j = self.jobDB.createFirstJob(command, memory, cpu)
+            j = self.jobStore.createFirstJob(command, memory, cpu)
             childNumber = random.choice(range(20))
             children = map(lambda i : (command, memory, cpu), xrange(childNumber))
-            self.jobDB.update(j, children)
+            self.jobStore.update(j, children)
             jobStoreID = j.jobStoreID
-            j = self.jobDB.load(j.jobStoreID)
+            j = self.jobStore.load(j.jobStoreID)
             self.assertEquals(len(j.children), childNumber)
             for childJobStoreID, memory, cpu in j.children:
-                cJ = self.jobDB.load(childJobStoreID)
+                cJ = self.jobStore.load(childJobStoreID)
                 self.assertEquals(cJ.remainingRetryCount, tryCount)
                 #self.assertEquals(cJ.jobDir, os.path.split(cJ)[0])
                 self.assertEquals(cJ.children, [])
                 self.assertEquals(cJ.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(cJ.messages, [])
-                self.assertTrue(self.jobDB.exists(cJ.jobStoreID))
-                self.jobDB.delete(cJ)
-                self.assertTrue(not self.jobDB.exists(cJ.jobStoreID))
-            self.assertTrue(self.jobDB.exists(j.jobStoreID))
-            self.jobDB.delete(j)
-            self.assertTrue(not self.jobDB.exists(j.jobStoreID))
+                self.assertTrue(self.jobStore.exists(cJ.jobStoreID))
+                self.jobStore.delete(cJ)
+                self.assertTrue(not self.jobStore.exists(cJ.jobStoreID))
+            self.assertTrue(self.jobStore.exists(j.jobStoreID))
+            self.jobStore.delete(j)
+            self.assertTrue(not self.jobStore.exists(j.jobStoreID))
             print "It took %f seconds to update jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             
 
