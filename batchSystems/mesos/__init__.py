@@ -98,7 +98,7 @@ class MesosFrameWorkThread(Thread):
     def start_framework(self):
 
         executor = mesos_pb2.ExecutorInfo()
-        executor.executor_id.value = "default"
+        executor.executor_id.value = "MesosExecutor"
         executor.command.value = self.executorScriptPath()
         executor.name = "Test Executor (Python)"
         executor.source = "python_test"
