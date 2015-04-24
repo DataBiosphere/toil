@@ -11,13 +11,14 @@ from sonLib.bioio import logFile
 from sonLib.bioio import logger
 
 class Job:
-    def __init__(self, command, memory, cpu, tryCount, jobStoreID):
+    def __init__(self, command, memory, cpu, tryCount, jobStoreID, logJobStoreFileID):
         self.remainingRetryCount = tryCount
         self.jobStoreID = jobStoreID
         self.children = []
         self.followOnCommands = []
         self.followOnCommands.append((command, memory, cpu, 0))
         self.messages = []
+        self.logJobStoreFileID = logJobStoreFileID
         
     def getGlobalTempDirName(self):
         return os.path.join(self.jobStoreID, "gTD")
@@ -32,21 +33,45 @@ class Job:
             logger.critical("We have set the default memory of the failed job to %s bytes" % self.followOnCommands[-1][1])
         else:
             logger.critical("The job %s has no follow on jobs to reset" % self.jobStoreID)
+    
+    def clearLogFile(self, jobStore):
+        """Clears the log file, if it is set.
+        """
+        if self.logJobStoreFileID != None:
+            jobStore.deleteFile(self.logJobStoreFileID)
+            self.logJobStoreFileID = None
+    
+    def setLogFile(self, logFile, jobStore):
+        """Sets the log file in the file store. 
+        """
+        if self.logJobStoreFileID != None: #File already exists
+            jobStore.updateFile(self.logJobStoreFileID, logFile)
+        else:
+            self.logJobStoreFileID = jobStore.writeFile(self.jobStoreID, logFile)
+            assert self.logJobStoreFileID != None
+    
+    def getLogFileHandle(self, jobStore):
+        """Returns a file handle to the log file, or None if not set.
+        """
+        return None if self.logJobStoreFileID == None else \
+            jobStore.readFileStream(self.logJobStoreFileID)
             
     def convertJobToJson(job):
         jsonJob = [ job.remainingRetryCount,
                     job.jobStoreID,
                     job.children,
                     job.followOnCommands,
-                    job.messages ]
+                    job.messages,
+                    job.logJobStoreFileID ]
         return jsonJob
     
     @staticmethod
     def convertJsonJobToJob(jsonJob):
-        job = Job("", 0, 0, 0, None)
+        job = Job("", 0, 0, 0, None, None)
         job.remainingRetryCount = jsonJob[0] 
         job.jobStoreID = jsonJob[1]
         job.children = jsonJob[2] 
         job.followOnCommands = jsonJob[3] 
         job.messages = jsonJob[4] 
+        job.logJobStoreFileID = jsonJob[5]
         return job

@@ -24,9 +24,7 @@ class AbstractJobStore:
     def createFirstJob(self, command, memory, cpu):
         """Creates the root job of the jobTree from which all others must be created.
         """
-        return Job(command=command, memory=memory, cpu=cpu, 
-              tryCount=int(self.config.attrib["try_count"]), 
-              jobStoreID=self._getJobFileDirName())
+        pass
     
     def exists(self, jobStoreID):
         """Returns true if the job is in the store, else false.
@@ -44,6 +42,7 @@ class AbstractJobStore:
         pass
     
     def update(self, job, childCommands):
+        ##Consider factory method for creating jobs so that input childCommands are jobs.
         """Creates a set of child jobs for the given job using the list of child-commands 
         and updates state of job atomically on disk with new children.
         """
@@ -60,11 +59,33 @@ class AbstractJobStore:
         """
         pass
     
-    def transmitJobLogFile(self, jobStoreID, localLogFile):
+    def writeFile(self, jobStoreID, localFileName):
+        """Takes a file (as a path) and uploads it to to the jobStore file system, returns
+        an ID that can be used to retrieve the file. jobStoreID is the id of the job from 
+        which the file is being created. When delete(job) is called all files written with the given
+        job.jobStoreID will be removed from the jobStore.
+        """
         pass
     
-    def getJobLogFile(self, jobStoreID):
+    def updateFile(self, jobStoreFileID, localFileName):
+        """Replaces the existing version of a file in the jobStore. Throws an exception if
+        the file does not exist.
+        """
         pass
-            
-    def getJobLogFileName(self, jobStoreID):
-        return os.path.join(jobStoreID, "log.txt")
+    
+    def readFile(self, jobStoreFileID):
+        """Returns a path to a copy of the file keyed by jobStoreFileID. The version
+        will be consistent with the last copy of the file written/updated.
+        """
+        pass
+    
+    def deleteFile(self, jobStoreFileID):
+        """Deletes a file with the given jobStoreFileID. Throws an exception if the file
+        does not exist.
+        """
+        pass
+    
+    def readFileStream(self, jobStoreFileID):
+        """As readFile, but returns a file handle instead of a path.
+        """
+        pass

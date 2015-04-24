@@ -3,12 +3,12 @@ import marshal as pickler
 #import cPickle as pickler
 #import pickle as pickler
 #import json as pickler    
+import shutil
 import os
 import re
 import time
 from jobTree.src.bioio import system
-from sonLib.bioio import logFile
-from sonLib.bioio import logger
+from sonLib.bioio import logger, makeSubDir, getTempFile
 from jobTree.src.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
 
@@ -23,9 +23,7 @@ class FileJobStore(AbstractJobStore):
     def createFirstJob(self, command, memory, cpu):
         """Creates the root job of the jobTree from which all others must be created.
         """
-        return Job(command=command, memory=memory, cpu=cpu, 
-              tryCount=int(self.config.attrib["try_count"]), 
-              jobStoreID=self._getJobFileDirName())
+        return self._makeJob(command, memory, cpu, self._getJobFileDirName())
     
     def exists(self, jobStoreID):
         """Returns true if the job is in the store, else false.
@@ -64,8 +62,7 @@ class FileJobStore(AbstractJobStore):
         open(updatingFile, 'w').close()
         for ((command, memory, cpu), tempDir) in zip(childCommands, \
                     self._createTempDirectories(job.jobStoreID, len(childCommands))):
-            childJob = Job(command, memory, cpu, \
-                    int(self.config.attrib["try_count"]), tempDir)
+            childJob = self._makeJob(command, memory, cpu, tempDir)
             self.write(childJob)
             job.children.append((childJob.jobStoreID, memory, cpu))
         self._write(job, ".new")
@@ -95,22 +92,44 @@ class FileJobStore(AbstractJobStore):
             except os.error: #In case stuff went wrong, but as this is not critical we let it slide
                 break
     
-    def transmitJobLogFile(self, jobStoreID, localLogFile):
-        pass
-    
-    def getJobLogFile(self, jobStoreID):
-        pass
-            
-    def getJobLogFileName(self, jobStoreID):
-        return os.path.join(jobStoreID, "log.txt")
-    
     def loadJobTreeState(self):
         self.jobTreeState = JobTreeState()
         return self._loadJobTreeState(self._getJobFileDirName())
     
+    def writeFile(self, jobStoreID, localFileName):
+        jobStoreFileID = getTempFile(".tmp", os.path.join(jobStoreID, "g"))
+        shutil.copyfile(localFileName, jobStoreFileID)
+        return jobStoreFileID
+    
+    def updateFile(self, jobStoreFileID, localFileName):
+        if not os.path.exists(jobStoreFileID):
+            raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        shutil.copyfile(localFileName, jobStoreFileID)
+    
+    def readFile(self, jobStoreFileID):
+        if not os.path.exists(jobStoreFileID):
+            raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        return jobStoreFileID
+    
+    def deleteFile(self, jobStoreFileID):
+        if not os.path.exists(jobStoreFileID):
+            raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        os.remove(jobStoreFileID)
+    
+    def readFileStream(self, jobStoreFileID):
+        if not os.path.exists(jobStoreFileID):
+            raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        return open(jobStoreFileID, 'r')
+    
     ####
     #Private methods
     ####
+    
+    def _makeJob(self, command, memory, cpu, jobDir):
+        makeSubDir(os.path.join(jobDir, "g")) #Sub directory to put temporary files associated with the job in
+        return Job(command=command, memory=memory, cpu=cpu, 
+              tryCount=int(self.config.attrib["try_count"]), 
+              jobStoreID=jobDir, logJobStoreFileID=None)
     
     def _getJobFileDirName(self):
         return os.path.join(self.config.attrib["job_tree"], "jobs")

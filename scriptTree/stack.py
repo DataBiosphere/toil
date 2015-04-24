@@ -221,4 +221,3 @@ class Stack(object):
                                    "did you remember to call Target.__init__(self) in the %s "
                                    "__init__ method?" % ( r, target.__class__.__name__,
                                                           target.__class__.__name__))
-            

@@ -188,9 +188,9 @@ def main():
     job = jobStore.load(jobStoreID)
     job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
     job.children = [] #Similarly, this is where old children are flushed out.
+    if job.logJobStoreFileID != None:
+        job.clearLogFile(jobStore) #This cleans the old log file
     jobStore.write(job) #Update status, to avoid reissuing children after running a follow on below.
-    if os.path.exists(jobStore.getJobLogFileName(job.jobStoreID)): #This cleans the old log file
-        os.remove(jobStore.getJobLogFileName(job.jobStoreID))
     logger.info("Parsed arguments and set up logging")
 
      #Try loop for slave logging
@@ -344,7 +344,6 @@ def main():
         logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
         job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
-        jobStore.write(job)
         slaveFailed = True
 
     ##########################################
@@ -378,7 +377,10 @@ def main():
     #Copy back the log file to the global dir, if needed
     if slaveFailed:
         truncateFile(tempSlaveLogFile)
-        system("mv %s %s" % (tempSlaveLogFile, jobStore.getJobLogFileName(job.jobStoreID)))
+        job.setLogFile(tempSlaveLogFile, jobStore)
+        os.remove(tempSlaveLogFile)
+        jobStore.write(job)
+
     #Remove the temp dir
     system("rm -rf %s" % localSlaveTempDir)
     
@@ -387,9 +389,8 @@ def main():
         ##########################################
         #Cleanup global files at the end of the chain
         ##########################################
-        jobStore.delete(job)            
-        
-    
+        jobStore.delete(job)
+
 def _test():
     import doctest      
     return doctest.testmod()
@@ -397,4 +398,3 @@ def _test():
 if __name__ == '__main__':
     _test()
     main()
-

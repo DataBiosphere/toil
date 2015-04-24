@@ -28,7 +28,7 @@ import os
 
 import xml.etree.cElementTree as ET
 from sonLib.bioio import logger
-from sonLib.bioio import logFile 
+from sonLib.bioio import logStream 
 
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
@@ -100,9 +100,8 @@ def main():
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
-            if os.path.isfile(jobStore.getJobLogFileName(job.jobStoreID)):
-                print "Log file of failed job: %s" % jobStore.getJobLogFileName(job.jobStoreID)
-                logFile(jobStore.getJobLogFileName(job.jobStoreID), logger.critical)
+            if job.logJobStoreFileID != None:
+                logStream(job.getLogFileHandle(jobStore), job.jobStoreID, logger.critical)
             else:
                 print "Log file for job %s is not present" % job.jobStoreID 
         if len(failedJobs) == 0:

@@ -43,7 +43,7 @@ from multiprocessing import Process, Queue
 
 from job import Job
 from jobTree.src.fileJobStore import FileJobStore
-from sonLib.bioio import logger, getTotalCpuTime, logFile, system
+from sonLib.bioio import logger, getTotalCpuTime, logStream, system
 from jobTree.src.bioio import workflowRootPath
 from sonLib.bioio import TempFileTree
 
@@ -249,16 +249,14 @@ class JobBatcher:
         """Function reads a processed job file and updates it state.
         """    
         jobStoreID = self.removeJobID(jobID)
-        
-        if os.path.exists(self.jobStore.getJobLogFileName(jobStoreID)):
-            logger.critical("The job seems to have left a log file, indicating failure: %s", jobStoreID)
-            logFile(self.jobStore.getJobLogFileName(jobStoreID), logger.critical)
-        
         if self.jobStore.exists(jobStoreID):
             job = self.jobStore.load(jobStoreID)
+            if job.logJobStoreFileID != None:
+                logger.critical("The job seems to have left a log file, indicating failure: %s", jobStoreID)
+                logStream(job.getLogFileHandle(self.jobStore), jobStoreID, logger.critical)
             assert job not in self.jobStore.jobTreeState.updatedJobs
             if resultStatus != 0:
-                if not os.path.exists(self.jobStore.getJobLogFileName(jobStoreID)):
+                if job.logJobStoreFileID == None:
                     logger.critical("No log file is present, despite job failing: %s", jobStoreID)
                 job.setupJobAfterFailure(self.config)
             if len(job.followOnCommands) > 0 or len(job.children) > 0:
