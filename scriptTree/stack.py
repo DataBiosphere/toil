@@ -213,12 +213,18 @@ class Stack(object):
         instance has been properly instantiated. Returns None if instance is OK,
         raises an error otherwise.
         """
-        required = ['_Target__followOn', '_Target__children', '_Target__childCommands', 
-                    '_Target__time', '_Target__memory', '_Target__cpu', 'globalTempDir']
-        for r in required:
-            if r not in vars(target):
-                raise RuntimeError("Error, there is a missing attribute, %s, from a Target sub instance %s, "
-                                   "did you remember to call Target.__init__(self) in the %s "
-                                   "__init__ method?" % ( r, target.__class__.__name__,
-                                                          target.__class__.__name__))
+        try:
+            attributes = vars(target)
+        except TypeError:
+            raise RuntimeError( "The target is not an object. "
+                                "Did you remember to pass an instance of a Target subclass?" )
+        else:
+            required = ['_Target__followOn', '_Target__children', '_Target__childCommands',
+                        '_Target__time', '_Target__memory', '_Target__cpu', 'globalTempDir']
+            for r in required:
+                if r not in attributes:
+                    raise RuntimeError("Error, there is a missing attribute, %s, from a Target sub instance %s, "
+                                       "did you remember to call Target.__init__(self) in the %s "
+                                       "__init__ method?" % ( r, target.__class__.__name__,
+                                                              target.__class__.__name__))
             
