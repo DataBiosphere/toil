@@ -89,7 +89,8 @@ class MesosFrameWorkThread(Thread):
         self.queueDictionary = queue_dictionary
         self.masterIP = master_ip
 
-    def executorScriptPath(self):
+    @staticmethod
+    def executorScriptPath():
         path = mesosExecutor.__file__
         if path.endswith('.pyc'):
             path = path[:-1]
