@@ -1,7 +1,5 @@
 from collections import namedtuple
 import pickle
-
-__author__ = 'CJ'
 import mesos.interface
 import sys
 import os
@@ -37,7 +35,6 @@ class MesosScheduler(mesos.interface.Scheduler):
     def executorLost(self, driver, executorId, slaveId, status):
         print "executor %s lost".format(executorId)
 
-    def reconcile
 
     def resourceOffers(self, driver, offers):
         # given resources, assign jobs to utilize them.
@@ -62,6 +59,10 @@ class MesosScheduler(mesos.interface.Scheduler):
             # sorts from largest to smallest cpu usage
             job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
             job_types.reverse()
+
+            #prevents race condition bug
+            if len(job_types)==0:
+                driver.declineOffer(offers)
 
             for job_type in job_types:
                 #not part of task object
@@ -114,7 +115,7 @@ class MesosScheduler(mesos.interface.Scheduler):
                     remainingCpus -= task_cpu
                     remainingMem -= task_memory
 
-                driver.launchTasks(offer.id, tasks)
+            driver.launchTasks(offer.id, tasks)
 
     def statusUpdate(self, driver, update):
         print "Task %s is in a state %s" % \
@@ -174,84 +175,3 @@ class MesosScheduler(mesos.interface.Scheduler):
                 print "but received", self.messagesReceived
                 sys.exit(1)
             print "All tasks done, and all messages received, waiting for more tasks"
-            # driver.stop()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print "Usage: %s master" % sys.argv[0]
-        sys.exit(1)
-
-    queue = Queue.Queue()
-
-    job1 = JobTreeJob(jobID=1, memory=1, cpu=1, command="echo 'job1'>>job1.txt")
-    job2 = JobTreeJob(jobID=2, memory=1, cpu=1, command="echo 'job2'>>job2.txt")
-
-    queue.put(job1)
-    queue.put(job2)
-
-    key = ResourceSummary.ResourceSummary(memory=1, cpu=1)
-
-    dictionary = {key:queue}
-
-    executor = mesos_pb2.ExecutorInfo()
-    executor.executor_id.value = "default"
-    executor.command.value = os.path.abspath("/Users/CJ/git/mesos/src/examples/python/test-executor")
-    executor.name = "Test Executor (Python)"
-    executor.source = "python_test"
-
-    framework = mesos_pb2.FrameworkInfo()
-    framework.user = "" # Have Mesos fill in the current user.
-    framework.name = "JobTree Framework (Python)"
-
-    # TODO(vinod): Make checkpointing the default when it is default
-    # on the slave.
-    if os.getenv("MESOS_CHECKPOINT"):
-        print "Enabling checkpoint for the framework"
-        framework.checkpoint = True
-
-    implicitAcknowledgements = 1
-    if os.getenv("MESOS_EXPLICIT_ACKNOWLEDGEMENTS"):
-        print "Enabling explicit status update acknowledgements"
-        implicitAcknowledgements = 0
-
-    if os.getenv("MESOS_AUTHENTICATE"):
-        print "Enabling authentication for the framework"
-
-        if not os.getenv("DEFAULT_PRINCIPAL"):
-            print "Expecting authentication principal in the environment"
-            sys.exit(1)
-
-        if not os.getenv("DEFAULT_SECRET"):
-            print "Expecting authentication secret in the environment"
-            sys.exit(1)
-
-        credential = mesos_pb2.Credential()
-        credential.principal = os.getenv("DEFAULT_PRINCIPAL")
-        credential.secret = os.getenv("DEFAULT_SECRET")
-
-        framework.principal = os.getenv("DEFAULT_PRINCIPAL")
-
-        driver = MesosSchedulerDriver(
-            MesosScheduler(implicitAcknowledgements, executor, dictionary),
-            framework,
-            sys.argv[1],
-            implicitAcknowledgements,
-            credential)
-    else:
-        framework.principal = "test-framework-python"
-
-        driver = MesosSchedulerDriver(
-            MesosScheduler(implicitAcknowledgements, executor, dictionary),
-            framework,
-            sys.argv[1],
-            implicitAcknowledgements)
-
-    driver_result = driver.run()
-
-    status = 0 if driver_result == mesos_pb2.DRIVER_STOPPED else 1
-
-    # Ensure that the driver process terminates.
-    driver.stop()
-
-    sys.exit(status)
