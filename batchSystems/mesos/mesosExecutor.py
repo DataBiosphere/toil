@@ -16,15 +16,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-
 import sys
 import threading
-import time
+from time import sleep
 
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
-from subprocess import check_call
+from subprocess import call
 import pickle
 
 
@@ -47,28 +46,29 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         # threads or processes, rather than inside launchTask itself.
         def run_task():
             print "Running task %s" % task.task_id.value
-            update = mesos_pb2.TaskStatus()
-            update.task_id.value = task.task_id.value
-            update.state = mesos_pb2.TASK_RUNNING
-            update.data = 'data with a \0 byte'
-            driver.sendStatusUpdate(update)
+            self.sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
 
-            raise RuntimeError("executor stopped on purpose")
             jobTreeJob = pickle.loads( task.data )
             os.chdir( jobTreeJob.cwd )
-            check_call(jobTreeJob.command, shell=True)
-            # This is where one would perform the requested task.
 
-            print "Sending status update..."
-            update = mesos_pb2.TaskStatus()
-            update.task_id.value = task.task_id.value
-            update.state = mesos_pb2.TASK_FINISHED
-            update.data = 'data with a \0 byte'
-            driver.sendStatusUpdate(update)
-            print "Sent status update"
+            result = call(jobTreeJob.command, shell=True)
+
+            if result != 0:
+                self.sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
+            else:
+                self.sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
 
         thread = threading.Thread(target=run_task)
         thread.start()
+
+    def sendUpdate(self, driver, task, TASK_STATE):
+        print "Sending status update..."
+        update = mesos_pb2.TaskStatus()
+        update.task_id.value = task.task_id.value
+        update.state = TASK_STATE
+        update.data = 'data with a \0 byte'
+        driver.sendStatusUpdate(update)
+        print "Sent status update"
 
     def frameworkMessage(self, driver, message):
         # Send it back to the scheduler.
