@@ -15,12 +15,18 @@ class MesosBatchSystem(AbstractBatchSystem):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
         # job type queue is a dictionary of queues. Jobs are grouped in queues with resource requirements as keys.
         self.queueDictionary = {}
+        # TODO: I never see any evidence of this queue being read from
         self.killQueue = Queue()
+        # TODO: I never see any evidence of this field ever being used
         self.killedQueue = Queue()
+        # TODO: Can we combine this with some
         self.runningDictionary = {}
         self.updatedJobsQueue = Queue()
         self.currentJobs = []
         self.nextJobID = 0
+        # TODO: stick with one naming convention as much as possible
+        # TODO: I don't like the way all this state is threaded through from here down into the Scheduler instance ...
+        # ... Why not just pass a reference to the MesosBatchSystem around? Ask me to explain.
         self.mesosThread = MesosFrameWorkThread(queue_dictionary=self.queueDictionary, master_ip="127.0.0.1:5050",
                                                  kill_queue=self.killQueue, running_dictionary=self.runningDictionary,
                                                  updated_job_queue=self.updatedJobsQueue)
@@ -34,6 +40,7 @@ class MesosBatchSystem(AbstractBatchSystem):
         self.nextJobID += 1
         self.currentJobs.append(jobID)
 
+        # TODO: this is convoluted, construct ResourceSummary here and pass to JobTreeJob constructor
         job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
         job_type = job.resources
 
@@ -130,6 +137,9 @@ class MesosFrameWorkThread(Thread):
             implicitAcknowledgements = 0
 
         if os.getenv("MESOS_AUTHENTICATE"):
+
+            # TODO: let's delete this branch and replace it with raising a NotImplementedError
+
             print "Enabling authentication for the framework"
 
             if not os.getenv("DEFAULT_PRINCIPAL"):

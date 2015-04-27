@@ -1,6 +1,7 @@
 __author__ = 'CJ'
 from collections import namedtuple
 
+# TODO: rename to ResourceRequirement
 
 class ResourceSummary(namedtuple("ResourceSummary", ["memory", "cpu"])):
     pass

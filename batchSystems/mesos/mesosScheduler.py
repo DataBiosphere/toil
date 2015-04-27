@@ -9,10 +9,19 @@ from mesos.native import MesosSchedulerDriver
 from mesos.interface import mesos_pb2
 from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary
 
+# TODO: document class with a short docstring
+
+# TODO: replace all print statements with logger calls (see also mesosExecutor.py)
+
+# TODO: document each method, especially callbacks
+
+# TODO: rename internal method to start with double underscore (ask me for explanation)
 
 class MesosScheduler(mesos.interface.Scheduler):
     def __init__(self, implicitAcknowledgements, executor, job_queues, kill_queue, running_dictionary, updated_job_queue):
+            # TODO: Document what each field is used for
             self.jobQueues = job_queues
+            # TODO: is this used anywhere?
             self.killQueue = kill_queue
             self.runningDictionary = running_dictionary
             self.updatedJobQueue = updated_job_queue
@@ -37,22 +46,29 @@ class MesosScheduler(mesos.interface.Scheduler):
 
     @staticmethod
     def bytesToMB(mem):
+        # TODO: shouldn't this be mem / 1024 / 1024 ?
         return mem/1000000
 
     def resourceOffers(self, driver, offers):
 
         job_types = list(self.jobQueues.keys())
         # sorts from largest to smallest cpu usage
+        # TODO: ResourceSummary should be resourceSummary
+        # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
         job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
         job_types.reverse()
 
         # right now, gives priority to largest jobs
         for offer in offers:
+            # TODO: the comment below should describe in more detail what race it is preventing
             #prevents race condition bug
             if len(job_types)==0:
                 driver.declineOffer(offer.id)
+                # TODO: What about the other offers? Shouldn't we decline them, too?
                 return
             tasks = []
+
+            # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCpus = 0
             offerMem = 0
             for resource in offer.resources:
@@ -71,12 +87,14 @@ class MesosScheduler(mesos.interface.Scheduler):
                 print "Memory Req: "+str(job_type.memory)
                 print "CPU Req "+str(job_type.cpu)
                 print "Unique Job Types: "+str(len(job_types))
+                # TODO: I don't understand the commment below
                 #not part of task object
                 while (not self.jobQueues[job_type].empty()) and \
                                 remainingCpus >= job_type.cpu and \
                                 remainingMem >= self.bytesToMB(job_type.memory): #job tree specifies its resources in bytes.
                     jt_job = self.jobQueues[job_type].get()
 
+                    # TODO: If this is something that needs to be changed, create a FIXME comment for it
                     # maps the id to the time running. Right now all running time is 1
                     self.runningDictionary[jt_job.jobID] = 1
 
@@ -85,11 +103,14 @@ class MesosScheduler(mesos.interface.Scheduler):
                           % (task.task_id.value, offer.id.value)
 
                     tasks.append(task)
+                    # TODO: You might want to simply place the entire task object into that dictionary
+                    # TODO: When are entries removed from that dictionary?
                     self.taskData[task.task_id.value] = (
                         offer.slave_id, task.executor.executor_id)
 
                     remainingCpus -= job_type.cpu
                     remainingMem -= self.bytesToMB(job_type.memory)
+            # TODO: this comment is a bit ominous
             #if we launch offers in for loop, they are invalid...
             driver.launchTasks(offer.id, tasks)
 
@@ -122,6 +143,7 @@ class MesosScheduler(mesos.interface.Scheduler):
         print "Task %s is in a state %s" % \
             (update.task_id.value, mesos_pb2.TaskState.Name(update.state))
 
+        # TODO: I think this is left over from the example and should be removed
         # Ensure the binary data came through.
         if update.data != "data with a \0 byte":
             print "The update data did not match!"
