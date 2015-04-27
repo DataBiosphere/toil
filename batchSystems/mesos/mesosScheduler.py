@@ -35,6 +35,10 @@ class MesosScheduler(mesos.interface.Scheduler):
     def executorLost(self, driver, executorId, slaveId, status):
         print "executor %s lost".format(executorId)
 
+    @staticmethod
+    def bytesToMB(mem):
+        return mem/1000000
+
     def resourceOffers(self, driver, offers):
 
         job_types = list(self.jobQueues.keys())
@@ -69,7 +73,7 @@ class MesosScheduler(mesos.interface.Scheduler):
                 #not part of task object
                 while (not self.jobQueues[job_type].empty()) and \
                                 remainingCpus >= job_type.cpu and \
-                                remainingMem >= job_type.memory / 1000000:
+                                remainingMem >= self.bytesToMB(job_type.memory): #job tree specifies its resources in bytes.
                     jt_job = self.jobQueues[job_type].get()
 
                     # maps the id to the time running. Right now all running time is 1
@@ -84,7 +88,7 @@ class MesosScheduler(mesos.interface.Scheduler):
                         offer.slave_id, task.executor.executor_id)
 
                     remainingCpus -= job_type.cpu
-                    remainingMem -= job_type.memory / 1000000
+                    remainingMem -= self.bytesToMB(job_type.memory)
             #if we launch offers in for loop, they are invalid...
             driver.launchTasks(offer.id, tasks)
 
@@ -167,7 +171,7 @@ class MesosScheduler(mesos.interface.Scheduler):
         # probably doesnt work. running dictionary can shrink.
         if self.messagesReceived == len(self.runningDictionary):
             if self.messagesReceived != self.messagesSent:
-                print "Sent", self.messagesSent,
+                print "ERROR: sent", self.messagesSent,
                 print "but received", self.messagesReceived
-                sys.exit(1)
+                #sys.exit(1)
             print "All tasks done, and all messages received, waiting for more tasks"
