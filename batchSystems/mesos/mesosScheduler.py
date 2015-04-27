@@ -51,6 +51,7 @@ class MesosScheduler(mesos.interface.Scheduler):
             #prevents race condition bug
             if len(job_types)==0:
                 driver.declineOffer(offer.id)
+                return
             tasks = []
             offerCpus = 0
             offerMem = 0
