@@ -8,17 +8,19 @@ class LongTest(Target):
         Target.__init__(self, time=1, memory=1000000, cpu=1)
 
     def run(self):
-        self.addChildTarget(HelloWorld())
+        for i in range(1,5):
+            self.addChildTarget(HelloWorld(i))
         self.setFollowOnTarget(HelloWorldFollow())
 
 
 class HelloWorld(Target):
 
-    def __init__(self):
-        Target.__init__(self, time=1, memory=1000000, cpu=2)
+    def __init__(self,i):
+        Target.__init__(self, time=1, memory=100000, cpu=0.5)
+        self.i=i
 
     def run(self):
-        with open ('hello_world_child.txt', 'w') as file:
+        with open ('hello_world_child{}.txt'.format(self.i), 'w') as file:
             file.write('This is a triumph')
 
 

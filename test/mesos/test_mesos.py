@@ -11,31 +11,35 @@ from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary, MesosSchedul
 import subprocess
 import threading
 
-def startMesosMaster():
-    subprocess.check_call("mesos-master --registry=in_memory --ip=127.0.0.1", shell=True)
-
-def startMesosSlave():
-    subprocess.check_call("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050", shell=True)
 
 class TestMesos(unittest.TestCase):
-    mesosMasterThread = threading.Thread(target=startMesosMaster)
-    mesosSlaveThread = threading.Thread(target=startMesosSlave)
+
+
+    class MesosMasterThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
+            self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1",shell=True)
+
+
+    class MesosSlaveThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
+            self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050",shell=True)
+
+    master=MesosMasterThread()
+    slave=MesosSlaveThread()
 
     @classmethod
     def setUpClass(cls):
-        # unittest.TestCase.setUpClass(self)
-        # cls.startDir= os.getcwd()
-        # cls.tempDir=None
-        # problem: tests are not completely independant, if one breaks mesos rest will fail.
-        cls.mesosMasterThread.setDaemon(True)
-        cls.mesosSlaveThread.setDaemon(True)
-        cls.mesosMasterThread.start()
-        cls.mesosSlaveThread.start()
+        cls.master.setDaemon(True)
+        cls.slave.setDaemon(True)
+        cls.master.start()
+        cls.slave.start()
 
-    # @classmethod
-    # def tearDownClass(cls):
-    #     # unittest.TestCase.setUpClass(self)
-    #     os.chdir(cls.startDir)
+    @classmethod
+    def tearDownClass(cls):
+        cls.master.popen.kill()
+        cls.slave.popen.kill()
 
     def setUp(self):
         # subprocess.check_call("rm -rf /tmp/mesos/")
@@ -58,7 +62,7 @@ class TestMesos(unittest.TestCase):
         dir = os.path.abspath(os.path.dirname(__file__))
         print(dir)
         subprocess.check_call("python {}/LongTest.py --batchSystem=mesos".format(dir), shell=True)
-        self.assertTrue(os.path.isfile("./hello_world_child.txt"))
+        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
         self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
 
     # Test for mesos only. Problem: mesos is daemonized, doesnt quit by itself.
