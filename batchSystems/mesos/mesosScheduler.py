@@ -35,11 +35,18 @@ class MesosScheduler(mesos.interface.Scheduler):
     def executorLost(self, driver, executorId, slaveId, status):
         print "executor %s lost".format(executorId)
 
-
     def resourceOffers(self, driver, offers):
-        # given resources, assign jobs to utilize them.
+
+        job_types = list(self.jobQueues.keys())
+        # sorts from largest to smallest cpu usage
+        job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
+        job_types.reverse()
+
         # right now, gives priority to largest jobs
         for offer in offers:
+            #prevents race condition bug
+            if len(job_types)==0:
+                driver.declineOffer(offer.id)
             tasks = []
             offerCpus = 0
             offerMem = 0
@@ -55,67 +62,56 @@ class MesosScheduler(mesos.interface.Scheduler):
             remainingCpus = offerCpus
             remainingMem = offerMem
 
-            job_types = list(self.jobQueues.keys())
-            # sorts from largest to smallest cpu usage
-            job_types.sort(key=lambda ResourceSummary: ResourceSummary.cpu)
-            job_types.reverse()
-
-            #prevents race condition bug
-            if len(job_types)==0:
-                driver.declineOffer(offers)
-
             for job_type in job_types:
+                print "Memory Req: "+str(job_type.memory)
+                print "CPU Req "+str(job_type.cpu)
+                print "Unique Job Types: "+str(len(job_types))
                 #not part of task object
-                task_cpu = job_type.cpu
-                task_memory = job_type.memory/1000000
-
-                # loop through the resource requirements for queues.
-                # if the requirement matches the offer, loop through the queue and
-                # assign jobTree jobs as tasks until the offer is used up or the queue empties.
-
                 while (not self.jobQueues[job_type].empty()) and \
-                                remainingCpus >= task_cpu and \
-                                remainingMem >= task_memory:
-
+                                remainingCpus >= job_type.cpu and \
+                                remainingMem >= job_type.memory / 1000000:
                     jt_job = self.jobQueues[job_type].get()
 
+                    # maps the id to the time running. Right now all running time is 1
                     self.runningDictionary[jt_job.jobID] = 1
 
-                    tid = self.tasksLaunched
-                    self.tasksLaunched += 1
-
-                    print "Launching task %d using offer %s" \
-                          % (tid, offer.id.value)
-
-                    task = mesos_pb2.TaskInfo()
-
-                    task.task_id.value = str(tid)
-                    task.slave_id.value = offer.slave_id.value
-                    task.name = "task %d" % tid
-
-                    # assigns jobTree command to task
-                    task.data = pickle.dumps(jt_job)
-
-                    task.executor.MergeFrom(self.executor)
-
-                    cpus = task.resources.add()
-                    cpus.name = "cpus"
-                    cpus.type = mesos_pb2.Value.SCALAR
-                    cpus.scalar.value = task_cpu
-
-                    mem = task.resources.add()
-                    mem.name = "mem"
-                    mem.type = mesos_pb2.Value.SCALAR
-                    mem.scalar.value = task_memory
+                    task = self.createTask(jt_job, offer)
+                    print "Launching mesos task %s using offer %s" \
+                          % (task.task_id.value, offer.id.value)
 
                     tasks.append(task)
                     self.taskData[task.task_id.value] = (
                         offer.slave_id, task.executor.executor_id)
 
-                    remainingCpus -= task_cpu
-                    remainingMem -= task_memory
-
+                    remainingCpus -= job_type.cpu
+                    remainingMem -= job_type.memory / 1000000
+            #if we launch offers in for loop, they are invalid...
             driver.launchTasks(offer.id, tasks)
+
+    def createTask(self, jt_job, offer):
+        tid = self.tasksLaunched
+        self.tasksLaunched += 1
+        task = mesos_pb2.TaskInfo()
+        task.task_id.value = str(tid)
+        task.slave_id.value = offer.slave_id.value
+        task.name = "task %d" % tid
+
+        # assigns jobTree command to task
+        task.data = pickle.dumps(jt_job)
+
+        task.executor.MergeFrom(self.executor)
+
+        cpus = task.resources.add()
+        cpus.name = "cpus"
+        cpus.type = mesos_pb2.Value.SCALAR
+        cpus.scalar.value = jt_job.resources.cpu
+
+        mem = task.resources.add()
+        mem.name = "mem"
+        mem.type = mesos_pb2.Value.SCALAR
+        mem.scalar.value = jt_job.resources.memory/1000000
+        return task
+
 
     def statusUpdate(self, driver, update):
         print "Task %s is in a state %s" % \
@@ -147,7 +143,7 @@ class MesosScheduler(mesos.interface.Scheduler):
         if update.state == mesos_pb2.TASK_LOST or \
            update.state == mesos_pb2.TASK_KILLED or \
            update.state == mesos_pb2.TASK_FAILED:
-            print "not Aborting because task %s is in unexpected state %s with message '%s'" \
+            print "Task %s is in unexpected state %s with message '%s'" \
                 % (update.task_id.value, mesos_pb2.TaskState.Name(update.state), update.message)
             # driver.abort()
             self.updatedJobQueue.put((int(update.task_id.value), 1))
