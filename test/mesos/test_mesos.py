@@ -8,12 +8,12 @@ from jobTree.batchSystems.mesos import MesosFrameWorkThread
 from mesos.interface import mesos_pb2
 from Queue import Queue
 from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary, MesosScheduler, MesosSchedulerDriver
+from jobTree.test.mesos.ResumeTest import main as testMain
 import subprocess
 import threading
 
 
 class TestMesos(unittest.TestCase):
-
 
     class MesosMasterThread(threading.Thread):
         def __init__(self):
@@ -53,17 +53,20 @@ class TestMesos(unittest.TestCase):
 
     def test_hello_world(self):
         dir = os.path.abspath(os.path.dirname(__file__))
-        print(dir)
         subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos".format(dir), shell=True)
         self.assertTrue(os.path.isfile("./hello_world.txt"))
         self.assertTrue(os.path.isfile("./hello_world_child.txt"))
 
     def test_class_script(self):
         dir = os.path.abspath(os.path.dirname(__file__))
-        print(dir)
         subprocess.check_call("python {}/LongTest.py --batchSystem=mesos".format(dir), shell=True)
         self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
         self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
+
+    def test_resume(self):
+        testMain()
+        #cls.slave.popen.kill()
+        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
 
     # Test for mesos only. Problem: mesos is daemonized, doesnt quit by itself.
     # def test_mesos_only(self):
