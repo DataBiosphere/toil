@@ -85,8 +85,9 @@ def main():
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
-    from jobTree.src.fileJobStore import FileJobStore
-    from jobTree.src.master import getEnvironmentFileName, getConfigFileName, getTempStatsFile
+    from jobTree.jobStores.fileJobStore import FileJobStore
+    from jobTree.src.common import getEnvironmentFileName, getConfigFileName
+    from jobTree.src.master import getTempStatsFile
     from sonLib.bioio import system
     
     ########################################## 
@@ -120,8 +121,8 @@ def main():
     ##########################################
         
     #Dir to put all the temp files in.
-    localSlaveTempDir = getTempDirectory()
-    localTempDir = makeSubDir(os.path.join(localSlaveTempDir, "localTempDir"))
+    localWorkerTempDir = getTempDirectory()
+    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
     
     ##########################################
     #Setup the logging
@@ -137,7 +138,7 @@ def main():
     #file descriptor 1, and standard error is file descriptor 2.
 
     #What file do we want to point FDs 1 and 2 to?    
-    tempSlaveLogFile = os.path.join(localSlaveTempDir, "slave_log.txt")
+    tempWorkerLogFile = os.path.join(localWorkerTempDir, "worker_log.txt")
     
     #Save the original stdout and stderr (by opening new file descriptors to the
     #same files)
@@ -145,7 +146,7 @@ def main():
     origStdErr = os.dup(2)
     
     #Open the file to send stdout/stderr to.
-    logDescriptor = os.open(tempSlaveLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+    logDescriptor = os.open(tempWorkerLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
 
     #Replace standard output with a descriptor for the log file
     os.dup2(logDescriptor, 1)
@@ -186,14 +187,16 @@ def main():
     setLogLevel(config.attrib["log_level"])
     jobStore = FileJobStore(config, create=False)
     job = jobStore.load(jobStoreID)
-    job.messages = [] #This is the only way to stop messages logging twice, as are read only in the master
+    job.messages = [] #This is the only way to stop messages logging twice, 
+    #as are read only in the master
     job.children = [] #Similarly, this is where old children are flushed out.
     if job.logJobStoreFileID != None:
         job.clearLogFile(jobStore) #This cleans the old log file
-    jobStore.write(job) #Update status, to avoid reissuing children after running a follow on below.
+    jobStore.write(job) #Update status, to avoid reissuing children after 
+    #running a follow on below.
     logger.info("Parsed arguments and set up logging")
 
-     #Try loop for slave logging
+     #Try loop for worker logging
     ##########################################
     #Setup the stats, if requested
     ##########################################
@@ -201,7 +204,7 @@ def main():
     if config.attrib.has_key("stats"):
         startTime = time.time()
         startClock = getTotalCpuTime()
-        stats = ET.Element("slave")
+        stats = ET.Element("worker")
     else:
         stats = None
     
@@ -214,18 +217,15 @@ def main():
     assert maxTime < sys.maxint
 
     ##########################################
-    #Slave log file trapped from here on in
+    #Worker log file trapped from here on in
     ##########################################
 
-    slaveFailed = False
+    workerFailed = False
     try:
         
         ##########################################
         #The next job
         ##########################################
-        
-        def globalTempDirName(job, depth):
-            return job.getGlobalTempDirName() + str(depth)
         
         command, memoryAvailable, cpuAvailable, depth = job.followOnCommands[-1]
         defaultMemory = int(config.attrib["default_memory"])
@@ -235,16 +235,6 @@ def main():
         startTime = time.time() 
         while True:
             job.followOnCommands.pop()
-            
-            ##########################################
-            #Global temp dir
-            ##########################################
-            
-            globalTempDir = makeSubDir(globalTempDirName(job, depth))
-            i = 1
-            while os.path.isdir(globalTempDirName(job, depth+i)):
-                system("rm -rf %s" % globalTempDirName(job, depth+i))
-                i += 1
                 
             ##########################################
             #Old children, not yet deleted
@@ -269,12 +259,14 @@ def main():
                     ##########################################
                     
                     loadStack(command).execute(job=job, stats=stats,
-                                    localTempDir=localTempDir, globalTempDir=globalTempDir, 
-                                    memoryAvailable=memoryAvailable, cpuAvailable=cpuAvailable, 
-                                    defaultMemory=defaultMemory, defaultCpu=defaultCpu, depth=depth)
+                                    localTempDir=localTempDir, jobStore=jobStore, 
+                                    memoryAvailable=memoryAvailable, 
+                                    cpuAvailable=cpuAvailable, 
+                                    defaultMemory=defaultMemory, 
+                                    defaultCpu=defaultCpu, depth=depth)
             
                 else: #Is another command
-                    system(command) 
+                    system(command)
             
             ##########################################
             #Cleanup/reset a successful job/checkpoint
@@ -283,10 +275,12 @@ def main():
             job.remainingRetryCount = int(config.attrib["try_count"])
             system("rm -rf %s/*" % (localTempDir))
             
-            if len(job.children) == 1: #If job has a single child, just make it a follow on
+            if len(job.children) == 1: #If job has a single child, 
+                #just make it a follow on
                 job.followOnCommands.append(job.children.pop() + (depth + 1,))
             
-            childCommands = job.children #This is a hack until we stop overloading the use of this array
+            childCommands = job.children #This is a hack until we stop 
+            #overloading the use of this array
             job.children = []
             jobStore.update(job=job, childCommands=childCommands)
             
@@ -295,16 +289,19 @@ def main():
             ##########################################
             
             if time.time() - startTime > maxTime:
-                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
+                logger.info("We are breaking because the maximum time the \
+                job should run for has been exceeded")
                 break
             
             #Deal with children
             if len(job.children) >= 1:  #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this slave, its got %i children" % len(job.children))
+                logger.info("No more jobs can run in series by this worker, \
+                its got %i children" % len(job.children))
                 break
             
             if len(job.followOnCommands) == 0:
-                logger.info("No more jobs can run by this slave as we have exhausted the follow ons")
+                logger.info("No more jobs can run by this worker as we \
+                have exhausted the follow ons")
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
@@ -334,23 +331,25 @@ def main():
             fileHandle.close()
             os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
         
-        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Finished running the chain of jobs on this node, \
+        we ran for a total of %f seconds" % (time.time() - startTime))
     
     ##########################################
-    #Where slave goes wrong
+    #Where worker goes wrong
     ##########################################
-    except: #Case that something goes wrong in slave
+    except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.critical("Exiting the slave because of a failed job on host %s", socket.gethostname())
+        logger.critical("Exiting the worker because of a \
+        failed job on host %s", socket.gethostname())
         job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
-        slaveFailed = True
+        workerFailed = True
 
     ##########################################
     #Cleanup
     ##########################################
     
-    #Close the slave logging
+    #Close the worker logging
     #Flush at the Python level
     sys.stdout.flush()
     sys.stderr.flush()
@@ -375,21 +374,23 @@ def main():
     #Now our file handles are in exactly the state they were in before.
     
     #Copy back the log file to the global dir, if needed
-    if slaveFailed:
-        truncateFile(tempSlaveLogFile)
-        job.setLogFile(tempSlaveLogFile, jobStore)
-        os.remove(tempSlaveLogFile)
+    if workerFailed:
+        truncateFile(tempWorkerLogFile)
+        job.setLogFile(tempWorkerLogFile, jobStore)
+        os.remove(tempWorkerLogFile)
         jobStore.write(job)
 
     #Remove the temp dir
-    system("rm -rf %s" % localSlaveTempDir)
+    system("rm -rf %s" % localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not slaveFailed) and len(job.followOnCommands) == 0 and len(job.children) == 0 and len(job.messages) == 0:
-        ##########################################
+    if (not workerFailed) and len(job.followOnCommands) == 0 and len(job.children) == 0:
         #Cleanup global files at the end of the chain
-        ##########################################
-        jobStore.delete(job)
+        
+        if len(job.messages) == 0:
+            #We can also safely get rid of the job
+            jobStore.delete(job)
+            
 
 def _test():
     import doctest      

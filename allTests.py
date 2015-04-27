@@ -20,12 +20,10 @@
 #THE SOFTWARE.
 
 import unittest
-from jobTree.test.jobTreeTest import TestCase as jobTreeTest
-from jobTree.test.jobTest import TestCase as jobTest
-from jobTree.test.scriptTreeTest import TestCase as scriptTreeTest
+from jobTree.test.dependencies.dependenciesTest import TestCase as dependenciesTest
 from jobTree.test.sort.sortTest import TestCase as sortTest
-from jobTree.test.statsTest import TestCase as statsTest
-#import jobTree.test.jobTreeParasolCrashTest.TestCase as jobTreeParasolCrashTest
+from jobTree.test.src.jobTest import TestCase as jobTest
+from jobTree.test.utils.statsTest import TestCase as statsTest
 
 from sonLib.bioio import parseSuiteTestOptions, getBasicOptionParser
 
@@ -33,10 +31,8 @@ def allSuites(options):
     tests = []
     if 'job' in options.tests:
         tests.append(unittest.makeSuite(jobTest, 'test'))
-    if 'jobTree' in options.tests:
-        tests.append(unittest.makeSuite(jobTreeTest, 'test'))
-    if 'scriptTree' in options.tests:
-        tests.append(unittest.makeSuite(scriptTreeTest, 'test'))
+    if 'dependencies' in options.tests:
+        tests.append(unittest.makeSuite(dependenciesTest, 'test'))
     if 'sort' in options.tests:
         tests.append(unittest.makeSuite(sortTest, 'test'))
     if 'stats' in options.tests:
@@ -48,10 +44,10 @@ def initializeOptions(parser):
     parser.add_option('--tests',
                       help=('comma separated list of tests. omit to test all. '
                             'possbile tests: '
-                            '[job, jobTree, scriptTree, sort, stats]'))
+                            '[job, dependencies, scriptTree, sort, stats]'))
 
 def checkOptions(options, parser):
-    tests = ['job', 'jobTree', 'scriptTree', 'sort', 'stats']
+    tests = ['job', 'dependencies', 'sort', 'stats']
     if options.tests is None:
         options.tests = tests
     else:

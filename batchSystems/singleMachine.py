@@ -33,12 +33,11 @@ from Queue import Empty
 from sonLib.bioio import logger
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
-
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from sonLib.bioio import getTempFile
 from sonLib.bioio import system
 
-from jobTree.src.jobTreeSlave import main as slaveMain
+from jobTree.src.worker import main as workerMain
    
 def worker(inputQueue, outputQueue):
     while True:
@@ -48,7 +47,7 @@ def worker(inputQueue, outputQueue):
             return
         command, jobID, threadsToStart = args
         sys.argv = command.split()[2:]
-        slaveMain()
+        workerMain()
         outputQueue.put((jobID, 0, threadsToStart))
         inputQueue.task_done()
         
@@ -136,7 +135,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 def badWorker(inputQueue, outputQueue):
     """This is used to test what happens if we fail and restart jobs
     """
-    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the slave and will be reported if there is an error)
+    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the worker and will be reported if there is an error)
     while True:
         args = inputQueue.get()
         if args == None: #Case where we are reducing threads for max number of CPUs

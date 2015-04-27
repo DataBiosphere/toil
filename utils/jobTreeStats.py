@@ -39,9 +39,8 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.master import getEnvironmentFileName
-from jobTree.src.master import getStatsFileName, getConfigFileName
-from jobTree.src.master import getStatsCacheFileName
+from jobTree.src.common import getEnvironmentFileName, getConfigFileName
+from jobTree.src.master import getStatsFileName, getStatsCacheFileName
 
 class JTTag(object):
     """ Convenience object that stores xml attributes as object attributes.
@@ -51,12 +50,12 @@ class JTTag(object):
         """
         for name in ["total_time", "median_clock", "total_memory",
                      "median_wait", "total_number", "average_time",
-                     "median_memory", "min_number_per_slave", "average_wait",
+                     "median_memory", "min_number_per_worker", "average_wait",
                      "total_clock", "median_time", "min_time", "min_wait",
                      "max_clock", "max_wait", "total_wait", "min_clock",
-                     "average_memory", "max_number_per_slave", "max_memory",
-                     "average_memory", "max_number_per_slave", "max_memory",
-                     "median_number_per_slave", "average_number_per_slave",
+                     "average_memory", "max_number_per_worker", "max_memory",
+                     "average_memory", "max_number_per_worker", "max_memory",
+                     "median_number_per_worker", "average_number_per_worker",
                      "max_time", "average_clock", "min_memory", "min_clock",
                      ]:
           setattr(self, name, self.__get(tree, name))
@@ -291,13 +290,13 @@ def reportNumber(n, options, field=None):
 def refineData(root, options):
     """ walk down from the root and gather up the important bits.
     """
-    slave = JTTag(root.find("slave"))
+    worker = JTTag(root.find("worker"))
     target = JTTag(root.find("target"))
     targetTypesTree = root.find("target_types")
     targetTypes = []
     for child in targetTypesTree:
         targetTypes.append(JTTag(child))
-    return root, slave, target, targetTypes
+    return root, worker, target, targetTypes
 
 def sprintTag(key, tag, options, columnWidths=None):
     """ Generate a pretty-print ready string from a JTTag().
@@ -309,13 +308,13 @@ def sprintTag(key, tag, options, columnWidths=None):
     tag_str = "  %s" % reportNumber(tag.total_number, options, field=7)
     out_str = ""
     if key == "target":
-        out_str += " %-12s | %7s%7s%7s%7s\n" % ("Slave Jobs", "min",
+        out_str += " %-12s | %7s%7s%7s%7s\n" % ("Worker Jobs", "min",
                                            "med", "ave", "max")
-        slave_str = "%s| " % (" " * 14)
-        for t in [tag.min_number_per_slave, tag.median_number_per_slave,
-                  tag.average_number_per_slave, tag.max_number_per_slave]:
-            slave_str += reportNumber(t, options, field=7)
-        out_str += slave_str + "\n"
+        worker_str = "%s| " % (" " * 14)
+        for t in [tag.min_number_per_worker, tag.median_number_per_worker,
+                  tag.average_number_per_worker, tag.max_number_per_worker]:
+            worker_str += reportNumber(t, options, field=7)
+        out_str += worker_str + "\n"
     if "time" in options.categories:
         header += "| %*s " % (columnWidths.title("time"),
                               decorateTitle("Time", options))
@@ -447,7 +446,7 @@ def sortTargets(targetTypes, options):
         return sorted(targetTypes, key=lambda tag: tag.total_number,
                       reverse=options.sortReverse)
 
-def reportPrettyData(root, slave, target, target_types, options):
+def reportPrettyData(root, worker, target, target_types, options):
     """ print the important bits out.
     """
     out_str = "Batch System: %s\n" % root.attrib["batch_system"]
@@ -464,9 +463,9 @@ def reportPrettyData(root, slave, target, target_types, options):
         reportTime(get(root, "total_run_time"), options),
         ))
     target_types = sortTargets(target_types, options)
-    columnWidths = computeColumnWidths(target_types, slave, target, options)
-    out_str += "Slave\n"
-    out_str += sprintTag("slave", slave, options, columnWidths=columnWidths)
+    columnWidths = computeColumnWidths(target_types, worker, target, options)
+    out_str += "Worker\n"
+    out_str += sprintTag("worker", worker, options, columnWidths=columnWidths)
     out_str += "Target\n"
     out_str += sprintTag("target", target, options, columnWidths=columnWidths)
     for t in target_types:
@@ -474,13 +473,13 @@ def reportPrettyData(root, slave, target, target_types, options):
         out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
-def computeColumnWidths(target_types, slave, target, options):
+def computeColumnWidths(target_types, worker, target, options):
     """ Return a ColumnWidths() object with the correct max widths.
     """
     cw = ColumnWidths()
     for t in target_types:
         updateColumnWidths(t, cw, options)
-    updateColumnWidths(slave, cw, options)
+    updateColumnWidths(worker, cw, options)
     updateColumnWidths(target, cw, options)
     return cw
 
@@ -592,7 +591,7 @@ def getSettings(options):
         stats = ET.Element("stats")
         try:
             for event, elem in ET.iterparse(fH):
-                if elem.tag == 'slave':
+                if elem.tag == 'worker':
                     stats.append(elem)
         except ET.ParseError:
             pass # Do nothing at this point
@@ -618,18 +617,18 @@ def processData(config, stats, options):
          "max_cpus":config.attrib["max_cpus"],
          "max_threads":config.attrib["max_threads"] })
 
-    # Add slave info
-    slaves = stats.findall("slave")
-    buildElement(collatedStatsTag, slaves, "slave")
+    # Add worker info
+    workers = stats.findall("worker")
+    buildElement(collatedStatsTag, workers, "worker")
 
     # Add aggregated target info
     targets = []
-    for slave in slaves:
-        targets += slave.findall("target")
+    for worker in workers:
+        targets += worker.findall("target")
     def fn4(job):
-        return list(slave.findall("target"))
+        return list(worker.findall("target"))
     createSummary(buildElement(collatedStatsTag, targets, "target"),
-                  slaves, "slave", fn4)
+                  workers, "worker", fn4)
     # Get info for each target
     targetNames = set()
     for target in targets:
@@ -646,8 +645,8 @@ def reportData(xml_tree, options):
     if options.raw:
         out_str = prettyXml(xml_tree)
     else:
-        root, slave, target, target_types = refineData(xml_tree, options)
-        out_str = reportPrettyData(root, slave, target, target_types, options)
+        root, worker, target, target_types = refineData(xml_tree, options)
+        out_str = reportPrettyData(root, worker, target, target_types, options)
     if options.outputFile != None:
         fileHandle = open(options.outputFile, "w")
         fileHandle.write(out_str)

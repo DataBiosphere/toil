@@ -33,7 +33,7 @@ from sonLib.bioio import logStream
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
-from jobTree.src.master import getConfigFileName
+from jobTree.src.common import getConfigFileName
 from jobTree.src.job import Job
 from jobTree.src.fileJobStore import FileJobStore
 

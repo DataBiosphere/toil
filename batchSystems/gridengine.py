@@ -27,12 +27,10 @@ import time
 import sys
 from Queue import Queue, Empty
 from threading import Thread
-
 from sonLib.bioio import logger
 from sonLib.bioio import system
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.src.master import getParasolResultsFileName
-
+from jobTree.batchSystems.parasol import getParasolResultsFileName
 from jobTree.batchSystems.multijob import MultiTarget
 
 class MemoryString:

@@ -12,6 +12,7 @@ from sonLib.bioio import getTempDirectory
 from sonLib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
+from jobTree.src.common import workflowRootPath
 
 class TestCase(unittest.TestCase):
     def setUp(self):
@@ -31,10 +32,13 @@ class TestCase(unittest.TestCase):
             N=1000
             makeFileToSort(tempFile, lines, maxLineLength)
             #Sort the file
-            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %s --stats --jobTime 0.5 --retryCount 99" % (jobTreeDir, tempFile, N)
+            command = "%s/sort.py --jobTree %s --logLevel=DEBUG \
+            --fileToSort=%s --N %s --stats --jobTime 0.5 --retryCount 99" % \
+            (os.path.join(workflowRootPath(), "test/sort"), jobTreeDir, tempFile, N)
             system(command)
             #Now get the stats
-            system("jobTreeStats --jobTree %s --outputFile %s" % (jobTreeDir, outputFile))
+            system("jobTreeStats --jobTree %s --outputFile %s" % \
+                   (jobTreeDir, outputFile))
             #Cleanup
             system("rm -rf %s" % tempDir)
                    

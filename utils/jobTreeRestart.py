@@ -20,26 +20,35 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-"""Kills any running jobs trees in a rogue jobtree.
-""" 
+"""A script to setup and run a hierarchical run of cluster jobs.
+"""
 
 import os
-import sys
+import sys 
 import xml.etree.cElementTree as ET
-from sonLib.bioio import logger
-from sonLib.bioio import getBasicOptionParser
-from sonLib.bioio import parseBasicOptions
-from jobTree.src.master import getConfigFileName
-from jobTree.src.jobTreeRun import loadTheBatchSystem
-
+from optparse import OptionParser
+from jobTree.src.fileJobStore import FileJobStore
+from jobTree.src.master import mainLoop
+from jobTree.src.common import addOptions, setLoggingFromOptions, \
+loadEnvironment, reloadJobTree, getEnvironmentFileName, getConfigFileName
+from sonLib.bioio import logger, getLogLevelString
+    
 def main():
-    parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")
+    """Restarts the jobTree.
+    """
     
-    parser.add_option("--jobTree", dest="jobTree", 
-                      help="Directory containing the job tree to kill")
+    ##########################################
+    #Construct the arguments.
+    ##########################################  
     
-    options, args = parseBasicOptions(parser)
+    parser = OptionParser()
+    addOptions(parser)
     
+    options, args = parser.parse_args()
+    
+    if len(args) != 0:
+        parser.error("Unrecognised input arguments: %s" % " ".join(args))
+        
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -48,18 +57,20 @@ def main():
     if len(args) == 1: #Allow jobTree directory as arg
         options.jobTree = args[0]
         
-    logger.info("Parsed arguments")
-    assert options.jobTree != None #The jobtree should not be null
-    assert os.path.isdir(options.jobTree) #The job tree must exist if we are going to kill it.
-    logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)
-    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
-    batchSystem = loadTheBatchSystem(config) #This should automatically kill the existing jobs.. so we're good.
-    for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
-        batchSystem.killJobs(jobID)
-    logger.info("All jobs SHOULD have been killed")
-
+    ##########################################
+    #Now run the job tree construction/master
+    ##########################################  
+        
+    setLoggingFromOptions(options)
+    assert options.jobTree != None #We need a job tree, or a place to create one
+    if not os.path.isdir(options.jobTree):
+        raise RuntimeError("Specified jobTree to restart: %s does not exist" % options.jobTree)
+    config, batchSystem, jobStore = reloadJobTree(options.jobTree)
+    loadEnvironment(config)
+    return mainLoop(config, batchSystem, jobStore)
+    
 def _test():
-    import doctest
+    import doctest      
     return doctest.testmod()
 
 if __name__ == '__main__':

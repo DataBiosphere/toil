@@ -73,8 +73,8 @@ class AbstractJobStore:
         """
         pass
     
-    def readFile(self, jobStoreFileID):
-        """Returns a path to a copy of the file keyed by jobStoreFileID. The version
+    def readFile(self, jobStoreFileID, localFileName):
+        """Copies the file referenced by jobStoreFileID to the given local file path. The version
         will be consistent with the last copy of the file written/updated.
         """
         pass
@@ -82,6 +82,23 @@ class AbstractJobStore:
     def deleteFile(self, jobStoreFileID):
         """Deletes a file with the given jobStoreFileID. Throws an exception if the file
         does not exist.
+        """
+        pass
+    
+    def writeFileStream(self, jobStoreID):
+        """As writeFile, but returns a fileHandle which can be written from. Handle must be closed
+        to ensure transmission of the file.
+        """
+        pass
+    
+    def updateFileStream(self, jobStoreFileID):
+        """As updateFile, but returns a fileHandle which can be written to. Handle must be closed
+        to ensure transmission of the file.
+        """
+        pass
+    
+    def getEmptyFileStoreID(self, jobStoreID):
+        """Returns the ID of a new, empty file.
         """
         pass
     

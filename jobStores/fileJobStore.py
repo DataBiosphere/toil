@@ -97,6 +97,10 @@ class FileJobStore(AbstractJobStore):
         return self._loadJobTreeState(self._getJobFileDirName())
     
     def writeFile(self, jobStoreID, localFileName):
+        if not os.path.exists(jobStoreID):
+            raise RuntimeError("JobStoreID %s does not exist" % jobStoreID)
+        if not os.path.isdir(jobStoreID):
+            raise RuntimeError("Path %s is not a dir" % jobStoreID)
         jobStoreFileID = getTempFile(".tmp", os.path.join(jobStoreID, "g"))
         shutil.copyfile(localFileName, jobStoreFileID)
         return jobStoreFileID
@@ -104,17 +108,37 @@ class FileJobStore(AbstractJobStore):
     def updateFile(self, jobStoreFileID, localFileName):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        if not os.path.isfile(jobStoreFileID):
+            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
         shutil.copyfile(localFileName, jobStoreFileID)
     
-    def readFile(self, jobStoreFileID):
+    def readFile(self, jobStoreFileID, localFileName):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        return jobStoreFileID
+        if not os.path.isfile(jobStoreFileID):
+            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
+        shutil.copyfile(jobStoreFileID, localFileName)
     
     def deleteFile(self, jobStoreFileID):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         os.remove(jobStoreFileID)
+        
+    def writeFileStream(self, jobStoreID):
+        jobStoreFileID = getTempFile(".tmp", rootDir=os.path.join(jobStoreID, "g"))
+        return open(jobStoreFileID, 'w'), jobStoreFileID
+    
+    def updateFileStream(self, jobStoreFileID):
+        if not os.path.exists(jobStoreFileID):
+            raise RuntimeError("File %s does not exist" % jobStoreFileID)
+        if not os.path.isfile(jobStoreFileID):
+            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
+        return open(jobStoreFileID, 'w')
+    
+    def getEmptyFileStoreID(self, jobStoreID):
+        fileHandle, jobStoreFileID = self.writeFileStream(jobStoreID)
+        fileHandle.close()
+        return jobStoreFileID
     
     def readFileStream(self, jobStoreFileID):
         if not os.path.exists(jobStoreFileID):

@@ -36,7 +36,9 @@ from multiprocessing import JoinableQueue as Queue
 
 from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.src.master import getParasolResultsFileName
+
+def getParasolResultsFileName(jobTreePath):
+    return os.path.join(jobTreePath, "results.txt")
 
 def popenParasolCommand(command, runUntilSuccessful=True):
     """Issues a parasol command using popen to capture the output.
@@ -194,8 +196,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """Returns map of running jobIDs and the time they have been running.
         """
         #Example lines..
-        #r 5410186 benedictpaten jobTreeSlave 1247029663 localhost
-        #r 5410324 benedictpaten jobTreeSlave 1247030076 localhost
+        #r 5410186 benedictpaten worker 1247029663 localhost
+        #r 5410324 benedictpaten worker 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedJobIDs()
         for line in popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile))[1]:

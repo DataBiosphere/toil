@@ -39,14 +39,11 @@ from sonLib.bioio import getTempDirectory
 from sonLib.bioio import system, absSymPath
 from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
-from jobTree.src.jobTreeRun import addOptions
-from jobTree.src.jobTreeRun import createJobTree
-from jobTree.src.jobTreeRun import reloadJobTree
-from jobTree.src.jobTreeRun import createFirstJob
-from jobTree.src.jobTreeRun import loadEnvironment
+from jobTree.src.common import addOptions, reloadJobTree, \
+loadEnvironment, createJobTree
 from jobTree.src.master import mainLoop
 
-from jobTree.scriptTree.target import Target
+from jobTree.src.target import Target
 
 class Stack(object):
     """Holds together a stack of targets and runs them.
@@ -83,31 +80,39 @@ class Stack(object):
         setLoggingFromOptions(options)
         options.jobTree = absSymPath(options.jobTree)
         if os.path.isdir(options.jobTree):
-            config, batchSystem = reloadJobTree(options.jobTree)
+            config, batchSystem, jobStore = reloadJobTree(options.jobTree)
         else:
-            config, batchSystem = createJobTree(options)
+            config, batchSystem, jobStore = createJobTree(options)
             #Setup first job.
-            command = self.makeRunnable(options.jobTree)
             memory = self.getMemory()
             cpu = self.getCpu()
-            createFirstJob(command, config, memory=memory, cpu=cpu)
+            if memory == None or memory == sys.maxint:
+                memory = float(config.attrib["default_memory"])
+            if cpu == None or cpu == sys.maxint:
+                cpu = float(config.attrib["default_cpu"])
+            #Make job, set the command to None initially
+            logger.info("Adding the first job")
+            job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
+            #Now set the command properly (this is a hack)
+            job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
+            #Now write
+            jobStore.write(job)
         loadEnvironment(config)
-        return mainLoop(config, batchSystem)
+        return mainLoop(config, batchSystem, jobStore)
 
 #####
 #The remainder of the class is private to the user
 ####
         
-    def makeRunnable(self, tempDir):
-        pickleFile = getTempFile(".pickle", tempDir)
-        fileHandle = open(pickleFile, 'w')
+    def makeRunnable(self, jobStore, jobStoreID):
+        fileHandle, fileStoreID = jobStore.writeFileStream(jobStoreID)
         cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        fileHandle.close() 
+        fileHandle.close()
         i = set()
         for importString in self.target.importStrings:
             i.add(importString)
         classNames = " ".join(i)
-        return "scriptTree %s %s" % (pickleFile, classNames)
+        return "scriptTree %s %s" % (fileStoreID, classNames)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()
@@ -120,28 +125,16 @@ class Stack(object):
         if cpu == sys.maxint:
             return defaultCpu
         return cpu
-    
-    def getLocalTempDir(self):
-        self.tempDirAccessed = True
-        return self.localTempDir
-    
-    def getGlobalTempDir(self):
-        return getTempDirectory(rootDir=self.globalTempDir)
 
-    def execute(self, job, stats, localTempDir, globalTempDir, 
+    def execute(self, job, stats, localTempDir, jobStore, 
                 memoryAvailable, cpuAvailable,
                 defaultMemory, defaultCpu, depth):
-        self.tempDirAccessed = False
-        self.localTempDir = localTempDir
-        self.globalTempDir = globalTempDir
-        
         if stats != None:
             startTime = time.time()
             startClock = getTotalCpuTime()
         
         baseDir = os.getcwd()
         
-        self.target.setStack(self)
         #Debug check that we have the right amount of CPU and memory for the job in hand
         targetMemory = self.target.getMemory()
         if targetMemory != sys.maxint:
@@ -149,22 +142,22 @@ class Stack(object):
         targetCpu = self.target.getCpu()
         if targetCpu != sys.maxint:
             assert targetCpu <= cpuAvailable
+        #Set the jobStore for the target, used for file access
+        self.target.setFileVariables(jobStore, job, localTempDir)
         #Run the target, first cleanup then run.
         self.target.run()
+        #Now unset the job store to prevent it being serialised
+        self.target.unsetFileVariables()
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
         #Cleanup after the target
-        if self.tempDirAccessed:
-            system("rm -rf %s/*" % self.localTempDir)
-            self.tempDirAccessed = False
+        system("rm -rf %s/*" % localTempDir)
         #Handle the follow on
         followOn = self.target.getFollowOn()
         if followOn is not None: #Target to get rid of follow on when done.
-            if self.target.isGlobalTempDirSet():
-                followOn.setGlobalTempDir(self.target.getGlobalTempDir())
             followOnStack = Stack(followOn)
-            job.followOnCommands.append((followOnStack.makeRunnable(self.globalTempDir),
+            job.followOnCommands.append((followOnStack.makeRunnable(jobStore, job.jobStoreID),
                                          followOnStack.getMemory(defaultMemory),
                                          followOnStack.getCpu(defaultCpu),
                                          depth))
@@ -175,7 +168,7 @@ class Stack(object):
         assert len(job.children) == 0
         while len(newChildren) > 0:
             childStack = Stack(newChildren.pop())
-            job.children.append((childStack.makeRunnable(self.globalTempDir),
+            job.children.append((childStack.makeRunnable(jobStore, job.jobStoreID),
                      childStack.getMemory(defaultMemory),
                      childStack.getCpu(defaultCpu)))
         
@@ -200,10 +193,10 @@ class Stack(object):
         are present in options, otherwise it raises an error.
         It can also serve to validate the values of the options.
         """
-        required = ['logLevel', 'command', 'batchSystem', 'jobTree']
+        required = ['logLevel', 'batchSystem', 'jobTree']
         for r in required:
             if r not in vars(options):
-                raise RuntimeError("Error, there is a missing option (%s) from the scriptTree Stack, "
+                raise RuntimeError("Error, there is a missing option (%s) from the jobTree Stack, "
                                    "did you remember to call Stack.addJobTreeOptions()?" % r)
         if options.jobTree is None:
             raise RuntimeError("Specify --jobTree")
@@ -214,7 +207,7 @@ class Stack(object):
         raises an error otherwise.
         """
         required = ['_Target__followOn', '_Target__children', '_Target__childCommands', 
-                    '_Target__time', '_Target__memory', '_Target__cpu', 'globalTempDir']
+                    '_Target__time', '_Target__memory', '_Target__cpu']
         for r in required:
             if r not in vars(target):
                 raise RuntimeError("Error, there is a missing attribute, %s, from a Target sub instance %s, "

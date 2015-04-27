@@ -15,36 +15,33 @@ def sort(file):
         fileHandle.write(line)
     fileHandle.close()
 
-def merge(inputFile1, inputFile2, outputFile):
+def merge(inputFile1, inputFile2, outputFileHandle):
     """Merges together two files maintaining sorted order.
     """
     fileHandle1 = open(inputFile1, 'r')
     fileHandle2 = open(inputFile2, 'r')
-    fileHandle3 = open(outputFile, 'w')
     line2 = fileHandle2.readline()
     for line1 in fileHandle1.readlines():
         while line2 != '' and line2 <= line1:
-            fileHandle3.write(line2)
+            outputFileHandle.write(line2)
             line2 = fileHandle2.readline()
-        fileHandle3.write(line1)
+        outputFileHandle.write(line1)
     while line2 != '':
-        fileHandle3.write(line2)
+        outputFileHandle.write(line2)
         line2 = fileHandle2.readline()
     fileHandle1.close()
     fileHandle2.close()
-    fileHandle3.close()
 
-def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFile):
-    """Copies the range (in bytes) between fileStart and fileEnd.
+def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
+    """Copies the range (in bytes) between fileStart and fileEnd to the given
+    output file handle.
     """
     fileHandle = open(inputFile, 'r')
     fileHandle.seek(fileStart) 
     data = fileHandle.read(fileEnd - fileStart)
     assert len(data) == fileEnd - fileStart
     fileHandle.close()
-    fileHandle = open(outputFile, 'w')
-    fileHandle.write(data)
-    fileHandle.close()
+    outputFileHandle.write(data)
     
 def getMidPoint(file, fileStart, fileEnd):
     """Finds the point in the file to split. 

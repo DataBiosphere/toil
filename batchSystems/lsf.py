@@ -34,7 +34,7 @@ from datetime import date
 from sonLib.bioio import logger
 from sonLib.bioio import system
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.src.master import getParasolResultsFileName
+from jobTree.batchSystems.parasol import getParasolResultsFileName
 
 class MemoryString:
     def __init__(self, string):

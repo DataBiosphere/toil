@@ -11,10 +11,10 @@ from optparse import OptionParser
 
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger, system
-from jobTree.scriptTree.stack import Stack
+from jobTree.src.stack import Stack
 from jobTree.src.job import Job
-from jobTree.src.fileJobStore import FileJobStore
-from jobTree.src.jobTreeRun import createJobTree
+from jobTree.jobStores.fileJobStore import FileJobStore
+from jobTree.src.common import createJobTree
 
 class TestCase(unittest.TestCase):
     def setUp(self):
@@ -23,8 +23,8 @@ class TestCase(unittest.TestCase):
         Stack.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
-        config, batchSystem = createJobTree(options)
-        self.jobStore = FileJobStore(config)
+        config, batchSystem, jobStore = createJobTree(options)
+        self.jobStore = jobStore
         
     def tearDown(self):
         system("rm -rf %s" % self.testJobTree)
