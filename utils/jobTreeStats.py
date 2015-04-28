@@ -39,7 +39,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 from sonLib.bioio import TempFileTree
 
-from jobTree.src.common import getEnvironmentFileName, getConfigFileName
+from jobTree.src.common import getConfigFileName
 from jobTree.src.master import getStatsFileName, getStatsCacheFileName
 
 class JTTag(object):

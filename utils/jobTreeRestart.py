@@ -30,11 +30,11 @@ from optparse import OptionParser
 from jobTree.src.fileJobStore import FileJobStore
 from jobTree.src.master import mainLoop
 from jobTree.src.common import addOptions, setLoggingFromOptions, \
-loadEnvironment, reloadJobTree, getEnvironmentFileName, getConfigFileName
+loadEnvironment, reloadJobTree
 from sonLib.bioio import logger, getLogLevelString
     
 def main():
-    """Restarts the jobTree.
+    """Restarts a jobTree.
     """
     
     ##########################################

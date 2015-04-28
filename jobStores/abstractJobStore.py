@@ -9,10 +9,12 @@ class JobTreeState:
     """Represents the state of the jobTree.
     """
     def __init__(self):
-        self.childJobStoreIdToParentJob = {}
-        self.childCounts = {}
-        self.updatedJobs = set()
-        self.shellJobs = set()
+        self.childJobStoreIdToParentJob = {} #This is a hash of jobStoreIDs to
+        #the parent jobs.
+        self.childCounts = {} #Hash of jobs to counts of numbers of children.
+        self.updatedJobs = set() #Jobs that have no children but 
+        #one or more follow-on commands
+        self.shellJobs = set() #Jobs that have no children or follow-on commands
 
 class AbstractJobStore:
     """Represents the jobTree on disk/in a db.
@@ -22,7 +24,8 @@ class AbstractJobStore:
         self.config = config
     
     def createFirstJob(self, command, memory, cpu):
-        """Creates the root job of the jobTree from which all others must be created.
+        """Creates and returns the root job of the jobTree from which all others must be created. 
+        This will only be called once, at the very beginning of the jobTree creation.
         """
         pass
     
@@ -32,19 +35,19 @@ class AbstractJobStore:
         pass
     
     def load(self, jobStoreID):
-        """Loads a job.
+        """Loads a job for the given jobStoreID.
         """
         pass
     
     def write(self, job):
-        """Updates a job's status in store atomically
+        """Updates a job's status in the store atomically
         """
         pass
     
     def update(self, job, childCommands):
-        ##Consider factory method for creating jobs so that input childCommands are jobs.
         """Creates a set of child jobs for the given job using the list of child-commands 
         and updates state of job atomically on disk with new children.
+        Each child command is represented as a tuple of command, memory and cpu.
         """
         pass
     
@@ -104,5 +107,11 @@ class AbstractJobStore:
     
     def readFileStream(self, jobStoreFileID):
         """As readFile, but returns a file handle instead of a path.
+        """
+        pass
+    
+    def writeSharedFileStream(self, globalName):
+        """As writeFileStream, but not require a jobStoreID. Used for storing global
+        config files. Returns pair of file handle and job store ID.
         """
         pass

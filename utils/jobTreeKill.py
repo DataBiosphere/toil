@@ -29,8 +29,7 @@ import xml.etree.cElementTree as ET
 from sonLib.bioio import logger
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
-from jobTree.src.common import getConfigFileName
-from jobTree.src.jobTreeRun import loadTheBatchSystem
+from jobTree.src.common import getConfigFileName, loadTheBatchSystem
 
 def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")

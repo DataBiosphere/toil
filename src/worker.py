@@ -86,7 +86,7 @@ def main():
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
     from jobTree.jobStores.fileJobStore import FileJobStore
-    from jobTree.src.common import getEnvironmentFileName, getConfigFileName
+    from jobTree.src.common import getConfigFileName
     from jobTree.src.master import getTempStatsFile
     from sonLib.bioio import system
     
@@ -98,11 +98,19 @@ def main():
     jobStoreID = sys.argv[2]
     
     ##########################################
+    #Load the jobStore
+    ##########################################
+    
+    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
+    setLogLevel(config.attrib["log_level"])
+    jobStore = FileJobStore(config, create=False)
+    
+    ##########################################
     #Load the environment for the job
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = open(getEnvironmentFileName(jobTreePath), 'r')
+    fileHandle = jobStore.readFileStream(config.attrib["environment"])
     environment = cPickle.load(fileHandle)
     fileHandle.close()
     for i in environment:
@@ -180,12 +188,9 @@ def main():
         nextOpenDescriptor()))
     
     ##########################################
-    #Parse input files
+    #Get job info
     ##########################################
     
-    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
-    setLogLevel(config.attrib["log_level"])
-    jobStore = FileJobStore(config, create=False)
     job = jobStore.load(jobStoreID)
     job.messages = [] #This is the only way to stop messages logging twice, 
     #as are read only in the master
@@ -391,7 +396,6 @@ def main():
             #We can also safely get rid of the job
             jobStore.delete(job)
             
-
 def _test():
     import doctest      
     return doctest.testmod()

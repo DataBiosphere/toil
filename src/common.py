@@ -68,9 +68,6 @@ def parasolIsInstalled():
 def getConfigFileName(jobTreePath):
     return os.path.join(jobTreePath, "config.xml")
 
-def getEnvironmentFileName(jobTreePath):
-    return os.path.join(jobTreePath, "environ.pickle")
-    
 def workflowRootPath():
     """Function for finding external location.
     """
@@ -212,13 +209,15 @@ def loadTheBatchSystem(config):
     lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
-def loadEnvironment(config):
+def serialiseEnvironment(config, jobStore):
     """Puts the environment in the pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
-    fileHandle = open(getEnvironmentFileName(config.attrib["job_tree"]), 'w')
+    fileHandle, jobStoreID = jobStore.writeSharedFileStream("environment.pickle")
     cPickle.dump(os.environ, fileHandle)
     fileHandle.close()
+    config.attrib["environment"] = jobStoreID
+    writeConfig(config)
     logger.info("Written the environment for the jobs to the environment file")
 
 def writeConfig(config):
@@ -273,11 +272,6 @@ def reloadJobTree(jobTree):
     """Load the job tree from a dir.
     """
     logger.info("The job tree appears to already exist, so we'll reload it")
-    assert os.path.isfile(getConfigFileName(jobTree)) #A valid job tree must 
-    #contain the config file
-    assert os.path.isfile(getEnvironmentFileName(jobTree)) #A valid job tree must 
-    #contain a pickle file which encodes the path environment of the job
-    
     config = ET.parse(getConfigFileName(jobTree)).getroot()
     config.attrib["log_level"] = getLogLevelString()
     writeConfig(config) #This updates the on disk config file with the new 

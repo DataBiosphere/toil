@@ -13,7 +13,8 @@ from jobTree.src.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
 
 class FileJobStore(AbstractJobStore):
-    """Represents the jobTree on disk/in a db.
+    """Represents the jobTree on using a network file system. For doc-strings
+    of functions see AbstractJobStore.
     """
     def __init__(self, config, create=True):
         AbstractJobStore.__init__(self, config, create)
@@ -21,18 +22,12 @@ class FileJobStore(AbstractJobStore):
             os.mkdir(self._getJobFileDirName())
     
     def createFirstJob(self, command, memory, cpu):
-        """Creates the root job of the jobTree from which all others must be created.
-        """
         return self._makeJob(command, memory, cpu, self._getJobFileDirName())
     
     def exists(self, jobStoreID):
-        """Returns true if the job is in the store, else false.
-        """
         return os.path.exists(self._getJobFileName(jobStoreID))
     
     def load(self, jobStoreID):
-        """Loads a job.
-        """
         jobFile = self._getJobFileName(jobStoreID)
         #The following clean up any issues resulting from the failure of the job 
         #during writing by the batch system.
@@ -45,19 +40,14 @@ class FileJobStore(AbstractJobStore):
         #Deal with failure by lowering the retry limit
         if updatingFilePresent or newFilePresent:
             job.setupJobAfterFailure(self.config)
-        return job
+        return job   
     
     def write(self, job):
-        """Updates a job's status in store atomically
-        """
         self._write(job, ".new")
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
         return job.jobStoreID
     
     def update(self, job, childCommands):
-        """Creates a set of child jobs for the given job using the list of child-commands 
-        and updates state of job atomically on disk with new children.
-        """
         updatingFile = self._getJobFileName(job.jobStoreID) + ".updating"
         open(updatingFile, 'w').close()
         for ((command, memory, cpu), tempDir) in zip(childCommands, \
@@ -70,9 +60,6 @@ class FileJobStore(AbstractJobStore):
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, job):
-        """Removes from store atomically, can not then subsequently call load(), 
-        write(), update(), etc. with the job.
-        """
         os.remove(self._getJobFileName(job.jobStoreID)) #This is the atomic operation, if this file is not present the job is deleted.
         dirToRemove = job.jobStoreID
         while 1:
@@ -144,6 +131,10 @@ class FileJobStore(AbstractJobStore):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         return open(jobStoreFileID, 'r')
+    
+    def writeSharedFileStream(self, globalName):
+        jobStoreFileID = os.path.join(self.config.attrib["job_tree"], globalName)
+        return open(jobStoreFileID, 'w'), jobStoreFileID
     
     ####
     #Private methods

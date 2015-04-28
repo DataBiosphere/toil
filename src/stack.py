@@ -40,7 +40,7 @@ from sonLib.bioio import system, absSymPath
 from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
 from jobTree.src.common import addOptions, reloadJobTree, \
-loadEnvironment, createJobTree
+serialiseEnvironment, createJobTree
 from jobTree.src.master import mainLoop
 
 from jobTree.src.target import Target
@@ -97,7 +97,7 @@ class Stack(object):
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
             jobStore.write(job)
-        loadEnvironment(config)
+        serialiseEnvironment(config, jobStore)
         return mainLoop(config, batchSystem, jobStore)
 
 #####
