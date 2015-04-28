@@ -14,10 +14,6 @@ import jobTree.batchSystems.abstractBatchSystem
 from jobTree.batchSystems.mesos import mesosExecutor
 import logging
 
-# TODO: document class with a short docstring
-
-# TODO: replace all print statements with logger calls (see also mesosExecutor.py)
-
 # TODO: document each method, especially callbacks
 
 # TODO: rename internal method to start with double underscore (ask me for explanation)
@@ -66,6 +62,9 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
 
     @staticmethod
     def __bytesToMB(mem):
+        """
+        used when converting job tree reqs to mesos reqs
+        """
         return mem/1024/1024
 
     def resourceOffers(self, driver, offers):
@@ -121,13 +120,14 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
 
                     remainingCpus -= job_type.cpu
                     remainingMem -= self.__bytesToMB(job_type.memory)
-            driver.launchTasks(offer.id, tasks)
             # If we put the launch call inside the while, multiple accepts are used on the same offer. We dont want that.
             # this explains why it works in the simple hello_world case: there is only one jobType, so offer is accepted once.
+            driver.launchTasks(offer.id, tasks)
 
     def createTask(self, jt_job, offer):
         """
-        build the mesos task object from the jobTree job
+        build the mesos task object from the jobTree job here to avoid
+        further cluttering resourceOffers
         """
         tid = self.tasksLaunched
         self.tasksLaunched += 1
@@ -217,12 +217,21 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
 
     @staticmethod
     def executorScriptPath():
+        """
+        gets path to executor that will run on slaves. Originally was hardcoded, this
+        method is more flexible. Return path to .py files only
+        :return:
+        """
         path = mesosExecutor.__file__
         if path.endswith('.pyc'):
             path = path[:-1]
         return path
 
     def buildExecutor(self):
+        """
+        build executor here to avoid cluttering constructor
+        :return:
+        """
         executor = mesos_pb2.ExecutorInfo()
         executor.executor_id.value = "MesosExecutor"
         executor.command.value = self.executorScriptPath()
@@ -241,6 +250,10 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
         return executor
 
     def getImplicit(self):
+        """
+        determine wether to run with implicit or explicit acknowledgements.
+        :return:
+        """
         implicitAcknowledgements = 1
         if os.getenv("MESOS_EXPLICIT_ACKNOWLEDGEMENTS"):
             log.debug("Enabling explicit status update acknowledgements")
@@ -248,8 +261,11 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
 
         return implicitAcknowledgements
 
-    def start_framework(self):
-
+    def startDriver(self):
+        """
+        Starts mesos framework driver, which handles scheduler-mesos communications.
+        :return:
+        """
         framework = mesos_pb2.FrameworkInfo()
         framework.user = "" # Have Mesos fill in the current user.
         framework.name = "JobTree Framework (Python)"
@@ -304,4 +320,8 @@ class MesosScheduler(mesos.interface.Scheduler, Thread):
         sys.exit(status)
 
     def run(self):
-        self.start_framework()
+        """
+        inherits from thread. Starts mesos framework driver.
+        :return:
+        """
+        self.startDriver()
