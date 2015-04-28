@@ -13,8 +13,7 @@ from sonLib.bioio import system
 from sonLib.bioio import getTempDirectory
 from sonLib.bioio import getTempFile
 
-from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled
-
+from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
@@ -28,22 +27,22 @@ class TestCase(unittest.TestCase):
         """
         scriptTree_SortTest(self.testNo, "singleMachine")
     
+    
     def testScriptTree_SortGridEngine(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         if gridEngineIsInstalled():
             scriptTree_SortTest(self.testNo, "gridengine")
             
     def testScriptTree_Parasol(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         if parasolIsInstalled():
             scriptTree_SortTest(self.testNo, "parasol")
     
+    """
     def testScriptTree_SortAcid(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
+        #Tests scriptTree/jobTree by sorting a file in parallel.
         scriptTree_SortTest(self.testNo, "acid_test")
+    """
 
 #The following functions test the functions in the test!
     
@@ -69,7 +68,9 @@ class TestCase(unittest.TestCase):
             makeFileToSort(tempFile2)
             sort(tempFile1)
             sort(tempFile2)
-            merge(tempFile1, tempFile2, tempFile3)
+            fileHandle = open(tempFile3, 'w')
+            merge(tempFile1, tempFile2, fileHandle)
+            fileHandle.close()
             lines1 = loadFile(tempFile1) + loadFile(tempFile2)
             lines1.sort()
             lines2 = loadFile(tempFile3)
@@ -86,7 +87,9 @@ class TestCase(unittest.TestCase):
             assert fileSize > 0
             fileStart = random.choice(xrange(0, fileSize))
             fileEnd = random.choice(xrange(fileStart, fileSize))
-            copySubRangeOfFile(tempFile, fileStart, fileEnd, outputFile)
+            fileHandle = open(outputFile, 'w')
+            copySubRangeOfFile(tempFile, fileStart, fileEnd, fileHandle)
+            fileHandle.close()
             l = open(outputFile, 'r').read()
             l2 = open(tempFile, 'r').read()[fileStart:fileEnd]
             checkEqual(l, l2)
@@ -120,8 +123,9 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
         l.sort()
         fileHandle.close()
         #Sort the file
+        rootPath = os.path.join(workflowRootPath(), "test/sort")
         while True:
-            command = "scriptTreeTest_Sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxCpus 20 --retryCount 2" % (jobTreeDir, tempFile, N, batchSystem) #, retryCount)
+            command = "%s/sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxCpus 20 --retryCount 2" % (rootPath, jobTreeDir, tempFile, N, batchSystem) #, retryCount)
             system(command)
             try:
                 system("jobTreeStatus --jobTree %s --failIfNotComplete" % jobTreeDir)

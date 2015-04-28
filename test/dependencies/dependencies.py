@@ -22,19 +22,10 @@ import datetime
 import sys
 import math
 
-from sonLib.bioio import system
 from optparse import OptionParser
-import xml.etree.cElementTree as ET
-
-from jobTree.src.bioio import getLogLevelString
-from jobTree.src.bioio import logger
-from jobTree.src.bioio import setLoggingFromOptions
-  
-from jobTree.scriptTree.target import Target 
-from jobTree.scriptTree.stack import Stack 
-
-
-from sonLib.bioio import spawnDaemon
+from jobTree.src.target import Target 
+from jobTree.src.stack import Stack
+from sonLib.bioio import spawnDaemon, setLoggingFromOptions, logger, getLogLevelString
 
 def writeLog(self, msg, startTime):
     timeStamp = str(datetime.datetime.now() - startTime)       
@@ -187,8 +178,8 @@ def checkLog(options):
     for logLine in logFile:
         if "begin UP" in logLine:
             chunks = logLine.split()
-            assert len(chunks) == 12
-            timeString = chunks[8]
+            assert len(chunks) == 13
+            timeString = chunks[9]
             timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
             timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
             timeObj.second + timeObj.microsecond / 1000000.
@@ -255,7 +246,5 @@ def main():
         checkLog(options)
     
 if __name__ == '__main__':
-    from jobTree.test.jobTreeTest_Dependencies import *
+    from jobTree.test.dependencies.dependencies import *
     main()
-    
-    

@@ -7,18 +7,18 @@ import os
 import random
 import shutil
 from sonLib.bioio import getTempFile
-from jobTree.scriptTree.target import Target
-from jobTree.scriptTree.stack import Stack
+from jobTree.src.target import Target
+from jobTree.src.stack import Stack
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 def setup(target, inputFile, N):
     """Sets up the sort.
     """
-    tempOutputFile = getTempFile(rootDir=target.getGlobalTempDir())
-    target.addChildTargetFn(down, (inputFile, 0, os.path.getsize(inputFile), N, tempOutputFile))
-    target.setFollowOnFn(cleanup, (tempOutputFile, inputFile))
+    tempOutputFileStoreID = target.getEmptyFileStoreID()
+    target.addChildTargetFn(down, (inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID))
+    target.setFollowOnTargetFn(cleanup, (tempOutputFileStoreID, inputFile))
 
-def down(target, inputFile, fileStart, fileEnd, N, outputFile):
+def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
@@ -35,30 +35,38 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFile):
         assert midPoint >= fileStart
         assert midPoint+1 < fileEnd
         #We will subdivide the file
-        tempFile1 = getTempFile(rootDir=target.getGlobalTempDir())
-        tempFile2 = getTempFile(rootDir=target.getGlobalTempDir())
-        target.addChildTargetFn(down, (inputFile, fileStart, midPoint+1, N, tempFile1))
-        target.addChildTargetFn(down, (inputFile, midPoint+1, fileEnd, N, tempFile2)) #Add one to avoid the newline
-        target.setFollowOnTargetFn(up, (tempFile1, tempFile2, outputFile))                
+        tempFileStoreID1 = target.getEmptyFileStoreID()
+        tempFileStoreID2 = target.getEmptyFileStoreID()
+        target.addChildTargetFn(down, (inputFile, fileStart, midPoint+1, N, tempFileStoreID1))
+        target.addChildTargetFn(down, (inputFile, midPoint+1, fileEnd, N, tempFileStoreID2)) #Add one to avoid the newline
+        target.setFollowOnTargetFn(up, (tempFileStoreID1, tempFileStoreID2, outputFileStoreID))                
     else:
         #We can sort this bit of the file
-        copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFile)
-        sort(outputFile)
+        fileHandle = target.updateGlobalFileStream(outputFileStoreID)
+        copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
+        fileHandle.close()
+        #Make a local copy and sort the file
+        tempOutputFile = target.readGlobalFile(outputFileStoreID)
+        sort(tempOutputFile)
+        target.updateGlobalFile(outputFileStoreID, tempOutputFile)
 
-def up(target, inputFile1, inputFile2, outputFile):
+def up(target, inputFile1, inputFile2, outputFileStoreID):
     """Merges the two files and places them in the output.
     """
     if random.random() > 0.5:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
-    merge(inputFile1, inputFile2, outputFile)
+    fileHandle = target.updateGlobalFileStream(outputFileStoreID)
+    merge(inputFile1, inputFile2, fileHandle)
+    fileHandle.close()
     target.logToMaster("Am running an up target with input files: %s and %s" % (inputFile1, inputFile2))
 
-def cleanup(tempOutputFile, outputFile):
+def cleanup(target, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
     if random.random() > 0.5:
         raise RuntimeError() #This is a test error and not a failure of the tests
-    shutil.copyfile(tempOutputFile, outputFile)
+    target.readGlobalFile(tempOutputFileStoreID, outputFile)
+    #sort(outputFile)
 
 def main():
     parser = OptionParser()
@@ -92,5 +100,5 @@ def main():
     #    raise RuntimeError("The jobtree contained %i failed jobs" % i)
 
 if __name__ == '__main__':
-    from jobTree.test.sort.scriptTreeTest_Sort import *
+    from jobTree.test.sort.sort import *
     main()

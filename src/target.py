@@ -23,7 +23,7 @@
 import sys
 import marshal
 import types
-from sonLib.bioio import system
+from sonLib.bioio import getTempFile
 import importlib
 
 class Target(object):
@@ -39,7 +39,6 @@ class Target(object):
         self.__memory = memory
         self.__time = time #This parameter is no longer used by the batch system.
         self.__cpu = cpu
-        self.globalTempDir = None
         if self.__module__ == "__main__":
             raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
@@ -94,19 +93,58 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         return self.__time
     
-    def getGlobalTempDir(self):
-        """Get the global temporary directory.
+    def writeGlobalFile(self, localFileName):
+        """Takes a file (as a path) and uploads it to to the global file store, returns
+        an ID that can be used to retrieve the file. 
         """
-        #Check if we have initialised the global temp dir - doing this
-        #just in time prevents us from creating temp directories unless we have to.
-        if self.globalTempDir == None:
-            self.globalTempDir = self.stack.getGlobalTempDir()
-        return self.globalTempDir
+        return self.jobStore.writeFile(localFileName, self.job.jobStoreID)
+    
+    def updateGlobalFile(self, fileStoreID, localFileName):
+        """Replaces the existing version of a file in the global file store, keyed by the fileStoreID. 
+        Throws an exception if the file does not exist.
+        """
+        self.jobStore.updateFile(fileStoreID, localFileName)
+    
+    def readGlobalFile(self, fileStoreID, localFilePath=None):
+        """Returns a path to a local copy of the file keyed by fileStoreID. The version
+        will be consistent with the last copy of the file written/updated to the global
+        file store. If localFilePath is not None, the returned file path will be localFilePath.
+        """
+        if localFilePath == None:
+            localFilePath = getTempFile(rootDir=self.getLocalTempDir())
+        self.jobStore.readFile(fileStoreID, localFilePath)
+        return localFilePath
+    
+    def deleteGlobalFile(self, fileStoreID):
+        """Deletes a global file with the given fileStoreID. Returns true if file exists, else false.
+        """
+        return self.jobStore.deleteFile(fileStoreID)
+    
+    def writeGlobalFileStream(self):
+        """As writeGlobalFile, but returns a pair composed of a fileHandle which can be written to and an ID
+        that can be used to retrieve the file. The file handle must be closed to ensure transmission of the file.
+        """
+        return self.jobStore.writeFileStream(self.job.jobStoreID)
+    
+    def updateGlobalFileStream(self, fileStoreID):
+        """As updateGlobalFile, but allows the update of an existing file.
+        """
+        return self.jobStore.updateFileStream(fileStoreID)
+    
+    def getEmptyFileStoreID(self):
+        """Returns the ID of a new, empty file.
+        """
+        return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
+    
+    def readGlobalFileStream(self, fileStoreID):
+        """As readFile, but returns a file handle instead of a path.
+        """
+        return self.jobStore.readFileStream(fileStoreID)
     
     def getLocalTempDir(self):
         """Get the local temporary directory.
         """
-        return self.stack.getLocalTempDir()
+        return self.localTempDir
         
     def getMemory(self):
         """Returns the number of bytes of memory that were requested by the job.
@@ -147,24 +185,22 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         Convenience function for constructor of TargetFunctionWrappingTarget
         """
         return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
-    
-    
+ 
 ####
 #Private functions
 #### 
     
-    def setGlobalTempDir(self, globalTempDir):
-        """Sets the global temp dir.
+    def setFileVariables(self, jobStore, job, localTempDir):
+        """Sets the jobStore for the target.
         """
-        self.globalTempDir = globalTempDir
+        self.jobStore = jobStore
+        self.job = job
+        self.localTempDir = localTempDir
         
-    def isGlobalTempDirSet(self):
-        return self.globalTempDir != None
-    
-    def setStack(self, stack):
-        """Sets the stack object that is calling the target.
-        """
-        self.stack = stack
+    def unsetFileVariables(self):
+        self.jobStore = None
+        self.job = None
+        self.localTempDir = None
         
     def getMasterLoggingMessages(self):
         return self.loggingMessages[:]

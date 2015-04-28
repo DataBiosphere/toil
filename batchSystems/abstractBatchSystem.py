@@ -98,14 +98,3 @@ class AbstractBatchSystem:
             return queue.get(timeout=maxWait)
         except Empty:
             return None
-
-def main():
-    pass
-
-def _test():
-    import doctest      
-    return doctest.testmod()
-
-if __name__ == '__main__':
-    _test()
-    main()

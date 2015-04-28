@@ -7,78 +7,86 @@ import os
 import time
 import sys
 import random
+from optparse import OptionParser
 
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger, system
-
+from jobTree.src.stack import Stack
 from jobTree.src.job import Job
+from jobTree.jobStores.fileJobStore import FileJobStore
+from jobTree.src.common import createJobTree
 
 class TestCase(unittest.TestCase):
-    def testJobReadWriteAndDelete(self):
-        jobDir = os.path.join(os.getcwd(), "testJobDir")
-        os.mkdir(jobDir) #If directory already exists then the test will fail
+    def setUp(self):
+        self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
+        parser = OptionParser()
+        Stack.addJobTreeOptions(parser)
+        options, args = parser.parse_args()
+        options.jobTree = self.testJobTree
+        config, batchSystem, jobStore = createJobTree(options)
+        self.jobStore = jobStore
+        
+    def tearDown(self):
+        system("rm -rf %s" % self.testJobTree)
+    
+    def testJobStoreLoadWriteAndDelete(self):        
         command = "by your command"
         memory = 2^32
         cpu = 1
-        tryCount = 100
+        tryCount = int(self.jobStore.config.attrib["try_count"])
         
         for i in xrange(10):
             startTime = time.time()
             for j in xrange(100):
-                j = Job(command, memory, cpu, tryCount, jobDir)
+                j = self.jobStore.createFirstJob(command, memory, cpu)
                 self.assertEquals(j.remainingRetryCount, tryCount)
-                self.assertEquals(j.jobDir, jobDir)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                j.write()
-                j = Job.read(j.getJobFileName())
+                self.jobStore.write(j)
+                jobStoreID = j.jobStoreID
+                j = self.jobStore.load(j.jobStoreID)
                 self.assertEquals(j.remainingRetryCount, tryCount)
-                self.assertEquals(j.jobDir, jobDir)
+                self.assertEquals(j.jobStoreID, jobStoreID)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                self.assertTrue(os.path.exists(j.getJobFileName()))
-                j.delete()
-                self.assertTrue(not os.path.exists(j.getJobFileName()))
+                self.assertTrue(self.jobStore.exists(j.jobStoreID))
+                self.jobStore.delete(j)
+                self.assertTrue(not self.jobStore.exists(j.jobStoreID))
             print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             #Would be good to extend this trivial test
-            
-        system("rm -rf %s" % jobDir)
         
     def testJobUpdate(self):
-        jobDir = os.path.join(os.getcwd(), "testJobDir")
-        os.mkdir(jobDir) #If directory already exists then the test will fail
         command = "by your command"
         memory = 2^32
         cpu = 1
-        tryCount = 100
+        tryCount = int(self.jobStore.config.attrib["try_count"])
         
         for i in xrange(40):
             startTime = time.time()
-            j = Job(command, memory, cpu, tryCount, jobDir)
+            j = self.jobStore.createFirstJob(command, memory, cpu)
             childNumber = random.choice(range(20))
-            for k in xrange(childNumber):
-                j.children.append((command, memory, cpu))
+            children = map(lambda i : (command, memory, cpu), xrange(childNumber))
+            self.jobStore.update(j, children)
+            jobStoreID = j.jobStoreID
+            j = self.jobStore.load(j.jobStoreID)
             self.assertEquals(len(j.children), childNumber)
-            j.update(tryCount=tryCount, depth=0)
-            j = Job.read(j.getJobFileName())
-            self.assertEquals(len(j.children) + len(j.followOnCommands), childNumber + 1)
-            for childJobFile, memory, cpu in j.children:
-                cJ = Job.read(childJobFile)
+            for childJobStoreID, memory, cpu in j.children:
+                cJ = self.jobStore.load(childJobStoreID)
                 self.assertEquals(cJ.remainingRetryCount, tryCount)
                 #self.assertEquals(cJ.jobDir, os.path.split(cJ)[0])
                 self.assertEquals(cJ.children, [])
                 self.assertEquals(cJ.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(cJ.messages, [])
-                self.assertTrue(os.path.exists(cJ.getJobFileName()))
-                cJ.delete()
-                self.assertTrue(not os.path.exists(cJ.getJobFileName()))
-            self.assertEquals(os.listdir(jobDir), [ "job" ])
-            j.delete()
+                self.assertTrue(self.jobStore.exists(cJ.jobStoreID))
+                self.jobStore.delete(cJ)
+                self.assertTrue(not self.jobStore.exists(cJ.jobStoreID))
+            self.assertTrue(self.jobStore.exists(j.jobStoreID))
+            self.jobStore.delete(j)
+            self.assertTrue(not self.jobStore.exists(j.jobStoreID))
             print "It took %f seconds to update jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             
-        system("rm -rf %s" % jobDir)
 
 def main():
     parseSuiteTestOptions()
