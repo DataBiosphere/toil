@@ -21,6 +21,8 @@
 #THE SOFTWARE.
 
 import sys
+import os
+import logging
 import marshal
 import types
 from sonLib.bioio import getTempFile
@@ -212,13 +214,36 @@ class FunctionWrappingTarget(Target):
     """
     def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         Target.__init__(self, time=time, memory=time, cpu=time)
-        self.fnModule = str(fn.__module__) #Module of function
+        moduleName = fn.__module__
+        if moduleName== '__main__':
+            # FIXME: Document why we are doing this, explain why it works in single node
+            # TODO: Review with Benedict
+            # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
+            moduleDir,moduleName = os.path.split(sys.modules[moduleName].__file__)
+            if moduleName.endswith('.py'):
+                moduleName = moduleName[:-3]
+            elif moduleName.endswith('.pyc'):
+                moduleName = moduleName[:-4]
+            else:
+                raise RuntimeError(
+                    "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
+                    moduleName )
+        else:
+            moduleDir = None
+
+        self.fnModuleDir = moduleDir
+        self.fnModule = moduleName #Module of function
         self.fnName = str(fn.__name__) #Name of function
         self.args=args
         self.kwargs=kwargs
-        
+
+    def _getFunc( self ):
+        if self.fnModuleDir not in sys.path:
+            sys.path.append( self.fnModuleDir )
+        return getattr( importlib.import_module( self.fnModule ), self.fnName )
+
     def run(self):
-        func = getattr(importlib.import_module(self.fnModule), self.fnName)
+        func = self._getFunc( )
         func(*self.args, **self.kwargs)
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
@@ -229,5 +254,5 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     Target function can not be closure.
     """
     def run(self):
-        func = getattr(importlib.import_module(self.fnModule), self.fnName)
+        func = self._getFunc( )
         func(*((self,) + tuple(self.args)), **self.kwargs)
