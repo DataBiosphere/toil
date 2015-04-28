@@ -27,10 +27,9 @@ import os
 import sys 
 import xml.etree.cElementTree as ET
 from optparse import OptionParser
-from jobTree.src.fileJobStore import FileJobStore
 from jobTree.src.master import mainLoop
 from jobTree.src.common import addOptions, setLoggingFromOptions, \
-loadEnvironment, reloadJobTree
+serialiseEnvironment, reloadJobTree
 from sonLib.bioio import logger, getLogLevelString
     
 def main():
@@ -66,7 +65,7 @@ def main():
     if not os.path.isdir(options.jobTree):
         raise RuntimeError("Specified jobTree to restart: %s does not exist" % options.jobTree)
     config, batchSystem, jobStore = reloadJobTree(options.jobTree)
-    loadEnvironment(config)
+    serialiseEnvironment(jobStore)
     return mainLoop(config, batchSystem, jobStore)
     
 def _test():

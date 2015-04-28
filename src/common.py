@@ -27,14 +27,12 @@ import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
 from optparse import OptionParser, OptionContainer, OptionGroup
-from sonLib.bioio import logger, addLoggingOptions, getLogLevelString
-from sonLib.bioio import system, absSymPath
+from sonLib.bioio import logger, addLoggingOptions, getLogLevelString, system, absSymPath
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
-from jobTree.batchSystems.batchSystemLoader import loadTheBatchSystem
 from jobTree.jobStores.fileJobStore import FileJobStore
 
 def runJobTreeStats(jobTree, outputFile):
@@ -65,9 +63,6 @@ def parasolIsInstalled():
 #Little functions to specify the location of files in the jobTree dir
 ####
     
-def getConfigFileName(jobTreePath):
-    return os.path.join(jobTreePath, "config.xml")
-
 def workflowRootPath():
     """Function for finding external location.
     """
@@ -209,24 +204,14 @@ def loadTheBatchSystem(config):
     lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
-def serialiseEnvironment(config, jobStore):
-    """Puts the environment in the pickle file.
+def serialiseEnvironment(jobStore):
+    """Puts the environment in a globally accessible pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
-    fileHandle, jobStoreID = jobStore.writeSharedFileStream("environment.pickle")
+    fileHandle = jobStore.writeSharedFileStream("environment.pickle")
     cPickle.dump(os.environ, fileHandle)
     fileHandle.close()
-    config.attrib["environment"] = jobStoreID
-    writeConfig(config)
     logger.info("Written the environment for the jobs to the environment file")
-
-def writeConfig(config):
-    #Write the config file to disk
-    fileHandle = open(getConfigFileName(config.attrib["job_tree"]), 'w')
-    tree = ET.ElementTree(config)
-    tree.write(fileHandle)
-    fileHandle.close()
-    logger.info("Written the config file")
 
 def createJobTree(options):
     logger.info("Starting to create the job tree setup for the first time")
@@ -263,20 +248,18 @@ def createJobTree(options):
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
     
-    writeConfig(config)
+    jobStore = FileJobStore(jobStoreString=options.jobTree, create=True, config=config)
     
     logger.info("Finished the job tree setup")
-    return config, batchSystem, FileJobStore(config, True)
+    return config, batchSystem, jobStore
 
-def reloadJobTree(jobTree):
+def reloadJobTree(jobStoreString):
     """Load the job tree from a dir.
     """
     logger.info("The job tree appears to already exist, so we'll reload it")
-    config = ET.parse(getConfigFileName(jobTree)).getroot()
-    config.attrib["log_level"] = getLogLevelString()
-    writeConfig(config) #This updates the on disk config file with the new 
-    #logging setting
-    
-    batchSystem = loadTheBatchSystem(config)
+    jobStore = FileJobStore(jobStoreString)
+    jobStore.config.attrib["log_level"] = getLogLevelString()
+    jobStore.updateConfig(jobStore.config) #This updates the global copy of the config file
+    batchSystem = loadTheBatchSystem(jobStore.config)
     logger.info("Reloaded the jobtree")
-    return config, batchSystem, FileJobStore(config, False)
+    return jobStore.config, batchSystem, jobStore

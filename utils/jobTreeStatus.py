@@ -33,9 +33,8 @@ from sonLib.bioio import logStream
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
-from jobTree.src.common import getConfigFileName
 from jobTree.src.job import Job
-from jobTree.src.fileJobStore import FileJobStore
+from jobTree.jobStores.fileJobStore import FileJobStore
 
 def main():
     """Reports the state of the job tree.
@@ -78,14 +77,13 @@ def main():
     logger.info("Checking if we have files for job tree")
     assert options.jobTree != None
     assert os.path.isdir(options.jobTree) #The given job dir tree must exist.
-    assert os.path.isfile(getConfigFileName(options.jobTree)) #A valid job tree must contain the config gile
     
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    config = ET.parse(getConfigFileName(options.jobTree)).getroot()
-    jobStore = FileJobStore(config)
+    jobStore = FileJobStore(options.jobTree)
+    config = jobStore.config
     jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
     
     failedJobs = [ job for job in jobStore.jobTreeState.updatedJobs | \

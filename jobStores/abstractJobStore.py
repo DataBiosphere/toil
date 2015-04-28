@@ -1,9 +1,8 @@
 import os
 import re
 import time
-from jobTree.src.bioio import system
-from sonLib.bioio import logFile
-from sonLib.bioio import logger
+from sonLib.bioio import logFile, system, logger
+import xml.etree.cElementTree as ET
 
 class JobTreeState:
     """Represents the state of the jobTree.
@@ -18,11 +17,25 @@ class JobTreeState:
 
 class AbstractJobStore:
     """Represents the jobTree on disk/in a db.
-    """
-    def __init__(self, config, create=True):
+    """ 
+    def __init__(self, jobStoreString, create, config):
+        """jobStoreString is a configuration string used to initialise the jobStore.
+        If config != None then the config option is written to the global shared file
+        "config.xml", which can be retrieved using the readSharedFileStream method with the 
+        argument "config.xml".
+        If config == None (in which case create must be False), then the self.config 
+        object is read from the file-store.
+        """
         self.jobTreeState = None #This will be none until "loadJobTree" is called.
-        self.config = config
-    
+        self.jobStoreString = jobStoreString
+        if create or config != None:
+            assert config != None
+            self.updateConfig(config)
+        else:
+            fileHandle = self.readSharedFileStream("config.xml")
+            self.config = ET.parse(fileHandle).getroot()
+            fileHandle.close()
+            
     def createFirstJob(self, command, memory, cpu):
         """Creates and returns the root job of the jobTree from which all others must be created. 
         This will only be called once, at the very beginning of the jobTree creation.
@@ -110,8 +123,20 @@ class AbstractJobStore:
         """
         pass
     
-    def writeSharedFileStream(self, globalName):
-        """As writeFileStream, but not require a jobStoreID. Used for storing global
-        config files. Returns pair of file handle and job store ID.
+    def writeSharedFileStream(self, globalFileID):
+        """Returns a writable file-handle to a global file using the globalFileID. 
+        """
+        pass
+    
+    def updateConfig(self, config):
+        """Updates the config.
+        """
+        self.config = config
+        fileHandle = self.writeSharedFileStream("config.xml")
+        ET.ElementTree(config).write(fileHandle)
+        fileHandle.close()
+    
+    def readSharedFileStream(self, globalFileID):
+        """Returns a readable file-handle to the global file referenced by globalFileID.
         """
         pass

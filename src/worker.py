@@ -86,7 +86,6 @@ def main():
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
     from jobTree.jobStores.fileJobStore import FileJobStore
-    from jobTree.src.common import getConfigFileName
     from jobTree.src.master import getTempStatsFile
     from sonLib.bioio import system
     
@@ -94,23 +93,23 @@ def main():
     #Input args
     ##########################################
     
-    jobTreePath = sys.argv[1]
+    jobStoreString = sys.argv[1]
     jobStoreID = sys.argv[2]
     
     ##########################################
-    #Load the jobStore
+    #Load the jobStore/config file
     ##########################################
     
-    config = ET.parse(getConfigFileName(jobTreePath)).getroot()
+    jobStore = FileJobStore(jobStoreString)
+    config = jobStore.config 
     setLogLevel(config.attrib["log_level"])
-    jobStore = FileJobStore(config, create=False)
     
     ##########################################
     #Load the environment for the job
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = jobStore.readFileStream(config.attrib["environment"])
+    fileHandle = jobStore.readSharedFileStream("environment.pickle")
     environment = cPickle.load(fileHandle)
     fileHandle.close()
     for i in environment:
@@ -325,7 +324,7 @@ def main():
         #Finish up the stats
         ##########################################
         
-        if stats != None:
+        if stats != None and False:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCpuTime - startClock)

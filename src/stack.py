@@ -97,7 +97,7 @@ class Stack(object):
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
             jobStore.write(job)
-        serialiseEnvironment(config, jobStore)
+        serialiseEnvironment(jobStore)
         return mainLoop(config, batchSystem, jobStore)
 
 #####

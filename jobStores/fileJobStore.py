@@ -7,17 +7,16 @@ import shutil
 import os
 import re
 import time
-from jobTree.src.bioio import system
-from sonLib.bioio import logger, makeSubDir, getTempFile
-from jobTree.src.abstractJobStore import AbstractJobStore, JobTreeState
+from sonLib.bioio import logger, makeSubDir, getTempFile, system
+from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
 
 class FileJobStore(AbstractJobStore):
     """Represents the jobTree on using a network file system. For doc-strings
     of functions see AbstractJobStore.
     """
-    def __init__(self, config, create=True):
-        AbstractJobStore.__init__(self, config, create)
+    def __init__(self, jobStoreString, create=False, config=None):
+        AbstractJobStore.__init__(self, jobStoreString=jobStoreString, create=create, config=config)
         if create and not os.path.exists(self._getJobFileDirName()):
             os.mkdir(self._getJobFileDirName())
     
@@ -133,8 +132,11 @@ class FileJobStore(AbstractJobStore):
         return open(jobStoreFileID, 'r')
     
     def writeSharedFileStream(self, globalName):
-        jobStoreFileID = os.path.join(self.config.attrib["job_tree"], globalName)
-        return open(jobStoreFileID, 'w'), jobStoreFileID
+        jobStoreFileID = os.path.join(self.jobStoreString, globalName)
+        return open(jobStoreFileID, 'w')
+    
+    def readSharedFileStream(self, globalName):
+        return open(os.path.join(self.jobStoreString, globalName), 'r')
     
     ####
     #Private methods
@@ -147,7 +149,7 @@ class FileJobStore(AbstractJobStore):
               jobStoreID=jobDir, logJobStoreFileID=None)
     
     def _getJobFileDirName(self):
-        return os.path.join(self.config.attrib["job_tree"], "jobs")
+        return os.path.join(self.jobStoreString, "jobs")
     
     def _getJobFileName(self, jobStoreID):
         return os.path.join(jobStoreID, "job")
