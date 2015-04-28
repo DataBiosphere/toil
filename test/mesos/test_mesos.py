@@ -4,10 +4,9 @@ import shutil
 import unittest
 import os
 import sys
-from jobTree.batchSystems.mesos import MesosFrameWorkThread
 from mesos.interface import mesos_pb2
 from Queue import Queue
-from jobTree.batchSystems.mesos import JobTreeJob, ResourceSummary, MesosScheduler, MesosSchedulerDriver
+from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement, MesosScheduler
 from jobTree.test.mesos.ResumeTest import main as testMain
 import subprocess
 import threading
