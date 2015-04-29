@@ -85,8 +85,7 @@ def main():
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
-    from jobTree.jobStores.fileJobStore import FileJobStore
-    from jobTree.src.master import getTempStatsFile
+    from jobTree.src.common import loadTheJobStore
     from sonLib.bioio import system
     
     ########################################## 
@@ -100,7 +99,7 @@ def main():
     #Load the jobStore/config file
     ##########################################
     
-    jobStore = FileJobStore(jobStoreString)
+    jobStore = loadTheJobStore(jobStoreString)
     config = jobStore.config 
     setLogLevel(config.attrib["log_level"])
     
@@ -324,16 +323,12 @@ def main():
         #Finish up the stats
         ##########################################
         
-        if stats != None and False:
+        if stats != None:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
-            tempStatsFile = getTempStatsFile(jobTreePath)
-            fileHandle = open(tempStatsFile + ".new", "w")
-            ET.ElementTree(stats).write(fileHandle)
-            fileHandle.close()
-            os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
+            jobStore.writeStats(ET.tostring(stats))
         
         logger.info("Finished running the chain of jobs on this node, \
         we ran for a total of %f seconds" % (time.time() - startTime))

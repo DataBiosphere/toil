@@ -41,6 +41,7 @@ class TestCase(unittest.TestCase):
                    (jobTreeDir, outputFile))
             #Cleanup
             system("rm -rf %s" % tempDir)
+            
                    
 def main():
     parseSuiteTestOptions()

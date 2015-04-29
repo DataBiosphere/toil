@@ -18,7 +18,7 @@ class JobTreeState:
 class AbstractJobStore:
     """Represents the jobTree on disk/in a db.
     """ 
-    def __init__(self, jobStoreString, create, config):
+    def __init__(self, jobStoreString, create=False, config=None):
         """jobStoreString is a configuration string used to initialise the jobStore.
         If config != None then the config option is written to the global shared file
         "config.xml", which can be retrieved using the readSharedFileStream method with the 
@@ -138,5 +138,22 @@ class AbstractJobStore:
     
     def readSharedFileStream(self, globalFileID):
         """Returns a readable file-handle to the global file referenced by globalFileID.
+        """
+        pass
+    
+    def writeStats(self, statsString):
+        """Writes the given stats string to the store of stats info.
+        """
+        pass
+    
+    def cleanStats(self):
+        """Function used called by master process to cleanup the store used to collect stats.
+        """
+        pass
+    
+    def readStats(self, fileHandle):
+        """Reads stats strings accumulated by "writeStats" function, writing each
+        one to the given fileHandle. Returns the number of stat strings processed. Stats are
+        only read once.
         """
         pass
