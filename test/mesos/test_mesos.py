@@ -6,7 +6,7 @@ import os
 import sys
 from mesos.interface import mesos_pb2
 from Queue import Queue
-from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement, MesosScheduler
+from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement
 from jobTree.test.mesos.ResumeTest import main as testMain
 import subprocess
 import threading

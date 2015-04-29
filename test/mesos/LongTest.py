@@ -1,6 +1,6 @@
 from time import sleep
-from jobTree.scriptTree.target import Target
-from jobTree.scriptTree.stack import Stack
+from jobTree.src.target import Target
+from jobTree.src.stack import Stack
 from optparse import OptionParser
 
 class LongTest(Target):
