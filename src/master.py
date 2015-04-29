@@ -226,9 +226,9 @@ class JobBatcher:
         runningJobs = set(self.batchSystem.getIssuedJobIDs())
         jobBatchSystemIDsSet = set(self.getJobIDs())
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
-        missingJobIDsSet = set(reissueMissingJobs_missingHash.keys())
+        missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
-            reissueMissingJobs_missingHash.pop(jobBatchSystemID)
+            self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
             logger.critical("Batch system id: %s is no longer missing" % \
                             str(jobBatchSystemID))
         assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have 
@@ -236,19 +236,19 @@ class JobBatcher:
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
             jobStoreID = self.getJob(jobBatchSystemID)
-            if reissueMissingJobs_missingHash.has_key(jobBatchSystemID):
-                reissueMissingJobs_missingHash[jobBatchSystemID] = \
-                reissueMissingJobs_missingHash[jobBatchSystemID]+1
+            if self.reissueMissingJobs_missingHash.has_key(jobBatchSystemID):
+                self.reissueMissingJobs_missingHash[jobBatchSystemID] = \
+                self.reissueMissingJobs_missingHash[jobBatchSystemID]+1
             else:
-                reissueMissingJobs_missingHash[jobBatchSystemID] = 1
-            timesMissing = reissueMissingJobs_missingHash[jobBatchSystemID]
+                self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
+            timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
             logger.critical("Job store ID %s with batch system id %s is missing for the %i time" % \
                             (jobStoreID, str(jobBatchSystemID), timesMissing))
             if timesMissing == killAfterNTimesMissing:
-                reissueMissingJobs_missingHash.pop(jobBatchSystemID)
+                self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
         self.killJobs(jobsToKill)
-        return len(reissueMissingJobs_missingHash) == 0 #We use this to inform 
+        return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
     def processFinishedJob(self, jobBatchSystemID, resultStatus):
