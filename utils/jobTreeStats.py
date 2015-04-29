@@ -31,16 +31,8 @@ import time
 
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
-
-from sonLib.bioio import logger
-from sonLib.bioio import logFile
-
-from sonLib.bioio import getBasicOptionParser
-from sonLib.bioio import parseBasicOptions
-from sonLib.bioio import TempFileTree
-
-from jobTree.src.common import getConfigFileName
-from jobTree.src.master import getStatsFileName, getStatsCacheFileName
+from sonLib.bioio import logger, logFile, getBasicOptionParser, parseBasicOptions
+from jobTree.src.common import loadTheJobStore
 
 class JTTag(object):
     """ Convenience object that stores xml attributes as object attributes.
@@ -126,8 +118,8 @@ def initializeOptions(parser):
     parser.add_option("--sortReverse", "--reverseSort", default=False,
                       action="store_true",
                       help="reverse sort order.")
-    parser.add_option("--cache", default=False, action="store_true",
-                      help="stores a cache to speed up data display.")
+    #parser.add_option("--cache", default=False, action="store_true",
+    #                  help="stores a cache to speed up data display.")
 
 def checkOptions(options, args, parser):
     """ Check options, throw parser.error() if something goes wrong
@@ -142,17 +134,6 @@ def checkOptions(options, args, parser):
     logger.info("Checking if we have files for job tree")
     if options.jobTree == None:
         parser.error("Specify --jobTree")
-    if not os.path.exists(options.jobTree):
-        parser.error("--jobTree %s does not exist"
-                     % options.jobTree)
-    if not os.path.isdir(options.jobTree):
-        parser.error("--jobTree %s is not a directory"
-                     % options.jobTree)
-    if not os.path.isfile(getConfigFileName(options.jobTree)):
-        parser.error("A valid job tree must contain the config file")
-    if not os.path.isfile(getStatsFileName(options.jobTree)):
-        parser.error("The job-tree was run without the --stats flag, "
-                     "so no stats were created")
     defaultCategories = ["time", "clock", "wait", "memory"]
     if options.categories is None:
         options.categories = defaultCategories
@@ -571,23 +552,20 @@ def createSummary(element, containingItems, containingItemName, getFn):
     element.attrib["max_number_per_%s" %
                    containingItemName] = str(max(itemCounts))
 
-def getSettings(options):
+def getStats(options):
     """ Collect and return the stats and config data.
     """
-    config_file = getConfigFileName(options.jobTree)
-    stats_file = getStatsFileName(options.jobTree)
+    
+    jobStore = loadTheJobStore(options.jobTree)
     try:
-        config = ET.parse(config_file).getroot()
-    except ET.ParseError:
-        sys.stderr.write("The config file xml, %s, is empty.\n" % config_file)
-        raise
-    try:
-        stats = ET.parse(stats_file).getroot() # Try parsing the whole file.
+        fH = jobStore.readSharedFileStream("stats.xml")
+        stats = ET.parse(fH).getroot() # Try parsing the whole file.
+        fH.close()
     except ET.ParseError: # If it doesn't work then we build the file incrementally
         sys.stderr.write("The job tree stats file is incomplete or corrupt, "
                          "we'll try instead to parse what's in the file "
                          "incrementally until we reach an error.\n")
-        fH = open(stats_file, 'r') # Open the file for editing
+        fH = jobStore.readSharedFileStream("stats.xml") # Open the file for editing
         stats = ET.Element("stats")
         try:
             for event, elem in ET.iterparse(fH):
@@ -597,7 +575,7 @@ def getSettings(options):
             pass # Do nothing at this point
         finally:
             fH.close()
-    return config, stats
+    return stats
 
 def processData(config, stats, options):
     ##########################################
@@ -654,9 +632,9 @@ def reportData(xml_tree, options):
     # Now dump onto the screen
     print out_str
 
+"""
 def getNullFile():
-    """ Guaranteed to return a valid path to a file that does not exist.
-    """
+    # Guaranteed to return a valid path to a file that does not exist.
     charSet = string.ascii_lowercase + "0123456789"
     prefix = os.getcwd()
     nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
@@ -665,10 +643,10 @@ def getNullFile():
     return os.path.join(os.getcwd(), nullFile)
 
 def getPreferredStatsCacheFileName(options):
-    """ Determine if the jobtree or the os.getcwd() version should be used.
-    If no good option exists, return a nonexistent file path.
-    Note you MUST check to see if the return value exists before using.
-    """
+    # Determine if the jobtree or the os.getcwd() version should be used.
+    #If no good option exists, return a nonexistent file path.
+    #Note you MUST check to see if the return value exists before using.
+    
     null_file = getNullFile()
     location_jt = getStatsCacheFileName(options.jobTree)
     location_local = os.path.abspath(os.path.join(os.getcwd(),
@@ -698,9 +676,9 @@ def getPreferredStatsCacheFileName(options):
         return null_file
 
 def unpackData(options):
-    """unpackData() opens up the pickle of the last run and pulls out
-    all the relevant data.
-    """
+    #unpackData() opens up the pickle of the last run and pulls out
+    #all the relevant data.
+    
     cache_file = getPreferredStatsCacheFileName(options)
     if not os.path.exists(cache_file):
         return None
@@ -718,8 +696,7 @@ def unpackData(options):
     return None
 
 def packData(data, options):
-    """ packData stores all of the data in the appropriate pickle cache file.
-    """
+    # packData stores all of the data in the appropriate pickle cache file.
     stats_file = getStatsFileName(options.jobTree)
     cache_file = getStatsCacheFileName(options.jobTree)
     try:
@@ -740,8 +717,7 @@ def packData(data, options):
         f.close()
 
 def cacheAvailable(options):
-    """ Check to see if a cache is available, return it.
-    """
+    # Check to see if a cache is available, return it.
     if not os.path.exists(getStatsFileName(options.jobTree)):
         return None
     cache_file = getPreferredStatsCacheFileName(options)
@@ -755,6 +731,7 @@ def cacheAvailable(options):
         return None
     # cache is fresh, return the cache
     return unpackData(options)
+"""
 
 def main():
     """ Reports stats on the job-tree, use with --stats option to jobTree.
@@ -765,12 +742,13 @@ def main():
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
-    collatedStatsTag = cacheAvailable(options)
-    if collatedStatsTag is None:
-        config, stats = getSettings(options)
-        collatedStatsTag = processData(config, stats, options)
+    jobStore = loadTheJobStore(options.jobTree)
+    #collatedStatsTag = cacheAvailable(options)
+    #if collatedStatsTag is None:
+    stats = getStats(options)
+    collatedStatsTag = processData(jobStore.config, stats, options)
     reportData(collatedStatsTag, options)
-    packData(collatedStatsTag, options)
+    #packData(collatedStatsTag, options)
 
 def _test():
     import doctest

@@ -1,4 +1,6 @@
 import marshal as pickler
+import socket
+import random
 import shutil
 import os
 import re
@@ -15,7 +17,8 @@ class FileJobStore(AbstractJobStore):
         super( FileJobStore, self ).__init__( jobStoreString, create, config )
         if create and not os.path.exists(self._getJobFileDirName()):
             os.mkdir(self._getJobFileDirName())
-
+        self._setupStatsDirs(create=create)
+    
     def createFirstJob(self, command, memory, cpu):
         return self._makeJob(command, memory, cpu, self._getJobFileDirName())
     
@@ -134,6 +137,28 @@ class FileJobStore(AbstractJobStore):
     def readSharedFileStream(self, globalName):
         return open(os.path.join(self.jobStoreString, globalName), 'r')
     
+    def writeStats(self, statsString):
+        tempStatsFile = os.path.join(random.choice(self.statsDirs), \
+                            "%s_%s.xml" % (socket.gethostname(), os.getpid()))
+        fileHandle = open(tempStatsFile + ".new", "w")
+        fileHandle.write(statsString)
+        fileHandle.close()
+        os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
+    
+    def readStats(self, fileHandle):
+        numberOfFilesProcessed = 0
+        for dir in self.statsDirs:
+            for tempFile in os.listdir(dir):
+                if tempFile[-3:] != "new":
+                    absTempFile = os.path.join(dir, tempFile)
+                    fH = open(absTempFile, 'r')
+                    for line in fH.readlines():
+                        fileHandle.write(line)
+                    fH.close()
+                    os.remove(absTempFile)
+                    numberOfFilesProcessed += 1
+        return numberOfFilesProcessed
+    
     ####
     #Private methods
     ####
@@ -235,3 +260,17 @@ class FileJobStore(AbstractJobStore):
         except:
             logger.info("Encountered error while parsing job dir %s, so we will ignore it" % jobDir)
         return []
+    
+    ##Stats private methods
+    
+    def _setupStatsDirs(self, create=False):
+        #Temp dirs
+        def fn(dir, subDir):
+            absSubDir = os.path.join(dir, str(subDir))
+            if create and not os.path.exists(absSubDir):
+                os.mkdir(absSubDir)
+            return absSubDir
+        statsDir = fn(self.jobStoreString, "stats")
+        self.statsDirs = reduce(lambda x,y: x+y, [ [ fn(absSubDir, subSubDir) \
+                for subSubDir in xrange(10) ] \
+                for absSubDir in [ fn(statsDir, subDir) for subDir in xrange(10) ] ], [])

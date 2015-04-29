@@ -204,6 +204,9 @@ def loadTheBatchSystem(config):
     lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
+def loadTheJobStore(jobStoreString, create=False, config=None):
+    return FileJobStore(jobStoreString, create=create, config=config)
+
 def serialiseEnvironment(jobStore):
     """Puts the environment in a globally accessible pickle file.
     """
@@ -219,7 +222,7 @@ def createJobTree(options):
     os.mkdir(options.jobTree)
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
-    config.attrib["job_tree"] = options.jobTree
+    config.attrib["job_store"] = options.jobTree
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
@@ -248,7 +251,7 @@ def createJobTree(options):
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
     
-    jobStore = FileJobStore(jobStoreString=options.jobTree, create=True, config=config)
+    jobStore = loadTheJobStore(jobStoreString=options.jobTree, create=True, config=config)
     
     logger.info("Finished the job tree setup")
     return config, batchSystem, jobStore
@@ -257,7 +260,7 @@ def reloadJobTree(jobStoreString):
     """Load the job tree from a dir.
     """
     logger.info("The job tree appears to already exist, so we'll reload it")
-    jobStore = FileJobStore(jobStoreString)
+    jobStore = loadTheJobStore(jobStoreString)
     jobStore.config.attrib["log_level"] = getLogLevelString()
     jobStore.updateConfig(jobStore.config) #This updates the global copy of the config file
     batchSystem = loadTheBatchSystem(jobStore.config)

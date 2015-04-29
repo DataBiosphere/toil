@@ -27,8 +27,7 @@ import os
 import sys
 import xml.etree.cElementTree as ET
 from sonLib.bioio import logger, getBasicOptionParser, parseBasicOptions
-from jobTree.src.common import loadTheBatchSystem
-from jobTree.jobStores.fileJobStore import FileJobStore
+from jobTree.src.common import loadTheJobStore, loadTheBatchSystem
 
 def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")
@@ -48,7 +47,7 @@ def main():
         
     logger.info("Parsed arguments")
     assert options.jobTree != None #The jobtree should not be null
-    jobStore = FileJobStore(options.jobTree)
+    jobStore = loadTheJobStore(options.jobTree)
     
     logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)
     

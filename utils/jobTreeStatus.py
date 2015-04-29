@@ -34,7 +34,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
 from jobTree.src.job import Job
-from jobTree.jobStores.fileJobStore import FileJobStore
+from jobTree.src.common import loadTheJobStore
 
 def main():
     """Reports the state of the job tree.
@@ -82,7 +82,7 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = FileJobStore(options.jobTree)
+    jobStore = loadTheJobStore(options.jobTree)
     config = jobStore.config
     jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
     

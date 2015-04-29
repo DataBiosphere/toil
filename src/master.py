@@ -30,14 +30,9 @@ and then restarted at will (see the accompanying tests).
 
 import os
 import sys
-import re
 import os.path
 import xml.etree.cElementTree as ET
 import time
-import shutil
-import socket
-import random
-from collections import deque
 #from threading import Thread, Queue
 from multiprocessing import Process, Queue
 
@@ -46,65 +41,26 @@ from sonLib.bioio import logger, getTotalCpuTime, logStream, system
 from jobTree.src.common import workflowRootPath
 
 #####
-##The following functions are used for collating stats from the workers
+##The following function is used for collating stats from the workers
 ####
 
-def getStatsCacheFileName(jobTreePath):
-    return os.path.join(jobTreePath, ".stats_cache.pickle")
-
-def getStatsFileName(jobTreePath):
-    return os.path.join(jobTreePath, "stats.xml")
-
-def getTempStatDirNames():
-    return [ "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-
-def getTempStatsFile(jobTreePath):
-    return os.path.join(jobTreePath, "stats", random.choice(getTempStatDirNames()), \
-        random.choice(getTempStatDirNames()), "%s_%s.xml" % (socket.gethostname(), os.getpid()))
-
-def makeTemporaryStatsDirs(jobTreePath):
-    #Temp dirs
-    def fn(dir, subDir):
-        absSubDir = os.path.join(dir, subDir)
-        if not os.path.exists(absSubDir):
-            os.mkdir(absSubDir)
-        return absSubDir
-    statsDir = fn(jobTreePath, "stats")
-    return reduce(lambda x,y: x+y, [ [ fn(absSubDir, subSubDir) \
-            for subSubDir in getTempStatDirNames() ] \
-            for absSubDir in [ fn(statsDir, subDir) for subDir in getTempStatDirNames() ] ], [])
-
-def statsAggregatorProcess(jobTreePath, tempDirs, stop):
+def statsAggregatorProcess(jobStore, stop):
     #Overall timing
     startTime = time.time()
     startClock = getTotalCpuTime()
 
     #Start off the stats file
-    fileHandle = open(getStatsFileName(jobTreePath), 'w')
+    fileHandle = jobStore.writeSharedFileStream("stats.xml")
     fileHandle.write('<?xml version="1.0" ?><stats>')
-    statsFile = getStatsFileName(jobTreePath)
-
+    
     #The main loop
     timeSinceOutFileLastFlushed = time.time()
     while True:
-        def scanDirectoriesAndScrapeStats():
-            numberOfFilesProcessed = 0
-            for dir in tempDirs:
-                for tempFile in os.listdir(dir):
-                    if tempFile[-3:] != "new":
-                        absTempFile = os.path.join(dir, tempFile)
-                        fH = open(absTempFile, 'r')
-                        for line in fH.readlines():
-                            fileHandle.write(line)
-                        fH.close()
-                        os.remove(absTempFile)
-                        numberOfFilesProcessed += 1
-            return numberOfFilesProcessed 
         if not stop.empty(): #This is a indirect way of getting a message to 
             #the process to exit
-            scanDirectoriesAndScrapeStats()
+            jobStore.readStats(fileHandle)
             break
-        if scanDirectoriesAndScrapeStats() == 0:
+        if jobStore.readStats(fileHandle) == 0:
             time.sleep(0.5) #Avoid cycling too fast
         if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the 
             #results file every minute
@@ -126,7 +82,7 @@ class JobBatcher:
     def __init__(self, config, batchSystem, jobStore):
         self.config = config
         self.jobStore = jobStore
-        self.jobTree = config.attrib["job_tree"]
+        self.jobStoreString = config.attrib["job_store"]
         self.jobBatchSystemIDToJobStoreIDHash = {}
         self.batchSystem = batchSystem
         self.jobsIssued = 0
@@ -139,7 +95,7 @@ class JobBatcher:
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.workerPath, \
-                                            self.rootPath, self.jobTree, jobStoreID)
+                                            self.rootPath, self.jobStoreString, jobStoreID)
         jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: \
@@ -332,8 +288,9 @@ def mainLoop(config, batchSystem, jobStore):
     stats = config.attrib.has_key("stats")
     if stats:
         stop = Queue()
-        worker = Process(target=statsAggregatorProcess, args=(config.attrib["job_tree"], \
-                                        makeTemporaryStatsDirs(config.attrib["job_tree"]), stop))
+        #statsFile, jobStore, stop
+        worker = Process(target=statsAggregatorProcess, \
+                         args=(jobStore, stop))
         worker.daemon = True
         worker.start()
 
