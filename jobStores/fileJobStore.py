@@ -1,12 +1,7 @@
-
 import marshal as pickler
-#import cPickle as pickler
-#import pickle as pickler
-#import json as pickler    
 import shutil
 import os
 import re
-import time
 from sonLib.bioio import logger, makeSubDir, getTempFile, system
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
@@ -15,11 +10,12 @@ class FileJobStore(AbstractJobStore):
     """Represents the jobTree on using a network file system. For doc-strings
     of functions see AbstractJobStore.
     """
+
     def __init__(self, jobStoreString, create=False, config=None):
-        AbstractJobStore.__init__(self, jobStoreString=jobStoreString, create=create, config=config)
+        super( FileJobStore, self ).__init__( jobStoreString, create, config )
         if create and not os.path.exists(self._getJobFileDirName()):
             os.mkdir(self._getJobFileDirName())
-    
+
     def createFirstJob(self, command, memory, cpu):
         return self._makeJob(command, memory, cpu, self._getJobFileDirName())
     

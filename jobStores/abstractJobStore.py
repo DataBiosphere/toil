@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 import xml.etree.cElementTree as ET
 
-class JobTreeState:
+class JobTreeState(object):
     """Represents the state of the jobTree.
     """
     def __init__(self):
@@ -12,7 +12,7 @@ class JobTreeState:
         #one or more follow-on commands
         self.shellJobs = set() #Jobs that have no children or follow-on commands
 
-class AbstractJobStore:
+class AbstractJobStore(object):
 
     __metaclass__ = ABCMeta
 
@@ -28,8 +28,8 @@ class AbstractJobStore:
         """
         self.jobTreeState = None #This will be none until "loadJobTree" is called.
         self.jobStoreString = jobStoreString
-        if create or config != None:
-            assert config != None
+        if create or config is not None:
+            assert config is not None
             self.updateConfig(config)
         else:
             fileHandle = self.readSharedFileStream("config.xml")
