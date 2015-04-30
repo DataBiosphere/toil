@@ -5,7 +5,7 @@ import pickle
 from jobTree.batchSystems.mesos import ResourceRequirement
 from jobTree.batchSystems.mesos.JobTreeJob import JobTreeJob
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.batchSystems.mesos import mesosExecutor
+from jobTree.batchSystems.mesos import mesosExecutor, badExecutor
 from Queue import Queue
 from sonLib.bioio import logger
 from threading import Thread
@@ -20,7 +20,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     Class describes the mesos scheduler framework which acts as the mesos batch system for jobtree
     First methods are jobtree callbacks, then framework methods in rough chronological order of call.
     """
-    def __init__(self, config, maxCpus, maxMemory):
+    def __init__(self, config, maxCpus, maxMemory, badExecutor=False):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
         Thread.__init__(self)
 
@@ -51,7 +51,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.implicitAcknowledgements = self.getImplicit()
 
         # returns mesos executor object, which is merged into mesos tasks as they are built
-        self.executor = self.buildExecutor()
+        if badExecutor:
+            self.executor = self.buildExecutor(bad=True)
+        else:
+            self.executor = self.buildExecutor(bad = False)
+
 
         self.nextJobID = 0
         self.tasksLaunched = 0
@@ -138,14 +142,18 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         return 1800 #Half an hour
 
-    def buildExecutor(self):
+    def buildExecutor(self, bad):
         """
         build executor here to avoid cluttering constructor
         :return:
         """
         executor = mesos_pb2.ExecutorInfo()
-        executor.executor_id.value = "MesosExecutor"
-        executor.command.value = self.executorScriptPath()
+        if bad:
+            executor.command.value = self.executorScriptPath(executorFile=badExecutor)
+            executor.executor_id.value = "badExecutor"
+        else:
+            executor.command.value = self.executorScriptPath(executorFile=mesosExecutor)
+            executor.executor_id.value = "jobTreeExecutor"
         executor.name = "Test Executor (Python)"
         executor.source = "python_test"
 
@@ -161,20 +169,20 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         return executor
 
     @staticmethod
-    def executorScriptPath():
+    def executorScriptPath(executorFile):
         """
         gets path to executor that will run on slaves. Originally was hardcoded, this
         method is more flexible. Return path to .py files only
         :return:
         """
-        path = mesosExecutor.__file__
+        path = executorFile.__file__
         if path.endswith('.pyc'):
             path = path[:-1]
         return path
 
     def getImplicit(self):
         """
-        determine wether to run with implicit or explicit acknowledgements.
+        determine whether to run with implicit or explicit acknowledgements.
         :return:
         """
         implicitAcknowledgements = 1
@@ -315,12 +323,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         build the mesos task object from the jobTree job here to avoid
         further cluttering resourceOffers
         """
-        tid = self.tasksLaunched
         self.tasksLaunched += 1
         task = mesos_pb2.TaskInfo()
-        task.task_id.value = str(tid)
+        task.task_id.value = str(jt_job.jobID)
         task.slave_id.value = offer.slave_id.value
-        task.name = "task %d" % tid
+        task.name = "task %d" % jt_job.jobID
 
         # assigns jobTree command to task
         task.data = pickle.dumps(jt_job)
@@ -362,6 +369,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
             slave_id, executor_id = self.taskExecutorMap[update.task_id.value]
 
+            # im not sure what they are using this for. It seems like this is to know when to shutDown.
+            # we dont want mesos to shut down, and this dictionary does not shrink.
             self.messagesSent += 1
             driver.sendFrameworkMessage(
                 executor_id,

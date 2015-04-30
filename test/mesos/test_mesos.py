@@ -7,10 +7,12 @@ import sys
 from mesos.interface import mesos_pb2
 from Queue import Queue
 from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement
-from jobTree.test.mesos.ResumeTest import main as testMain
+from jobTree.test.mesos.ResumeTest import *
+from jobTree.test.mesos.ResumeTest import run as testRun
+from jobTree.test.mesos.StressTest import main as stressMain
 import subprocess
 import threading
-from test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 
 class TestMesos(JobTreeTest):
@@ -18,13 +20,16 @@ class TestMesos(JobTreeTest):
     class MesosMasterThread(threading.Thread):
         def __init__(self):
             threading.Thread.__init__(self)
-            self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1",shell=True)
+            self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1", shell=True)
 
 
     class MesosSlaveThread(threading.Thread):
         def __init__(self):
             threading.Thread.__init__(self)
-            self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050",shell=True)
+            self.popen = None
+
+        def run(self):
+            self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050", shell=True)
 
     master=MesosMasterThread()
     slave=MesosSlaveThread()
@@ -43,6 +48,15 @@ class TestMesos(JobTreeTest):
         cls.master.popen.kill()
         cls.slave.popen.kill()
 
+    @classmethod
+    def killSlave(cls):
+        pid = cls.slave.popen.pid
+        os.kill(pid, 9)
+
+    @classmethod
+    def startSlave(cls):
+        cls.slave.run()
+
     def setUp(self):
         # subprocess.check_call("rm -rf /tmp/mesos/")
         self.startDir=os.getcwd()
@@ -56,8 +70,8 @@ class TestMesos(JobTreeTest):
     def test_hello_world(self):
         dir = os.path.abspath(os.path.dirname(__file__))
         subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos".format(dir), shell=True)
-        self.assertTrue(os.path.isfile("./hello_world.txt"))
-        self.assertTrue(os.path.isfile("./hello_world_child.txt"))
+        self.assertTrue(os.path.isfile("./bar_bam.txt"))
+        #self.assertTrue(os.path.isfile("./hello_world_child.txt"))
 
     def test_class_script(self):
         dir = os.path.abspath(os.path.dirname(__file__))
@@ -65,10 +79,29 @@ class TestMesos(JobTreeTest):
         self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
         self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
 
-    def test_resume(self):
-        testMain()
-        #cls.slave.popen.kill()
-        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
+
+    def test_stress(self):
+        """
+        set task number to number of files you wish to create. Actual number of tasks is tasks+2
+        Right now task is set to fail 1/10 tries. To change this, check code in badExecutor
+        """
+        tasks=10
+        stressMain(tasks=tasks)
+        for i in range (0,tasks/2):
+            self.assertTrue(os.path.isfile("./hello_world_child{}.txt".format(i)), "actual files: {}".format(os.listdir(".")))
+            self.assertTrue(os.path.isfile("./hello_world_follow{}.txt".format(i)),  "actual files: {}".format(os.listdir(".")))
+
+    # def test_resume(self):
+    #     mainT = threading.Thread(target=testRun(3))
+    #     mainT.start()
+    #     #This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
+    #     print "killing"
+    #     TestMesos.killSlave()
+    #     print "killed"
+    #     TestMesos.startSlave()
+    #     mainT.join()
+    #     self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
+    #     self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
 
     # Test for mesos only. Problem: mesos is daemonized, doesnt quit by itself.
     # def test_mesos_only(self):
