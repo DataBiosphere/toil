@@ -10,9 +10,10 @@ from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement
 from jobTree.test.mesos.ResumeTest import main as testMain
 import subprocess
 import threading
+from test import JobTreeTest
 
 
-class TestMesos(unittest.TestCase):
+class TestMesos(JobTreeTest):
 
     class MesosMasterThread(threading.Thread):
         def __init__(self):
@@ -30,6 +31,7 @@ class TestMesos(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        super( TestMesos, cls).setUpClass()
         cls.master.setDaemon(True)
         cls.slave.setDaemon(True)
         cls.master.start()
@@ -37,6 +39,7 @@ class TestMesos(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        super( TestMesos, cls).tearDownClass()
         cls.master.popen.kill()
         cls.slave.popen.kill()
 

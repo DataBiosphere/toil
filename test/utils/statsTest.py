@@ -13,10 +13,13 @@ from sonLib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
 from jobTree.src.common import workflowRootPath
+from test import JobTreeTest
 
-class TestCase(unittest.TestCase):
-    def setUp(self):
-        unittest.TestCase.setUp(self)
+
+class TestCase(JobTreeTest):
+
+    def setUp( self ):
+        super( TestCase, self ).setUp( )
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
     
     def testJobTreeStats_SortSimple(self):

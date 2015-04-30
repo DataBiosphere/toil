@@ -15,17 +15,19 @@ from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import logger
 from sonLib.bioio import TempFileTree
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
+from test import JobTreeTest
 
-class TestCase(unittest.TestCase):
+
+class TestCase(JobTreeTest):
     
     def setUp(self):
-        unittest.TestCase.setUp(self)
+        super( TestCase, self).setUp()
         self.jobTreeDir = os.path.join(os.getcwd(), "testJobTree") #A directory for the job tree to be created in
         self.tempFileTreeDir = os.path.join(os.getcwd(), "tempFileTree") #Ensures that file tree is visible
         self.tempFileTree = TempFileTree(self.tempFileTreeDir) #A place to get temp files from
     
     def tearDown(self):
-        unittest.TestCase.tearDown(self)
+        super( TestCase, self).tearDown( )
         self.tempFileTree.destroyTempFiles()
         system("rm -rf %s %s" % (self.jobTreeDir, self.tempFileTreeDir)) #Cleanup the job tree in case it hasn't already been cleaned up.
    
