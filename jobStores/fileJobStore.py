@@ -1,4 +1,7 @@
 import marshal as pickler
+#import cPickle as pickler
+#import pickle as pickler
+#import json as pickler
 import socket
 import random
 import shutil
@@ -17,6 +20,7 @@ class FileJobStore(AbstractJobStore):
         super( FileJobStore, self ).__init__( jobStoreString, create, config )
         if create and not os.path.exists(self._getJobFileDirName()):
             os.mkdir(self._getJobFileDirName())
+        # FIXME: should we assert create=False and os.path.exists(self._getJobFileDirName()???
         self._setupStatsDirs(create=create)
     
     def createFirstJob(self, command, memory, cpu):
@@ -27,15 +31,14 @@ class FileJobStore(AbstractJobStore):
     
     def load(self, jobStoreID):
         jobFile = self._getJobFileName(jobStoreID)
-        #The following clean up any issues resulting from the failure of the job 
-        #during writing by the batch system.
+        # The following clean up any issues resulting from the failure of the job during writing
+        # by the batch system.
         updatingFilePresent = self._processAnyUpdatingFile(jobFile)
         newFilePresent = self._processAnyNewFile(jobFile)
-        #Now load the job
-        fileHandle = open(jobFile, 'r')
-        job = Job.convertJsonJobToJob(pickler.load(fileHandle))
-        fileHandle.close()
-        #Deal with failure by lowering the retry limit
+        # Now load the job
+        with open(jobFile, 'r') as fileHandle:
+            job = Job.convertJsonJobToJob(pickler.load(fileHandle))
+        # Deal with failure by lowering the retry limit
         if updatingFilePresent or newFilePresent:
             job.setupJobAfterFailure(self.config)
         return job   
@@ -219,7 +222,8 @@ class FileJobStore(AbstractJobStore):
         return False
     
     def _processAnyNewFile(self, jobFile):
-        if os.path.isfile(jobFile + ".new"): #The job was not properly updated before crashing
+        # The job was not properly updated before crashing
+        if os.path.isfile(jobFile + ".new"):
             logger.critical("There was a .new file for the job and no .updating file %s" % jobFile)
             if os.path.isfile(jobFile):
                 os.remove(jobFile)

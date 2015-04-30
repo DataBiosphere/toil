@@ -52,7 +52,12 @@ class Job:
         """
         return None if self.logJobStoreFileID == None else \
             jobStore.readFileStream(self.logJobStoreFileID)
-            
+
+    # FIXME: Remove json from method name. If it's not a string it can't be referred to as JSON
+    # simply because JSON is a serialization format.
+
+    # FIXME: consider just returning Job.__dict__ as that would be less brittle
+
     def convertJobToJson(job):
         jsonJob = [ job.remainingRetryCount,
                     job.jobStoreID,
@@ -61,6 +66,10 @@ class Job:
                     job.messages,
                     job.logJobStoreFileID ]
         return jsonJob
+
+    # FIXME: see above
+
+    # FIXME: consider using Job(**kwargs) as that would be less brittle
     
     @staticmethod
     def convertJsonJobToJob(jsonJob):
