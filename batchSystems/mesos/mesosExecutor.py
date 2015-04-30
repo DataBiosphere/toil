@@ -84,7 +84,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         """
         def __run_task():
             log.debug("Running task %s" % task.task_id.value)
-            self.sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
+            self.__sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
 
             jobTreeJob = pickle.loads( task.data )
             os.chdir( jobTreeJob.cwd )
@@ -92,16 +92,16 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
             result = call(jobTreeJob.command, shell=True)
 
             if result != 0:
-                self.sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
+                self.__sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
             else:
-                self.sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
+                self.__sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
 
         # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
         thread = threading.Thread(target=__run_task)
         thread.start()
 
     # TODO: why is TASK_STATE upper case?
-    def sendUpdate(self, driver, task, TASK_STATE):
+    def __sendUpdate(self, driver, task, TASK_STATE):
         log.debug("Sending status update...")
         update = mesos_pb2.TaskStatus()
         update.task_id.value = task.task_id.value
