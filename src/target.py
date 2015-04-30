@@ -99,7 +99,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Takes a file (as a path) and uploads it to to the global file store, returns
         an ID that can be used to retrieve the file. 
         """
-        return self.jobStore.writeFile(localFileName, self.job.jobStoreID)
+        return self.jobStore.writeFile(self.job.jobStoreID, localFileName)
     
     def updateGlobalFile(self, fileStoreID, localFileName):
         """Replaces the existing version of a file in the global file store, keyed by the fileStoreID. 
