@@ -1,5 +1,7 @@
 *.o
 *.pyc
 *.a
-bin/
+/bin/
 tmp_*
+/tmpFileTree/
+/testJobTree/
