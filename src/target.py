@@ -95,6 +95,9 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         return self.__time
     
+    ##The following functions are used for creating/writing/updating/reading/deleting global files.
+    ##
+    
     def writeGlobalFile(self, localFileName):
         """Takes a file (as a path) and uploads it to to the global file store, returns
         an ID that can be used to retrieve the file. 
@@ -200,6 +203,8 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         self.localTempDir = localTempDir
         
     def unsetFileVariables(self):
+        """Unsets the file variables, so that they don't get pickled.
+        """
         self.jobStore = None
         self.job = None
         self.localTempDir = None

@@ -14,23 +14,23 @@ from sonLib.bioio import logger, system
 from jobTree.src.stack import Stack
 from jobTree.src.job import Job
 from jobTree.jobStores.fileJobStore import FileJobStore
-from jobTree.src.common import createJobTree
+from jobTree.src.common import setupJobTree
 from test import JobTreeTest
 
 
 class TestCase(JobTreeTest):
 
-    def setUp( self ):
+    def setUp(self):
         super( TestCase, self ).setUp( )
         self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
         Stack.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
-        config, batchSystem, jobStore = createJobTree(options)
+        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
         self.jobStore = jobStore
-
-    def tearDown( self ):
+        
+    def tearDown(self):
         super( TestCase, self ).tearDown( )
         system("rm -rf %s" % self.testJobTree)
     

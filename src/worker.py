@@ -85,7 +85,7 @@ def main():
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
     from jobTree.src.job import Job
-    from jobTree.src.common import loadTheJobStore
+    from jobTree.src.common import loadJobStore
     from sonLib.bioio import system
     
     ########################################## 
@@ -99,7 +99,7 @@ def main():
     #Load the jobStore/config file
     ##########################################
     
-    jobStore = loadTheJobStore(jobStoreString)
+    jobStore = loadJobStore(jobStoreString)
     config = jobStore.config 
     setLogLevel(config.attrib["log_level"])
     

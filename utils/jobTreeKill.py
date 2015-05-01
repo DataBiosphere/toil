@@ -27,13 +27,13 @@ import os
 import sys
 import xml.etree.cElementTree as ET
 from sonLib.bioio import logger, getBasicOptionParser, parseBasicOptions
-from jobTree.src.common import loadTheJobStore, loadTheBatchSystem
+from jobTree.src.common import loadJobStore, loadBatchSystem
 
 def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
-                      help="Directory containing the job tree to kill")
+                      help="Job store path. Can also be specified as the single argument to the script.")
     
     options, args = parseBasicOptions(parser)
     
@@ -47,11 +47,11 @@ def main():
         
     logger.info("Parsed arguments")
     assert options.jobTree != None #The jobtree should not be null
-    jobStore = loadTheJobStore(options.jobTree)
+    jobStore = loadJobStore(options.jobTree)
     
     logger.info("Starting routine to kill running jobs in the jobTree: %s" % options.jobTree)
-    
-    batchSystem = loadTheBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
+    ####This behaviour is now broken
+    batchSystem = loadBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
         batchSystem.killJobs(jobID)
     logger.info("All jobs SHOULD have been killed")
