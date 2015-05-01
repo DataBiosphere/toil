@@ -79,7 +79,6 @@ class TestMesos(JobTreeTest):
         self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
         self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
 
-
     def test_stress(self):
         """
         set task number to number of files you wish to create. Actual number of tasks is tasks+2
@@ -92,7 +91,7 @@ class TestMesos(JobTreeTest):
             self.assertTrue(os.path.isfile("./hello_world_follow{}.txt".format(i)),  "actual files: {}".format(os.listdir(".")))
 
     # def test_resume(self):
-    #     mainT = threading.Thread(target=testRun(3))
+    #     mainT = threading.Thread(target=testRun,args=(3,))
     #     mainT.start()
     #     #This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
     #     print "killing"

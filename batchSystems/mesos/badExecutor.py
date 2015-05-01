@@ -90,10 +90,9 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
             jobTreeJob = pickle.loads( task.data )
             os.chdir( jobTreeJob.cwd )
             ran = random.randint(1,10)
-            print ran
-            if ran == 10:
+            if ran >5:
                 result = 1
-                print ran
+                print "task {} failed with random {}".format(task.task_id.value, ran)
             else:
                 result = call(jobTreeJob.command, shell=True)
 
