@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import pickle
+from mesos.interface.mesos_pb2 import TaskID
 from jobTree.batchSystems.mesos import ResourceRequirement
 from jobTree.batchSystems.mesos.JobTreeJob import JobTreeJob
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -50,12 +51,14 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # checks environment variables to determine wether to use implicit/explicit Acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
 
+        # reference to our schedulerDriver, to be instantiated in run()
+        self.driver=None
+
         # returns mesos executor object, which is merged into mesos tasks as they are built
         if badExecutor:
             self.executor = self.buildExecutor(bad=True)
         else:
             self.executor = self.buildExecutor(bad = False)
-
 
         self.nextJobID = 0
         self.tasksLaunched = 0
@@ -96,8 +99,22 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     def killJobs(self, jobIDs):
         """Kills the given job IDs. But when is it called?
         """
+        if self.driver is None:
+            raise RuntimeError("There is no scheduler driver")
         for jobID in jobIDs:
             self.killSet.add(jobID)
+            print jobID
+            taskId = TaskID()
+            taskId.value = str(jobID)
+            self.driver.killTask(taskId)
+
+        while self.killSet:
+            i = self.getFromQueueSafely(self.killedQueue, 3)
+            if i is not None:
+                self.killSet.remove(jobID)
+                self.currentjobs.remove(jobID)
+            else:
+                break
 
     def getIssuedJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe
@@ -207,7 +224,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             log.debug( "Enabling checkpoint for the framework")
             framework.checkpoint = True
 
-
         if os.getenv("MESOS_AUTHENTICATE"):
 
             # TODO: let's delete this branch and replace it with raising a NotImplementedError
@@ -228,7 +244,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
             framework.principal = os.getenv("DEFAULT_PRINCIPAL")
 
-            driver = MesosSchedulerDriver(
+            self.driver = MesosSchedulerDriver(
                 self,
                 framework,
                 self.masterIP,
@@ -237,17 +253,17 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         else:
             framework.principal = "test-framework-python"
 
-            driver = MesosSchedulerDriver(
+            self.driver = MesosSchedulerDriver(
                 self,
                 framework,
                 self.masterIP,
                 self.implicitAcknowledgements)
 
-        driver_result = driver.run()
+        driver_result = self.driver.run()
         status = 0 if driver_result == mesos_pb2.DRIVER_STOPPED else 1
 
         # Ensure that the driver process terminates.
-        driver.stop()
+        self.driver.stop()
         sys.exit(status)
 
     def registered(self, driver, frameworkId, masterInfo):
@@ -345,29 +361,21 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         mem.scalar.value = jt_job.resources.memory/1000000
         return task
 
+    def __updateState(self, intID, exitStatus):
+        self.updatedJobsQueue.put((intID, exitStatus))
+        del self.jobTimeMap[intID]
+
     def statusUpdate(self, driver, update):
         log.debug( "Task %s is in a state %s" % \
             (update.task_id.value, mesos_pb2.TaskState.Name(update.state)))
 
-        # TODO: I think this is left over from the example and should be . Removing doesnt seem to harm anything.
-        # Ensure the binary data came through.
-        # if update.data != "data with a \0 byte":
-        #     print "The update data did not match!"
-        #     print "  Expected: 'data with a \\x00 byte'"
-        #     print "  Actual:  ", repr(str(update.data))
-        #     self.updatedJobsQueue.put((int(update.task_id.value), 1))
-        #     del self.jobTimeMap[int(update.task_id.value)]
-            # message not going through. What exactly does this mean for the slave?
+        intID=int(update.task_id.value) # jobTree keeps jobIds as ints
+        stringID=update.task_id.value # mesos keeps jobIds as strings
 
         if update.state == mesos_pb2.TASK_FINISHED:
             self.tasksFinished += 1
-            self.updatedJobsQueue.put((int(update.task_id.value), 0))
-            del self.jobTimeMap[int(update.task_id.value)]
-            # problem: queues are approximate. Just make this queue.empty()?
-            if self.tasksFinished == len(self.jobTimeMap):
-                log.debug( "All tasks done, waiting for final framework message")
-
-            slave_id, executor_id = self.taskExecutorMap[update.task_id.value]
+            self.__updateState(intID, 0)
+            slave_id, executor_id = self.taskExecutorMap[stringID]
 
             # im not sure what they are using this for. It seems like this is to know when to shutDown.
             # we dont want mesos to shut down, and this dictionary does not shrink.
@@ -380,15 +388,14 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         if update.state == mesos_pb2.TASK_LOST or \
            update.state == mesos_pb2.TASK_FAILED:
             log.warning( "Task %s is in unexpected state %s with message '%s'" \
-                % (update.task_id.value, mesos_pb2.TaskState.Name(update.state), update.message))
-            # driver.abort()
-            self.updatedJobsQueue.put((int(update.task_id.value), 1))
-            del self.jobTimeMap[int(update.task_id.value)]
+                % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
+            self.__updateState(intID, 1)
 
         if update.state == mesos_pb2.TASK_KILLED:
-            self.killedQueue.put(update.task_id.value)
-            self.updatedJobsQueue.put((int(update.task_id.value), 1))
-            del self.jobTimeMap[int(update.task_id.value)]
+            # check if the killJob call will auto update jobTree state- probably will
+            self.__updateState(intID, 1)
+            if intID in self.killSet:
+                self.killedQueue.put(intID)
 
         # Explicitly acknowledge the update if implicit acknowledgements
         # are not being used.
@@ -401,15 +408,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         self.messagesReceived += 1
 
-        # # The message bounced back as expected.
-        # if message != "data with a \0 byte":
-        #     print "The returned message data did not match!"
-        #     print "  Expected: 'data with a \\x00 byte'"
-        #     print "  Actual:  ", repr(str(message))
-        #     print "seems like slave {} not communicating".format(slaveId)
-        # print "Received message:", repr(str(message))
-
-        # probably doesnt work. running dictionary can shrink.
         if self.messagesReceived == len(self.jobTimeMap):
             if self.messagesReceived != self.messagesSent:
                 log.error( "ERROR: sent {} but recieved {}".format(self.messagesSent,self.messagesReceived))
@@ -428,14 +426,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         if now > self.lastReconciliation+self.reconciliationPeriod:
             self.lastReconciliation=now
             driver.reconcileTasks(list(self.jobTimeMap.keys()))
-
-    def __killTasks(self, driver):
-        """
-
-        :return:
-        """
-        for jobID in self.killSet:
-            driver.killTask(jobID)
 
     def reregistered(self, driver, masterInfo):
         """
