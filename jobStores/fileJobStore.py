@@ -7,7 +7,6 @@ import random
 import shutil
 import os
 import re
-import time
 from sonLib.bioio import logger, makeSubDir, getTempFile, system, absSymPath
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
@@ -17,12 +16,12 @@ class FileJobStore(AbstractJobStore):
     of functions see AbstractJobStore.
     """
 
-    def __init__(self, jobStoreString, create=False, config=None):
-        jobStoreString = absSymPath(jobStoreString)
-        logger.info("Jobstore directory is: %s" % jobStoreString)
-        if not os.path.exists(jobStoreString):
-            os.mkdir(jobStoreString)
-        AbstractJobStore.__init__(self, jobStoreString=jobStoreString, create=create, config=config)
+    def __init__(self, jobStoreDir, create=False, config=None):
+        self.jobStoreDir = absSymPath(jobStoreDir)
+        logger.info("Jobstore directory is: %s" % self.jobStoreDir)
+        if not os.path.exists(self.jobStoreDir):
+            os.mkdir(self.jobStoreDir)
+        super( FileJobStore, self ).__init__( create, config )
         self._setupStatsDirs(create=create)
     
     def createFirstJob(self, command, memory, cpu):
@@ -92,13 +91,13 @@ class FileJobStore(AbstractJobStore):
         self._loadJobTreeState(self._getJobFileDirName(), jobTreeState)
         return jobTreeState
     
-    def writeFile(self, jobStoreID, localFileName):
+    def writeFile(self, jobStoreID, localFilePath):
         if not os.path.exists(jobStoreID):
             raise RuntimeError("JobStoreID %s does not exist" % jobStoreID)
         if not os.path.isdir(jobStoreID):
             raise RuntimeError("Path %s is not a dir" % jobStoreID)
         jobStoreFileID = getTempFile(".tmp", os.path.join(jobStoreID, "g"))
-        shutil.copyfile(localFileName, jobStoreFileID)
+        shutil.copyfile(localFilePath, jobStoreFileID)
         return jobStoreFileID
     
     def updateFile(self, jobStoreFileID, localFileName):
@@ -142,11 +141,11 @@ class FileJobStore(AbstractJobStore):
         return open(jobStoreFileID, 'r')
     
     def writeSharedFileStream(self, globalName):
-        jobStoreFileID = os.path.join(self.jobStoreString, globalName)
+        jobStoreFileID = os.path.join(self.jobStoreDir, globalName)
         return open(jobStoreFileID, 'w')
     
     def readSharedFileStream(self, globalName):
-        return open(os.path.join(self.jobStoreString, globalName), 'r')
+        return open(os.path.join(self.jobStoreDir, globalName), 'r')
     
     def writeStats(self, statsString):
         tempStatsFile = os.path.join(random.choice(self.statsDirs), \
@@ -181,7 +180,7 @@ class FileJobStore(AbstractJobStore):
               jobStoreID=jobDir, logJobStoreFileID=None)
     
     def _getJobFileDirName(self):
-        return os.path.join(self.jobStoreString, "jobs")
+        return os.path.join(self.jobStoreDir, "jobs")
     
     def _getJobFileName(self, jobStoreID):
         return os.path.join(jobStoreID, "job")
@@ -283,7 +282,7 @@ class FileJobStore(AbstractJobStore):
             if create and not os.path.exists(absSubDir):
                 os.mkdir(absSubDir)
             return absSubDir
-        statsDir = fn(self.jobStoreString, "stats")
+        statsDir = fn(self.jobStoreDir, "stats")
         self.statsDirs = reduce(lambda x,y: x+y, [ [ fn(absSubDir, subSubDir) \
                 for subSubDir in xrange(10) ] \
                 for absSubDir in [ fn(statsDir, subDir) for subDir in xrange(10) ] ], [])
