@@ -5,9 +5,10 @@ from sonLib.bioio import logFile, system, logger
 import xml.etree.cElementTree as ET
 
 class JobTreeState:
-    """Represents the state of the jobTree.
+    """Represents the state of the jobTree. This is returned by jobStore.loadJobTreeState()
     """
     def __init__(self):
+        self.started = False
         self.childJobStoreIdToParentJob = {} #This is a hash of jobStoreIDs to
         #the parent jobs.
         self.childCounts = {} #Hash of jobs to counts of numbers of children.
@@ -26,7 +27,6 @@ class AbstractJobStore:
         If config == None (in which case create must be False), then the self.config 
         object is read from the file-store.
         """
-        self.jobTreeState = None #This will be none until "loadJobTree" is called.
         self.jobStoreString = jobStoreString
         if create or config != None:
             assert config != None
@@ -35,6 +35,9 @@ class AbstractJobStore:
             fileHandle = self.readSharedFileStream("config.xml")
             self.config = ET.parse(fileHandle).getroot()
             fileHandle.close()
+            
+    ##The following methods deal with creating/loading/updating/writing/checking 
+    #for the existence of jobs
             
     def createFirstJob(self, command, memory, cpu):
         """Creates and returns the root job of the jobTree from which all others must be created. 
@@ -71,9 +74,11 @@ class AbstractJobStore:
         pass
     
     def loadJobTreeState(self):
-        """Initialises self.jobTreeState from the contents of the store.
+        """Returns a jobTreeState object based on the state of the store.
         """
         pass
+    
+    ##The following provide an way of creating/reading/writing/updating files associated with a given job.
     
     def writeFile(self, jobStoreID, localFileName):
         """Takes a file (as a path) and uploads it to to the jobStore file system, returns
@@ -123,37 +128,35 @@ class AbstractJobStore:
         """
         pass
     
+    ##The following methods deal with global files, not associated with specific jobs.
+    
     def writeSharedFileStream(self, globalFileID):
         """Returns a writable file-handle to a global file using the globalFileID. 
         """
         pass
-    
-    def updateConfig(self, config):
-        """Updates the config.
-        """
-        self.config = config
-        fileHandle = self.writeSharedFileStream("config.xml")
-        ET.ElementTree(config).write(fileHandle)
-        fileHandle.close()
     
     def readSharedFileStream(self, globalFileID):
         """Returns a readable file-handle to the global file referenced by globalFileID.
         """
         pass
     
+    def updateConfig(self, config):
+        """Updates the config file stored on disk.
+        """
+        self.config = config
+        fileHandle = self.writeSharedFileStream("config.xml")
+        ET.ElementTree(config).write(fileHandle)
+        fileHandle.close()
+    
     def writeStats(self, statsString):
         """Writes the given stats string to the store of stats info.
-        """
-        pass
-    
-    def cleanStats(self):
-        """Function used called by master process to cleanup the store used to collect stats.
         """
         pass
     
     def readStats(self, fileHandle):
         """Reads stats strings accumulated by "writeStats" function, writing each
         one to the given fileHandle. Returns the number of stat strings processed. Stats are
-        only read once.
+        only read once and are removed from the file store after being written to the given 
+        file handle.
         """
         pass

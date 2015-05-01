@@ -74,9 +74,9 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn = addGroupFn("jobTree core options", "Options to specify the \
     location of the jobTree and turn on stats collation about the performance of jobs.")
     addOptionFn("--jobTree", dest="jobTree", default="./jobTree",
-                      help=("Directory in which to place job management files \
-                      and the global accessed temporary file directories"
-                            "(this needs to be globally accessible by all machines running jobs).\n"
+                      help=("Store in which to place job management files \
+                      and the global accessed temporary files"
+                            "(If this is a file path this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
                             "job tree, then try and restart the jobs in it. The default=%s" % defaultStr))
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
@@ -145,7 +145,7 @@ def _addOptions(addGroupFn, defaultStr):
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % defaultStr))
-        
+
 def addOptions(parser):
     # Wrapper function that allows jobTree to be used with both the optparse and 
     # argparse option parsing modules
@@ -165,7 +165,47 @@ def addOptions(parser):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
 
-def loadTheBatchSystem(config):
+def verifyJobTreeOptions(options):
+    """ verifyJobTreeOptions() returns None if all necessary values
+    are present in options, otherwise it raises an error.
+    It can also serve to validate the values of the options.
+    """
+    required = ['logLevel', 'batchSystem', 'jobTree']
+    for r in required:
+        if r not in vars(options):
+            raise RuntimeError("Error, there is a missing option (%s) from the jobTree Stack, "
+                               "did you remember to call Stack.addJobTreeOptions()?" % r)
+    if options.jobTree is None:
+        raise RuntimeError("Specify --jobTree")
+
+def createConfig(options):
+    logger.info("Starting to create the job tree setup for the first time")
+    config = ET.Element("config")
+    config.attrib["log_level"] = getLogLevelString()
+    config.attrib["job_store"] = options.jobTree
+    config.attrib["parasol_command"] = options.parasolCommand
+    config.attrib["try_count"] = str(int(options.retryCount) + 1)
+    config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
+    config.attrib["batch_system"] = options.batchSystem
+    config.attrib["job_time"] = str(float(options.jobTime))
+    config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
+    config.attrib["default_memory"] = str(int(options.defaultMemory))
+    config.attrib["default_cpu"] = str(int(options.defaultCpu))
+    config.attrib["max_cpus"] = str(int(options.maxCpus))
+    config.attrib["max_memory"] = str(int(options.maxMemory))
+    config.attrib["max_threads"] = str(int(options.maxThreads))
+    if options.bigBatchSystem != None:
+        config.attrib["big_batch_system"] = options.bigBatchSystem
+        config.attrib["big_memory_threshold"] = str(int(options.bigMemoryThreshold))
+        config.attrib["big_cpu_threshold"] = str(int(options.bigCpuThreshold))
+        config.attrib["big_max_cpus"] = str(int(options.bigMaxCpus))
+        config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
+        
+    if options.stats:
+        config.attrib["stats"] = ""
+    return config
+
+def loadBatchSystem(config):
     """Load the batch system.
     """
     def batchSystemConstructionFn(batchSystemString, maxCpus, maxMemory):
@@ -204,7 +244,19 @@ def loadTheBatchSystem(config):
     lambda command, memory, cpu : memory <= bigMemoryThreshold and cpu <= bigCpuThreshold)
     return batchSystem
 
-def loadTheJobStore(jobStoreString, create=False, config=None):
+def addBatchSystemConfigOptions(config, batchSystem, options):
+    """Adds configurations options to the config derived from the decision about the batch system.
+    """
+    #Set the parameters determining the polling frequency of the system.  
+    config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
+    if options.rescueJobsFrequency != None:
+        config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
+
+def loadJobStore(jobStoreString, create=False, config=None):
+    """Loads the jobStore.
+    """
+    #TODO - this is where the jobStoreString must be decoded to decide if to create a file job store or 
+    #some other 
     return FileJobStore(jobStoreString, create=create, config=config)
 
 def serialiseEnvironment(jobStore):
@@ -216,53 +268,15 @@ def serialiseEnvironment(jobStore):
     fileHandle.close()
     logger.info("Written the environment for the jobs to the environment file")
 
-def createJobTree(options):
-    logger.info("Starting to create the job tree setup for the first time")
-    options.jobTree = absSymPath(options.jobTree)
-    os.mkdir(options.jobTree)
-    config = ET.Element("config")
-    config.attrib["log_level"] = getLogLevelString()
-    config.attrib["job_store"] = options.jobTree
-    config.attrib["parasol_command"] = options.parasolCommand
-    config.attrib["try_count"] = str(int(options.retryCount) + 1)
-    config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
-    config.attrib["batch_system"] = options.batchSystem
-    config.attrib["job_time"] = str(float(options.jobTime))
-    config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
-    config.attrib["default_memory"] = str(int(options.defaultMemory))
-    config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["max_cpus"] = str(int(options.maxCpus))
-    config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_threads"] = str(int(options.maxThreads))
-    if options.bigBatchSystem != None:
-        config.attrib["big_batch_system"] = options.bigBatchSystem
-        config.attrib["big_memory_threshold"] = str(int(options.bigMemoryThreshold))
-        config.attrib["big_cpu_threshold"] = str(int(options.bigCpuThreshold))
-        config.attrib["big_max_cpus"] = str(int(options.bigMaxCpus))
-        config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
-        
-    if options.stats:
-        config.attrib["stats"] = ""
-    #Load the batch system.
-    batchSystem = loadTheBatchSystem(config)
-    
-    #Set the parameters determining the polling frequency of the system.  
-    config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
-    if options.rescueJobsFrequency != None:
-        config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
-    
-    jobStore = loadTheJobStore(jobStoreString=options.jobTree, create=True, config=config)
-    
-    logger.info("Finished the job tree setup")
-    return config, batchSystem, jobStore
-
-def reloadJobTree(jobStoreString):
-    """Load the job tree from a dir.
+def setupJobTree(options):
+    """Creates the data-structures needed for running a jobTree.
     """
-    logger.info("The job tree appears to already exist, so we'll reload it")
-    jobStore = loadTheJobStore(jobStoreString)
-    jobStore.config.attrib["log_level"] = getLogLevelString()
-    jobStore.updateConfig(jobStore.config) #This updates the global copy of the config file
-    batchSystem = loadTheBatchSystem(jobStore.config)
-    logger.info("Reloaded the jobtree")
-    return jobStore.config, batchSystem, jobStore
+    verifyJobTreeOptions(options)
+    config = createConfig(options)
+    batchSystem = loadBatchSystem(config)
+    addBatchSystemConfigOptions(config, batchSystem, options)
+    jobStore = loadJobStore(config.attrib["job_store"], 
+                               create=True, config=config)
+    jobTreeState = jobStore.loadJobTreeState()
+    serialiseEnvironment(jobStore)
+    return config, batchSystem, jobStore, jobTreeState

@@ -34,7 +34,7 @@ from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
 from jobTree.src.job import Job
-from jobTree.src.common import loadTheJobStore
+from jobTree.src.common import loadJobStore
 
 def main():
     """Reports the state of the job tree.
@@ -47,8 +47,8 @@ def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [options]", "%prog 0.1")
     
     parser.add_option("--jobTree", dest="jobTree", 
-                      help="Directory containing the job tree. The jobTree location can \
-                      also be specified as the argument to the script. default=%default", default='./jobTree')
+                      help="Job store path. Can also be specified as the single argument to the script.\
+                       default=%default", default='./jobTree')
     
     parser.add_option("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
@@ -76,25 +76,24 @@ def main():
     
     logger.info("Checking if we have files for job tree")
     assert options.jobTree != None
-    assert os.path.isdir(options.jobTree) #The given job dir tree must exist.
     
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = loadTheJobStore(options.jobTree)
+    jobStore = loadJobStore(options.jobTree)
     config = jobStore.config
-    jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
+    jobTreeState = jobStore.loadJobTreeState() #This initialises the object jobTree.jobTreeState used to track the active jobTree
     
-    failedJobs = [ job for job in jobStore.jobTreeState.updatedJobs | \
-                  set(jobStore.jobTreeState.childCounts.keys()) \
+    failedJobs = [ job for job in jobTreeState.updatedJobs | \
+                  set(jobTreeState.childCounts.keys()) \
                   if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, \
     %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) \
     currently in job tree: %s" % \
-    (len(jobStore.jobTreeState.updatedJobs), len(jobStore.jobTreeState.childCounts), 
-     len(failedJobs), len(jobStore.jobTreeState.shellJobs), options.jobTree)
+    (len(jobTreeState.updatedJobs), len(jobTreeState.childCounts), 
+     len(failedJobs), len(jobTreeState.shellJobs), options.jobTree)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
@@ -105,7 +104,7 @@ def main():
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     
-    if (len(jobStore.jobTreeState.updatedJobs) + len(jobStore.jobTreeState.childCounts)) != 0 and \
+    if (len(jobTreeState.updatedJobs) + len(jobTreeState.childCounts)) != 0 and \
         options.failIfNotComplete:
         sys.exit(1)
     

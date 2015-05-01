@@ -32,7 +32,7 @@ import time
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
 from sonLib.bioio import logger, logFile, getBasicOptionParser, parseBasicOptions
-from jobTree.src.common import loadTheJobStore
+from jobTree.src.common import loadJobStore
 
 class JTTag(object):
     """ Convenience object that stores xml attributes as object attributes.
@@ -96,7 +96,7 @@ def initializeOptions(parser):
     # Construct the arguments.
     ##########################################
     parser.add_option("--jobTree", dest="jobTree", default='./jobTree',
-                      help="Directory containing the job tree. Can also be specified as the single argument to the script. Default=%default")
+                      help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
@@ -556,7 +556,7 @@ def getStats(options):
     """ Collect and return the stats and config data.
     """
     
-    jobStore = loadTheJobStore(options.jobTree)
+    jobStore = loadJobStore(options.jobTree)
     try:
         fH = jobStore.readSharedFileStream("stats.xml")
         stats = ET.parse(fH).getroot() # Try parsing the whole file.
@@ -742,7 +742,7 @@ def main():
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
-    jobStore = loadTheJobStore(options.jobTree)
+    jobStore = loadJobStore(options.jobTree)
     #collatedStatsTag = cacheAvailable(options)
     #if collatedStatsTag is None:
     stats = getStats(options)

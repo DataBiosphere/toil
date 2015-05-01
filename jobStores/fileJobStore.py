@@ -9,7 +9,7 @@ import shutil
 import os
 import re
 import time
-from sonLib.bioio import logger, makeSubDir, getTempFile, system
+from sonLib.bioio import logger, makeSubDir, getTempFile, system, absSymPath
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
 
@@ -18,12 +18,16 @@ class FileJobStore(AbstractJobStore):
     of functions see AbstractJobStore.
     """
     def __init__(self, jobStoreString, create=False, config=None):
+        jobStoreString = absSymPath(jobStoreString)
+        logger.info("Jobstore directory is: %s" % jobStoreString)
+        if not os.path.exists(jobStoreString):
+            os.mkdir(jobStoreString)
         AbstractJobStore.__init__(self, jobStoreString=jobStoreString, create=create, config=config)
-        if create and not os.path.exists(self._getJobFileDirName()):
-            os.mkdir(self._getJobFileDirName())
         self._setupStatsDirs(create=create)
     
     def createFirstJob(self, command, memory, cpu):
+        if not os.path.exists(self._getJobFileDirName()):
+            os.mkdir(self._getJobFileDirName())
         return self._makeJob(command, memory, cpu, self._getJobFileDirName())
     
     def exists(self, jobStoreID):
@@ -82,8 +86,12 @@ class FileJobStore(AbstractJobStore):
                 break
     
     def loadJobTreeState(self):
-        self.jobTreeState = JobTreeState()
-        return self._loadJobTreeState(self._getJobFileDirName())
+        jobTreeState = JobTreeState()
+        if not os.path.exists(self._getJobFileDirName()):
+            return jobTreeState
+        jobTreeState.started = True
+        self._loadJobTreeState(self._getJobFileDirName(), jobTreeState)
+        return jobTreeState
     
     def writeFile(self, jobStoreID, localFileName):
         if not os.path.exists(jobStoreID):
@@ -179,7 +187,7 @@ class FileJobStore(AbstractJobStore):
     def _getJobFileName(self, jobStoreID):
         return os.path.join(jobStoreID, "job")
     
-    def _loadJobTreeState2(self, jobTreeJobsRoot):
+    def _loadJobTreeState2(self, jobTreeJobsRoot, jobTreeState):
         #Read job
         job = self.load(jobTreeJobsRoot)
         #Reset the job
@@ -188,24 +196,25 @@ class FileJobStore(AbstractJobStore):
         job.remainingRetryCount = int(self.config.attrib["try_count"])
         #Get children
         childJobs = reduce(lambda x,y:x+y, map(lambda childDir : \
-            self._loadJobTreeState(childDir), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
+            self._loadJobTreeState(childDir, jobTreeState), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
         if len(childJobs) > 0:
-            self.jobTreeState.childCounts[job] = len(childJobs)
+            jobTreeState.childCounts[job] = len(childJobs)
             for childJob in childJobs:
-                self.jobTreeState.childJobStoreIdToParentJob[childJob.jobStoreID] = job
+                jobTreeState.childJobStoreIdToParentJob[childJob.jobStoreID] = job
         elif len(job.followOnCommands) > 0:
-            self.jobTreeState.updatedJobs.add(job)
+            jobTreeState.updatedJobs.add(job)
         else: #Job is stub with nothing left to do, so ignore
-            self.jobTreeState.shellJobs.add(job)
+            jobTreeState.shellJobs.add(job)
             return []
         return [ job ]
     
-    def _loadJobTreeState(self, jobTreeJobsRoot):
+    def _loadJobTreeState(self, jobTreeJobsRoot, jobTreeState):
         jobFile = self._getJobFileName(jobTreeJobsRoot)
         if os.path.exists(jobFile):
-            return self._loadJobTreeState2(jobTreeJobsRoot)
+            return self._loadJobTreeState2(jobTreeJobsRoot, jobTreeState)
         return reduce(lambda x,y:x+y, map(lambda childDir : \
-            self._loadJobTreeState2(childDir), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
+            self._loadJobTreeState2(childDir, jobTreeState), \
+            FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
     
     def _processAnyUpdatingFile(self, jobFile):
         if os.path.isfile(jobFile + ".updating"):

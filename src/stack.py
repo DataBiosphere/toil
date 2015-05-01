@@ -39,8 +39,7 @@ from sonLib.bioio import getTempDirectory
 from sonLib.bioio import system, absSymPath
 from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
-from jobTree.src.common import addOptions, reloadJobTree, \
-serialiseEnvironment, createJobTree
+from jobTree.src.common import setupJobTree, addOptions
 from jobTree.src.master import mainLoop
 
 from jobTree.src.target import Target
@@ -76,14 +75,9 @@ class Stack(object):
         """Runs jobtree using the given options (see Stack.getDefaultOptions
         and Stack.addJobTreeOptions).
         """
-        self.verifyJobTreeOptions(options)
         setLoggingFromOptions(options)
-        options.jobTree = absSymPath(options.jobTree)
-        if os.path.isdir(options.jobTree):
-            config, batchSystem, jobStore = reloadJobTree(options.jobTree)
-        else:
-            config, batchSystem, jobStore = createJobTree(options)
-            #Setup first job.
+        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
+        if not jobTreeState.started: #We setup the first job.
             memory = self.getMemory()
             cpu = self.getCpu()
             if memory == None or memory == sys.maxint:
@@ -97,8 +91,10 @@ class Stack(object):
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
             jobStore.write(job)
-        serialiseEnvironment(jobStore)
-        return mainLoop(config, batchSystem, jobStore)
+            jobTreeState = jobStore.loadJobTreeState() #This reloads the state
+        else:
+            logger.critical("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
+        return mainLoop(config, batchSystem, jobStore, jobTreeState)
 
 #####
 #The remainder of the class is private to the user
@@ -187,19 +183,6 @@ class Stack(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = ".".join((self.target.__class__.__name__,))
             stats.attrib["memory"] = str(totalMemoryUsage)
-    
-    def verifyJobTreeOptions(self, options):
-        """ verifyJobTreeOptions() returns None if all necessary values
-        are present in options, otherwise it raises an error.
-        It can also serve to validate the values of the options.
-        """
-        required = ['logLevel', 'batchSystem', 'jobTree']
-        for r in required:
-            if r not in vars(options):
-                raise RuntimeError("Error, there is a missing option (%s) from the jobTree Stack, "
-                                   "did you remember to call Stack.addJobTreeOptions()?" % r)
-        if options.jobTree is None:
-            raise RuntimeError("Specify --jobTree")
 
     def verifyTargetAttributesExist(self, target):
         """ verifyTargetAttributesExist() checks to make sure that the Target

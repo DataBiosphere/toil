@@ -14,7 +14,7 @@ from sonLib.bioio import logger, system
 from jobTree.src.stack import Stack
 from jobTree.src.job import Job
 from jobTree.jobStores.fileJobStore import FileJobStore
-from jobTree.src.common import createJobTree
+from jobTree.src.common import setupJobTree
 
 class TestCase(unittest.TestCase):
     def setUp(self):
@@ -23,7 +23,7 @@ class TestCase(unittest.TestCase):
         Stack.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
-        config, batchSystem, jobStore = createJobTree(options)
+        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
         self.jobStore = jobStore
         
     def tearDown(self):
