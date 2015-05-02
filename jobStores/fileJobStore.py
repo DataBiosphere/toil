@@ -73,14 +73,18 @@ class FileJobStore(AbstractJobStore):
             else:
                 command = "rm -rf %s/*" % dirToRemove #We're at the root
             try:
+                # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially
+                # considering that system() launches a full shell, bash most likely
                 system(command)
             except RuntimeError:
+                # FIXME: This dangerous, we should be as specific as possible with the expected exception
                 pass #This is not a big deal, as we expect collisions
             dirToRemove = head
             try:
                 if len(os.listdir(dirToRemove)) != 0:
                     break
             except os.error: #In case stuff went wrong, but as this is not critical we let it slide
+                # FIXME: should still log a warning-level message
                 break
     
     def loadJobTreeState(self):
