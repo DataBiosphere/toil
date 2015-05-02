@@ -6,7 +6,7 @@ class Job(object):
     A class encapsulating state about a jobTree job including its child commands and follow-on commands.
 
     Note that a parent Job instance does not store its children as instances of the Job class but uses 3-tuples of
-    the form (command, memory, cpu) instead.
+    the form (jobStoreId, memory, cpu) instead.
     """
 
     @staticmethod
