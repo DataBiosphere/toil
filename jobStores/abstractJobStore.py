@@ -75,9 +75,9 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def update( self, job ):
+    def store( self, job ):
         """
-        Updates a job's status in the store atomically
+        Persists the job in this store atomically.
         """
         raise NotImplementedError( )
 

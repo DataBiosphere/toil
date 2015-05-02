@@ -90,7 +90,7 @@ class Stack(object):
             #Now set the command properly (this is a hack)
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
-            jobStore.update(job)
+            jobStore.store(job)
             jobTreeState = jobStore.loadJobTreeState() #This reloads the state
         else:
             logger.critical("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))

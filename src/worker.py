@@ -189,7 +189,7 @@ def main():
     job.children = [] #Similarly, this is where old children are flushed out.
     if job.logJobStoreFileID != None:
         job.clearLogFile(jobStore) #This cleans the old log file
-    jobStore.update(job) #Update status, to avoid reissuing children after
+    jobStore.store(job) #Update status, to avoid reissuing children after
     #running a follow on below.
     logger.info("Parsed arguments and set up logging")
 
@@ -371,7 +371,7 @@ def main():
         truncateFile(tempWorkerLogFile)
         job.setLogFile(tempWorkerLogFile, jobStore)
         os.remove(tempWorkerLogFile)
-        jobStore.update(job)
+        jobStore.store(job)
 
     #Remove the temp dir
     system("rm -rf %s" % localWorkerTempDir)

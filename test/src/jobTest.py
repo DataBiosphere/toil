@@ -46,7 +46,7 @@ class TestCase(JobTreeTest):
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                self.jobStore.update(j)
+                self.jobStore.store(j)
                 jobStoreID = j.jobStoreID
                 j = self.jobStore.load(j.jobStoreID)
                 self.assertEquals(j.remainingRetryCount, tryCount)
