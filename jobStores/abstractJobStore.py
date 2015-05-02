@@ -45,8 +45,10 @@ class AbstractJobStore( object ):
             self.config = ET.parse( fileHandle ).getroot( )
             fileHandle.close( )
 
-    ##The following methods deal with creating/loading/updating/writing/checking 
-    #for the existence of jobs
+    #
+    # The following methods deal with creating/loading/updating/writing/checking for the
+    # existence of jobs
+    #
 
     @abstractmethod
     def createFirstJob( self, command, memory, cpu ):
@@ -62,13 +64,15 @@ class AbstractJobStore( object ):
     def exists( self, jobStoreID ):
         """
         Returns true if the job is in the store, else false.
+
+        :rtype : bool
         """
         raise NotImplementedError( )
 
     @abstractmethod
     def load( self, jobStoreID ):
         """
-        Loads a job for the given jobStoreID.
+        Loads a job for the given jobStoreID and returns it.
 
         :rtype : src.job.Job
         """
@@ -84,9 +88,9 @@ class AbstractJobStore( object ):
     @abstractmethod
     def addChildren( self, job, childCommands ):
         """
-        Creates a set of child jobs for the given job using the list of child-commands and
-        updates state of job atomically on disk with new children. Each child command is
-        represented as a tuple of command, memory and cpu.
+        Creates a set of child jobs for the given job using the list of child commands and
+        persists the job along with the new children atomically to this store. Each child command
+        is represented as a tuple of ( command, memory and cpu ).
         """
         raise NotImplementedError( )
 
@@ -102,6 +106,8 @@ class AbstractJobStore( object ):
     def loadJobTreeState( self ):
         """
         Returns a jobTreeState object based on the state of the store.
+
+        :rtype : JobTreeState
         """
         raise NotImplementedError( )
 
@@ -110,7 +116,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def writeFile( self, jobStoreID, localFilePath ):
         """
-        Takes a file (as a path) and places it in this job store, Returns an ID that can be used
+        Takes a file (as a path) and places it in this job store. Returns an ID that can be used
         to retrieve the file at a later time. jobStoreID is the id of the job from which the file
         is being created. When delete(job) is called all files written with the given
         job.jobStoreID will be removed from the jobStore.
@@ -167,7 +173,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def readFileStream( self, jobStoreFileID ):
         """
-        As readFile, but returns a file handle instead of a path.
+        Like readFile, but returns a file handle instead of a path.
         """
         raise NotImplementedError( )
 

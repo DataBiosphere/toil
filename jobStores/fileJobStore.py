@@ -66,6 +66,8 @@ class FileJobStore(AbstractJobStore):
     def delete(self, job):
         os.remove(self._getJobFileName(job.jobStoreID)) #This is the atomic operation, if this file is not present the job is deleted.
         dirToRemove = job.jobStoreID
+        # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially
+        # considering that system() launches a full shell
         while 1:
             head, tail = os.path.split(dirToRemove)
             if re.match("t[0-9]+$", tail):
@@ -73,8 +75,6 @@ class FileJobStore(AbstractJobStore):
             else:
                 command = "rm -rf %s/*" % dirToRemove #We're at the root
             try:
-                # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially
-                # considering that system() launches a full shell, bash most likely
                 system(command)
             except RuntimeError:
                 # FIXME: This dangerous, we should be as specific as possible with the expected exception

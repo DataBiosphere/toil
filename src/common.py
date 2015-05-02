@@ -308,8 +308,7 @@ def setupJobTree(options):
     config = createConfig(options)
     batchSystem = loadBatchSystem(config)
     addBatchSystemConfigOptions(config, batchSystem, options)
-    jobStore = loadJobStore(config.attrib["job_store"],
-                               create=True, config=config)
+    jobStore = loadJobStore(config.attrib["job_store"], create=True, config=config)
     jobTreeState = jobStore.loadJobTreeState()
     serialiseEnvironment(jobStore)
     return config, batchSystem, jobStore, jobTreeState
