@@ -22,11 +22,11 @@
 #THE SOFTWARE.
 
 import os
-import sys 
+import sys
 import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
-from optparse import OptionParser, OptionContainer, OptionGroup
+from optparse import OptionContainer, OptionGroup
 from sonLib.bioio import logger, addLoggingOptions, getLogLevelString, system, absSymPath
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
@@ -34,16 +34,15 @@ from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWork
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 from jobTree.batchSystems.mesos import MesosBatchSystem
-from jobTree.jobStores.fileJobStore import FileJobStore
 
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
     logger.info("Ran the job-tree stats command apparently okay")
-    
+
 def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
     command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
     system(command)
-    
+
 def gridEngineIsInstalled():
     """Returns True if grid-engine is installed, else False.
     """
@@ -51,7 +50,7 @@ def gridEngineIsInstalled():
         return system("qstat -help") == 0
     except RuntimeError:
         return False
-    
+
 def parasolIsInstalled():
     """Returns True if parasol is installed, else False.
     """
@@ -63,7 +62,7 @@ def parasolIsInstalled():
 ####
 #Little functions to specify the location of files in the jobTree dir
 ####
-    
+
 def workflowRootPath():
     """Function for finding external location.
     """
@@ -82,7 +81,7 @@ def _addOptions(addGroupFn, defaultStr):
                             "job tree, then try and restart the jobs in it. The default=%s" % defaultStr))
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by jobTreeStats. default=%s" % defaultStr)
-    
+
     addOptionFn = addGroupFn("jobTree options for specifying the batch system", "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
@@ -92,7 +91,7 @@ def _addOptions(addGroupFn, defaultStr):
                             "machine mode. Increasing this will allow more jobs to run concurrently when running on a single machine. default=%s" % defaultStr))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
                       help="The command to run the parasol program default=%s" % defaultStr)
-    
+
     addOptionFn = addGroupFn("jobTree options for cpu/memory requirements", "The options to specify default cpu/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cpu requested from the batch system.")
     addOptionFn("--defaultMemory", dest="defaultMemory", default=2147483648,
                       help=("The default amount of memory to request for a job (in bytes), "
@@ -105,7 +104,7 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--maxMemory", dest="maxMemory", default=sys.maxint,
                       help=("The maximum amount of memory to request from the batch \
                       system at any one time. default=%s" % defaultStr))
-    
+
     addOptionFn = addGroupFn("jobTree options for rescuing/killing/restarting jobs", \
             "The options for jobs that either run too long/fail or get lost \
             (some batch systems have issues!)")
@@ -116,10 +115,10 @@ def _addOptions(addGroupFn, defaultStr):
                       help=("Maximum runtime of a job (in seconds) before we kill it "
                             "(this is a lower bound, and the actual time before killing "
                             "the job may be longer). default=%s" % defaultStr))
-    addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", 
+    addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency",
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. (default is set by the batch system)"))
-    
+
     addOptionFn = addGroupFn("jobTree big batch system options", "jobTree can employ a secondary batch system for running large memory/cpu jobs using the following arguments:")
     addOptionFn("--bigBatchSystem", dest="bigBatchSystem", default=None, #detectQueueSystem(),
                       help=("The batch system to run for jobs with larger memory/cpus requests, currently can be "
@@ -134,7 +133,7 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--bigMaxMemory", dest="bigMaxMemory", default=sys.maxint,
                       help=("The maximum amount of memory to request from the big batch system at any one time. "
                       "default=%s" % defaultStr))
-    
+
     addOptionFn = addGroupFn("jobTree miscellaneous options", "Miscellaneous options")
     addOptionFn("--jobTime", dest="jobTime", default=30,
                       help=("The approximate time (in seconds) that you'd like a list of child "
@@ -163,7 +162,7 @@ def addOptions(parser):
             return parser.add_argument_group(headingString, bodyString).add_argument
         _addOptions(addGroup, "%(default)s")
     else:
-        raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting " 
+        raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
 
 def verifyJobTreeOptions(options):
@@ -201,7 +200,7 @@ def createConfig(options):
         config.attrib["big_cpu_threshold"] = str(int(options.bigCpuThreshold))
         config.attrib["big_max_cpus"] = str(int(options.bigMaxCpus))
         config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
-        
+
     if options.stats:
         config.attrib["stats"] = ""
     return config
@@ -221,7 +220,7 @@ def loadBatchSystem(config):
             batchSystem = GridengineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the grid engine machine batch system")
         elif batchSystemString == "acid_test" or batchSystemString == "acidTest":
-            config.attrib["try_count"] = str(32) #The chance that a job does not 
+            config.attrib["try_count"] = str(32) #The chance that a job does not
             #complete after 32 goes in one in 4 billion, so you need a lot of 
             #jobs before this becomes probable
             batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
@@ -259,12 +258,39 @@ def addBatchSystemConfigOptions(config, batchSystem, options):
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
 
-def loadJobStore(jobStoreString, create=False, config=None):
-    """Loads the jobStore.
+
+def loadJobStore( jobStoreString, create=False, config=None ):
     """
-    #TODO - this is where the jobStoreString must be decoded to decide if to create a file job store or 
-    #some other 
-    return FileJobStore(jobStoreString, create=create, config=config)
+    Loads a jobStore.
+
+    :param jobStoreString: see exception message below
+    :param create: see AbstractJobStore.__init__
+    :param config: see AbstractJobStore.__init__
+    :return: a concrete subclass of AbstractJobStore
+    :rtype : jobStores.abstractJobStore.AbstractJobStore
+    """
+    if jobStoreString[ 0 ] in '/.':
+        jobStoreString = 'file:' + jobStoreString
+
+    try:
+        jobStoreName, jobStoreArgs = jobStoreString.split( ':', 1 )
+    except ValueError:
+        raise RuntimeError(
+            'Job store string must either be a path starting in . or / or a contain at least one '
+            'colon separating the name of the job store implementation from an initialization '
+            'string specific to that job store. If a path starting in . or / is passed, the file '
+            'job store will be used for backwards compatibility.' )
+
+    if jobStoreName == 'file':
+        from jobTree.jobStores.fileJobStore import FileJobStore
+        return FileJobStore( jobStoreArgs, create=create, config=config )
+    elif jobStoreName == 'aws':
+        from jobTree.jobStores.awsJobStore import AWSJobStore
+        return AWSJobStore( jobStoreArgs, create=create, config=config )
+    else:
+        raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
+
+
 
 def serialiseEnvironment(jobStore):
     """Puts the environment in a globally accessible pickle file.
@@ -282,7 +308,7 @@ def setupJobTree(options):
     config = createConfig(options)
     batchSystem = loadBatchSystem(config)
     addBatchSystemConfigOptions(config, batchSystem, options)
-    jobStore = loadJobStore(config.attrib["job_store"], 
+    jobStore = loadJobStore(config.attrib["job_store"],
                                create=True, config=config)
     jobTreeState = jobStore.loadJobTreeState()
     serialiseEnvironment(jobStore)
