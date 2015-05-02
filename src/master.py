@@ -36,7 +36,6 @@ import time
 #from threading import Thread, Queue
 from multiprocessing import Process, Queue
 
-from job import Job
 from sonLib.bioio import logger, getTotalCpuTime, logStream, system
 from jobTree.src.common import workflowRootPath
 

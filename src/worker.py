@@ -22,8 +22,6 @@
 
 import os
 import sys
-import time
-import subprocess
 import xml.etree.cElementTree as ET
 import cPickle
 import traceback
@@ -76,15 +74,11 @@ def main():
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
-    from sonLib.bioio import getBasicOptionParser
-    from sonLib.bioio import parseBasicOptions
     from sonLib.bioio import logger
-    from sonLib.bioio import addLoggingFileHandler, redirectLoggerStreamHandlers
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory
     from sonLib.bioio import makeSubDir
-    from jobTree.src.job import Job
     from jobTree.src.common import loadJobStore
     from sonLib.bioio import system
     
@@ -195,7 +189,7 @@ def main():
     job.children = [] #Similarly, this is where old children are flushed out.
     if job.logJobStoreFileID != None:
         job.clearLogFile(jobStore) #This cleans the old log file
-    jobStore.write(job) #Update status, to avoid reissuing children after 
+    jobStore.update(job) #Update status, to avoid reissuing children after
     #running a follow on below.
     logger.info("Parsed arguments and set up logging")
 
@@ -285,7 +279,7 @@ def main():
             childCommands = job.children #This is a hack until we stop 
             #overloading the use of this array
             job.children = []
-            jobStore.update(job=job, childCommands=childCommands)
+            jobStore.addChildren(job=job, childCommands=childCommands)
             
             ##########################################
             #Establish if we can run another job
@@ -377,7 +371,7 @@ def main():
         truncateFile(tempWorkerLogFile)
         job.setLogFile(tempWorkerLogFile, jobStore)
         os.remove(tempWorkerLogFile)
-        jobStore.write(job)
+        jobStore.update(job)
 
     #Remove the temp dir
     system("rm -rf %s" % localWorkerTempDir)

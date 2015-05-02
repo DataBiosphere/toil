@@ -46,18 +46,18 @@ class FileJobStore(AbstractJobStore):
             job.setupJobAfterFailure(self.config)
         return job   
     
-    def write(self, job):
+    def update(self, job):
         self._write(job, ".new")
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
         return job.jobStoreID
     
-    def update(self, job, childCommands):
+    def addChildren(self, job, childCommands):
         updatingFile = self._getJobFileName(job.jobStoreID) + ".updating"
         open(updatingFile, 'w').close()
         for ((command, memory, cpu), tempDir) in zip(childCommands, \
                     self._createTempDirectories(job.jobStoreID, len(childCommands))):
             childJob = self._makeJob(command, memory, cpu, tempDir)
-            self.write(childJob)
+            self.update(childJob)
             job.children.append((childJob.jobStoreID, memory, cpu))
         self._write(job, ".new")
         os.remove(updatingFile)

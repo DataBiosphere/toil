@@ -75,14 +75,14 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def write( self, job ):
+    def update( self, job ):
         """
         Updates a job's status in the store atomically
         """
         raise NotImplementedError( )
 
     @abstractmethod
-    def update( self, job, childCommands ):
+    def addChildren( self, job, childCommands ):
         """
         Creates a set of child jobs for the given job using the list of child-commands and
         updates state of job atomically on disk with new children. Each child command is

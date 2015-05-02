@@ -33,7 +33,6 @@ from sonLib.bioio import logStream
 from sonLib.bioio import getBasicOptionParser
 from sonLib.bioio import parseBasicOptions
 
-from jobTree.src.job import Job
 from jobTree.src.common import loadJobStore
 
 def main():

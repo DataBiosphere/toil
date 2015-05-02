@@ -10,10 +10,8 @@ import random
 from optparse import OptionParser
 
 from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import logger, system
+from sonLib.bioio import system
 from jobTree.src.stack import Stack
-from jobTree.src.job import Job
-from jobTree.jobStores.fileJobStore import FileJobStore
 from jobTree.src.common import setupJobTree
 from test import JobTreeTest
 
@@ -48,7 +46,7 @@ class TestCase(JobTreeTest):
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
                 self.assertEquals(j.messages, [])
-                self.jobStore.write(j)
+                self.jobStore.update(j)
                 jobStoreID = j.jobStoreID
                 j = self.jobStore.load(j.jobStoreID)
                 self.assertEquals(j.remainingRetryCount, tryCount)
@@ -73,7 +71,7 @@ class TestCase(JobTreeTest):
             j = self.jobStore.createFirstJob(command, memory, cpu)
             childNumber = random.choice(range(20))
             children = map(lambda i : (command, memory, cpu), xrange(childNumber))
-            self.jobStore.update(j, children)
+            self.jobStore.addChildren(j, children)
             jobStoreID = j.jobStoreID
             j = self.jobStore.load(j.jobStoreID)
             self.assertEquals(len(j.children), childNumber)
