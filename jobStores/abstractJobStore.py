@@ -44,7 +44,7 @@ class AbstractJobStore( object ):
             self.updateConfig( config )
         else:
             fileHandle = self.readSharedFileStream( "config.xml" )
-                self.config = ET.parse( fileHandle ).getroot( )
+            self.config = ET.parse( fileHandle ).getroot( )
             fileHandle.close( )
 
     #
