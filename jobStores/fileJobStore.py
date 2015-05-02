@@ -21,7 +21,7 @@ class FileJobStore(AbstractJobStore):
         logger.info("Jobstore directory is: %s" % self.jobStoreDir)
         if not os.path.exists(self.jobStoreDir):
             os.mkdir(self.jobStoreDir)
-        super( FileJobStore, self ).__init__( create, config )
+        super( FileJobStore, self ).__init__( create=create, config=config )
         self._setupStatsDirs(create=create)
     
     def createFirstJob(self, command, memory, cpu):
@@ -38,10 +38,10 @@ class FileJobStore(AbstractJobStore):
         # by the batch system.
         updatingFilePresent = self._processAnyUpdatingFile(jobFile)
         newFilePresent = self._processAnyNewFile(jobFile)
-        #Now load the job
+        # Now load the job
         with open(jobFile, 'r') as fileHandle:
-            job = Job.convertJsonJobToJob(pickler.load(fileHandle))
-        #Deal with failure by lowering the retry limit
+            job = Job.fromList(pickler.load(fileHandle))
+        # Deal with failure by lowering the retry limit
         if updatingFilePresent or newFilePresent:
             job.setupJobAfterFailure(self.config)
         return job   
@@ -175,9 +175,8 @@ class FileJobStore(AbstractJobStore):
     
     def _makeJob(self, command, memory, cpu, jobDir):
         makeSubDir(os.path.join(jobDir, "g")) #Sub directory to put temporary files associated with the job in
-        return Job(command=command, memory=memory, cpu=cpu, 
-              tryCount=int(self.config.attrib["try_count"]), 
-              jobStoreID=jobDir, logJobStoreFileID=None)
+        return Job.create(command=command, memory=memory, cpu=cpu,
+                          tryCount=int(self.config.attrib["try_count"]), jobStoreID=jobDir, logJobStoreFileID=None)
     
     def _getJobFileDirName(self):
         return os.path.join(self.jobStoreDir, "jobs")
@@ -241,7 +240,7 @@ class FileJobStore(AbstractJobStore):
             
     def _write(self, job, suffix=""):
         fileHandle = open(self._getJobFileName(job.jobStoreID) + suffix, 'w')
-        pickler.dump(job.convertJobToJson(), fileHandle)
+        pickler.dump(job.toList(), fileHandle)
         fileHandle.close()
     
     def _createTempDirectories(self, rootDir, number, filesPerDir=4):
