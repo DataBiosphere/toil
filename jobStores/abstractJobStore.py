@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import re
 import xml.etree.cElementTree as ET
 
 
@@ -8,6 +9,7 @@ class JobTreeState( object ):
     """
 
     def __init__( self ):
+        # TODO: document this field
         self.started = False
         # This is a hash of jobStoreIDs to the parent jobs.
         self.childJobStoreIdToParentJob = { }
@@ -42,7 +44,7 @@ class AbstractJobStore( object ):
             self.updateConfig( config )
         else:
             fileHandle = self.readSharedFileStream( "config.xml" )
-            self.config = ET.parse( fileHandle ).getroot( )
+                self.config = ET.parse( fileHandle ).getroot( )
             fileHandle.close( )
 
     #
@@ -112,7 +114,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     ##The following provide an way of creating/reading/writing/updating files associated with a given job.
-    
+
     @abstractmethod
     def writeFile( self, jobStoreID, localFilePath ):
         """
@@ -177,21 +179,29 @@ class AbstractJobStore( object ):
         """
         raise NotImplementedError( )
 
-    ##The following methods deal with global files, not associated with specific jobs.
-    
+    #
+    # The following methods deal with shared files, i.e. files not associated with specific jobs.
+    #
+
+    sharedFileNameRegex = re.compile( r'^[a-zA-Z0-9._-]+$' )
+
     @abstractmethod
-    def writeSharedFileStream( self, globalFileID ):
-        """Returns a writable file-handle to a global file using the globalFileID. 
+    def writeSharedFileStream( self, sharedFileName ):
+        """
+        Returns a writable file handle to the global file referenced by the given name.
+
+        :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
+        the physical storage represented by this job store
         """
         raise NotImplementedError( )
 
     @abstractmethod
-    def readSharedFileStream(self, globalFileID):
+    def readSharedFileStream( self, sharedFileName ):
         """
-        Returns a readable file-handle to the global file referenced by globalFileID.
+        Returns a readable file handle to the global file referenced by the given ID.
         """
         pass
-    
+
     def updateConfig( self, config ):
         """
         Updates the config file stored on disk.
@@ -217,3 +227,12 @@ class AbstractJobStore( object ):
         file handle.
         """
         raise NotImplementedError( )
+
+    ## Helper methods for subclasses
+
+    def _defaultTryCount( self ):
+        return int( self.config.attrib[ "try_count" ] )
+
+    @classmethod
+    def _validateSharedFileName( cls, sharedFileName ):
+        return bool( cls.sharedFileNameRegex.match( sharedFileName ) )

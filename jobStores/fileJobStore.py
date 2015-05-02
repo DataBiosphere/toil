@@ -144,12 +144,13 @@ class FileJobStore(AbstractJobStore):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         return open(jobStoreFileID, 'r')
     
-    def writeSharedFileStream(self, globalName):
-        jobStoreFileID = os.path.join(self.jobStoreDir, globalName)
-        return open(jobStoreFileID, 'w')
+    def writeSharedFileStream(self, sharedFileName):
+        assert self._validateSharedFileName( sharedFileName )
+        return open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' )
     
-    def readSharedFileStream(self, globalName):
-        return open(os.path.join(self.jobStoreDir, globalName), 'r')
+    def readSharedFileStream(self, sharedFileName):
+        assert self._validateSharedFileName( sharedFileName )
+        return open(os.path.join(self.jobStoreDir, sharedFileName), 'r')
     
     def writeStats(self, statsString):
         tempStatsFile = os.path.join(random.choice(self.statsDirs), \
@@ -176,11 +177,12 @@ class FileJobStore(AbstractJobStore):
     ####
     #Private methods
     ####
-    
+
     def _makeJob(self, command, memory, cpu, jobDir):
-        makeSubDir(os.path.join(jobDir, "g")) #Sub directory to put temporary files associated with the job in
+        # Sub directory to put temporary files associated with the job in
+        makeSubDir(os.path.join(jobDir, "g"))
         return Job.create(command=command, memory=memory, cpu=cpu,
-                          tryCount=int(self.config.attrib["try_count"]), jobStoreID=jobDir, logJobStoreFileID=None)
+                          tryCount=self._defaultTryCount( ), jobStoreID=jobDir, logJobStoreFileID=None)
     
     def _getJobFileDirName(self):
         return os.path.join(self.jobStoreDir, "jobs")
@@ -194,7 +196,7 @@ class FileJobStore(AbstractJobStore):
         #Reset the job
         job.messages = []
         job.children = []
-        job.remainingRetryCount = int(self.config.attrib["try_count"])
+        job.remainingRetryCount = self._defaultTryCount( )
         #Get children
         childJobs = reduce(lambda x,y:x+y, map(lambda childDir : \
             self._loadJobTreeState(childDir, jobTreeState), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
