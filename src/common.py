@@ -259,7 +259,7 @@ def addBatchSystemConfigOptions(config, batchSystem, options):
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
 
 
-def loadJobStore( jobStoreString, create=False, config=None ):
+def loadJobStore( jobStoreString, config=None ):
     """
     Loads a jobStore.
 
@@ -283,10 +283,10 @@ def loadJobStore( jobStoreString, create=False, config=None ):
 
     if jobStoreName == 'file':
         from jobTree.jobStores.fileJobStore import FileJobStore
-        return FileJobStore( jobStoreArgs, create=create, config=config )
+        return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
         from jobTree.jobStores.awsJobStore import AWSJobStore
-        return AWSJobStore( jobStoreArgs, create=create, config=config )
+        return AWSJobStore( jobStoreArgs, config=config )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 
@@ -308,7 +308,7 @@ def setupJobTree(options):
     config = createConfig(options)
     batchSystem = loadBatchSystem(config)
     addBatchSystemConfigOptions(config, batchSystem, options)
-    jobStore = loadJobStore(config.attrib["job_store"], create=True, config=config)
+    jobStore = loadJobStore(config.attrib["job_store"], config=config)
     jobTreeState = jobStore.loadJobTreeState()
     serialiseEnvironment(jobStore)
     return config, batchSystem, jobStore, jobTreeState

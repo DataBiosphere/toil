@@ -16,13 +16,13 @@ class FileJobStore(AbstractJobStore):
     of functions see AbstractJobStore.
     """
 
-    def __init__(self, jobStoreDir, create=False, config=None):
+    def __init__(self, jobStoreDir, config=None):
         self.jobStoreDir = absSymPath(jobStoreDir)
         logger.info("Jobstore directory is: %s" % self.jobStoreDir)
         if not os.path.exists(self.jobStoreDir):
             os.mkdir(self.jobStoreDir)
-        super( FileJobStore, self ).__init__( create=create, config=config )
-        self._setupStatsDirs(create=create)
+        super( FileJobStore, self ).__init__( config=config )
+        self._setupStatsDirs(create=config is not None)
     
     def createFirstJob(self, command, memory, cpu):
         if not os.path.exists(self._getJobFileDirName()):
@@ -49,8 +49,7 @@ class FileJobStore(AbstractJobStore):
     def store(self, job):
         self._write(job, ".new")
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
-        return job.jobStoreID
-    
+
     def addChildren(self, job, childCommands):
         updatingFile = self._getJobFileName(job.jobStoreID) + ".updating"
         open(updatingFile, 'w').close()
@@ -104,19 +103,19 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(localFilePath, jobStoreFileID)
         return jobStoreFileID
     
-    def updateFile(self, jobStoreFileID, localFileName):
+    def updateFile(self, jobStoreFileID, localFilePath):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         if not os.path.isfile(jobStoreFileID):
             raise RuntimeError("Path %s is not a file" % jobStoreFileID)
-        shutil.copyfile(localFileName, jobStoreFileID)
+        shutil.copyfile(localFilePath, jobStoreFileID)
     
-    def readFile(self, jobStoreFileID, localFileName):
+    def readFile(self, jobStoreFileID, localFilePath):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         if not os.path.isfile(jobStoreFileID):
             raise RuntimeError("Path %s is not a file" % jobStoreFileID)
-        shutil.copyfile(jobStoreFileID, localFileName)
+        shutil.copyfile(jobStoreFileID, localFilePath)
     
     def deleteFile(self, jobStoreFileID):
         if not os.path.exists(jobStoreFileID):

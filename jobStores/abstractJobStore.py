@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from contextlib import closing
 import re
 import xml.etree.cElementTree as ET
 
@@ -23,29 +24,32 @@ class JobTreeState( object ):
 
 class AbstractJobStore( object ):
     """ 
-    Represents the jobTree on disk/in a db.
+    Represents the physical storage for the jobs and associated files in a jobTree.
     """
 
     __metaclass__ = ABCMeta
 
-    def __init__( self, create=False, config=None ):
+    def __init__( self, config=None ):
         """
         FIXME: describe purpose and post-condition
 
-        :param create: FIXME: describe
-
-        :param config: If config is not None then the config option is written to the global
-        shared file "config.xml", which can be retrieved using the readSharedFileStream method
-        with the argument "config.xml". If config is None (in which case create must be False),
-        then the self.config object is read from the file-store.
+        :param config: If config is not None then a new physical store will be created and the
+        given configuration object will be written to the shared file "config.xml" which can
+        later be retrieved using the readSharedFileStream. If config is None, the physical store
+        is assumed to already exist and the configuration object is read the shared file
+        "config.xml" in that .
         """
-        if create or config is not None:
-            assert config is not None
-            self.updateConfig( config )
+        if config is None:
+            with closing( self.readSharedFileStream( "config.xml" ) ) as fileHandle:
+                self.__config = ET.parse( fileHandle ).getroot( )
         else:
-            fileHandle = self.readSharedFileStream( "config.xml" )
-            self.config = ET.parse( fileHandle ).getroot( )
-            fileHandle.close( )
+            with closing( self.writeSharedFileStream( "config.xml" ) ) as fileHandle:
+                ET.ElementTree( config ).write( fileHandle )
+            self.__config = config
+
+    @property
+    def config( self ):
+        return self.__config
 
     #
     # The following methods deal with creating/loading/updating/writing/checking for the
@@ -126,7 +130,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def updateFile( self, jobStoreFileID, localFileName ):
+    def updateFile( self, jobStoreFileID, localFilePath ):
         """
         Replaces the existing version of a file in the jobStore. Throws an exception if the file
         does not exist.
@@ -134,7 +138,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def readFile( self, jobStoreFileID, localFileName ):
+    def readFile( self, jobStoreFileID, localFilePath ):
         """
         Copies the file referenced by jobStoreFileID to the given local file path. The version
         will be consistent with the last copy of the file written/updated.
@@ -201,15 +205,6 @@ class AbstractJobStore( object ):
         Returns a readable file handle to the global file referenced by the given ID.
         """
         pass
-
-    def updateConfig( self, config ):
-        """
-        Updates the config file stored on disk.
-        """
-        self.config = config
-        fileHandle = self.writeSharedFileStream( "config.xml" )
-        ET.ElementTree( config ).write( fileHandle )
-        fileHandle.close( )
 
     @abstractmethod
     def writeStats( self, statsString ):
