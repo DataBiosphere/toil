@@ -204,7 +204,8 @@ class AbstractJobStore( object ):
         """
         Returns a readable file handle to the global file referenced by the given ID.
         """
-        pass
+        raise NotImplementedError()
+
 
     @abstractmethod
     def writeStats( self, statsString ):
