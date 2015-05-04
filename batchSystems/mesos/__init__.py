@@ -120,6 +120,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe
         just waiting).
         """
+        # TODO: Ensure jobList holds jobs that have been "launched" from mesos
         jobList = []
         for queue in self.jobQueueDict:
             jobList.append(list(queue))
