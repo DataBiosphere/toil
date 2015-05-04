@@ -42,9 +42,8 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         target.setFollowOnTargetFn(up, (tempFileStoreID1, tempFileStoreID2, outputFileStoreID))                
     else:
         #We can sort this bit of the file
-        fileHandle = target.updateGlobalFileStream(outputFileStoreID)
-        copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
-        fileHandle.close()
+        with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+            copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
         #Make a local copy and sort the file
         tempOutputFile = target.readGlobalFile(outputFileStoreID)
         sort(tempOutputFile)
@@ -55,9 +54,8 @@ def up(target, inputFile1, inputFile2, outputFileStoreID):
     """
     if random.random() > 0.5:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
-    fileHandle = target.updateGlobalFileStream(outputFileStoreID)
-    merge(inputFile1, inputFile2, fileHandle)
-    fileHandle.close()
+    with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+        merge(inputFile1, inputFile2, fileHandle)
     target.logToMaster("Am running an up target with input files: %s and %s" % (inputFile1, inputFile2))
 
 def cleanup(target, tempOutputFileStoreID, outputFile):

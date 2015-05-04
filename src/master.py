@@ -213,13 +213,14 @@ class JobBatcher:
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
             job = self.jobStore.load(jobStoreID)
-            if job.logJobStoreFileID != None:
+            if job.logJobStoreFileID is not None:
                 logger.critical("The job seems to have left a log file, \
                 indicating failure: %s", jobStoreID)
-                logStream(job.getLogFileHandle(self.jobStore), jobStoreID, logger.critical)
+                with job.getLogFileHandle( self.jobStore ) as logFileStream:
+                    logStream( logFileStream, jobStoreID, logger.critical )
             assert job not in self.jobTreeState.updatedJobs
             if resultStatus != 0:
-                if job.logJobStoreFileID == None:
+                if job.logJobStoreFileID is None:
                     logger.critical("No log file is present, despite job failing: %s", jobStoreID)
                 job.setupJobAfterFailure(self.config)
             if len(job.followOnCommands) > 0 or len(job.children) > 0:

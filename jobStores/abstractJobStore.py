@@ -148,24 +148,25 @@ class AbstractJobStore( object ):
     @abstractmethod
     def deleteFile( self, jobStoreFileID ):
         """
-        Deletes a file with the given jobStoreFileID. Throws an exception if the file does not
-        exist.
+        Deletes the file with the given ID from this job store. Throws an exception if the file
+        does not exist.
         """
         raise NotImplementedError( )
 
     @abstractmethod
     def writeFileStream( self, jobStoreID ):
         """
-        As writeFile, but returns a fileHandle which can be written from. Handle must be closed
-        to ensure transmission of the file.
+        Similar to writeFile, but returns a context manager yielding a tuple of 1) a file handle
+        which can be written to and 2) the ID of the resulting file in the job store. The yielded
+        file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
 
     @abstractmethod
     def updateFileStream( self, jobStoreFileID ):
         """
-        As updateFile, but returns a fileHandle which can be written to. Handle must be closed to
-        ensure transmission of the file.
+        Similar to updateFile, but returns a context manager yielding a file handle which can be
+        written to. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
 
@@ -179,7 +180,8 @@ class AbstractJobStore( object ):
     @abstractmethod
     def readFileStream( self, jobStoreFileID ):
         """
-        Like readFile, but returns a file handle instead of a path.
+        Similar to readFile, but returns a context manager yielding a file handle which can be
+        read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
 

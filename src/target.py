@@ -115,7 +115,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         will be consistent with the last copy of the file written/updated to the global
         file store. If localFilePath is not None, the returned file path will be localFilePath.
         """
-        if localFilePath == None:
+        if localFilePath is None:
             localFilePath = getTempFile(rootDir=self.getLocalTempDir())
         self.jobStore.readFile(fileStoreID, localFilePath)
         return localFilePath
@@ -126,13 +126,18 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         return self.jobStore.deleteFile(fileStoreID)
     
     def writeGlobalFileStream(self):
-        """As writeGlobalFile, but returns a pair composed of a fileHandle which can be written to and an ID
-        that can be used to retrieve the file. The file handle must be closed to ensure transmission of the file.
+        """
+        Similar to writeGlobalFile, but returns a context manager yielding a tuple of 1) a file
+        handle which can be written to and 2) the ID of the resulting file in the job store. The
+        yielded file handle does not need to and should not be closed explicitly.
         """
         return self.jobStore.writeFileStream(self.job.jobStoreID)
     
     def updateGlobalFileStream(self, fileStoreID):
-        """As updateGlobalFile, but allows the update of an existing file.
+        """
+        Similar to updateGlobalFile, but returns a context manager yielding a file handle which
+        can be written to. The yielded file handle does not need to and should not be closed
+        explicitly.
         """
         return self.jobStore.updateFileStream(fileStoreID)
     
@@ -142,7 +147,9 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
     
     def readGlobalFileStream(self, fileStoreID):
-        """As readFile, but returns a file handle instead of a path.
+        """
+        Similar to readGlobalFile, but returns a context manager yielding a file handle which can
+        be read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         return self.jobStore.readFileStream(fileStoreID)
     

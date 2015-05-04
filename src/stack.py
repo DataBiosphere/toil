@@ -101,9 +101,8 @@ class Stack(object):
 ####
         
     def makeRunnable(self, jobStore, jobStoreID):
-        fileHandle, fileStoreID = jobStore.writeFileStream(jobStoreID)
-        cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        fileHandle.close() 
+        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
+            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         i = set()
         for importString in self.target.importStrings:
             i.add(importString)

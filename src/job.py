@@ -61,10 +61,10 @@ class Job(object):
             assert self.logJobStoreFileID is not None
 
     def getLogFileHandle(self, jobStore):
-        """Returns a file handle to the log file, or None if not set.
         """
-        return None if self.logJobStoreFileID is None else \
-            jobStore.readFileStream(self.logJobStoreFileID)
+        Returns a context manager that yields a file handle to the log file
+        """
+        return jobStore.readFileStream(self.logJobStoreFileID)
 
     # Serialization support methods
 

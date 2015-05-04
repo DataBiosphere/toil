@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import marshal as pickler
 #import cPickle as pickler
 #import pickle as pickler
@@ -122,26 +123,34 @@ class FileJobStore(AbstractJobStore):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         os.remove(jobStoreFileID)
         
+    @contextmanager
     def writeFileStream(self, jobStoreID):
         jobStoreFileID = getTempFile(".tmp", rootDir=os.path.join(jobStoreID, "g"))
-        return open(jobStoreFileID, 'w'), jobStoreFileID
-    
+        with open(jobStoreFileID, 'w') as f:
+            yield (f, jobStoreFileID)
+
+    @contextmanager
     def updateFileStream(self, jobStoreFileID):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         if not os.path.isfile(jobStoreFileID):
             raise RuntimeError("Path %s is not a file" % jobStoreFileID)
-        return open(jobStoreFileID, 'w')
+        # File objects are context managers (CM) so we could simply return what open returns.
+        # However, it is better to wrap it in another CM so as to prevent users from accessing
+        # the file object directly, without a with statement.
+        with open(jobStoreFileID, 'w') as f:
+            yield f
     
     def getEmptyFileStoreID(self, jobStoreID):
-        fileHandle, jobStoreFileID = self.writeFileStream(jobStoreID)
-        fileHandle.close()
-        return jobStoreFileID
+        with self.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileID ):
+            return jobStoreFileID
     
+    @contextmanager
     def readFileStream(self, jobStoreFileID):
         if not os.path.exists(jobStoreFileID):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        return open(jobStoreFileID, 'r')
+        with open(jobStoreFileID, 'r') as f:
+            yield f
     
     def writeSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )

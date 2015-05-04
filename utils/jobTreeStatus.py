@@ -96,8 +96,9 @@ def main():
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
-            if job.logJobStoreFileID != None:
-                logStream(job.getLogFileHandle(jobStore), job.jobStoreID, logger.critical)
+            if job.logJobStoreFileID is not None:
+                with job.getLogFileHandle(jobStore) as logFileHandle:
+                    logStream(logFileHandle, job.jobStoreID, logger.critical)
             else:
                 print "Log file for job %s is not present" % job.jobStoreID 
         if len(failedJobs) == 0:
