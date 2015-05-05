@@ -127,7 +127,7 @@ class FileJobStore(AbstractJobStore):
     def writeFileStream(self, jobStoreID):
         jobStoreFileID = getTempFile(".tmp", rootDir=os.path.join(jobStoreID, "g"))
         with open(jobStoreFileID, 'w') as f:
-            yield (f, jobStoreFileID)
+            yield f, jobStoreFileID
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -172,7 +172,7 @@ class FileJobStore(AbstractJobStore):
         numberOfFilesProcessed = 0
         for dir in self.statsDirs:
             for tempFile in os.listdir(dir):
-                if tempFile[-3:] != "new":
+                if not tempFile.endswith( '.new' ):
                     absTempFile = os.path.join(dir, tempFile)
                     fH = open(absTempFile, 'r')
                     for line in fH.readlines():

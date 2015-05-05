@@ -40,10 +40,10 @@ class AbstractJobStore( object ):
         "config.xml" in that .
         """
         if config is None:
-            with closing( self.readSharedFileStream( "config.xml" ) ) as fileHandle:
+            with self.readSharedFileStream( "config.xml" ) as fileHandle:
                 self.__config = ET.parse( fileHandle ).getroot( )
         else:
-            with closing( self.writeSharedFileStream( "config.xml" ) ) as fileHandle:
+            with self.writeSharedFileStream( "config.xml" ) as fileHandle:
                 ET.ElementTree( config ).write( fileHandle )
             self.__config = config
 
@@ -212,7 +212,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def writeStats( self, statsString ):
         """
-        Writes the given stats string to the store of stats info.
+        Adds the given statistics string to the store of statistics info.
         """
         raise NotImplementedError( )
 
