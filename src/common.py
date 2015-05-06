@@ -33,7 +33,7 @@ from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
-from jobTree.batchSystems.mesos import MesosBatchSystem
+
 
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
@@ -228,9 +228,11 @@ def loadBatchSystem(config):
             batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the lsf batch system")
         elif batchSystemString == "mesos" or batchSystemString == "Mesos":
+            from jobTree.batchSystems.mesos import MesosBatchSystem
             batchSystem = MesosBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the mesos batch system")
         elif batchSystemString == "badmesos" or batchSystemString == "badMesos":
+            from jobTree.batchSystems.mesos import MesosBatchSystem
             batchSystem = MesosBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, badExecutor=True)
             logger.info("Using the mesos batch system")
         else:
