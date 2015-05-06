@@ -21,13 +21,15 @@
 #THE SOFTWARE.
 
 """Kills any running jobs trees in a rogue jobtree.
-""" 
-
-import os
+"""
+import logging
 import sys
-import xml.etree.cElementTree as ET
-from sonLib.bioio import logger, getBasicOptionParser, parseBasicOptions
+
+from sonLib.bioio import getBasicOptionParser, parseBasicOptions
 from jobTree.src.common import loadJobStore, loadBatchSystem
+
+logger = logging.getLogger( __name__ )
+
 
 def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")

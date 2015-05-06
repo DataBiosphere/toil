@@ -6,13 +6,9 @@ import unittest
 import os
 import os.path
 import sys
-import random
-import subprocess
-import xml.etree.cElementTree as ET
-from sonLib.bioio import system 
-from sonLib.bioio import TestStatus
+
+from sonLib.bioio import system
 from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import logger
 from sonLib.bioio import TempFileTree
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 from test import JobTreeTest

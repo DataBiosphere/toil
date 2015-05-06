@@ -29,6 +29,9 @@ import time
 import socket
 import logging
 
+logger = logging.getLogger( __name__ )
+
+
 def truncateFile(fileNameString, tooBig=50000):
     """Truncates a file that is bigger than tooBig bytes, leaving only the 
     last tooBig bytes in the file.
@@ -74,7 +77,6 @@ def main():
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
-    from sonLib.bioio import logger
     from sonLib.bioio import setLogLevel
     from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
     from sonLib.bioio import getTempDirectory

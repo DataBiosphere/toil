@@ -20,6 +20,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+import logging
 
 import os
 import sys
@@ -27,12 +28,15 @@ import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
-from sonLib.bioio import logger, addLoggingOptions, getLogLevelString, system, absSymPath
+from sonLib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
+
+
+logger = logging.getLogger( __name__ )
 
 
 def runJobTreeStats(jobTree, outputFile):

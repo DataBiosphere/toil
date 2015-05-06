@@ -19,6 +19,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+import logging
 
 import sys
 import os
@@ -31,18 +32,14 @@ except ImportError:
     
 import xml.etree.cElementTree as ET
 
-from sonLib.bioio import logger
-from sonLib.bioio import setLogLevel
 from sonLib.bioio import setLoggingFromOptions
-from sonLib.bioio import getTempFile
-from sonLib.bioio import getTempDirectory 
-from sonLib.bioio import system, absSymPath
+from sonLib.bioio import system
 from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
 from jobTree.src.common import setupJobTree, addOptions
 from jobTree.src.master import mainLoop
 
-from jobTree.src.target import Target
+logger = logging.getLogger( __name__ )
 
 class Stack(object):
     """Holds together a stack of targets and runs them.

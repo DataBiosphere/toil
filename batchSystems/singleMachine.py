@@ -19,26 +19,24 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+import logging
 
 import sys
 import os
 import random
 import subprocess
 import time
-import traceback
 
 #from threading import Thread, Lock
 #from Queue import Queue
-from Queue import Empty
-from sonLib.bioio import logger
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from sonLib.bioio import getTempFile
-from sonLib.bioio import system
 
 from jobTree.src.worker import main as workerMain
-   
+
+logger = logging.getLogger( __name__ )
+
 def worker(inputQueue, outputQueue):
     while True:
         args = inputQueue.get()

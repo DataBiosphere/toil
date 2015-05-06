@@ -19,6 +19,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+import logging
 
 import os 
 import re
@@ -27,15 +28,15 @@ import subprocess
 import time
 
 from Queue import Empty
-from sonLib.bioio import logger
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
 
 #from threading import Thread
 #from Queue import Queue, Empty
 
-from sonLib.bioio import logger
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
+
+logger = logging.getLogger( __name__ )
 
 def getParasolResultsFileName(jobTreePath):
     return os.path.join(jobTreePath, "results.txt")

@@ -23,9 +23,9 @@ import sys
 import math
 
 from optparse import OptionParser
-from jobTree.src.target import Target 
+from jobTree.src.target import Target
 from jobTree.src.stack import Stack
-from sonLib.bioio import spawnDaemon, setLoggingFromOptions, logger, getLogLevelString
+from sonLib.bioio import spawnDaemon, setLoggingFromOptions, getLogLevelString
 
 def writeLog(self, msg, startTime):
     timeStamp = str(datetime.datetime.now() - startTime)       

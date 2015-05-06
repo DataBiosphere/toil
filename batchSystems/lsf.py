@@ -19,22 +19,18 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-
-import os 
-import re
+import logging
 import subprocess
 import time
-import sys
-import random
-import string
 from Queue import Queue, Empty
 from threading import Thread
 from datetime import date
 
-from sonLib.bioio import logger
-from sonLib.bioio import system
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.parasol import getParasolResultsFileName
+
+logger = logging.getLogger( __name__ )
+
 
 class MemoryString:
     def __init__(self, string):

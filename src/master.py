@@ -27,17 +27,19 @@ cluster.
 Takes a crash-only philosophy so that any part of the process can be failed
 and then restarted at will (see the accompanying tests).
 """
+import logging
 
 import os
 import sys
 import os.path
-import xml.etree.cElementTree as ET
 import time
 #from threading import Thread, Queue
 from multiprocessing import Process, Queue
 
-from sonLib.bioio import logger, getTotalCpuTime, logStream, system
+from sonLib.bioio import getTotalCpuTime, logStream
 from jobTree.src.common import workflowRootPath
+
+logger = logging.getLogger( __name__ )
 
 #####
 ##The following function is used for collating stats from the workers

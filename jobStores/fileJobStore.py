@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import logging
 import marshal as pickler
 #import cPickle as pickler
 #import pickle as pickler
@@ -8,9 +9,12 @@ import random
 import shutil
 import os
 import re
-from sonLib.bioio import logger, makeSubDir, getTempFile, system, absSymPath
+from sonLib.bioio import makeSubDir, getTempFile, system, absSymPath
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
+
+logger = logging.getLogger( __name__ )
+
 
 class FileJobStore(AbstractJobStore):
     """Represents the jobTree on using a network file system. For doc-strings
@@ -66,8 +70,8 @@ class FileJobStore(AbstractJobStore):
     def delete(self, job):
         os.remove(self._getJobFileName(job.jobStoreID)) #This is the atomic operation, if this file is not present the job is deleted.
         dirToRemove = job.jobStoreID
-        # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially
-        # considering that system() launches a full shell
+        # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially ...
+        # FIXME: ... considering that system() launches a full shell
         while 1:
             head, tail = os.path.split(dirToRemove)
             if re.match("t[0-9]+$", tail):

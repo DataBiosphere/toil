@@ -8,7 +8,6 @@ from jobTree.batchSystems.mesos.JobTreeJob import JobTreeJob
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import mesosExecutor, badExecutor
 from Queue import Queue
-from sonLib.bioio import logger
 from threading import Thread
 from mesos.interface import mesos_pb2
 from mesos.native import MesosSchedulerDriver
@@ -16,6 +15,7 @@ import mesos
 import logging
 
 log = logging.getLogger( __name__ )
+
 class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     """
     Class describes the mesos scheduler framework which acts as the mesos batch system for jobtree
@@ -93,7 +93,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             self.jobQueueDict[job_type] = Queue()
             self.jobQueueDict[job_type].put(job)
 
-        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+        log.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
 
     def killJobs(self, jobIDs):
