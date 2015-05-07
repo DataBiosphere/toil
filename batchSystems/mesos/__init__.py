@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 import time
@@ -31,7 +32,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # dictionary of queues, which jobTree assigns jobs to. Each queue represents a job type,
         # defined by resource usage
         # FIXME: Are dictionaries thread safe?
-        self.jobQueueDict = {}
+        self.jobQueueDict = defaultdict(Queue)
 
         # ip of mesos master. specified in MesosBatchSystem, currently loopback
         self.masterIP="127.0.0.1:5050"
@@ -40,7 +41,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.killSet = set()
 
         # Dict of launched jobIDs to time they were started. Req'd by jobTree
-        self.jobTimeMap = {}
+        self.runningJobMap = {}
 
         # Queue of jobs whose status has been updated, according to mesos. Req'd by jobTree
         self.updatedJobsQueue = Queue()
@@ -86,12 +87,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
         job_type = job.resources
 
-        # if job type already described, add to queue. If not, create dictionary entry & add.
-        if job_type in self.jobQueueDict:
-            self.jobQueueDict[job_type].put(job)
-        else:
-            self.jobQueueDict[job_type] = Queue()
-            self.jobQueueDict[job_type].put(job)
+        log.debug("Queuing the job command: %s with job id: %s" % (command, str(jobID)))
+        self.jobQueueDict[job_type].put(job)
 
         log.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
@@ -99,22 +96,22 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     def killJobs(self, jobIDs):
         """Kills the given job IDs. But when is it called?
         """
+        localSet = set()
         if self.driver is None:
             raise RuntimeError("There is no scheduler driver")
         for jobID in jobIDs:
+            log.debug("passing tasks to kill to mesos driver")
             self.killSet.add(jobID)
-            print jobID
+            localSet.add(jobID)
             taskId = TaskID()
             taskId.value = str(jobID)
             self.driver.killTask(taskId)
 
-        while self.killSet:
+        while localSet:
             i = self.getFromQueueSafely(self.killedQueue, 3)
             if i is not None:
-                self.killSet.remove(jobID)
-                self.currentjobs.remove(jobID)
-            else:
-                break
+                self.killSet.remove(i)
+                localSet.remove(i)
 
     def getIssuedJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe
@@ -124,6 +121,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         jobList = []
         for queue in self.jobQueueDict:
             jobList.append(list(queue))
+
+        for k,v in self.runningJobMap.iteritems():
+            jobList.append(k)
+
         return jobList
 
     def getRunningJobIDs(self):
@@ -131,7 +132,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         and a how long they have been running for (in seconds).
         """
         currentTime= dict()
-        for k,v in self.jobTimeMap.iteritems():
+        for k,v in self.runningJobMap.iteritems():
             currentTime[k]= time.time()-v
         return currentTime
 
@@ -146,6 +147,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
+        log.debug("Job updated with code {}".format(retcode))
         return i
 
     def getWaitDuration(self):
@@ -284,15 +286,14 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         job_types.sort(key=lambda resourceRequirement: ResourceRequirement.ResourceRequirement.cpu)
         job_types.reverse()
 
-        if len(job_types)==0:
+        if len(job_types)==0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
             for offer in offers:
-                log.warning( "reject offer {}".format(offer.id.value))
+                log.warning( "No jobs to assign. Rejecting offer".format(offer.id.value))
                 driver.declineOffer(offer.id)
             return
 
         # right now, gives priority to largest jobs
         for offer in offers:
-
             tasks = []
 
             # TODO: In an offer, can there ever be more than one resource with the same name?
@@ -313,12 +314,12 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             for job_type in job_types:
                 while (not self.jobQueueDict[job_type].empty()) and \
                                 remainingCpus >= job_type.cpu and \
-                                remainingMem >= self.__bytesToMB(job_type.memory): #job tree specifies its resources in bytes.
+                                remainingMem >= self.__bytesToMB(job_type.memory): # job tree specifies mem in bytes.
+
                     jt_job = self.jobQueueDict[job_type].get()
-
-                    self.jobTimeMap[jt_job.jobID] = time.time()
-
+                    self.runningJobMap[jt_job.jobID] = time.time()
                     task = self.createTask(jt_job, offer)
+
                     log.debug( "Launching mesos task %s using offer %s" \
                           % (task.task_id.value, offer.id.value))
 
@@ -334,6 +335,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             # If we put the launch call inside the while, multiple accepts are used on the same offer. We dont want that.
             # this explains why it works in the simple hello_world case: there is only one jobType, so offer is accepted once.
             driver.launchTasks(offer.id, tasks)
+            if len(tasks) == 0:
+                log.critical("Offer not large enough to run any tasks")
 
     def createTask(self, jt_job, offer):
         """
@@ -364,9 +367,16 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
     def __updateState(self, intID, exitStatus):
         self.updatedJobsQueue.put((intID, exitStatus))
-        del self.jobTimeMap[intID]
+        del self.runningJobMap[intID]
 
     def statusUpdate(self, driver, update):
+        """
+        Invoked when the status of a task has changed (e.g., a slave is lost and so the task is lost,
+        a task finishes and an executor sends a status update saying so, etc). Note that returning from this
+        callback _acknowledges_ receipt of this status update! If for whatever reason the scheduler aborts during this
+        callback (or the process exits) another status update will be delivered (note, however, that this is currently
+        not true if the slave sending the status update is lost/fails during that time).
+        """
         log.debug( "Task %s is in a state %s" % \
             (update.task_id.value, mesos_pb2.TaskState.Name(update.state)))
 
@@ -377,6 +387,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             self.tasksFinished += 1
             self.__updateState(intID, 0)
             slave_id, executor_id = self.taskExecutorMap[stringID]
+            del self.taskExecutorMap[stringID]
 
             # im not sure what they are using this for. It seems like this is to know when to shutDown.
             # we dont want mesos to shut down, and this dictionary does not shrink.
@@ -409,7 +420,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         self.messagesReceived += 1
 
-        if self.messagesReceived == len(self.jobTimeMap):
+        if self.messagesReceived == len(self.runningJobMap):
             if self.messagesReceived != self.messagesSent:
                 log.error( "ERROR: sent {} but recieved {}".format(self.messagesSent,self.messagesReceived))
                 #sys.exit(1)
@@ -422,11 +433,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         :param driver:
         :return:
         """
-        #FIXME: we need additional reconciliation. What about the tasks the master knows about but haven't updated?
+        # FIXME: we need additional reconciliation. What about the tasks the master knows about but haven't updated?
         now = time.time()
         if now > self.lastReconciliation+self.reconciliationPeriod:
             self.lastReconciliation=now
-            driver.reconcileTasks(list(self.jobTimeMap.keys()))
+            driver.reconcileTasks(list(self.runningJobMap.keys()))
 
     def reregistered(self, driver, masterInfo):
         """
