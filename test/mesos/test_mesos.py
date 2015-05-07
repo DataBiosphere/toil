@@ -21,7 +21,7 @@ class TestMesos(JobTreeTest):
         def __init__(self):
             threading.Thread.__init__(self)
             self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1", shell=True)
-
+            # FIXME: add blocking wait
 
     class MesosSlaveThread(threading.Thread):
         def __init__(self):
@@ -30,6 +30,7 @@ class TestMesos(JobTreeTest):
 
         def run(self):
             self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050", shell=True)
+            # FIXME: add blocking wait
 
     master=MesosMasterThread()
     slave=MesosSlaveThread()
@@ -37,6 +38,7 @@ class TestMesos(JobTreeTest):
     @classmethod
     def setUpClass(cls):
         super( TestMesos, cls).setUpClass()
+        # FIXME: avoid daemon threads use join
         cls.master.setDaemon(True)
         cls.slave.setDaemon(True)
         cls.master.start()
@@ -47,6 +49,7 @@ class TestMesos(JobTreeTest):
         super( TestMesos, cls).tearDownClass()
         cls.master.popen.kill()
         cls.slave.popen.kill()
+        # FIMXE: join the threads
 
     @classmethod
     def killSlave(cls):
@@ -89,60 +92,15 @@ class TestMesos(JobTreeTest):
             self.assertTrue(os.path.isfile("./hello_world_child{}.txt".format(i)), "actual files: {}".format(os.listdir(".")))
             self.assertTrue(os.path.isfile("./hello_world_follow{}.txt".format(i)),  "actual files: {}".format(os.listdir(".")))
 
-    # def test_resume(self):
-    #     mainT = threading.Thread(target=testRun,args=(3,))
-    #     mainT.start()
-    #     #This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
-    #     print "killing"
-    #     TestMesos.killSlave()
-    #     print "killed"
-    #     TestMesos.startSlave()
-    #     mainT.join()
-    #     self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
-    #     self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
-
-    # Test for mesos only. Problem: mesos is daemonized, doesnt quit by itself.
-    # def test_mesos_only(self):
-    #     sys.argv[1]="127.0.0.1:5050"
-    #     killQueue, updatedJobQueue, queue = Queue(), Queue(), Queue()
-    #
-    #     job1 = JobTreeJob(jobID=1, memory=1, cpu=1, command="echo 'job1'>>job1.txt",cwd=os.getcwd())
-    #     job2 = JobTreeJob(jobID=2, memory=1, cpu=1, command="echo 'job2'>>job2.txt",cwd=os.getcwd())
-    #
-    #     queue.put(job1)
-    #     queue.put(job2)
-    #
-    #     key = ResourceSummary.ResourceSummary(memory=1, cpu=1)
-    #
-    #     dictionary = {key:queue}
-    #
-    #     executor = mesos_pb2.ExecutorInfo()
-    #     executor.executor_id.value = "default"
-    #     executor.command.value = MesosFrameWorkThread.executorScriptPath()
-    #     executor.name = "Test Executor (Python)"
-    #     executor.source = "python_test"
-    #
-    #     framework = mesos_pb2.FrameworkInfo()
-    #     framework.user = "" # Have Mesos fill in the current user.
-    #     framework.name = "JobTree Framework (Python)"
-    #
-    #     framework.principal = "test-framework-python"
-    #     implicitAcknowledgements=1
-    #
-    #     runningDictionary={}
-    #
-    #     driver = MesosSchedulerDriver(
-    #                 MesosScheduler(implicitAcknowledgements=implicitAcknowledgements, executor=executor, job_queues=dictionary,
-    #                                kill_queue=killQueue,
-    #                                running_dictionary=runningDictionary, updated_job_queue=updatedJobQueue),
-    #                 framework,
-    #                 sys.argv[1],
-    #                 implicitAcknowledgements)
-    #
-    #
-    #     driver.run()
-    #     sleep(2)
-    #
-    #     self.assertTrue(os.path.isfile("./job1.txt"))
-    #     self.assertTrue(os.path.isfile("./job2.txt"))
-    #     driver.stop()
+    @unittest.skip
+    def test_resume(self):
+        mainT = threading.Thread(target=testRun,args=(3,))
+        mainT.start()
+        #This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
+        print "killing"
+        TestMesos.killSlave()
+        print "killed"
+        TestMesos.startSlave()
+        mainT.join()
+        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
+        self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
