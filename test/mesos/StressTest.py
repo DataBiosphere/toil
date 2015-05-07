@@ -1,34 +1,23 @@
+import os
 import sys
-from time import sleep
-from jobTree.src.target import Target
-from jobTree.src.stack import Stack
 from optparse import OptionParser
 
-class LongTest(Target):
-    def __init__(self, x):
+from jobTree.src.target import Target
+from jobTree.src.stack import Stack
+
+
+class LongTestTarget(Target):
+    def __init__(self, numTargets):
         Target.__init__(self, time=1, memory=100000, cpu=0.01)
-        self.x = x
+        self.numTargets = numTargets
 
     def run(self):
-        for i in range(0,self.x):
-            self.addChildTarget(HelloWorld(i))
-        self.setFollowOnTarget(LongTestFollow())
+        for i in range(0,self.numTargets):
+            self.addChildTarget(HelloWorldTarget(i))
+        self.setFollowOnTarget(LongTestFollowOn())
 
 
-class HelloWorld(Target):
-
-    def __init__(self,i):
-        Target.__init__(self, time=1, memory=100000, cpu=0.01)
-        self.i=i
-
-    def run(self):
-        raise RuntimeError()
-        with open ('hello_world_child{}.txt'.format(self.i), 'w') as file:
-            file.write('This is a triumph')
-        self.setFollowOnTarget(HelloWorldFollow(self.i))
-
-
-class LongTestFollow(Target):
+class LongTestFollowOn(Target):
 
     def __init__(self):
         Target.__init__(self, time=1, memory=1000000, cpu=0.01)
@@ -37,27 +26,41 @@ class LongTestFollow(Target):
         pass
 
 
-class HelloWorldFollow(Target):
+class HelloWorldTarget(Target):
+
+    def __init__(self,i):
+        Target.__init__(self, time=1, memory=100000, cpu=0.01)
+        self.i=i
+
+    def run(self):
+        with open ('hello_world_child{}.txt'.format(self.i), 'w') as f:
+            f.write('This is a triumph')
+        self.setFollowOnTarget(HelloWorldFollowOn(self.i))
+
+
+class HelloWorldFollowOn(Target):
 
     def __init__(self,i):
         Target.__init__(self, time=1, memory=200000, cpu=0.01)
         self.i = i
 
     def run(self):
-        with open ('hello_world_follow{}.txt'.format(self.i), 'w') as file:
-            file.write('This is a triumph')
+        with open ('hello_world_follow{}.txt'.format(self.i), 'w') as f:
+            f.write('This is a triumph')
 
-def main(tasks):
-    sys.argv.append("--batchSystem=mesos")
-    sys.argv.append("--retryCount=3")
-    sys.argv.append("--logDebug")
+def main(numTargets, useBadExecutor=False):
+    args = list( sys.argv )
+    args .append("--batchSystem=%s" % 'badmesos' if useBadExecutor else 'mesos')
+    args .append("--retryCount=3")
+    args .append("--logDebug")
+    # Needed on some installations of Mesos (like Hannes' MBP)
+    os.environ['LIBPROCESS_IP'] = '127.0.0.1'
 
-    targetsToLaunch=tasks/2
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
     Stack.addJobTreeOptions(parser)
-    options, args = parser.parse_args()
+    options, args = parser.parse_args( args )
 
     # Setup the job stack and launch jobTree job
-    i = Stack(LongTest(targetsToLaunch)).startJobTree(options)
+    i = Stack( LongTestTarget( numTargets ) ).startJobTree( options )
 

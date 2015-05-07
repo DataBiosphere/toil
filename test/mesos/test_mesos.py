@@ -1,17 +1,12 @@
 import tempfile
-from time import sleep
 import shutil
 import unittest
 import os
-import sys
-from mesos.interface import mesos_pb2
-from Queue import Queue
-from jobTree.batchSystems.mesos import JobTreeJob, ResourceRequirement
-from jobTree.test.mesos.ResumeTest import *
-from jobTree.test.mesos.ResumeTest import run as testRun
-from jobTree.test.mesos.StressTest import main as stressMain
 import subprocess
 import threading
+
+from jobTree.test.mesos.ResumeTest import run as testRun
+from jobTree.test.mesos.StressTest import main as stressMain
 from jobTree.test import JobTreeTest
 
 
@@ -83,12 +78,12 @@ class TestMesos(JobTreeTest):
 
     def test_stress(self):
         """
-        set task number to number of files you wish to create. Actual number of tasks is tasks+2
+        Set task number to number of files you wish to create. Actual number of targets is targets+2
         Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
         """
-        tasks=10
-        stressMain(tasks=tasks)
-        for i in range (0,tasks/2):
+        numTargets=5
+        stressMain(numTargets,useBadExecutor=True)
+        for i in range (0,numTargets):
             self.assertTrue(os.path.isfile("./hello_world_child{}.txt".format(i)), "actual files: {}".format(os.listdir(".")))
             self.assertTrue(os.path.isfile("./hello_world_follow{}.txt".format(i)),  "actual files: {}".format(os.listdir(".")))
 
