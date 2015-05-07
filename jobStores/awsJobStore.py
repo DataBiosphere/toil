@@ -1,4 +1,5 @@
 from StringIO import StringIO
+from ast import literal_eval
 from collections import defaultdict
 from contextlib import contextmanager
 import logging
@@ -53,14 +54,13 @@ class AWSJobStore( AbstractJobStore ):
     def __init__( self, region, namePrefix, config=None ):
         self.region = region
         self.namePrefix = namePrefix
-        create = config is not None
-        self.db = self._connectSimpleDB( )
-        self.s3 = self._connectS3( )
-        assert self.db is not None
         self.jobs = None
         self.fileVersions = None
         self.files = None
         self.stats = None
+        self.db = self._connectSimpleDB( )
+        self.s3 = self._connectS3( )
+        create = config is not None
         try:
             self.jobs = self._getOrCreateDomain( 'jobs', create )
             self.fileVersions = self._getOrCreateDomain( 'fileVersions', create )
@@ -68,7 +68,7 @@ class AWSJobStore( AbstractJobStore ):
             self.stats = self._getOrCreateBucket( 'stats', create )
             super( AWSJobStore, self ).__init__( config=config )
         except:
-            self.destroy()
+            self.destroy( )
             raise
 
     def createFirstJob( self, command, memory, cpu ):
@@ -88,20 +88,22 @@ class AWSJobStore( AbstractJobStore ):
                                                consistent_read=True ) )
 
     def load( self, jobStoreID ):
-        attributes = self.jobs.get_attributes( item_name=jobStoreID,
-                                               consistent_read=True )
-        del attributes[ 'parentJobStoreID' ]
-        return Job( jobStoreID=jobStoreID, **attributes )
+        item = self.jobs.get_attributes( item_name=jobStoreID,
+                                         consistent_read=True )
+        job = self._itemToJob( item, jobStoreID )
+        # TODO: check if mentioning individual attributes is faster than using *
+        children = self.jobs.select(
+            query="select * from `%s` where parentJobStoreId = '%s'" % (
+            self.jobs.name, jobStoreID ),
+            consistent_read=True )
+        for child in children:
+            child = ( child.name, ) + literal_eval( child[ 'followOnCommands' ][ 0 ] )[ 1: ]
+            job.children.append( child )
+        return job
 
     def store( self, job ):
         assert self.jobs.put_attributes( item_name=job.jobStoreID,
-                                         attributes=job.fromDict( ) )
-
-    def _jobToItem( self, job, parentJobStoreID ):
-        item = job.toDict( )
-        item[ 'parentJobStoreID' ] = parentJobStoreID
-        del item[ 'jobStoreID' ]
-        return item
+                                         attributes=job.toDict( ) )
 
     def addChildren( self, job, childCommands ):
         # The elements of childCommands are tuples (command, memory, cpu). The astute reader will
@@ -252,6 +254,7 @@ class AWSJobStore( AbstractJobStore ):
         if db is None:
             raise ValueError( "Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB "
                               "region." % self.region )
+        assert db is not None
         return db
 
     def _connectS3( self ):
@@ -288,6 +291,7 @@ class AWSJobStore( AbstractJobStore ):
         """
         :rtype : Domain
         """
+        # FIXME: maybe use same separator as for buckets
         domain_name = self.namePrefix + '.' + domain_name
         # CreateDomain is idempotent
         self.db.create_domain( domain_name )
@@ -302,6 +306,31 @@ class AWSJobStore( AbstractJobStore ):
     def _newJobID( self ):
         return str( uuid.uuid4( ) )
 
+    def _itemToJob( self, item, jobStoreID=None ):
+        if jobStoreID is None: jobStoreID = item.name
+        del item[ 'parentJobStoreID' ]
+
+        def singleton( v ):
+            return [ v ] if isinstance( v, basestring ) else v
+
+        def transform( k, v ):
+            if k == 'messages': return singleton( v )
+            if k == 'followOnCommands': return map( literal_eval, singleton( v ) )
+            if k == 'remainingRetryCount': return int( v )
+            return v
+
+        item = { k: transform( k, v ) for k, v in item.iteritems( ) }
+        job = Job( jobStoreID=jobStoreID, **item )
+        return job
+
+    def _jobToItem( self, job, parentJobStoreID ):
+        item = job.toDict( )
+        del item[ 'jobStoreID' ]
+        item[ 'followOnCommands' ] = map( repr, item[ 'followOnCommands' ] )
+        item = { k: v for k, v in item.iteritems( ) if v is not None }
+        item[ 'parentJobStoreID' ] = parentJobStoreID
+        return item
+
     # A dummy job ID under which all shared files are stored.
     sharedFileJobID = uuid.UUID( '891f7db6-e4d9-4221-a58e-ab6cc4395f94' )
 
@@ -312,8 +341,10 @@ class AWSJobStore( AbstractJobStore ):
             return str( uuid.uuid5( self.sharedFileJobID, sharedFileName ) )
 
     def __getFileVersion( self, jobStoreFileID ):
-        return self.fileVersions.get_attributes( item_name=jobStoreFileID,
-                                                 attribute_name='version' )[ 'version' ]
+        result = self.fileVersions.get_attributes( item_name=jobStoreFileID,
+                                                   attribute_name='version',
+                                                   consistent_read=True )
+        return result[ 'version' ]
 
     _s3_part_size = 50 * 1024 * 1024
 
@@ -354,8 +385,7 @@ class AWSJobStore( AbstractJobStore ):
         try:
             def reader( ):
                 try:
-                    readable = os.fdopen( readable_fh, 'r' )
-                    try:
+                    with os.fdopen( readable_fh, 'r' ) as readable:
                         upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
                         try:
                             for part_num in itertools.count( ):
@@ -364,62 +394,49 @@ class AWSJobStore( AbstractJobStore ):
                                 if len( buf ) == 0 and part_num > 0: break
                                 upload.upload_part_from_file( fp=StringIO( buf ),
                                                               # S3 part numbers are 1-based
-                                                              part_num=part_num )
+                                                              part_num=part_num + 1 )
                                 if len( buf ) == 0: break
                         except BaseException:
                             upload.cancel_upload( )
                             raise
                         else:
                             key.version_id = upload.complete_upload( ).version_id
-                    finally:
-                        readable.close( )
                 except BaseException:
                     logger.exception( 'Exception in reader thread' )
 
-            writable = os.fdopen( writable_fh, 'w' )
-            try:
-                thread = Thread( target=reader )
+            thread = Thread( target=reader )
+            with os.fdopen( writable_fh, 'w' ) as writable:
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
                 yield writable, key
-            finally:
-                writable.close( )
             thread.join( )
         finally:
-            for fh in readable_fh, writable_fh:
-                self.__try_close( fh )
+            self.__try_close( readable_fh, writable_fh )
         assert key.version_id is not None
+
+    def _download( self, jobStoreFileID, localFilePath, version ):
+        key = self.files.get_key( jobStoreFileID, validate=False )
+        key.get_contents_to_filename( localFilePath, version_id=version )
 
     @contextmanager
     def _downloadStream( self, jobStoreFileID, version ):
         key = self.files.get_key( jobStoreFileID, validate=False )
-        readable, writable = os.pipe( )
-        try:
-            readable = os.fdopen( readable, 'r' )
-            try:
-                writable = os.fdopen( writable, 'w' )
-                try:
-                    def writer( ):
-                        key.get_contents_to_file( writable, version_id=version )
-                        # This close() will send EOF to the reading end and ultimately cause the
-                        # yield to return
-                        writable.close( )
-
-                    thread = Thread( target=writer )
-                    thread.start( )
-                    yield readable
-                    thread.join( )
-                finally:
-                    # Redundant but not harmful since the close() method is idempotent
+        readable_fh, writable_fh = os.pipe( )
+        with os.fdopen( readable_fh, 'r' ) as readable:
+            with os.fdopen( writable_fh, 'w' ) as writable:
+                def writer( ):
+                    key.get_contents_to_file( writable, version_id=version )
+                    # This close() will send EOF to the reading end and ultimately cause the
+                    # yield to return. It also makes the implict .close() done by the enclosing
+                    # "with" context redundant but that should be ok since .close() on file
+                    # objects are idempotent.
                     writable.close( )
-            finally:
-                readable.close( )
-        finally:
-            # In case an exception occurs before both fdopen() calls succeed
-            for f in ( readable, writable ):
-                if isinstance( f, int ):
-                    os.close( f )
+
+                thread = Thread( target=writer )
+                thread.start( )
+                yield readable
+                thread.join( )
 
     class ConcurrentFileModificationException( Exception ):
         def __init__( self, jobStoreFileID ):
@@ -477,10 +494,6 @@ class AWSJobStore( AbstractJobStore ):
         file_size, file_time = file_stat.st_size, file_stat.st_mtime
         return file_size, file_time
 
-    def _download( self, jobStoreFileID, localFilePath, version ):
-        key = self.files.get_key( jobStoreFileID, validate=False )
-        key.get_contents_to_filename( localFilePath, version_id=version )
-
     versionings = dict( Enabled=True, Disabled=False, Suspended=None )
 
     def __get_bucket_versioning( self, bucket ):
@@ -489,24 +502,25 @@ class AWSJobStore( AbstractJobStore ):
 
         For newly created buckets get_versioning_status returns None. We map that to False.
 
-        TODO: This may actually be a result of eventual consistency
+        TBD: This may actually be a result of eventual consistency
 
-        Otherwise, the 'Versioning' entry in the status dictionary can be 'Enabled', 'Suspended'
-        or 'Disabled' which we map to True, None and False respectively. Calling
-        configure_versioning with False on a bucket will cause get_versioning_status to then
-        return 'Suspended' for some reason.
+        Otherwise, the 'Versioning' entry in the dictionary returned by get_versioning_status can
+        be 'Enabled', 'Suspended' or 'Disabled' which we map to True, None and False
+        respectively. Calling configure_versioning with False on a bucket will cause
+        get_versioning_status to then return 'Suspended' for some reason.
         """
         status = bucket.get_versioning_status( )
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
 
-    def __try_close( self, fh ):
-        try:
-            os.close( fh )
-        except OSError as e:
-            if e.errno == errno.EBADF:
-                pass
-            else:
-                raise
+    def __try_close( self, *fhs ):
+        for fh in fhs:
+            try:
+                os.close( fh )
+            except OSError as e:
+                if e.errno == errno.EBADF:
+                    pass
+                else:
+                    raise
 
     # TODO: Move up
 
