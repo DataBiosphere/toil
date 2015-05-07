@@ -15,16 +15,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import os
 import sys
 import threading
+import pickle
+import logging
+import subprocess
 
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
-from subprocess import call
-import pickle
-import logging
 
 log = logging.getLogger( __name__ )
 
@@ -73,8 +74,8 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         self.frameworkMessage(driver, message)
 
     def _callCommand(self, command):
-        log.debug("running command: {}".format(command))
-        return call(command, shell=True)
+        log.debug("Invoking command: {}".format(command))
+        return subprocess.call(command, shell=True)
 
     def launchTask(self, driver, task):
         """
@@ -119,7 +120,13 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         # Send it back to the scheduler.
         driver.sendFrameworkMessage(message)
 
+
+def main( executorClass ):
+    logging.basicConfig( level=logging.DEBUG )
+    log.debug( "Starting executor" )
+    driver = mesos.native.MesosExecutorDriver( executorClass( ) )
+    sys.exit( 0 if driver.run( ) == mesos_pb2.DRIVER_STOPPED else 1 )
+
+
 if __name__ == "__main__":
-    log.debug("Starting executor")
-    driver = mesos.native.MesosExecutorDriver(JobTreeMesosExecutor())
-    sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
+    main( JobTreeMesosExecutor )

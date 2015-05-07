@@ -20,7 +20,7 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 import random
-from mesosExecutor import JobTreeMesosExecutor
+from mesosExecutor import JobTreeMesosExecutor, main
 import logging
 
 log = logging.getLogger( __name__ )
@@ -29,18 +29,14 @@ class BadExecutor(JobTreeMesosExecutor):
 
     def _callCommand(self, command):
         ran = random.randint(1, 10)
-        print "random: {}".format(ran)
         if ran < 5:
             result = super(BadExecutor, self)._callCommand(command)
-            if result == 1:
-                print "ran and failed command {}".format(command)
+            if result != 0:
+                log.debug("Command {} failed with {}".format(command,result))
             return result
         else:
-            log.debug("ignoring command: {}".format(command))
+            log.debug("Ignoring command: {}".format(command))
             return 1
 
 if __name__ == "__main__":
-    log.debug("Starting executor")
-    driver = mesos.native.MesosExecutorDriver(BadExecutor())
-    sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
-
+    main( BadExecutor )
