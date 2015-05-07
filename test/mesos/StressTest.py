@@ -6,7 +6,7 @@ from optparse import OptionParser
 
 class LongTest(Target):
     def __init__(self, x):
-        Target.__init__(self, time=1, memory=100000, cpu=0.1)
+        Target.__init__(self, time=1, memory=100000, cpu=0.01)
         self.x = x
 
     def run(self):
@@ -18,10 +18,11 @@ class LongTest(Target):
 class HelloWorld(Target):
 
     def __init__(self,i):
-        Target.__init__(self, time=1, memory=100000, cpu=0.5)
+        Target.__init__(self, time=1, memory=100000, cpu=0.01)
         self.i=i
 
     def run(self):
+        raise RuntimeError()
         with open ('hello_world_child{}.txt'.format(self.i), 'w') as file:
             file.write('This is a triumph')
         self.setFollowOnTarget(HelloWorldFollow(self.i))
@@ -30,7 +31,7 @@ class HelloWorld(Target):
 class LongTestFollow(Target):
 
     def __init__(self):
-        Target.__init__(self, time=1, memory=1000000, cpu=1)
+        Target.__init__(self, time=1, memory=1000000, cpu=0.01)
 
     def run(self):
         pass
@@ -39,7 +40,7 @@ class LongTestFollow(Target):
 class HelloWorldFollow(Target):
 
     def __init__(self,i):
-        Target.__init__(self, time=1, memory=200000, cpu=0.5)
+        Target.__init__(self, time=1, memory=200000, cpu=0.01)
         self.i = i
 
     def run(self):
@@ -47,8 +48,9 @@ class HelloWorldFollow(Target):
             file.write('This is a triumph')
 
 def main(tasks):
-    sys.argv.append("--batchSystem=badmesos")
-    sys.argv.append("--retryCount=4")
+    sys.argv.append("--batchSystem=mesos")
+    sys.argv.append("--retryCount=3")
+    sys.argv.append("--logDebug")
 
     targetsToLaunch=tasks/2
     # Boilerplate -- startJobTree requires options

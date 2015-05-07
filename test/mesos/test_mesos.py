@@ -69,9 +69,8 @@ class TestMesos(JobTreeTest):
 
     def test_hello_world(self):
         dir = os.path.abspath(os.path.dirname(__file__))
-        subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos".format(dir), shell=True)
+        subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
         self.assertTrue(os.path.isfile("./bar_bam.txt"))
-        #self.assertTrue(os.path.isfile("./hello_world_child.txt"))
 
     def test_class_script(self):
         dir = os.path.abspath(os.path.dirname(__file__))
@@ -82,7 +81,7 @@ class TestMesos(JobTreeTest):
     def test_stress(self):
         """
         set task number to number of files you wish to create. Actual number of tasks is tasks+2
-        Right now task is set to fail 1/10 tries. To change this, check code in badExecutor
+        Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
         """
         tasks=10
         stressMain(tasks=tasks)
