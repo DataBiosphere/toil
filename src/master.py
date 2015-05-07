@@ -96,12 +96,12 @@ class JobBatcher:
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.workerPath, \
+        jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.workerPath,
                                             self.rootPath, self.jobStoreString, jobStoreID)
         jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
-        logger.debug("Issued job with job store ID: %s and job batch system ID: \
-        %s and cpus: %i and memory: %i" % \
+        logger.debug("Issued job with job store ID: %s and job batch system ID: "
+                     "%s and cpus: %i and memory: %i" %
                      (jobStoreID, str(jobBatchSystemID), cpu, memory))
 
     def issueJobs(self, jobs):
@@ -341,16 +341,17 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
             jobBatchSystemID, result = updatedJob
             if jobBatcher.hasJob(jobBatchSystemID):
                 if result == 0:
-                    logger.debug("Batch system is reporting that the job with \
-                    batch system ID: %s ended successfully" % jobBatcher.getJob(jobBatchSystemID))
+                    logger.debug("Batch system is reporting that the job with "
+                                 "batch system ID: %s and job store ID: %s ended successfully" %
+                                 (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
                 else:
-                    logger.critical("Batch system is reporting that the job with \
-                    batch system ID: %s and job store ID: %s failed with exit value %i" % \
+                    logger.critical("Batch system is reporting that the job with "
+                                    "batch system ID: %s and job store ID: %s failed with exit value %i" %
                     (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
                 jobBatcher.processFinishedJob(jobBatchSystemID, result)
             else:
-                logger.critical("A result seems to already have been processed \
-                for job with batch system ID: %i" % jobBatchSystemID)
+                logger.critical("A result seems to already have been processed "
+                                "for job with batch system ID: %i" % jobBatchSystemID)
         else:
             if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only 
                 #rescue jobs every N seconds, and when we have apparently exhausted the current job supply
