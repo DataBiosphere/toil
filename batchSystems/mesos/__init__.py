@@ -87,10 +87,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
         job_type = job.resources
 
-        log.debug("Queuing the job command: %s with job id: %s" % (command, str(jobID)))
+        log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
         self.jobQueueDict[job_type].put(job)
+        log.debug("... done.")
 
-        log.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
 
     def killJobs(self, jobIDs):
