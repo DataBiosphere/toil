@@ -16,12 +16,11 @@ from boto.s3.bucket import Bucket
 from boto.s3.connection import S3Connection
 # noinspection PyUnresolvedReferences
 from boto.sdb.connection import SDBConnection
-
+from boto.sdb.item import Item
 import boto.s3
 from boto.exception import SDBResponseError, S3ResponseError
 import itertools
 import time
-import errno
 
 from jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from src.job import Job
@@ -76,29 +75,30 @@ class AWSJobStore( AbstractJobStore ):
         job = Job.create( jobStoreID=jobStoreID,
                           command=command, memory=memory, cpu=cpu,
                           tryCount=self._defaultTryCount( ), logJobStoreFileID=None )
-        # The root job is its own parent. This avoids having to represent None in the database.
         assert self.jobs.put_attributes( item_name=jobStoreID,
-                                         attributes=self._jobToItem( job=job,
-                                                                     parentJobStoreID=jobStoreID ) )
+                                         attributes=self._jobToItem( job ) )
         return job
 
     def exists( self, jobStoreID ):
         return bool( self.jobs.get_attributes( item_name=jobStoreID,
-                                               attribute_name='parentJobStoreID',
+                                               attribute_name=[],
                                                consistent_read=True ) )
 
+    def _addChild( self, job, child ):
+        job.children.append( ( child.jobStoreID, ) + child.followOnCommands[ 0 ][ 1:-1 ] )
+
     def load( self, jobStoreID ):
+        # TODO: consider retrieving the parent as part of the select that retrieves the children
         item = self.jobs.get_attributes( item_name=jobStoreID,
                                          consistent_read=True )
         job = self._itemToJob( item, jobStoreID )
         # TODO: check if mentioning individual attributes is faster than using *
         children = self.jobs.select(
-            query="select * from `%s` where parentJobStoreId = '%s'" % (
-            self.jobs.name, jobStoreID ),
+            query="select * from `%s` where parentJobStoreID = '%s'" % (
+                self.jobs.name, jobStoreID ),
             consistent_read=True )
         for child in children:
-            child = ( child.name, ) + literal_eval( child[ 'followOnCommands' ][ 0 ] )[ 1: ]
-            job.children.append( child )
+            self._addChild( job, self._itemToJob( child ) )
         return job
 
     def store( self, job ):
@@ -131,24 +131,26 @@ class AWSJobStore( AbstractJobStore ):
 
     def loadJobTreeState( self ):
         jobs = { }
-        for item in self.jobs.select( 'select * from %s' % self.jobs.name ):
-            jobStoreID = item.name
-            parentJobStoreID = item.pop( 'parentJobStoreID' )
-            job = Job( jobStoreID=jobStoreID, **item )
-            jobs[ jobStoreID ] = ( job, parentJobStoreID )
+        for item in self.jobs.select( query='select * from `%s`' % self.jobs.name,
+                                      consistent_read=True ):
+            parentJobStoreID = item.get( 'parentJobStoreID', None )
+            job = self._itemToJob( item )
+            jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
         state = JobTreeState( )
         if jobs:
             state.started = True
             state.childCounts = defaultdict( int )
             for job, parentJobStoreID in jobs.itervalues( ):
-                if job.jobStoreID != parentJobStoreID:
+                if parentJobStoreID is not None:
+                    parent = jobs[ parentJobStoreID ][0]
+                    self._addChild( parent, job )
                     if not job.children:
                         if job.followOnCommands:
                             state.updatedJobs.add( job )
                         else:
                             state.shellJobs.add( job )
                     state.childCounts[ parentJobStoreID ] += 1
-                    state.childJobStoreIdToParentJob[ job.jobStoreID ] = jobs[ parentJobStoreID ]
+                    state.childJobStoreIdToParentJob[ job.jobStoreID ] = parent
             state.childCounts.default_factory = None
         return state
 
@@ -307,8 +309,14 @@ class AWSJobStore( AbstractJobStore ):
         return str( uuid.uuid4( ) )
 
     def _itemToJob( self, item, jobStoreID=None ):
+        """
+        :type item: Item
+        """
         if jobStoreID is None: jobStoreID = item.name
-        del item[ 'parentJobStoreID' ]
+        try:
+            del item[ 'parentJobStoreID' ]
+        except KeyError:
+            pass
 
         def singleton( v ):
             return [ v ] if isinstance( v, basestring ) else v
@@ -323,12 +331,13 @@ class AWSJobStore( AbstractJobStore ):
         job = Job( jobStoreID=jobStoreID, **item )
         return job
 
-    def _jobToItem( self, job, parentJobStoreID ):
+    def _jobToItem( self, job, parentJobStoreID=None ):
         item = job.toDict( )
         del item[ 'jobStoreID' ]
         item[ 'followOnCommands' ] = map( repr, item[ 'followOnCommands' ] )
         item = { k: v for k, v in item.iteritems( ) if v is not None }
-        item[ 'parentJobStoreID' ] = parentJobStoreID
+        if parentJobStoreID is not None:
+            item[ 'parentJobStoreID' ] = parentJobStoreID
         return item
 
     # A dummy job ID under which all shared files are stored.
@@ -382,10 +391,10 @@ class AWSJobStore( AbstractJobStore ):
         key = self.files.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
-        try:
-            def reader( ):
-                try:
-                    with os.fdopen( readable_fh, 'r' ) as readable:
+        with os.fdopen( readable_fh, 'r' ) as readable:
+            with os.fdopen( writable_fh, 'w' ) as writable:
+                def reader( ):
+                    try:
                         upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
                         try:
                             for part_num in itertools.count( ):
@@ -401,19 +410,18 @@ class AWSJobStore( AbstractJobStore ):
                             raise
                         else:
                             key.version_id = upload.complete_upload( ).version_id
-                except BaseException:
-                    logger.exception( 'Exception in reader thread' )
+                    except BaseException:
+                        logger.exception( 'Exception in reader thread' )
 
-            thread = Thread( target=reader )
-            with os.fdopen( writable_fh, 'w' ) as writable:
+                thread = Thread( target=reader )
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
                 yield writable, key
+            # The writable is now closed. This will send EOF to the readable and cause that
+            # thread to finish.
             thread.join( )
-        finally:
-            self.__try_close( readable_fh, writable_fh )
-        assert key.version_id is not None
+            assert key.version_id is not None
 
     def _download( self, jobStoreFileID, localFilePath, version ):
         key = self.files.get_key( jobStoreFileID, validate=False )
@@ -511,16 +519,6 @@ class AWSJobStore( AbstractJobStore ):
         """
         status = bucket.get_versioning_status( )
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
-
-    def __try_close( self, *fhs ):
-        for fh in fhs:
-            try:
-                os.close( fh )
-            except OSError as e:
-                if e.errno == errno.EBADF:
-                    pass
-                else:
-                    raise
 
     # TODO: Move up
 

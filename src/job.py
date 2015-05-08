@@ -7,8 +7,8 @@ class Job( object ):
     """
     A class encapsulating state about a jobTree job including its child commands and follow-on commands.
 
-    Note that a parent Job instance does not store its children as instances of the Job class but uses 3-tuples of
-    the form (jobStoreId, memory, cpu) instead.
+    Note that a parent Job instance does not store its children as instances of the Job class but
+    uses 3-tuples of the form (jobStoreId, memory, cpu) instead.
     """
 
     @staticmethod
@@ -24,6 +24,7 @@ class Job( object ):
                   children=None, followOnCommands=None, messages=None, logJobStoreFileID=None ):
         self.remainingRetryCount = remainingRetryCount
         self.jobStoreID = jobStoreID
+        # TODO: Consider using a set for children
         self.children = children or [ ]
         self.followOnCommands = followOnCommands or [ ]
         self.messages = messages or [ ]
@@ -100,7 +101,14 @@ class Job( object ):
         return hash( self.jobStoreID )
 
     def __eq__( self, other ):
-        return isinstance( other, self.__class__ ) and self.__dict__ == other.__dict__
+        return (
+            isinstance( other, self.__class__ )
+            and self.remainingRetryCount == other.remainingRetryCount
+            and self.jobStoreID == other.jobStoreID
+            and set( self.children ) == set( other.children )
+            and self.followOnCommands == other.followOnCommands
+            and self.messages == other.messages
+            and self.logJobStoreFileID == other.logJobStoreFileID )
 
     def __ne__( self, other ):
         return not self.__eq__( other )

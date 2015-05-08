@@ -33,18 +33,43 @@ class AWSJobStoreTest( JobTreeTest ):
         super( AWSJobStoreTest, self ).tearDown( )
 
     def test( self ):
-        self.assertFalse( self.master.exists( "foo" ) )
-        job1 = self.master.createFirstJob( "command1", 12, 34 )
-        self.assertTrue( self.master.exists( job1.jobStoreID ) )
-        self.assertEquals( job1.followOnCommands, [ ('command1', 12, 34, 0) ] )
+        master = self.master
+        self.assertFalse( master.loadJobTreeState( ).started )
+        # Test negative case for exists()
+        self.assertFalse( master.exists( "foo" ) )
 
+        # Create parent job and verify its existence
+        job = master.createFirstJob( "command1", 12, 34 )
+        self.assertTrue( master.loadJobTreeState( ).started )
+        self.assertTrue( master.exists( job.jobStoreID ) )
+        self.assertEquals( job.followOnCommands, [ ('command1', 12, 34, 0) ] )
+
+        # Create a second instance of the job store class, like the one created by a worker ...
         worker = AWSJobStore( region=self.testRegion, namePrefix=self.namePrefix )
-        job2 = worker.load( job1.jobStoreID )
-        self.assertEquals( job1, job2 )
-        worker.addChildren( job2, [ ("command2", 23, 45), ("command3", 34, 56) ] )
+        self.assertTrue( worker.loadJobTreeState( ).started )
+        # ... and load the parent job there.
+        jobOnWorker = worker.load( job.jobStoreID )
+        self.assertEquals( job, jobOnWorker )
 
-        # shared files
-        with self.master.writeSharedFileStream( "foo" ) as f:
+        # Add two children
+        worker.addChildren( jobOnWorker, [ ("command2", 23, 45), ("command3", 34, 56) ] )
+        self.assertNotEquals( jobOnWorker, job )
+        self.assertEquals( len( jobOnWorker.children ), 2 )
+        # Reload parent job on master
+        job = master.load( job.jobStoreID )
+        self.assertEquals( jobOnWorker, job )
+
+        state = master.loadJobTreeState( )
+        self.assertTrue( state.started )
+        self.assertEquals( state.childCounts, { job.jobStoreID: 2 } )
+        self.assertEquals( len( state.childJobStoreIdToParentJob ), 2 )
+        for child in job.children:
+            self.assertEquals( state.childJobStoreIdToParentJob[child[0]], job )
+
+        # Test shared files
+        with master.writeSharedFileStream( "foo" ) as f:
             f.write( "bar" )
         with worker.readSharedFileStream( "foo" ) as f:
+            self.assertEquals( "bar", f.read( ) )
+        with master.readSharedFileStream( "foo" ) as f:
             self.assertEquals( "bar", f.read( ) )
