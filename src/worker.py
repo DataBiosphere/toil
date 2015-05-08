@@ -140,7 +140,7 @@ def main():
     #file descriptor 1, and standard error is file descriptor 2.
 
     #What file do we want to point FDs 1 and 2 to?    
-    tempWorkerLogFile = os.path.join(localWorkerTempDir, "worker_log.txt")
+    tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
     
     #Save the original stdout and stderr (by opening new file descriptors to the
     #same files)
@@ -148,13 +148,13 @@ def main():
     origStdErr = os.dup(2)
     
     #Open the file to send stdout/stderr to.
-    logDescriptor = os.open(tempWorkerLogFile, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+    logFh = os.open(tempWorkerLogPath, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
 
     #Replace standard output with a descriptor for the log file
-    os.dup2(logDescriptor, 1)
+    os.dup2(logFh, 1)
     
     #Replace standard error with a descriptor for the log file
-    os.dup2(logDescriptor, 2)
+    os.dup2(logFh, 2)
     
     #Since we only opened the file once, all the descriptors duped from the
     #original will share offset information, and won't clobber each others'
@@ -163,7 +163,7 @@ def main():
     #maybe there's something odd going on...
     
     #Close the descriptor we used to open the file
-    os.close(logDescriptor)
+    os.close(logFh)
     
     for handler in list(logger.handlers): #Remove old handlers
         logger.removeHandler(handler)
@@ -173,7 +173,7 @@ def main():
     logger.addHandler(logging.StreamHandler(sys.stderr))
 
     #Put a message at the top of the log, just to make sure it's working.
-    print "---JOBTREE SLAVE OUTPUT LOG---"
+    print "---JOBTREE WORKER OUTPUT LOG---"
     sys.stdout.flush()
     
     #Log the number of open file descriptors so we can tell if we're leaking
@@ -370,9 +370,9 @@ def main():
     
     #Copy back the log file to the global dir, if needed
     if workerFailed:
-        truncateFile(tempWorkerLogFile)
-        job.setLogFile(tempWorkerLogFile, jobStore)
-        os.remove(tempWorkerLogFile)
+        truncateFile(tempWorkerLogPath)
+        job.setLogFile(tempWorkerLogPath, jobStore)
+        os.remove(tempWorkerLogPath)
         jobStore.store(job)
 
     #Remove the temp dir

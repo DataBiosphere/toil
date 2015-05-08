@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import sys
+import itertools
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
@@ -27,9 +28,10 @@ log = logging.getLogger( __name__ )
 
 class BadExecutor(JobTreeMesosExecutor):
 
+    i = itertools.count()
+
     def _callCommand(self, command):
-        ran = random.randint(1, 10)
-        if ran < 5:
+        if self.i.next() % 2 == 0:
             result = super(BadExecutor, self)._callCommand(command)
             if result != 0:
                 log.debug("Command {} failed with {}".format(command,result))

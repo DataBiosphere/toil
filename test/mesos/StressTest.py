@@ -6,6 +6,10 @@ from jobTree.src.target import Target
 from jobTree.src.stack import Stack
 
 
+def touchFile( name, i='' ):
+    with open( 'hello_world_{}_{}.txt'.format( name, i ), 'w' ) as f:
+        f.write( 'This is a triumph' )
+
 class LongTestTarget(Target):
     def __init__(self, numTargets):
         Target.__init__(self, time=1, memory=100000, cpu=0.01)
@@ -23,7 +27,7 @@ class LongTestFollowOn(Target):
         Target.__init__(self, time=1, memory=1000000, cpu=0.01)
 
     def run(self):
-        pass
+        touchFile( 'parentFollowOn' )
 
 
 class HelloWorldTarget(Target):
@@ -32,9 +36,9 @@ class HelloWorldTarget(Target):
         Target.__init__(self, time=1, memory=100000, cpu=0.01)
         self.i=i
 
+
     def run(self):
-        with open ('hello_world_child{}.txt'.format(self.i), 'w') as f:
-            f.write('This is a triumph')
+        touchFile( 'child', self.i )
         self.setFollowOnTarget(HelloWorldFollowOn(self.i))
 
 
@@ -45,12 +49,11 @@ class HelloWorldFollowOn(Target):
         self.i = i
 
     def run(self):
-        with open ('hello_world_follow{}.txt'.format(self.i), 'w') as f:
-            f.write('This is a triumph')
+        touchFile( 'followOn', self.i )
 
 def main(numTargets, useBadExecutor=False):
     args = list( sys.argv )
-    args .append("--batchSystem=%s" % 'badmesos' if useBadExecutor else 'mesos')
+    args .append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
     args .append("--retryCount=3")
     args .append("--logDebug")
     # Needed on some installations of Mesos (like Hannes' MBP)

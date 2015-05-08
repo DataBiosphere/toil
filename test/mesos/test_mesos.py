@@ -4,98 +4,108 @@ import unittest
 import os
 import subprocess
 import threading
+import sys
 
 from jobTree.test.mesos.ResumeTest import run as testRun
 from jobTree.test.mesos.StressTest import main as stressMain
 from jobTree.test import JobTreeTest
 
 
-class TestMesos(JobTreeTest):
+class TestMesos( JobTreeTest ):
 
-    class MesosMasterThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
+    class MesosMasterThread( threading.Thread ):
+        def __init__( self ):
+            threading.Thread.__init__( self )
             self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1", shell=True)
             # FIXME: add blocking wait
 
-    class MesosSlaveThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
+    class MesosSlaveThread( threading.Thread ):
+        def __init__( self ):
+            threading.Thread.__init__( self )
             self.popen = None
 
-        def run(self):
+        def run( self ):
             self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050", shell=True)
             # FIXME: add blocking wait
 
-    master=MesosMasterThread()
-    slave=MesosSlaveThread()
+    master = MesosMasterThread( )
+    slave = MesosSlaveThread( )
 
     @classmethod
-    def setUpClass(cls):
-        super( TestMesos, cls).setUpClass()
+    def setUpClass( cls ):
+        super( TestMesos, cls ).setUpClass( )
         # FIXME: avoid daemon threads use join
-        cls.master.setDaemon(True)
-        cls.slave.setDaemon(True)
-        cls.master.start()
-        cls.slave.start()
+        cls.master.setDaemon( True )
+        cls.slave.setDaemon( True )
+        cls.master.start( )
+        cls.slave.start( )
 
     @classmethod
-    def tearDownClass(cls):
-        super( TestMesos, cls).tearDownClass()
-        cls.master.popen.kill()
-        cls.slave.popen.kill()
+    def tearDownClass( cls ):
+        super( TestMesos, cls ).tearDownClass( )
+        cls.master.popen.kill( )
+        cls.slave.popen.kill( )
         # FIMXE: join the threads
 
     @classmethod
-    def killSlave(cls):
+    def killSlave( cls ):
         pid = cls.slave.popen.pid
-        os.kill(pid, 9)
+        os.kill( pid, 9 )
 
     @classmethod
-    def startSlave(cls):
-        cls.slave.run()
+    def startSlave( cls ):
+        cls.slave.run( )
 
-    def setUp(self):
+    def setUp( self ):
         # subprocess.check_call("rm -rf /tmp/mesos/")
-        self.startDir=os.getcwd()
-        self.tempDir=tempfile.mkdtemp()
-        os.chdir(self.tempDir)
+        self.startDir = os.getcwd( )
+        self.tempDir = tempfile.mkdtemp( )
+        print "Using %s for files and directories created by this test run" % self.tempDir
+        os.chdir( self.tempDir )
 
-    def tearDown(self):
-        os.chdir(self.startDir)
-        shutil.rmtree(self.tempDir)
+    def tearDown( self ):
+        os.chdir( self.startDir )
+        # shutil.rmtree( self.tempDir )
 
-    def test_hello_world(self):
-        dir = os.path.abspath(os.path.dirname(__file__))
+    def test_hello_world( self ):
+        dir = os.path.abspath( os.path.dirname( __file__ ) )
         subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
-        self.assertTrue(os.path.isfile("./bar_bam.txt"))
+        self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
-    def test_class_script(self):
-        dir = os.path.abspath(os.path.dirname(__file__))
+    def test_class_script( self ):
+        dir = os.path.abspath( os.path.dirname( __file__ ) )
         subprocess.check_call("python {}/LongTest.py --batchSystem=mesos".format(dir), shell=True)
-        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
-        self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
+        self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
+        self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )
 
-    def test_stress(self):
+    def __do_test_stress( self, useBadExecutor ):
         """
         Set task number to number of files you wish to create. Actual number of targets is targets+2
         Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
         """
-        numTargets=5
-        stressMain(numTargets,useBadExecutor=True)
-        for i in range (0,numTargets):
-            self.assertTrue(os.path.isfile("./hello_world_child{}.txt".format(i)), "actual files: {}".format(os.listdir(".")))
-            self.assertTrue(os.path.isfile("./hello_world_follow{}.txt".format(i)),  "actual files: {}".format(os.listdir(".")))
+        numTargets = 2
+        stressMain( numTargets, useBadExecutor=useBadExecutor )
+        for i in range( 0, numTargets ):
+            self.assertTrue( os.path.isfile( "./hello_world_child_{}.txt".format( i ) ),
+                             "actual files: {}".format( os.listdir( "." ) ) )
+            self.assertTrue( os.path.isfile( "./hello_world_followOn_{}.txt".format( i ) ),
+                             "actual files: {}".format( os.listdir( "." ) ) )
+
+    def test_stress_good( self ):
+        self.__do_test_stress( False )
+
+    def test_stress_bad( self ):
+        self.__do_test_stress( True )
 
     @unittest.skip
-    def test_resume(self):
-        mainT = threading.Thread(target=testRun,args=(3,))
-        mainT.start()
-        #This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
+    def test_resume( self ):
+        mainT = threading.Thread( target=testRun, args=(3,) )
+        mainT.start( )
+        # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
         print "killing"
-        TestMesos.killSlave()
+        TestMesos.killSlave( )
         print "killed"
-        TestMesos.startSlave()
-        mainT.join()
-        self.assertTrue(os.path.isfile("./hello_world_child2.txt"))
-        self.assertTrue(os.path.isfile("./hello_world_follow.txt"))
+        TestMesos.startSlave( )
+        mainT.join( )
+        self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
+        self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )
