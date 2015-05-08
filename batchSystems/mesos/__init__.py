@@ -32,7 +32,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # dictionary of queues, which jobTree assigns jobs to. Each queue represents a job type,
         # defined by resource usage
         # FIXME: Are dictionaries thread safe?
-        self.jobQueueDict = defaultdict(Queue)
+        self.jobQueueList = defaultdict(list)
 
         # ip of mesos master. specified in MesosBatchSystem, currently loopback
         self.masterIP="127.0.0.1:5050"
@@ -87,9 +87,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
         job_type = job.resources
 
-        log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
-        self.jobQueueDict[job_type].put(job)
-        log.debug("... done.")
+        log.debug("Queuing the job command: %s with job id: %s" % (command, str(jobID)))
+        self.jobQueueList[job_type].append(job)
 
         return jobID
 
@@ -119,9 +118,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         # TODO: Ensure jobList holds jobs that have been "launched" from mesos
         jobList = []
-        for queue in self.jobQueueDict:
-            jobList.append(list(queue))
-
+        for k, queue in self.jobQueueList.iteritems():
+            for item in queue:
+                jobList.append(item.jobID)
         for k,v in self.runningJobMap.iteritems():
             jobList.append(k)
 
@@ -280,7 +279,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         Invoked when resources have been offered to this framework.
         """
-        job_types = list(self.jobQueueDict.keys())
+        job_types = list(self.jobQueueList.keys())
         # sorts from largest to smallest cpu usage
         # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
         job_types.sort(key=lambda resourceRequirement: ResourceRequirement.ResourceRequirement.cpu)
@@ -312,11 +311,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             remainingMem = offerMem
 
             for job_type in job_types:
-                while (not self.jobQueueDict[job_type].empty()) and \
+                while  len(self.jobQueueList[job_type]) !=  0  and \
                                 remainingCpus >= job_type.cpu and \
                                 remainingMem >= self.__bytesToMB(job_type.memory): # job tree specifies mem in bytes.
 
-                    jt_job = self.jobQueueDict[job_type].get()
+                    jt_job = self._getFromList(self.jobQueueList[job_type])
                     self.runningJobMap[jt_job.jobID] = time.time()
                     task = self.createTask(jt_job, offer)
 
@@ -337,6 +336,12 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             driver.launchTasks(offer.id, tasks)
             if len(tasks) == 0:
                 log.critical("Offer not large enough to run any tasks")
+
+    def _getFromList(self, list):
+        # mimics Queue.get method. Gets first item in list and removes it. 
+        result = list[0]
+        list.remove(result)
+        return result
 
     def createTask(self, jt_job, offer):
         """
