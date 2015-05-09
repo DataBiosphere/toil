@@ -22,7 +22,8 @@ from boto.exception import SDBResponseError, S3ResponseError
 import itertools
 import time
 
-from jobStores.abstractJobStore import AbstractJobStore, JobTreeState
+from jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
+    ConcurrentFileModificationException, NoSuchFileException
 from src.job import Job
 
 logger = logging.getLogger( __name__ )
@@ -33,6 +34,9 @@ logger = logging.getLogger( __name__ )
 # other attributes in the item
 
 # FIXME: enforce SimpleDB limits early
+
+
+
 
 class AWSJobStore( AbstractJobStore ):
     """
@@ -54,7 +58,7 @@ class AWSJobStore( AbstractJobStore ):
         self.region = region
         self.namePrefix = namePrefix
         self.jobs = None
-        self.fileVersions = None
+        self.versions = None
         self.files = None
         self.stats = None
         self.db = self._connectSimpleDB( )
@@ -62,7 +66,7 @@ class AWSJobStore( AbstractJobStore ):
         create = config is not None
         try:
             self.jobs = self._getOrCreateDomain( 'jobs', create )
-            self.fileVersions = self._getOrCreateDomain( 'fileVersions', create )
+            self.versions = self._getOrCreateDomain( 'versions', create )
             self.files = self._getOrCreateBucket( 'files', create, versioning=True )
             self.stats = self._getOrCreateBucket( 'stats', create )
             super( AWSJobStore, self ).__init__( config=config )
@@ -81,7 +85,7 @@ class AWSJobStore( AbstractJobStore ):
 
     def exists( self, jobStoreID ):
         return bool( self.jobs.get_attributes( item_name=jobStoreID,
-                                               attribute_name=[],
+                                               attribute_name=[ ],
                                                consistent_read=True ) )
 
     def _addChild( self, job, child ):
@@ -91,7 +95,9 @@ class AWSJobStore( AbstractJobStore ):
         # TODO: consider retrieving the parent as part of the select that retrieves the children
         item = self.jobs.get_attributes( item_name=jobStoreID,
                                          consistent_read=True )
-        job = self._itemToJob( item, jobStoreID )
+        if not item:
+            raise NoSuchJobException( jobStoreID )
+        job = self._itemToJob( item )
         # TODO: check if mentioning individual attributes is faster than using *
         children = self.jobs.select(
             query="select * from `%s` where parentJobStoreID = '%s'" % (
@@ -103,7 +109,7 @@ class AWSJobStore( AbstractJobStore ):
 
     def store( self, job ):
         assert self.jobs.put_attributes( item_name=job.jobStoreID,
-                                         attributes=job.toDict( ) )
+                                         attributes=self._jobToItem( job ) )
 
     def addChildren( self, job, childCommands ):
         # The elements of childCommands are tuples (command, memory, cpu). The astute reader will
@@ -124,10 +130,14 @@ class AWSJobStore( AbstractJobStore ):
 
     def delete( self, job ):
         self.jobs.delete_attributes( item_name=job.jobStoreID )
-        query = 'select itemName() where jobStoreID = %s' % job.jobStoreID
-        # probably safer to eagerly consume the returned generator before deleting
-        items = dict( (item.name, None) for item in self.fileVersions.select( query ) )
-        self.fileVersions.batch_delete_attributes( items )
+        items = list( self.versions.select(
+            "select * from `%s` where jobStoreID='%s'" % ( self.versions.name, job.jobStoreID ),
+            consistent_read=True ) )
+        if items:
+            self.versions.batch_delete_attributes( { item.name: None for item in items } )
+            for item in items:
+                self.files.delete_key( key_name=item.name,
+                                       version_id=item[ 'version' ] )
 
     def loadJobTreeState( self ):
         jobs = { }
@@ -142,7 +152,7 @@ class AWSJobStore( AbstractJobStore ):
             state.childCounts = defaultdict( int )
             for job, parentJobStoreID in jobs.itervalues( ):
                 if parentJobStoreID is not None:
-                    parent = jobs[ parentJobStoreID ][0]
+                    parent = jobs[ parentJobStoreID ][ 0 ]
                     self._addChild( parent, job )
                     if not job.children:
                         if job.followOnCommands:
@@ -178,44 +188,48 @@ class AWSJobStore( AbstractJobStore ):
         self._postWrite( jobStoreFileID, str( self.sharedFileJobID ), version )
 
     def updateFile( self, jobStoreFileID, localFilePath ):
-        oldVersion = self.__getFileVersion( jobStoreFileID )
+        oldVersion = self._getFileVersion( jobStoreFileID )
         newVersion = self._upload( jobStoreFileID, localFilePath )
-        self._postUpdate( jobStoreFileID, oldVersion, newVersion )
+        self._postUpdate( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
 
     @contextmanager
     def updateFileStream( self, jobStoreFileID ):
-        oldVersion = self.__getFileVersion( jobStoreFileID )
+        oldVersion = self._getFileVersion( jobStoreFileID )
         with self._uploadStream( jobStoreFileID ) as ( writable, key ):
             yield writable
         newVersion = key.version_id
-        self._postUpdate( jobStoreFileID, oldVersion, newVersion )
+        self._postUpdate( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
 
     def readFile( self, jobStoreFileID, localFilePath ):
-        version = self.__getFileVersion( jobStoreFileID )
+        version = self._getFileVersion( jobStoreFileID )
+        if version is None: raise NoSuchFileException( jobStoreFileID )
         self._download( jobStoreFileID, localFilePath, version )
 
     @contextmanager
     def readFileStream( self, jobStoreFileID ):
-        version = self.__getFileVersion( jobStoreFileID )
+        version = self._getFileVersion( jobStoreFileID )
+        if version is None: raise NoSuchFileException( jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version ) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream( self, sharedFileName ):
         jobStoreFileID = self._newFileID( sharedFileName )
-        version = self.__getFileVersion( jobStoreFileID )
+        version = self._getFileVersion( jobStoreFileID )
+        if version is None: raise NoSuchFileException( jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version ) as readable:
             yield readable
 
     def deleteFile( self, jobStoreFileID ):
-        version = self.__getFileVersion( jobStoreFileID )
-        self.fileVersions.delete_attributes( jobStoreFileID,
-                                             expected_values=[ 'version', version ] )
-        self.files.delete_key( jobStoreFileID, version_id=version )
-        assert self.files.get_key( jobStoreFileID ) is None
+        version = self._getFileVersion( jobStoreFileID )
+        self.versions.delete_attributes( jobStoreFileID,
+                                         expected_values=[ 'version', version ] )
+        self.files.delete_key( key_name=jobStoreFileID, version_id=version )
 
     def getEmptyFileStoreID( self, jobStoreID ):
-        return self._newFileID( )
+        jobStoreFileId = self._newFileID( )
+        self._registerFile( jobStoreFileId, jobStoreID=jobStoreID )
+        return jobStoreFileId
 
     def writeStats( self, statsString ):
         raise NotImplementedError( )
@@ -303,6 +317,7 @@ class AWSJobStore( AbstractJobStore ):
                 return self.db.get_domain( domain_name )
             except SDBResponseError as e:
                 if e.error_code == 'NoSuchDomain':
+                    logger.warn( "Creation of '%s' still pending, retrying in 5s" % domain_name )
                     time.sleep( 5 )
 
     def _newJobID( self ):
@@ -349,20 +364,20 @@ class AWSJobStore( AbstractJobStore ):
         else:
             return str( uuid.uuid5( self.sharedFileJobID, sharedFileName ) )
 
-    def __getFileVersion( self, jobStoreFileID ):
-        result = self.fileVersions.get_attributes( item_name=jobStoreFileID,
-                                                   attribute_name='version',
-                                                   consistent_read=True )
-        return result[ 'version' ]
+    def _getFileVersion( self, jobStoreFileID ):
+        item = self.versions.get_attributes( item_name=jobStoreFileID,
+                                             attribute_name='version',
+                                             consistent_read=True )
+        return item.get( 'version', None )
 
     _s3_part_size = 50 * 1024 * 1024
 
     def _upload( self, jobStoreFileID, localFilePath ):
         file_size, file_time = self._fileSizeAndTime( localFilePath )
         if file_size <= self._s3_part_size:
-            key = self.files.new_key( )
+            key = self.files.new_key( key_name=jobStoreFileID )
             key.name = jobStoreFileID
-            key.set_contents_from_file( localFilePath )
+            key.set_contents_from_filename( localFilePath )
             version = key.version_id
         else:
             with open( localFilePath, 'rb' ) as f:
@@ -405,12 +420,12 @@ class AWSJobStore( AbstractJobStore ):
                                                               # S3 part numbers are 1-based
                                                               part_num=part_num + 1 )
                                 if len( buf ) == 0: break
-                        except BaseException:
+                        except:
                             upload.cancel_upload( )
                             raise
                         else:
                             key.version_id = upload.complete_upload( ).version_id
-                    except BaseException:
+                    except:
                         logger.exception( 'Exception in reader thread' )
 
                 thread = Thread( target=reader )
@@ -446,56 +461,50 @@ class AWSJobStore( AbstractJobStore ):
                 yield readable
                 thread.join( )
 
-    class ConcurrentFileModificationException( Exception ):
-        def __init__( self, jobStoreFileID ):
-            super( AWSJobStore.ConcurrentFileModificationException, self ).__init__(
-                'Concurrent update to file %s detected.' % jobStoreFileID )
-
     def _postUpdate( self, jobStoreFileID, newVersion, oldVersion ):
-        if self._registerFileVersion( jobStoreFileID,
-                                      newVersion=newVersion,
-                                      oldVersion=oldVersion ):
-            self.files.delete_key( jobStoreFileID, version_id=oldVersion )
-        else:
-            raise self.ConcurrentFileModificationException( jobStoreFileID )
+        self._registerFile( jobStoreFileID, newVersion=newVersion, oldVersion=oldVersion )
+        self.files.delete_key( jobStoreFileID, version_id=oldVersion )
 
     def _postWrite( self, jobStoreFileID, jobStoreID, version ):
-        if not self._registerFileVersion( jobStoreFileID,
-                                          newVersion=version,
-                                          jobStoreID=jobStoreID ):
-            raise self.ConcurrentFileModificationException( jobStoreFileID )
+        self._registerFile( jobStoreFileID, newVersion=version, jobStoreID=jobStoreID )
 
-    def _registerFileVersion( self, jobStoreFileID, newVersion, jobStoreID=None, oldVersion=None ):
+    def _registerFile( self, jobStoreFileID,
+                       newVersion=None, jobStoreID=None, oldVersion=None ):
         """
-        Register a new version for a file in the store
+        Register a a file in the store. Register a
 
-        :param jobStoreFileID: the file's ID
-        :param newVersion: the file's new version
-        :param jobStoreID: the ID of the job owning the file
-        :param oldVersion: the previous version of the file or None if this is the first version
+        :param jobStoreFileID: the file's ID, mandatory
 
-        :return: True if the operation was successful, False if there already is a version (
-        oldVersion is None) or if the existing verison is not oldVersion (oldVersion is not
-        None). Other errors should raise an exception.
+        :param newVersion: the file's new version or None if the file is to be registered without
+                           content, in which case jobStoreId must be passed
+
+        :param jobStoreID: the ID of the job owning the file, only allowed for first version of
+                           file or when file is registered without content
+
+        :param oldVersion: the expected previous version of the file or None if newVersion is the
+                           first version or file is registered without content
+
         """
-        if oldVersion is None: assert jobStoreID is not None
-        assert newVersion is not None
-        attributes = dict( version=newVersion )
+        # Must pass either jobStoreID or newVersion, or both
+        assert jobStoreID is not None or newVersion is not None
+        # Must pass newVersion if passing oldVersion
+        assert oldVersion is None or newVersion is not None
+        attributes = { }
+        if newVersion is not None:
+            attributes[ 'version' ] = newVersion
         if jobStoreID is not None:
             attributes[ 'jobStoreID' ] = jobStoreID
         # False stands for absence
         expected = [ 'version', False if oldVersion is None else oldVersion ]
         try:
-            assert self.fileVersions.put_attributes( item_name=jobStoreFileID,
-                                                     attributes=attributes,
-                                                     expected_value=expected )
+            assert self.versions.put_attributes( item_name=jobStoreFileID,
+                                                 attributes=attributes,
+                                                 expected_value=expected )
         except SDBResponseError as e:
             if e.error_code == 'ConditionalCheckFailed':
-                return False
+                raise ConcurrentFileModificationException( jobStoreFileID )
             else:
                 raise
-        else:
-            return True
 
     def _fileSizeAndTime( self, localFilePath ):
         file_stat = os.stat( localFilePath )
@@ -533,5 +542,5 @@ class AWSJobStore( AbstractJobStore ):
                 for key in list( bucket.list( ) ):
                     key.delete( )
             bucket.delete( )
-        for domain in ( self.fileVersions, self.jobs ):
+        for domain in ( self.versions, self.jobs ):
             domain.delete( )

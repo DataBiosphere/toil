@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from contextlib import closing
 import re
 import xml.etree.cElementTree as ET
 
@@ -21,6 +20,20 @@ class JobTreeState( object ):
         # Jobs that have no children or follow-on commands
         self.shellJobs = set( )
 
+
+class NoSuchJobException( Exception ):
+    def __init__( self, jobStoreID ):
+        super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
+
+
+class ConcurrentFileModificationException( Exception ):
+    def __init__( self, jobStoreFileID ):
+        super( ConcurrentFileModificationException, self ).__init__(
+            'Concurrent update to file %s detected.' % jobStoreFileID )
+
+class NoSuchFileException( Exception ):
+    def __init__( self, fileJobStoreID ):
+        super( NoSuchFileException, self ).__init__( "The file '%s' does not exist" % fileJobStoreID )
 
 class AbstractJobStore( object ):
     """ 
@@ -81,6 +94,8 @@ class AbstractJobStore( object ):
         Loads a job for the given jobStoreID and returns it.
 
         :rtype : src.job.Job
+
+        :raises: NoSuchJobException if there is no job with the given jobStoreID
         """
         raise NotImplementedError( )
 
@@ -105,6 +120,9 @@ class AbstractJobStore( object ):
         """
         Removes from store atomically, can not then subsequently call load(), write(), update(),
         etc. with the job.
+
+        This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
+        will succeed silently.
         """
         raise NotImplementedError( )
 
@@ -134,6 +152,9 @@ class AbstractJobStore( object ):
         """
         Replaces the existing version of a file in the jobStore. Throws an exception if the file
         does not exist.
+
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
+        an invocation of this method
         """
         raise NotImplementedError( )
 
@@ -167,6 +188,9 @@ class AbstractJobStore( object ):
         """
         Similar to updateFile, but returns a context manager yielding a file handle which can be
         written to. The yielded file handle does not need to and should not be closed explicitly.
+
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
+        an invocation of this method
         """
         raise NotImplementedError( )
 
@@ -198,6 +222,9 @@ class AbstractJobStore( object ):
 
         :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
         the physical storage represented by this job store
+
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
+        an invocation of this method
         """
         raise NotImplementedError( )
 
@@ -206,8 +233,7 @@ class AbstractJobStore( object ):
         """
         Returns a readable file handle to the global file referenced by the given ID.
         """
-        raise NotImplementedError()
-
+        raise NotImplementedError( )
 
     @abstractmethod
     def writeStats( self, statsString ):
