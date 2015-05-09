@@ -268,11 +268,16 @@ class FileJobStore(AbstractJobStore):
             return dirName
         if number > filesPerDir:
             if number % filesPerDir != 0:
-                return reduce(lambda x,y:x+y, [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) \
-        for i in range(filesPerDir-1) ], self._createTempDirectories(fn(0), (number % filesPerDir) + number/filesPerDir, filesPerDir)) 
+                return reduce(
+                    lambda x,y:x+y,
+                    [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir)
+                        for i in range(filesPerDir-1) ],
+                    self._createTempDirectories(fn(0), (number % filesPerDir) + number/filesPerDir, filesPerDir))
             else:
-                return reduce(lambda x,y:x+y, [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) \
-                                               for i in range(filesPerDir) ], []) 
+                return reduce(
+                    lambda x,y:x+y,
+                    [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) for i in range(filesPerDir) ],
+                    [])
         else:
             return [ fn(i) for i in xrange(number) ]
     
