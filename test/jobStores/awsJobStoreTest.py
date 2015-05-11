@@ -1,6 +1,9 @@
+from Queue import Queue
+import hashlib
 import logging
 import os
 import tempfile
+from threading import Thread
 import uuid
 from xml.etree.cElementTree import Element
 
@@ -30,6 +33,7 @@ class AWSJobStoreTest( JobTreeTest ):
         super( AWSJobStoreTest, self ).setUp( )
         self.namePrefix = str( uuid.uuid4( ) )
         config = self._dummyConfig( )
+        AWSJobStore._s3_part_size = 5 * 1024 * 1024
         self.master = AWSJobStore.create( "%s:%s" % (self.testRegion, self.namePrefix), config )
 
     def tearDown( self ):
@@ -38,24 +42,29 @@ class AWSJobStoreTest( JobTreeTest ):
 
     def test( self ):
         master = self.master
+
+        # Test initial state
+        #
         self.assertFalse( master.loadJobTreeState( ).started )
-        # Test negative case for exists()
         self.assertFalse( master.exists( "foo" ) )
 
         # Create parent job and verify its existence
+        #
         jobOnMaster = master.createFirstJob( "command1", 12, 34 )
         self.assertTrue( master.loadJobTreeState( ).started )
         self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
         self.assertEquals( jobOnMaster.followOnCommands, [ ('command1', 12, 34, 0) ] )
 
-        # Create a second instance of the job store class, simulating a worker ...
+        # Create a second instance of the job store, simulating a worker ...
+        #
         worker = AWSJobStore( region=self.testRegion, namePrefix=self.namePrefix )
         self.assertTrue( worker.loadJobTreeState( ).started )
         # ... and load the parent job there.
         jobOnWorker = worker.load( jobOnMaster.jobStoreID )
         self.assertEquals( jobOnMaster, jobOnWorker )
 
-        # Add two children
+        # Add two children on the worker
+        #
         childSpecs = { ("command2", 23, 45), ("command3", 34, 56) }
         worker.addChildren( jobOnWorker, childSpecs )
         self.assertNotEquals( jobOnWorker, jobOnMaster )
@@ -66,7 +75,8 @@ class AWSJobStoreTest( JobTreeTest ):
         # Load children
         childJobs = { worker.load( childCommand[ 0 ] ) for childCommand in jobOnMaster.children }
 
-        # Now load the job tree state, i.e. all jobs, indexed to jobTree's liking
+        # Now load the job tree state reflecting all jobs
+        #
         state = master.loadJobTreeState( )
         self.assertTrue( state.started )
         self.assertEquals( state.shellJobs, set( ) )
@@ -87,6 +97,8 @@ class AWSJobStoreTest( JobTreeTest ):
         # Make sure every child command is accounted for
         self.assertEquals( childSpecs, set( ) )
 
+        # Test changing and persisting job state
+        #
         for childJob in childJobs:
             childJob.messages.append( 'foo' )
             childJob.followOnCommands.append( ("command4", 45, 67, 0) )
@@ -99,6 +111,7 @@ class AWSJobStoreTest( JobTreeTest ):
             self.assertEquals( master.load( childJob.jobStoreID ), childJob )
 
         # Test job deletions
+        #
         for childJob in childJobs:
             master.delete( childJob )
         for childJob in childJobs:
@@ -109,6 +122,7 @@ class AWSJobStoreTest( JobTreeTest ):
             master.delete( childJob )
 
         # Test shared files: Write shared file on master, ...
+        #
         with master.writeSharedFileStream( "foo" ) as f:
             f.write( "bar" )
         # ... read that file on worker, ...
@@ -119,6 +133,7 @@ class AWSJobStoreTest( JobTreeTest ):
             self.assertEquals( "bar", f.read( ) )
 
         # Test per-job files: Create empty file on master, ...
+        #
         fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
         # ... write to the file on worker, ...
         with worker.updateFileStream( fileOne ) as f:
@@ -155,11 +170,11 @@ class AWSJobStoreTest( JobTreeTest ):
         # Delete a file explicitly but leave files for the implicit deletion through the parent
         worker.deleteFile( fileOne )
 
-        # Delete parent and its associated file
-        self.master.delete( jobOnMaster )
-        self.assertFalse( self.master.exists( jobOnMaster.jobStoreID ) )
-        # Files should be gone as well. NB: the fooStream() methods are context managers,
-        # hence the funny invocation.
+        # Delete parent and its associated files
+        #
+        master.delete( jobOnMaster )
+        self.assertFalse( master.exists( jobOnMaster.jobStoreID ) )
+        # Files should be gone as well. NB: the fooStream() methods return context managers
         self.assertRaises( NoSuchFileException, worker.readFileStream( fileTwo ).__enter__ )
         self.assertRaises( NoSuchFileException, worker.readFileStream( fileThree ).__enter__ )
 
@@ -167,6 +182,92 @@ class AWSJobStoreTest( JobTreeTest ):
 
         # TODO: Test stats methods
 
-        # TODO: Test big uploads and downloads
-
         # TODO: Make this a generic test and run against FileJobStore, too
+
+    def testMultipartUploads( self ):
+        # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
+        bufSize = 65536
+        partSize = AWSJobStore._s3_part_size
+        self.assertEquals( partSize % bufSize, 0 )
+        job = self.master.createFirstJob( "1", 2, 3 )
+
+        # Test file/stream ending on part boundary and within a part
+        #
+        for partsPerFile in ( 1, 2.33 ):
+            checksum = hashlib.md5( )
+            checksumQueue = Queue( 2 )
+
+            # FIXME: A separate thread is probably overkill here
+
+            def checksumThreadFn( ):
+                while True:
+                    buf = checksumQueue.get( )
+                    if buf is None: break
+                    checksum.update( buf )
+
+            # Multipart upload from stream
+            #
+            checksumThread = Thread( target=checksumThreadFn )
+            checksumThread.start( )
+            try:
+                with open( '/dev/random' ) as readable:
+                    with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
+                        for i in range( int( partSize * partsPerFile / bufSize ) ):
+                            buf = readable.read( bufSize )
+                            checksumQueue.put( buf )
+                            writable.write( buf )
+            finally:
+                checksumQueue.put( None )
+                checksumThread.join( )
+            before = checksum.hexdigest( )
+
+            # Verify
+            #
+            checksum = hashlib.md5( )
+            with self.master.readFileStream( fileId ) as readable:
+                while True:
+                    buf = readable.read( bufSize )
+                    if not buf: break
+                    checksum.update( buf )
+            after = checksum.hexdigest( )
+            self.master.delete( job )
+            self.assertEquals( before, after )
+
+            # Multi-part upload from file
+            #
+            checksum = hashlib.md5( )
+            fh, path = tempfile.mkstemp( )
+            try:
+                with os.fdopen( fh, 'r+' ) as writable:
+                    with open( '/dev/random' ) as readable:
+                        for i in range( int( partSize * partsPerFile / bufSize ) ):
+                            buf = readable.read( bufSize )
+                            writable.write( buf )
+                            checksum.update( buf )
+                fileId = self.master.writeFile( job.jobStoreID, path )
+            finally:
+                os.unlink( path )
+            before = checksum.hexdigest()
+
+            # Verify
+            #
+            checksum = hashlib.md5( )
+            with self.master.readFileStream( fileId ) as readable:
+                while True:
+                    buf = readable.read( bufSize )
+                    if not buf: break
+                    checksum.update( buf )
+            after = checksum.hexdigest( )
+            self.master.delete( job )
+            self.assertEquals( before, after )
+
+    def testZeroLengthFiles( self ):
+        job = self.master.createFirstJob( "1", 2, 3 )
+        nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
+        with self.master.readFileStream( nullFile ) as f:
+            self.assertEquals( f.read( ), "" )
+        with self.master.writeFileStream( job.jobStoreID ) as ( f, nullStream ):
+            pass
+        with self.master.readFileStream( nullStream ) as f:
+            self.assertEquals( f.read( ), "" )
+

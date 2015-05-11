@@ -388,7 +388,9 @@ class AWSJobStore( AbstractJobStore ):
                     while start < file_size:
                         end = min( start + self._s3_part_size, file_size )
                         assert f.tell( ) == start
-                        upload.upload_part_from_file( f, next( part_num ), size=end - start )
+                        upload.upload_part_from_file( fp=f,
+                                                      part_num=next( part_num ) + 1,
+                                                      size=end - start )
                         start = end
                     assert f.tell( ) == file_size == start
                 except:
@@ -413,6 +415,10 @@ class AWSJobStore( AbstractJobStore ):
                         upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
                         try:
                             for part_num in itertools.count( ):
+                                # FIXME: Consider using a key.set_contents_from_stream and rip ...
+                                # FIXME: ... the query_args logic from upload_part_from_file in ...
+                                # FIXME: ... in MultipartUpload. Possible downside is that ...
+                                # FIXME: ... implicit retries won't work.
                                 buf = readable.read( self._s3_part_size )
                                 # There must be at least one part, even if the file is empty.
                                 if len( buf ) == 0 and part_num > 0: break
