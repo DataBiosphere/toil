@@ -6,7 +6,6 @@ import subprocess
 import threading
 import sys
 
-from jobTree.test.mesos.ResumeTest import run as testRun
 from jobTree.test.mesos.StressTest import main as stressMain
 from jobTree.test import JobTreeTest
 
@@ -57,7 +56,7 @@ class TestMesos( JobTreeTest ):
         cls.slave.run( )
 
     def setUp( self ):
-        # subprocess.check_call("rm -rf /tmp/mesos/")
+        # shutil.rmtree("/tmp/mesos/")
         self.startDir = os.getcwd( )
         self.tempDir = tempfile.mkdtemp( )
         print "Using %s for files and directories created by this test run" % self.tempDir
@@ -65,25 +64,18 @@ class TestMesos( JobTreeTest ):
 
     def tearDown( self ):
         os.chdir( self.startDir )
-        # shutil.rmtree( self.tempDir )
+        shutil.rmtree( self.tempDir )
 
     def test_hello_world( self ):
         dir = os.path.abspath( os.path.dirname( __file__ ) )
         subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
         self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
-    def test_class_script( self ):
-        dir = os.path.abspath( os.path.dirname( __file__ ) )
-        subprocess.check_call("python {}/LongTest.py --batchSystem=mesos".format(dir), shell=True)
-        self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
-        self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )
-
-    def __do_test_stress( self, useBadExecutor ):
+    def __do_test_stress( self, useBadExecutor, numTargets ):
         """
         Set task number to number of files you wish to create. Actual number of targets is targets+2
         Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
         """
-        numTargets = 2
         stressMain( numTargets, useBadExecutor=useBadExecutor )
         for i in range( 0, numTargets ):
             self.assertTrue( os.path.isfile( "./hello_world_child_{}.txt".format( i ) ),
@@ -92,14 +84,14 @@ class TestMesos( JobTreeTest ):
                              "actual files: {}".format( os.listdir( "." ) ) )
 
     def test_stress_good( self ):
-        self.__do_test_stress( False )
+        self.__do_test_stress( False, 2 )
 
     def test_stress_bad( self ):
-        self.__do_test_stress( True )
+        self.__do_test_stress( True, 2 )
 
     @unittest.skip
     def test_resume( self ):
-        mainT = threading.Thread( target=testRun, args=(3,) )
+        mainT = threading.Thread( target=self.__do_test_stress, args=(False, 3) )
         mainT.start( )
         # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
         print "killing"
