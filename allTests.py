@@ -22,6 +22,7 @@
 import unittest
 from jobTree.test.dependencies.dependenciesTest import TestCase as dependenciesTest
 from jobTree.test.sort.sortTest import TestCase as sortTest
+from jobTree.test.staticDeclaration.staticTest import TestCase as staticTest
 from jobTree.test.src.jobTest import TestCase as jobTest
 from jobTree.test.utils.statsTest import TestCase as statsTest
 
@@ -37,6 +38,8 @@ def allSuites(options):
         tests.append(unittest.makeSuite(sortTest, 'test'))
     if 'stats' in options.tests:
         tests.append(unittest.makeSuite(statsTest, 'test'))
+    if 'static' in options.tests:
+        tests.append(unittest.makeSuite(staticTest, 'static'))
     allTests = unittest.TestSuite(tests)
     return allTests
 
@@ -47,7 +50,7 @@ def initializeOptions(parser):
                             '[job, dependencies, scriptTree, sort, stats]'))
 
 def checkOptions(options, parser):
-    tests = ['job', 'dependencies', 'sort', 'stats']
+    tests = ['job', 'dependencies', 'sort', 'stats', 'static']
     if options.tests is None:
         options.tests = tests
     else:

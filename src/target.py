@@ -53,12 +53,19 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         pass
     
-    def setFollowOnTarget(self, followOn):
+    def setFollowOn(self, followOn):
         """Set the follow on target.
         Will complain if follow on already set.
         """
         assert self.__followOn == None
         self.__followOn = followOn
+    
+    def setFollowOnTarget(self, followOn):
+        """Set the follow on target.
+        Will complain if follow on already set.
+        Deprecated - use setFollowOn
+        """
+        self.setFollowOn(followOne)
 
     def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         """Sets a follow on target fn. See FunctionWrappingTarget.
@@ -69,11 +76,17 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """Sets a follow on target fn. See TargetFunctionWrappingTarget.
         """
         self.setFollowOnTarget(TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)) 
-
-    def addChildTarget(self, childTarget):
+        
+    def addChild(self, childTarget):
         """Adds the child target to be run as child of this target.
         """
         self.__children.append(childTarget)
+        
+    def addChildTarget(self, childTarget):
+        """Adds the child target to be run as child of this target.
+        Deprecated - use addChild.
+        """
+        self.addChild(childTarget)
     
     def addChildFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         """Adds a child fn. See FunctionWrappingTarget.
@@ -197,6 +210,14 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         Convenience function for constructor of TargetFunctionWrappingTarget
         """
         return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
+ 
+    @staticmethod
+    def wrapFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+        """Makes a Target out of a function.
+        
+        Convenience function for constructor of FunctionWrappingTarget
+        """
+        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
  
 ####
 #Private functions

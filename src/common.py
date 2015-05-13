@@ -35,9 +35,7 @@ from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWork
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 
-
 logger = logging.getLogger( __name__ )
-
 
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
@@ -264,7 +262,6 @@ def addBatchSystemConfigOptions(config, batchSystem, options):
     if options.rescueJobsFrequency != None:
         config.attrib["rescue_jobs_frequency"] = str(float(options.rescueJobsFrequency))
 
-
 def loadJobStore( jobStoreString, config=None ):
     """
     Loads a jobStore.
@@ -295,8 +292,6 @@ def loadJobStore( jobStoreString, config=None ):
         return AWSJobStore( jobStoreArgs, config=config )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
-
-
 
 def serialiseEnvironment(jobStore):
     """Puts the environment in a globally accessible pickle file.

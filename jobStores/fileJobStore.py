@@ -186,6 +186,12 @@ class FileJobStore(AbstractJobStore):
                     numberOfFilesProcessed += 1
         return numberOfFilesProcessed
     
+    def deleteJobStore(self):
+        """
+        Removes the jobStore from the disk/store. Careful!
+        """
+        system("rm -rf %s" % self.jobStoreDir)
+    
     ####
     #Private methods
     ####

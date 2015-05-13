@@ -251,6 +251,13 @@ class AbstractJobStore( object ):
         file handle.
         """
         raise NotImplementedError( )
+    
+    @abstractmethod
+    def deleteJobStore( self ):
+        """
+        Removes the jobStore from the disk/store. Careful!
+        """
+        raise NotImplementedError( )
 
     ## Helper methods for subclasses
 
