@@ -65,7 +65,7 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         Will complain if follow on already set.
         Deprecated - use setFollowOn
         """
-        self.setFollowOn(followOne)
+        self.setFollowOn(followOn)
 
     def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         """Sets a follow on target fn. See FunctionWrappingTarget.
