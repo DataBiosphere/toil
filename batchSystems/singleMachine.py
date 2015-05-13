@@ -44,8 +44,15 @@ def worker(inputQueue, outputQueue):
             inputQueue.task_done()
             return
         command, jobID, threadsToStart = args
-        sys.argv = command.split()[2:]
-        workerMain()
+
+        # Don't run the worker in the master process if an arbitrary command is passed.
+        # This allows for execution of commands that are not worker.py (ex: in UnitTests)
+        if any(x.endswith('worker.py') for x in command):
+            sys.argv = command.split()[2:]
+            workerMain()
+        else:
+            subprocess.check_call(command.split())
+
         outputQueue.put((jobID, 0, threadsToStart))
         inputQueue.task_done()
         
