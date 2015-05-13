@@ -35,7 +35,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.jobQueueList = defaultdict(list)
 
         # ip of mesos master. specified in MesosBatchSystem, currently loopback
-        self.masterIP="127.0.0.1:5050"
+        self.masterIP = "127.0.0.1:5050"
 
         # queue of jobs to kill, by jobID.
         self.killSet = set()
@@ -53,13 +53,13 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.implicitAcknowledgements = self.getImplicit()
 
         # reference to our schedulerDriver, to be instantiated in run()
-        self.driver=None
+        self.driver = None
 
         # returns mesos executor object, which is merged into mesos tasks as they are built
         if badExecutor:
             self.executor = self.buildExecutor(bad=True)
         else:
-            self.executor = self.buildExecutor(bad = False)
+            self.executor = self.buildExecutor(bad=False)
 
         self.nextJobID = 0
         self.tasksLaunched = 0
