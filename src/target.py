@@ -31,7 +31,27 @@ import importlib
 class Target(object):
     """Each job wrapper extends this class.
     """
-    
+    @staticmethod
+    def resolveMainModule( moduleName ):
+        """
+        Returns a tuple of two elements, the first element being the path to the directory containing the given
+        module and the second element being the name of the module. If the given module name is "__main__",
+        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
+        caller can then add the first element of the returned tuple to sys.path and load the module from there.
+        See also worker.loadStack().
+        """
+        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
+        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
+        if moduleName.endswith('.py'):
+            moduleName = moduleName[:-3]
+        elif moduleName.endswith('.pyc'):
+            moduleName = moduleName[:-4]
+        else:
+            raise RuntimeError(
+                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
+                moduleName)
+        return moduleDirPath, moduleName
+
     def __init__(self, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         """This method must be called by any overiding constructor.
         """
@@ -42,11 +62,8 @@ class Target(object):
         self.__time = time #This parameter is no longer used by the batch system.
         self.__cpu = cpu
         self._rMap = None
-        if self.__module__ == "__main__":
-            raise RuntimeError("The module name of class %s is __main__, \
-            which prevents us from serialising it properly, \
-please ensure you re-import targets defined in main" % self.__class__.__name__)
-        self.importStrings = set((".".join((self.__module__, self.__class__.__name__)),))
+        self.dirName, moduleName = self.resolveMainModule(self.__module__)
+        self.importStrings = {moduleName + '.' + self.__class__.__name__}
         self.loggingMessages = []
 
     def run(self):
@@ -239,9 +256,8 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         
         Convenience function for constructor of FunctionWrappingTarget
         """
-        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
-                                time=time, memory=memory, cpu=cpu)
- 
+        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
+
 ####
 #Private functions
 #### 
@@ -296,36 +312,19 @@ class FunctionWrappingTarget(Target):
     Duplicate arguments are not allowed, so if the "bar" argument is set both by rMap and the args or kwargs
     of the wrapping target then an exception is thrown.
     """
-    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, 
-                 cpu=sys.maxint):
+
+    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
         Target.__init__(self, time=time, memory=time, cpu=time)
         moduleName = fn.__module__
-        if moduleName== '__main__':
-            # FIXME: Document why we are doing this, explain why it works in single node
-            # TODO: Review with Benedict
-            # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-            moduleDir,moduleName = os.path.split(sys.modules[moduleName].__file__)
-            if moduleName.endswith('.py'):
-                moduleName = moduleName[:-3]
-            elif moduleName.endswith('.pyc'):
-                moduleName = moduleName[:-4]
-            else:
-                raise RuntimeError(
-                    "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                    moduleName )
-        else:
-            moduleDir = None
-
-        self.fnModuleDir = moduleDir
-        self.fnModule = moduleName #Module of function
-        self.fnName = str(fn.__name__) #Name of function
+        self.fnModuleDirPath, self.fnModuleName = self.resolveMainModule(moduleName)
+        self.fnName = str(fn.__name__)
         self._args=args
         self._kwargs=kwargs
 
     def _getFunc( self ):
-        if self.fnModuleDir not in sys.path:
-            sys.path.append( self.fnModuleDir )
-        return getattr( importlib.import_module( self.fnModule ), self.fnName )
+        if self.fnModuleDirPath not in sys.path:
+            sys.path.append( self.fnModuleDirPath )
+        return getattr( importlib.import_module( self.fnModuleName ), self.fnName )
     
     def _addRMap(self):
         """Processes the rMap (if set), and uses it to populate the keyword arguments

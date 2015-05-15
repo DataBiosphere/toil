@@ -38,6 +38,7 @@ from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
 
 from jobTree.src.common import setupJobTree, addOptions
 from jobTree.src.master import mainLoop
+from jobTree.src.target import Target
 
 logger = logging.getLogger( __name__ )
 
@@ -46,6 +47,9 @@ class Stack(object):
     The only public methods are documented at the top of this file..
     """
     def __init__(self, target):
+        """
+        :type target: Target
+        """
         self.target = target
         self.verifyTargetAttributesExist(target)
         
@@ -106,11 +110,10 @@ class Stack(object):
     def makeRunnable(self, jobStore, jobStoreID):
         with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        i = set()
-        for importString in self.target.importStrings:
-            i.add(importString)
+
+        i = set( self.target.importStrings )
         classNames = " ".join(i)
-        return "scriptTree %s %s" % (fileStoreID, classNames)
+        return "scriptTree %s %s %s" % (fileStoreID, self.target.dirName, classNames)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()

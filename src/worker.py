@@ -19,6 +19,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+import importlib
 
 import os
 import sys
@@ -44,18 +45,22 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.write(data)
         fh.truncate()
         fh.close()
-        
+
+
 def loadStack(command,jobStore):
     commandTokens = command.split()
     assert commandTokens[0] == "scriptTree"
-    for className in commandTokens[2:]:
-        l = className.split(".")
+    moduleDirPath = commandTokens[2]
+    if moduleDirPath not in sys.path:
+        sys.path.append(moduleDirPath)
+    for targetClassName in commandTokens[3:]:
+        l = targetClassName.split(".")
         moduleName = ".".join(l[:-1])
-        className = l[-1]
-        _temp = __import__(moduleName, globals(), locals(), [className], -1)
-        exec "%s = 1" % className
-        vars()[className] = _temp.__dict__[className]
-    return loadPickleFile(commandTokens[1],jobStore)
+        targetClassName = l[-1]
+        targetModule = importlib.import_module(moduleName)
+        thisModule = sys.modules[__name__]
+        thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
+    return loadPickleFile(commandTokens[1], jobStore)
         
 def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
@@ -253,7 +258,7 @@ def main():
                     ##########################################
                     #Run the target
                     ##########################################
-                    
+
                     loadStack(command,jobStore).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
