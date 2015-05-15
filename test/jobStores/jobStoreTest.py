@@ -56,7 +56,6 @@ class AbstractJobStoreTest( JobTreeTest ):
         # Create parent job and verify its existence
         #
         jobOnMaster = master.createFirstJob( "command1", 12, 34 )
-        master.store( jobOnMaster )
         self.assertTrue( master.loadJobTreeState( ).started )
         self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
         self.assertEquals( jobOnMaster.followOnCommands, [ ('command1', 12, 34, 0) ] )
