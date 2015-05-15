@@ -36,12 +36,11 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
     """Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
     """
-    fileHandle = open(inputFile, 'r')
-    fileHandle.seek(fileStart) 
-    data = fileHandle.read(fileEnd - fileStart)
-    assert len(data) == fileEnd - fileStart
-    fileHandle.close()
-    outputFileHandle.write(data)
+    with open(inputFile, 'r') as fileHandle:
+        fileHandle.seek(fileStart)
+        data = fileHandle.read(fileEnd - fileStart)
+        assert len(data) == fileEnd - fileStart
+        outputFileHandle.write(data)
     
 def getMidPoint(file, fileStart, fileEnd):
     """Finds the point in the file to split. 

@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from contextlib import contextmanager
 import re
 import xml.etree.cElementTree as ET
 
@@ -13,7 +14,8 @@ class JobTreeState( object ):
         self.started = False
         # This is a hash of jobStoreIDs to the parent jobs.
         self.childJobStoreIdToParentJob = { }
-        # Hash of jobs to counts of numbers of children.
+        # Hash of parent jobs to counts of numbers of children. There are no entries for jobs
+        # without children in this map. IOW, there is no entry in the map whose value is 0.
         self.childCounts = { }
         # Jobs that have no children but one or more follow-on commands
         self.updatedJobs = set( )
@@ -111,7 +113,8 @@ class AbstractJobStore( object ):
         """
         Creates a set of child jobs for the given job using the list of child commands and
         persists the job along with the new children atomically to this store. Each child command
-        is represented as a tuple of ( command, memory and cpu ).
+        is represented as a tuple of ( command, memory and cpu ). The given job must be persisted
+        even if the given list of children is empty.
         """
         raise NotImplementedError( )
 
@@ -175,6 +178,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
+    @contextmanager
     def writeFileStream( self, jobStoreID ):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of 1) a file handle
@@ -184,6 +188,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
+    @contextmanager
     def updateFileStream( self, jobStoreFileID ):
         """
         Similar to updateFile, but returns a context manager yielding a file handle which can be
@@ -202,6 +207,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
+    @contextmanager
     def readFileStream( self, jobStoreFileID ):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
@@ -216,9 +222,11 @@ class AbstractJobStore( object ):
     sharedFileNameRegex = re.compile( r'^[a-zA-Z0-9._-]+$' )
 
     @abstractmethod
+    @contextmanager
     def writeSharedFileStream( self, sharedFileName ):
         """
-        Returns a writable file handle to the global file referenced by the given name.
+        Returns a context manager yielding a writable file handle to the global file referenced
+        by the given name.
 
         :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
         the physical storage represented by this job store
@@ -229,9 +237,11 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
+    @contextmanager
     def readSharedFileStream( self, sharedFileName ):
         """
-        Returns a readable file handle to the global file referenced by the given ID.
+        Returns a context manager yielding a readable file handle to the global file referenced
+        by the given ID.
         """
         raise NotImplementedError( )
 

@@ -288,8 +288,9 @@ def loadJobStore( jobStoreString, config=None ):
         from jobTree.jobStores.fileJobStore import FileJobStore
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
+        logging.getLogger('boto').setLevel(logging.INFO)
         from jobTree.jobStores.awsJobStore import AWSJobStore
-        return AWSJobStore( jobStoreArgs, config=config )
+        return AWSJobStore.create( jobStoreArgs, config=config )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 
@@ -297,9 +298,8 @@ def serialiseEnvironment(jobStore):
     """Puts the environment in a globally accessible pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
-    fileHandle = jobStore.writeSharedFileStream("environment.pickle")
-    cPickle.dump(os.environ, fileHandle)
-    fileHandle.close()
+    with jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
+        cPickle.dump(os.environ, fileHandle)
     logger.info("Written the environment for the jobs to the environment file")
 
 def setupJobTree(options):

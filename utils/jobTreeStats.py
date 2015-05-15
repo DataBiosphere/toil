@@ -558,23 +558,21 @@ def getStats(options):
     
     jobStore = loadJobStore(options.jobTree)
     try:
-        fH = jobStore.readSharedFileStream("stats.xml")
-        stats = ET.parse(fH).getroot() # Try parsing the whole file.
-        fH.close()
+        with jobStore.readSharedFileStream("stats.xml") as fH:
+            stats = ET.parse(fH).getroot() # Try parsing the whole file.
     except ET.ParseError: # If it doesn't work then we build the file incrementally
         sys.stderr.write("The job tree stats file is incomplete or corrupt, "
                          "we'll try instead to parse what's in the file "
                          "incrementally until we reach an error.\n")
-        fH = jobStore.readSharedFileStream("stats.xml") # Open the file for editing
-        stats = ET.Element("stats")
-        try:
-            for event, elem in ET.iterparse(fH):
-                if elem.tag == 'worker':
-                    stats.append(elem)
-        except ET.ParseError:
-            pass # Do nothing at this point
-        finally:
-            fH.close()
+        with jobStore.readSharedFileStream("stats.xml") as fH:
+            stats = ET.Element("stats")
+            try:
+                for event, elem in ET.iterparse(fH):
+                    if elem.tag == 'worker':
+                        stats.append(elem)
+            except ET.ParseError:
+                # TODO: Document why parse errors are to be expected
+                pass # Do nothing at this point
     return stats
 
 def processData(config, stats, options):

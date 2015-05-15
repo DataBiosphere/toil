@@ -1,4 +1,5 @@
 from Queue import Queue
+from abc import abstractmethod, ABCMeta
 import hashlib
 import logging
 import os
@@ -10,35 +11,39 @@ from xml.etree.cElementTree import Element
 from jobStores.abstractJobStore import NoSuchJobException, NoSuchFileException
 
 from jobStores.awsJobStore import AWSJobStore
+from jobStores.fileJobStore import FileJobStore
 from test import JobTreeTest
 
 logger = logging.getLogger( __name__ )
 
 
-class AWSJobStoreTest( JobTreeTest ):
+class AbstractJobStoreTest( JobTreeTest ):
+    __metaclass__ = ABCMeta
+
     @classmethod
     def setUpClass( cls ):
-        super( AWSJobStoreTest, cls ).setUpClass( )
+        super( AbstractJobStoreTest, cls ).setUpClass( )
         logging.basicConfig( level=logging.DEBUG )
         logging.getLogger( 'boto' ).setLevel( logging.INFO )
-
-    testRegion = "us-west-2"
 
     def _dummyConfig( self ):
         config = Element( "config" )
         config.attrib[ "try_count" ] = "1"
         return config
 
+    @abstractmethod
+    def createJobStore( self, config=None ):
+        raise NotImplementedError( )
+
     def setUp( self ):
-        super( AWSJobStoreTest, self ).setUp( )
+        super( AbstractJobStoreTest, self ).setUp( )
         self.namePrefix = str( uuid.uuid4( ) )
         config = self._dummyConfig( )
-        AWSJobStore._s3_part_size = 5 * 1024 * 1024
-        self.master = AWSJobStore.create( "%s:%s" % (self.testRegion, self.namePrefix), config )
+        self.master = self.createJobStore( config )
 
     def tearDown( self ):
-        self.master.destroy( )
-        super( AWSJobStoreTest, self ).tearDown( )
+        self.master.deleteJobStore( )
+        super( AbstractJobStoreTest, self ).tearDown( )
 
     def test( self ):
         master = self.master
@@ -57,7 +62,8 @@ class AWSJobStoreTest( JobTreeTest ):
 
         # Create a second instance of the job store, simulating a worker ...
         #
-        worker = AWSJobStore( region=self.testRegion, namePrefix=self.namePrefix )
+        # worker = AWSJobStore( region=self.testRegion, namePrefix=self.namePrefix )
+        worker = self.createJobStore()
         self.assertTrue( worker.loadJobTreeState( ).started )
         # ... and load the parent job there.
         jobOnWorker = worker.load( jobOnMaster.jobStoreID )
@@ -82,7 +88,8 @@ class AWSJobStoreTest( JobTreeTest ):
         self.assertEquals( state.shellJobs, set( ) )
         self.assertEquals( state.updatedJobs, childJobs )
         # The parent should have two children
-        self.assertEquals( state.childCounts, { jobOnMaster.jobStoreID: 2 } )
+        self.maxDiff = 10000
+        self.assertEquals( state.childCounts, { jobOnMaster: 2 } )
         self.assertEquals( len( state.childJobStoreIdToParentJob ), 2 )
         # Ensure consistency between children as referred to by the parent and by the jobTree state
         for child in jobOnMaster.children:
@@ -182,8 +189,6 @@ class AWSJobStoreTest( JobTreeTest ):
 
         # TODO: Test stats methods
 
-        # TODO: Make this a generic test and run against FileJobStore, too
-
     def testMultipartUploads( self ):
         # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
         bufSize = 65536
@@ -247,7 +252,7 @@ class AWSJobStoreTest( JobTreeTest ):
                 fileId = self.master.writeFile( job.jobStoreID, path )
             finally:
                 os.unlink( path )
-            before = checksum.hexdigest()
+            before = checksum.hexdigest( )
 
             # Verify
             #
@@ -270,4 +275,18 @@ class AWSJobStoreTest( JobTreeTest ):
             pass
         with self.master.readFileStream( nullStream ) as f:
             self.assertEquals( f.read( ), "" )
+
+
+class FileJobStoreTest( AbstractJobStoreTest ):
+    def createJobStore( self, config=None ):
+        return FileJobStore( self.namePrefix, config )
+
+
+class AWSJobStoreTest( AbstractJobStoreTest ):
+    testRegion = "us-west-2"
+
+    def createJobStore( self, config=None ):
+        AWSJobStore._s3_part_size = 5 * 1024 * 1024
+        return AWSJobStore.create( "%s:%s" % (self.testRegion, self.namePrefix), config )
+
 

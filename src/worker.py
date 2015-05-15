@@ -45,7 +45,7 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
         
-def loadStack(command):
+def loadStack(command,jobStore):
     commandTokens = command.split()
     assert commandTokens[0] == "scriptTree"
     for className in commandTokens[2:]:
@@ -55,15 +55,13 @@ def loadStack(command):
         _temp = __import__(moduleName, globals(), locals(), [className], -1)
         exec "%s = 1" % className
         vars()[className] = _temp.__dict__[className]
-    return loadPickleFile(commandTokens[1])
+    return loadPickleFile(commandTokens[1],jobStore)
         
-def loadPickleFile(pickleFile):
+def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
     """
-    fileHandle = open(pickleFile, 'r')
-    i = cPickle.load(fileHandle)
-    fileHandle.close()
-    return i
+    with jobStore.readFileStream(pickleFile) as fileHandle:
+        return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():
     """Gets the number of the next available file descriptor.
@@ -104,9 +102,8 @@ def main():
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = jobStore.readSharedFileStream("environment.pickle")
-    environment = cPickle.load(fileHandle)
-    fileHandle.close()
+    with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
+        environment = cPickle.load(fileHandle)
     for i in environment:
         if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]
@@ -257,7 +254,7 @@ def main():
                     #Run the target
                     ##########################################
                     
-                    loadStack(command).execute(job=job, stats=stats,
+                    loadStack(command,jobStore).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
@@ -288,19 +285,16 @@ def main():
             ##########################################
             
             if time.time() - startTime > maxTime:
-                logger.info("We are breaking because the maximum time the \
-                job should run for has been exceeded")
+                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
                 break
             
             #Deal with children
             if len(job.children) >= 1:  #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this worker, \
-                its got %i children" % len(job.children))
+                logger.info("No more jobs can run in series by this worker, its got %i children" % len(job.children))
                 break
             
             if len(job.followOnCommands) == 0:
-                logger.info("No more jobs can run by this worker as we \
-                have exhausted the follow ons")
+                logger.info("No more jobs can run by this worker as we have exhausted the follow ons")
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
@@ -326,16 +320,14 @@ def main():
             stats.attrib["memory"] = str(totalMemoryUsage)
             jobStore.writeStats(ET.tostring(stats))
         
-        logger.info("Finished running the chain of jobs on this node, \
-        we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
     ##########################################
     #Where worker goes wrong
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.critical("Exiting the worker because of a \
-        failed job on host %s", socket.gethostname())
+        logger.critical("Exiting the worker because of a failed job on host %s", socket.gethostname())
         job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
         workerFailed = True

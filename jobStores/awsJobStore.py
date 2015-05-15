@@ -26,7 +26,7 @@ from jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJob
     ConcurrentFileModificationException, NoSuchFileException
 from src.job import Job
 
-logger = logging.getLogger( __name__ )
+log = logging.getLogger( __name__ )
 
 # FIXME: Command length is currently limited to 1024 characters
 
@@ -55,6 +55,8 @@ class AWSJobStore( AbstractJobStore ):
         return cls( region=region, namePrefix=namePrefix, config=config )
 
     def __init__( self, region, namePrefix, config=None ):
+        log.debug( "Instantiating %s for region %s and name prefix '%s'",
+                   self.__class__, region, namePrefix )
         self.region = region
         self.namePrefix = namePrefix
         self.jobs = None
@@ -71,16 +73,17 @@ class AWSJobStore( AbstractJobStore ):
             self.stats = self._getOrCreateBucket( 'stats', create )
             super( AWSJobStore, self ).__init__( config=config )
         except:
-            self.destroy( )
+            self.deleteJobStore( )
             raise
 
     def createFirstJob( self, command, memory, cpu ):
         jobStoreID = self._newJobID( )
+        log.debug( "Creating first job %s for '%s'", jobStoreID, command )
         job = Job.create( jobStoreID=jobStoreID,
                           command=command, memory=memory, cpu=cpu,
                           tryCount=self._defaultTryCount( ), logJobStoreFileID=None )
         assert self.jobs.put_attributes( item_name=jobStoreID,
-                                         attributes=self._jobToItem( job ) )
+                                         attributes=jobToItem( job ) )
         return job
 
     def exists( self, jobStoreID ):
@@ -97,43 +100,48 @@ class AWSJobStore( AbstractJobStore ):
                                          consistent_read=True )
         if not item:
             raise NoSuchJobException( jobStoreID )
-        job = self._itemToJob( item )
+        job = itemToJob( item )
         # TODO: check if mentioning individual attributes is faster than using *
         children = self.jobs.select(
             query="select * from `%s` where parentJobStoreID = '%s'" % (
                 self.jobs.name, jobStoreID ),
             consistent_read=True )
         for child in children:
-            self._addChild( job, self._itemToJob( child ) )
+            self._addChild( job, itemToJob( child ) )
+        log.debug( "Loaded job %s with %d children", job.jobStoreID, len( job.children ) )
         return job
 
     def store( self, job ):
+        log.debug( "Storing job %s", job.jobStoreID )
         assert self.jobs.put_attributes( item_name=job.jobStoreID,
-                                         attributes=self._jobToItem( job ) )
+                                         attributes=jobToItem( job ) )
 
     def addChildren( self, job, childCommands ):
+        log.debug( "Adding %d children to job %s", len( childCommands ), job.jobStoreID )
         # The elements of childCommands are tuples (command, memory, cpu). The astute reader will
         # notice that we are careful to avoid specifically referencing all but the first element
         # of those tuples as they might change in the future.
-        children = [ ]
         items = { }
         for childCommand in childCommands:
             child = Job.create( tryCount=self._defaultTryCount( ),
                                 jobStoreID=self._newJobID( ),
                                 logJobStoreFileID=None,
                                 *childCommand )
-            children.append( child )
             job.children.append( ( child.jobStoreID, ) + childCommand[ 1: ] )
-            items[ child.jobStoreID ] = self._jobToItem( child, job.jobStoreID )
-        # Batch updates are atomic
+            items[ child.jobStoreID ] = jobToItem( child, job.jobStoreID )
+        # Persist parent and children
+        # TODO: There might be no children, should we still persist the parent?
+        items[ job.jobStoreID ] = jobToItem( job )
         self.jobs.batch_put_attributes( items=items )
 
     def delete( self, job ):
+        log.debug( "Deleting job %s", job.jobStoreID )
         self.jobs.delete_attributes( item_name=job.jobStoreID )
         items = list( self.versions.select(
             "select * from `%s` where jobStoreID='%s'" % ( self.versions.name, job.jobStoreID ),
             consistent_read=True ) )
         if items:
+            log.debug( "Deleting %d file(s) associated with job %s", len( items ), job.jobStoreID )
             self.versions.batch_delete_attributes( { item.name: None for item in items } )
             for item in items:
                 self.files.delete_key( key_name=item.name,
@@ -144,30 +152,41 @@ class AWSJobStore( AbstractJobStore ):
         for item in self.jobs.select( query='select * from `%s`' % self.jobs.name,
                                       consistent_read=True ):
             parentJobStoreID = item.get( 'parentJobStoreID', None )
-            job = self._itemToJob( item )
+            job = itemToJob( item )
             jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
         state = JobTreeState( )
         if jobs:
             state.started = True
             state.childCounts = defaultdict( int )
-            for job, parentJobStoreID in jobs.itervalues( ):
-                if parentJobStoreID is not None:
-                    parent = jobs[ parentJobStoreID ][ 0 ]
-                    self._addChild( parent, job )
+            try:
+                for job, parentJobStoreID in jobs.itervalues( ):
+                    if parentJobStoreID is not None:
+                        parent = jobs[ parentJobStoreID ][ 0 ]
+                        self._addChild( parent, job )
+                        state.childCounts[ parent ] += 1
+                        state.childJobStoreIdToParentJob[ job.jobStoreID ] = parent
+                for job, _ in jobs.itervalues( ):
                     if not job.children:
                         if job.followOnCommands:
                             state.updatedJobs.add( job )
                         else:
                             state.shellJobs.add( job )
-                    state.childCounts[ parentJobStoreID ] += 1
-                    state.childJobStoreIdToParentJob[ job.jobStoreID ] = parent
-            state.childCounts.default_factory = None
+            finally:
+                state.childCounts.default_factory = None
+        log.debug( "Loaded job tree state for %d jobs, "
+                   "%d of which have a parent, "
+                   "%d have children, "
+                   "%d are updated and "
+                   "%d are shells.", len( jobs ), len( state.childJobStoreIdToParentJob ),
+                   len( state.childCounts ), len( state.updatedJobs ), len( state.shellJobs ) )
         return state
 
     def writeFile( self, jobStoreID, localFilePath ):
         jobStoreFileID = self._newFileID( )
         version = self._upload( jobStoreFileID, localFilePath )
         self._postWrite( jobStoreFileID, jobStoreID, version )
+        log.debug( "Wrote initial version %s of file %s for job %s from path '%s'",
+                   version, jobStoreFileID, jobStoreID, localFilePath )
         return jobStoreFileID
 
     @contextmanager
@@ -178,19 +197,26 @@ class AWSJobStore( AbstractJobStore ):
         version = key.version_id
         assert version is not None
         self._postWrite( jobStoreFileID, jobStoreID, version )
+        log.debug( "Wrote initial version %s of file %s for job %s",
+                   version, jobStoreFileID, jobStoreID )
 
     @contextmanager
     def writeSharedFileStream( self, sharedFileName ):
+        assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         with self._uploadStream( jobStoreFileID ) as ( writable, key ):
             yield writable
         version = key.version_id
         self._postWrite( jobStoreFileID, str( self.sharedFileJobID ), version )
+        log.debug( "Wrote initial version %s of shared file %s (%s)",
+                   version, sharedFileName, jobStoreFileID )
 
     def updateFile( self, jobStoreFileID, localFilePath ):
         oldVersion = self._getFileVersion( jobStoreFileID )
         newVersion = self._upload( jobStoreFileID, localFilePath )
         self._postUpdate( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
+        log.debug( "Wrote version %s of file %s from path '%s', replacing version %s",
+                   newVersion, jobStoreFileID, localFilePath, oldVersion )
 
     @contextmanager
     def updateFileStream( self, jobStoreFileID ):
@@ -199,24 +225,32 @@ class AWSJobStore( AbstractJobStore ):
             yield writable
         newVersion = key.version_id
         self._postUpdate( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
+        log.debug( "Wrote version %s of file %s, replacing version %s",
+                   newVersion, jobStoreFileID, oldVersion )
 
     def readFile( self, jobStoreFileID, localFilePath ):
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
+        log.debug( "Reading version %s of file %s to path '%s'",
+                   version, jobStoreFileID, localFilePath )
         self._download( jobStoreFileID, localFilePath, version )
 
     @contextmanager
     def readFileStream( self, jobStoreFileID ):
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
+        log.debug( "Reading version %s of file %s", version, jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version ) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream( self, sharedFileName ):
+        assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
+        log.debug( "Read version %s from shared file %s (%s)",
+                   version, sharedFileName, jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version ) as readable:
             yield readable
 
@@ -225,11 +259,13 @@ class AWSJobStore( AbstractJobStore ):
         self.versions.delete_attributes( jobStoreFileID,
                                          expected_values=[ 'version', version ] )
         self.files.delete_key( key_name=jobStoreFileID, version_id=version )
+        log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
 
     def getEmptyFileStoreID( self, jobStoreID ):
-        jobStoreFileId = self._newFileID( )
-        self._registerFile( jobStoreFileId, jobStoreID=jobStoreID )
-        return jobStoreFileId
+        jobStoreFileID = self._newFileID( )
+        self._registerFile( jobStoreFileID, jobStoreID=jobStoreID )
+        log.debug( "Registered empty file %s for job %s", jobStoreFileID, jobStoreID )
+        return jobStoreFileID
 
     def writeStats( self, statsString ):
         raise NotImplementedError( )
@@ -240,7 +276,7 @@ class AWSJobStore( AbstractJobStore ):
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double
     # underscore as a separator instead.
-    bucketNameRe = re.compile( r'[a-z0-9][a-z0-9-]+[a-z0-9]' )
+    bucketNameRe = re.compile( r'^[a-z0-9][a-z0-9-]+[a-z0-9]$' )
 
     bucketNameSeparator = '--'
 
@@ -309,51 +345,20 @@ class AWSJobStore( AbstractJobStore ):
         """
         # FIXME: maybe use same separator as for buckets
         domain_name = self.namePrefix + '.' + domain_name
-        # CreateDomain is idempotent
-        self.db.create_domain( domain_name )
-        # According to post on AWS forum "domain creation can take a while"
-        while True:
+        for i in itertools.count():
             try:
                 return self.db.get_domain( domain_name )
             except SDBResponseError as e:
                 if e.error_code == 'NoSuchDomain':
-                    logger.warn( "Creation of '%s' still pending, retrying in 5s" % domain_name )
-                    time.sleep( 5 )
+                    if i == 0:
+                        self.db.create_domain( domain_name )
+                    else:
+                        # According to post on AWS forum "domain creation can take a while"
+                        log.warn( "Creation of '%s' still pending, retrying in 5s" % domain_name )
+                        time.sleep( 5 )
 
     def _newJobID( self ):
         return str( uuid.uuid4( ) )
-
-    def _itemToJob( self, item, jobStoreID=None ):
-        """
-        :type item: Item
-        """
-        if jobStoreID is None: jobStoreID = item.name
-        try:
-            del item[ 'parentJobStoreID' ]
-        except KeyError:
-            pass
-
-        def singleton( v ):
-            return [ v ] if isinstance( v, basestring ) else v
-
-        def transform( k, v ):
-            if k == 'messages': return singleton( v )
-            if k == 'followOnCommands': return map( literal_eval, singleton( v ) )
-            if k == 'remainingRetryCount': return int( v )
-            return v
-
-        item = { k: transform( k, v ) for k, v in item.iteritems( ) }
-        job = Job( jobStoreID=jobStoreID, **item )
-        return job
-
-    def _jobToItem( self, job, parentJobStoreID=None ):
-        item = job.toDict( )
-        del item[ 'jobStoreID' ]
-        item[ 'followOnCommands' ] = map( repr, item[ 'followOnCommands' ] )
-        item = { k: v for k, v in item.iteritems( ) if v is not None }
-        if parentJobStoreID is not None:
-            item[ 'parentJobStoreID' ] = parentJobStoreID
-        return item
 
     # A dummy job ID under which all shared files are stored.
     sharedFileJobID = uuid.UUID( '891f7db6-e4d9-4221-a58e-ab6cc4395f94' )
@@ -432,7 +437,7 @@ class AWSJobStore( AbstractJobStore ):
                         else:
                             key.version_id = upload.complete_upload( ).version_id
                     except:
-                        logger.exception( 'Exception in reader thread' )
+                        log.exception( 'Exception in reader thread' )
 
                 thread = Thread( target=reader )
                 thread.start( )
@@ -535,18 +540,80 @@ class AWSJobStore( AbstractJobStore ):
         status = bucket.get_versioning_status( )
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
 
-    # TODO: Move up
-
-    def destroy( self ):
+    def deleteJobStore( self ):
         for bucket in ( self.files, self.stats ):
-            for upload in bucket.list_multipart_uploads( ):
-                upload.cancel_upload( )
-            if self.__get_bucket_versioning( bucket ) in ( True, None ):
-                for key in list( bucket.list_versions( ) ):
-                    bucket.delete_key( key.name, version_id=key.version_id )
-            else:
-                for key in list( bucket.list( ) ):
-                    key.delete( )
-            bucket.delete( )
+            if bucket is not None:
+                for upload in bucket.list_multipart_uploads( ):
+                    upload.cancel_upload( )
+                if self.__get_bucket_versioning( bucket ) in ( True, None ):
+                    for key in list( bucket.list_versions( ) ):
+                        bucket.delete_key( key.name, version_id=key.version_id )
+                else:
+                    for key in list( bucket.list( ) ):
+                        key.delete( )
+                bucket.delete( )
         for domain in ( self.versions, self.jobs ):
-            domain.delete( )
+            if domain is not None:
+                domain.delete( )
+
+
+def emptyToNone( v ):
+    """
+    To truly represent attribute values of None, we'd have to always call
+    delete_attributes in addition to put_attributes but there is no way to do that
+    atomically. Instead we map None to the empty string and vice versa.
+    """
+    return v if v else None
+
+
+def singleton( v ):
+    return [ v ] if isinstance( v, basestring ) else v
+
+
+def identity( v ):
+    return v
+
+
+itemToJobTransform = defaultdict( lambda: identity,
+                                  messages=singleton,
+                                  followOnCommands=lambda v: map( literal_eval, singleton( v ) ),
+                                  remainingRetryCount=int,
+                                  logJobStoreFileID=emptyToNone )
+
+
+def itemToJob( item, jobStoreID=None ):
+    """
+    :type item: Item
+    """
+    if jobStoreID is None: jobStoreID = item.name
+    try:
+        del item[ 'parentJobStoreID' ]
+    except KeyError:
+        pass
+    item = { k: itemToJobTransform[ k ]( v ) for k, v in item.iteritems( ) }
+    return Job( jobStoreID=jobStoreID, **item )
+
+
+def noneToEmpty( v ):
+    return '' if v is None else v
+
+
+def none( _ ):
+    return None
+
+
+jobToItemTransform = defaultdict( lambda: identity,
+                                  jobStoreID=none,
+                                  children=none,
+                                  logJobStoreFileID=noneToEmpty,
+                                  remainingRetryCount=str,
+                                  followOnCommands=lambda v: map( repr, v ) )
+
+
+def jobToItem( job, parentJobStoreID=None ):
+    item = job.toDict( )
+    if parentJobStoreID is not None:
+        item[ 'parentJobStoreID' ] = parentJobStoreID
+    item = ((k, jobToItemTransform[ k ]( v )) for k, v in item.iteritems( ))
+    return { k: v for k, v in item if v is not None }
+
