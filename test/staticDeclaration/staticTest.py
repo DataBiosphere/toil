@@ -23,7 +23,7 @@ class TestCase(unittest.TestCase):
         tA = Target.wrapFn(f, args=("A", outFile))
         tB = Target.wrapFn(f)
         tC = Target.wrapFn(f)
-        tD = Target.wrapFn(f) #rMap can be set in the constructor of the Target
+        tD = Target.wrapFn(f)
         tE = Target.wrapFn(f, kwargs={"string":"E"})
         
         #Connect them into a workflow, using rMap to map return values to inputs
@@ -32,8 +32,7 @@ class TestCase(unittest.TestCase):
         tC.setFollowOn(tD, rMap={"string":0, "outputFile":1 }) 
         tA.setFollowOn(tE, rMap={"outputFile":1 })
         
-        #The create the runner for the workflow.
-        
+        #Create the runner for the workflow.
         #TODO - fix the method for specifying arguments to a jobTree, because
         #assuming parsing command line inputs is shitty
         parser = OptionParser()
