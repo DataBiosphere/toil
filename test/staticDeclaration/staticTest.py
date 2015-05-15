@@ -21,16 +21,16 @@ class TestCase(unittest.TestCase):
         
         #Create the targets
         tA = Target.wrapFn(f, args=("A", outFile))
-        tB = Target.wrapFn(f, args=("B", outFile))
-        tC = Target.wrapFn(f, args=("C", outFile))
-        tD = Target.wrapFn(f, args=("D", outFile))
-        tE = Target.wrapFn(f, args=("E", outFile))
+        tB = Target.wrapFn(f)
+        tC = Target.wrapFn(f)
+        tD = Target.wrapFn(f) #rMap can be set in the constructor of the Target
+        tE = Target.wrapFn(f, kwargs={"string":"E"})
         
-        #Connect them into a workflow
-        tA.addChild(tB)
-        tB.addChild(tC)
-        tC.setFollowOn(tD)
-        tA.setFollowOn(tE)
+        #Connect them into a workflow, using rMap to map return values to inputs
+        tA.addChild(tB, rMap={"string":0, "outputFile":1 }) 
+        tB.addChild(tC, rMap={"string":0, "outputFile":1 }) 
+        tC.setFollowOn(tD, rMap={"string":0, "outputFile":1 }) 
+        tA.setFollowOn(tE, rMap={"outputFile":1 })
         
         #The create the runner for the workflow.
         
@@ -53,7 +53,8 @@ class TestCase(unittest.TestCase):
 def f(string, outputFile):
     fH = open(outputFile, 'a')
     fH.write(string)
-    fH.close()        
+    fH.close()   
+    return chr(ord(string)+1), outputFile     
 
 if __name__ == '__main__':
     from jobTree.test.staticDeclaration.staticTest import *

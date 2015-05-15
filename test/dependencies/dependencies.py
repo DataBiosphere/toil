@@ -114,10 +114,10 @@ class FirstJob(Target):
 
     def run(self):
         sleep(1)
-        self.addChildTarget(DownJob(self.tree, self.event,
-                                    self.sleepTime, self.startTime, self.cpu))
+        self.addChild(DownJob(self.tree, self.event,
+                              self.sleepTime, self.startTime, self.cpu))
 
-        self.setFollowOnTarget(LastJob())
+        self.setFollowOn(LastJob())
 
 class LastJob(Target):
     def __init__(self):
@@ -142,12 +142,12 @@ class DownJob(Target):
         for child in children:
             writeLog(self, "add %s as child of %s" % (child, self.event),
                      self.startTime)
-            self.addChildTarget(DownJob(self.tree, child,
-                                        self.sleepTime, self.startTime, self.cpu))
+            self.addChild(DownJob(self.tree, child,
+                                  self.sleepTime, self.startTime, self.cpu))
 
         if len(children) == 0:
-            self.setFollowOnTarget(UpJob(self.tree, self.event,
-                                         self.sleepTime, self.startTime, self.cpu))
+            self.setFollowOn(UpJob(self.tree, self.event,
+                                   self.sleepTime, self.startTime, self.cpu))
         return 0
     
 class UpJob(Target):

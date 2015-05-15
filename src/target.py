@@ -41,8 +41,10 @@ class Target(object):
         self.__memory = memory
         self.__time = time #This parameter is no longer used by the batch system.
         self.__cpu = cpu
+        self._rMap = None
         if self.__module__ == "__main__":
-            raise RuntimeError("The module name of class %s is __main__, which prevents us from serialising it properly, \
+            raise RuntimeError("The module name of class %s is __main__, \
+            which prevents us from serialising it properly, \
 please ensure you re-import targets defined in main" % self.__class__.__name__)
         self.importStrings = set((".".join((self.__module__, self.__class__.__name__)),))
         self.loggingMessages = []
@@ -53,50 +55,61 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         pass
     
-    def setFollowOn(self, followOn):
+    def setFollowOn(self, followOn, rMap=None):
         """Set the follow on target.
         Will complain if follow on already set.
+        
+        rMap is a dictionary used to provide the return arguments of the target's run function 
+        to the followOn/child. It is accessible in the followOn/child
+        by the method getRMap(). The values of the rMap must be integers, which 
+        correspond to the indices of the run functions return values (treated as a tuple).
+        These indices are replaced with the Target's return values once the targets
+        run method has been evaluated. For example, if the target's run method returns
+        (foo, bar) and rMap= { "foo":0, "bar":1 } then when the followOn/child's run method
+        is run the followOn/child's getRMap() function will return { "foo":foo, "bar":bar }.
+        If rMap is None, then the followOn/child's getRMap() will return None.
+        This design allows the selective transmission of return values between parents/predcessors
+        and child/followOn targets. 
+        See FunctionWrappingTarget for explanation of how rMap is used to pass arguments to wrapped functions.
         """
         assert self.__followOn == None
-        self.__followOn = followOn
-    
-    def setFollowOnTarget(self, followOn):
-        """Set the follow on target.
-        Will complain if follow on already set.
-        Deprecated - use setFollowOn
-        """
-        self.setFollowOn(followOne)
+        self.__followOn = followOn 
+        followOn._setRMap(rMap)
 
-    def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, \
+                      memory=sys.maxint, cpu=sys.maxint, rMap=None):
         """Sets a follow on target fn. See FunctionWrappingTarget.
         """
-        self.setFollowOnTarget(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu))
+        self.setFollowOn(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
+                                time=time, memory=memory, cpu=cpu), rMap=rMap)
 
-    def setFollowOnTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def setFollowOnTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint,\
+                            memory=sys.maxint, cpu=sys.maxint, rMap=None):
         """Sets a follow on target fn. See TargetFunctionWrappingTarget.
         """
-        self.setFollowOnTarget(TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)) 
+        self.setFollowOn(TargetFunctionWrappingTarget(fn=fn, args=args, \
+                    kwargs=kwargs, time=time, memory=memory, cpu=cpu), rMap=rMap) 
         
-    def addChild(self, childTarget):
-        """Adds the child target to be run as child of this target.
+    def addChild(self, childTarget, rMap=None):
+        """Adds the child target to be run as child of this target. See setFollowOn
+        for explanation of rMap, replacing followOn for child.
         """
         self.__children.append(childTarget)
-        
-    def addChildTarget(self, childTarget):
-        """Adds the child target to be run as child of this target.
-        Deprecated - use addChild.
-        """
-        self.addChild(childTarget)
+        childTarget._setRMap(rMap)
     
-    def addChildFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def addChildFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, \
+                   cpu=sys.maxint, rMap=None):
         """Adds a child fn. See FunctionWrappingTarget.
         """
-        self.addChildTarget(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu))
+        self.addChild(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
+                                    time=time, memory=memory, cpu=cpu), rMap=rMap)
 
-    def addChildTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def addChildTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, \
+                         memory=sys.maxint, cpu=sys.maxint, rMap=None):
         """Adds a child target fn. See TargetFunctionWrappingTarget.
         """
-        self.addChildTarget(TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)) 
+        self.addChild(TargetFunctionWrappingTarget(fn=fn, args=args, \
+                kwargs=kwargs, time=time, memory=memory, cpu=cpu), rMap=rMap) 
     
     def addChildCommand(self, childCommand, runTime=sys.maxint):
         """A command to be run as child of the job tree.
@@ -201,15 +214,24 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         """
         self.loggingMessages.append(str(string))
         
+    def getRMap(self):
+        """Get rMap representing return values from parent/predecessor Target, if set.
+        (see setFollowOn for explanation of rMap).
+        """
+        return self._rMap
+        
     @staticmethod
-    def makeTargetFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def wrapTargetFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, \
+                     cpu=sys.maxint):
         """Makes a Target out of a target function! 
-        In a target function, the first argument to the function will be a reference to the wrapping target, allowing
+        In a target function, the first argument to the function will 
+        be a reference to the wrapping target, allowing
         the function to create children/follow ons.
         
         Convenience function for constructor of TargetFunctionWrappingTarget
         """
-        return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
+        return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
+                                time=time, memory=memory, cpu=cpu)
  
     @staticmethod
     def wrapFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
@@ -217,35 +239,65 @@ please ensure you re-import targets defined in main" % self.__class__.__name__)
         
         Convenience function for constructor of FunctionWrappingTarget
         """
-        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
+        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
+                                time=time, memory=memory, cpu=cpu)
  
 ####
 #Private functions
 #### 
+    def _setRMap(self, rMap):
+        """Sets the rMap object if rMap is not None.
+        """
+        if rMap != None:
+            if self._rMap != None:
+                raise RuntimeError("rMap is already set")
+            self._rMap = rMap
+
+    def _passReturnValues(self, returnValues):
+        """Replaces the values in rMap with the corresponding return values
+        from the parent/predecessor target.
+        """
+        if self._rMap != None and len(self._rMap) > 0:
+            returnValues = tuple(returnValues)
+            for arg in self._rMap:
+                self._rMap[arg] = returnValues[self._rMap[arg]]
     
-    def setFileVariables(self, jobStore, job, localTempDir):
+    def _setFileVariables(self, jobStore, job, localTempDir):
         """Sets the jobStore for the target.
         """
         self.jobStore = jobStore
         self.job = job
         self.localTempDir = localTempDir
         
-    def unsetFileVariables(self):
+    def _unsetFileVariables(self):
         """Unsets the file variables, so that they don't get pickled.
         """
         self.jobStore = None
         self.job = None
         self.localTempDir = None
         
-    def getMasterLoggingMessages(self):
+    def _getMasterLoggingMessages(self):
         return self.loggingMessages[:]
 
 class FunctionWrappingTarget(Target):
     """Target used to wrap a function.
     
     Function can not be nested function or class function, currently.
+    
+    If rMap is set (see Target.setFollowOn) then it is used populate the 
+    keyword arguments of the wrapped function. 
+    This is done by mapping the the return values of the parent/predecessor target
+    to the arguments of the wrapped function.
+    The keys of rMap are the names of argument in the wrapped function.
+    The values of rMap are the indices corresponding the return values of parent/predecessor target.
+    For example, if the wrapped function foo has declaration foo(bar, foo2) and 
+    rMap={ "bar":0 }, then the first return value from the parent/predecessor target is made the argument
+    "bar" to the wrapped function.  
+    Duplicate arguments are not allowed, so if the "bar" argument is set both by rMap and the args or kwargs
+    of the wrapping target then an exception is thrown.
     """
-    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
+    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, 
+                 cpu=sys.maxint):
         Target.__init__(self, time=time, memory=time, cpu=time)
         moduleName = fn.__module__
         if moduleName== '__main__':
@@ -267,17 +319,33 @@ class FunctionWrappingTarget(Target):
         self.fnModuleDir = moduleDir
         self.fnModule = moduleName #Module of function
         self.fnName = str(fn.__name__) #Name of function
-        self.args=args
-        self.kwargs=kwargs
+        self._args=args
+        self._kwargs=kwargs
 
     def _getFunc( self ):
         if self.fnModuleDir not in sys.path:
             sys.path.append( self.fnModuleDir )
         return getattr( importlib.import_module( self.fnModule ), self.fnName )
+    
+    def _addRMap(self):
+        """Processes the rMap (if set), and uses it to populate the keyword arguments
+        of the wrapped function.
+        """
+        if self._rMap != None:
+            for arg in self._rMap:
+                if isinstance(arg, str):  
+                    #Add to kwargs
+                    if self._rMap[arg] in self._kwargs: #Do not allow silent replacement of a kwarg.
+                        raise RuntimeError("Keyword argument: %s is duplicated" % arg)
+                    self._kwargs[arg] = self._rMap[arg]
+                else:
+                    raise RuntimeError("Argument in rMap is not a string: %s" % arg)
 
     def run(self):
         func = self._getFunc( )
-        func(*self.args, **self.kwargs)
+        self._addRMap()
+        #Now run the wrapped function
+        return func(*self._args, **self._kwargs)
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """Target used to wrap a function.
@@ -288,4 +356,5 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
     def run(self):
         func = self._getFunc( )
-        func(*((self,) + tuple(self.args)), **self.kwargs)
+        self._addRMap()
+        return func(*((self,) + tuple(self._args)), **self._kwargs)

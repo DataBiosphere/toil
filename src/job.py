@@ -2,7 +2,6 @@ import logging
 
 logger = logging.getLogger( __name__ )
 
-
 class Job( object ):
     """
     A class encapsulating state about a jobTree job including its child commands and follow-on commands.
@@ -96,7 +95,7 @@ class Job( object ):
     @staticmethod
     def fromDict( d ):
         return Job( **d )
-
+    
     def __hash__( self ):
         return hash( self.jobStoreID )
 
@@ -112,6 +111,6 @@ class Job( object ):
 
     def __ne__( self, other ):
         return not self.__eq__( other )
-
+    
     def __repr__( self ):
         return 'Job( **%r )' % self.__dict__

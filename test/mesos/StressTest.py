@@ -17,8 +17,8 @@ class LongTestTarget(Target):
 
     def run(self):
         for i in range(0,self.numTargets):
-            self.addChildTarget(HelloWorldTarget(i))
-        self.setFollowOnTarget(LongTestFollowOn())
+            self.addChild(HelloWorldTarget(i))
+        self.setFollowOn(LongTestFollowOn())
 
 
 class LongTestFollowOn(Target):
@@ -39,7 +39,7 @@ class HelloWorldTarget(Target):
 
     def run(self):
         touchFile( 'child', self.i )
-        self.setFollowOnTarget(HelloWorldFollowOn(self.i))
+        self.setFollowOn(HelloWorldFollowOn(self.i))
 
 
 class HelloWorldFollowOn(Target):

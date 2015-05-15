@@ -141,11 +141,11 @@ class Stack(object):
         if targetCpu != sys.maxint:
             assert targetCpu <= cpuAvailable
         #Set the jobStore for the target, used for file access
-        self.target.setFileVariables(jobStore, job, localTempDir)
+        self.target._setFileVariables(jobStore, job, localTempDir)
         #Run the target, first cleanup then run.
-        self.target.run()
+        returnValues = self.target.run()
         #Now unset the job store to prevent it being serialised
-        self.target.unsetFileVariables()
+        self.target._unsetFileVariables()
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
@@ -154,6 +154,7 @@ class Stack(object):
         #Handle the follow on
         followOn = self.target.getFollowOn()
         if followOn is not None: #Target to get rid of follow on when done.
+            followOn._passReturnValues(returnValues)
             followOnStack = Stack(followOn)
             job.followOnCommands.append((followOnStack.makeRunnable(jobStore, job.jobStoreID),
                                          followOnStack.getMemory(defaultMemory),
@@ -165,7 +166,9 @@ class Stack(object):
         newChildren.reverse()
         assert len(job.children) == 0
         while len(newChildren) > 0:
-            childStack = Stack(newChildren.pop())
+            child = newChildren.pop()
+            child._passReturnValues(returnValues)
+            childStack = Stack(child)
             job.children.append((childStack.makeRunnable(jobStore, job.jobStoreID),
                      childStack.getMemory(defaultMemory),
                      childStack.getCpu(defaultCpu)))
@@ -174,7 +177,7 @@ class Stack(object):
         for childCommand, runTime in self.target.getChildCommands():
             job.children.append((childCommand, defaultMemory, defaultCpu))
             
-        for message in self.target.getMasterLoggingMessages():
+        for message in self.target._getMasterLoggingMessages():
             job.messages.append(message)
         
         #Finish up the stats

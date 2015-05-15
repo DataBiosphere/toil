@@ -60,4 +60,4 @@ if __name__ == '__main__':
 
 
     # Setup the job stack and launch jobTree job
-    i = Stack(Target.makeTargetFn(hello_world)).startJobTree(options)
+    i = Stack(Target.wrapTargetFn(hello_world)).startJobTree(options)
