@@ -155,14 +155,18 @@ class FileJobStore(AbstractJobStore):
             raise RuntimeError("File %s does not exist" % jobStoreFileID)
         with open(jobStoreFileID, 'r') as f:
             yield f
-    
+
+    @contextmanager
     def writeSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )
-        return open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' )
-    
+        with open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' ) as f:
+            yield f
+
+    @contextmanager
     def readSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )
-        return open(os.path.join(self.jobStoreDir, sharedFileName), 'r')
+        with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
+            yield f
     
     def writeStats(self, statsString):
         tempStatsFile = os.path.join(random.choice(self.statsDirs), \

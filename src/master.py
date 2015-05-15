@@ -51,27 +51,26 @@ def statsAggregatorProcess(jobStore, stop):
     startClock = getTotalCpuTime()
 
     #Start off the stats file
-    fileHandle = jobStore.writeSharedFileStream("stats.xml")
-    fileHandle.write('<?xml version="1.0" ?><stats>')
+    with jobStore.writeSharedFileStream("stats.xml") as fileHandle:
+        fileHandle.write('<?xml version="1.0" ?><stats>')
     
-    #The main loop
-    timeSinceOutFileLastFlushed = time.time()
-    while True:
-        if not stop.empty(): #This is a indirect way of getting a message to 
-            #the process to exit
-            jobStore.readStats(fileHandle)
-            break
-        if jobStore.readStats(fileHandle) == 0:
-            time.sleep(0.5) #Avoid cycling too fast
-        if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the 
-            #results file every minute
-            fileHandle.flush() 
-            timeSinceOutFileLastFlushed = time.time()
+        #The main loop
+        timeSinceOutFileLastFlushed = time.time()
+        while True:
+            if not stop.empty(): #This is a indirect way of getting a message to
+                #the process to exit
+                jobStore.readStats(fileHandle)
+                break
+            if jobStore.readStats(fileHandle) == 0:
+                time.sleep(0.5) #Avoid cycling too fast
+            if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the
+                #results file every minute
+                fileHandle.flush()
+                timeSinceOutFileLastFlushed = time.time()
 
-    #Finish the stats file
-    fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
-                     (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
-    fileHandle.close()
+        #Finish the stats file
+        fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
+                         (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
 
 #####
 ##Following encapsulates interations with batch system class.
