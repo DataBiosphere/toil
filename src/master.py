@@ -158,9 +158,9 @@ class JobBatcher:
         maxJobDuration = float(self.config.attrib["max_job_duration"])
         idealJobTime = float(self.config.attrib["job_time"])
         if maxJobDuration < idealJobTime * 10:
-            logger.info("The max job duration is less than 10 times the ideal the job time, \
-        so I'm setting it to the ideal job time, sorry, but I don't want to \
-        crash your jobs because of limitations in jobTree ")
+            logger.info("The max job duration is less than 10 times the ideal the job time, so I'm setting it "
+                        "to the ideal job time, sorry, but I don't want to crash your jobs "
+                        "because of limitations in jobTree ")
             maxJobDuration = idealJobTime * 10
         jobsToKill = []
         if maxJobDuration < 10000000: #We won't both doing anything is the rescue 
@@ -168,10 +168,11 @@ class JobBatcher:
             runningJobs = self.batchSystem.getRunningJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
-                    logger.critical("The job: %s has been running for: %s seconds, \
-                    more than the max job duration: %s, we'll kill it" % \
-                                (str(self.getJob(jobBatchSystemID)), \
-                                 str(runningJobs[jobBatchSystemID]), str(maxJobDuration)))
+                    logger.critical("The job: %s has been running for: %s seconds, more than the "
+                                    "max job duration: %s, we'll kill it"
+                                    % (str(self.getJob(jobBatchSystemID)),
+                                       str(runningJobs[jobBatchSystemID]),
+                                       str(maxJobDuration)))
                     jobsToKill.append(jobBatchSystemID)
             self.killJobs(jobsToKill)
     
@@ -216,8 +217,7 @@ class JobBatcher:
         if self.jobStore.exists(jobStoreID):
             job = self.jobStore.load(jobStoreID)
             if job.logJobStoreFileID is not None:
-                logger.critical("The job seems to have left a log file, \
-                indicating failure: %s", jobStoreID)
+                logger.critical("The job seems to have left a log file, indicating failure: %s", jobStoreID)
                 with job.getLogFileHandle( self.jobStore ) as logFileStream:
                     logStream( logFileStream, jobStoreID, logger.critical )
             assert job not in self.jobTreeState.updatedJobs
@@ -234,13 +234,13 @@ class JobBatcher:
                     #or follow ons may log to master.
                     logger.critical("Got message from job at time: %s : %s" % \
                                     (time.strftime("%m-%d-%Y %H:%M:%S"), message))
-                logger.debug("Job has no follow-ons or children despite job file \
-                being present so we'll consider it done: %s" % jobStoreID)
+                logger.debug("Job has no follow-ons or children despite job file "
+                             "being present so we'll consider it done: %s" % jobStoreID)
                 self._updateParentStatus(jobStoreID)
         else:  #The job is done
             if resultStatus != 0:
-                logger.critical("Despite the batch system claiming failure the \
-                job %s seems to have finished and been removed" % jobStoreID)
+                logger.critical("Despite the batch system claiming failure the "
+                                "job %s seems to have finished and been removed" % jobStoreID)
             self._updateParentStatus(jobStoreID)
             
     def _updateParentStatus(self, jobStoreID):
@@ -329,11 +329,11 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                     else:
                         totalFailedJobs += 1
                         logger.critical("Job: %s is completely failed" % job.jobStoreID)
+
             jobTreeState.updatedJobs = set() #We've considered them all, so reset
 
         if jobBatcher.getNumberOfJobsIssued() == 0:
-            logger.info("Only failed jobs and their dependents (%i total) are \
-            remaining, so exiting." % totalFailedJobs)
+            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
             break
 
         updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.

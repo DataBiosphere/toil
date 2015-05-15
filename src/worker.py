@@ -288,19 +288,16 @@ def main():
             ##########################################
             
             if time.time() - startTime > maxTime:
-                logger.info("We are breaking because the maximum time the \
-                job should run for has been exceeded")
+                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
                 break
             
             #Deal with children
             if len(job.children) >= 1:  #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this worker, \
-                its got %i children" % len(job.children))
+                logger.info("No more jobs can run in series by this worker, its got %i children" % len(job.children))
                 break
             
             if len(job.followOnCommands) == 0:
-                logger.info("No more jobs can run by this worker as we \
-                have exhausted the follow ons")
+                logger.info("No more jobs can run by this worker as we have exhausted the follow ons")
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
@@ -326,16 +323,14 @@ def main():
             stats.attrib["memory"] = str(totalMemoryUsage)
             jobStore.writeStats(ET.tostring(stats))
         
-        logger.info("Finished running the chain of jobs on this node, \
-        we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
     ##########################################
     #Where worker goes wrong
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.critical("Exiting the worker because of a \
-        failed job on host %s", socket.gethostname())
+        logger.critical("Exiting the worker because of a failed job on host %s", socket.gethostname())
         job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
         workerFailed = True

@@ -33,8 +33,7 @@ class Job( object ):
     def setupJobAfterFailure( self, config ):
         if len( self.followOnCommands ) > 0:
             self.remainingRetryCount = max( 0, self.remainingRetryCount - 1 )
-            logger.critical( "Due to failure we are reducing the remaining retry \
-            count of job %s to %s" % (self.jobStoreID, self.remainingRetryCount) )
+            logger.critical( "Due to failure we are reducing the remaining retry count of job %s to %s" % (self.jobStoreID, self.remainingRetryCount) )
             # Set the default memory to be at least as large as the default, in
             # case this was a malloc failure (we do this because of the combined
             # batch system)
