@@ -45,7 +45,7 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
         
-def loadStack(command):
+def loadStack(command,jobStore):
     commandTokens = command.split()
     assert commandTokens[0] == "scriptTree"
     for className in commandTokens[2:]:
@@ -55,15 +55,13 @@ def loadStack(command):
         _temp = __import__(moduleName, globals(), locals(), [className], -1)
         exec "%s = 1" % className
         vars()[className] = _temp.__dict__[className]
-    return loadPickleFile(commandTokens[1])
+    return loadPickleFile(commandTokens[1],jobStore)
         
-def loadPickleFile(pickleFile):
+def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
     """
-    fileHandle = open(pickleFile, 'r')
-    i = cPickle.load(fileHandle)
-    fileHandle.close()
-    return i
+    with jobStore.readFileStream(pickleFile) as fileHandle:
+        return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():
     """Gets the number of the next available file descriptor.
@@ -104,9 +102,8 @@ def main():
     ##########################################
     
     #First load the environment for the job.
-    fileHandle = jobStore.readSharedFileStream("environment.pickle")
-    environment = cPickle.load(fileHandle)
-    fileHandle.close()
+    with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
+        environment = cPickle.load(fileHandle)
     for i in environment:
         if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]
@@ -257,7 +254,7 @@ def main():
                     #Run the target
                     ##########################################
                     
-                    loadStack(command).execute(job=job, stats=stats,
+                    loadStack(command,jobStore).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
