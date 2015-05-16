@@ -290,6 +290,8 @@ def main():
             ##########################################
             
             if time.time() - startTime > maxTime:
+                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
+                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
                 logger.info("We are breaking because the maximum time the job should run for has been exceeded")
                 break
             
@@ -306,9 +308,13 @@ def main():
             command, memory, cpu, depth = job.followOnCommands[-1]
             
             if memory > memoryAvailable:
+                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
+                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
                 logger.info("We need more memory for the next job, so finishing")
                 break
             if cpu > cpuAvailable:
+                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
+                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
                 logger.info("We need more cpus for the next job, so finishing")
                 break
             
