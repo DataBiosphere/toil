@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 """Tests the scriptTree jobTree-script compiler.
 """
+import logging
 
 import unittest
 import sys
 import os
 import random
+from uuid import uuid4
 
 from sonLib.bioio import TestStatus
 from sonLib.bioio import parseSuiteTestOptions
@@ -114,13 +116,16 @@ class TestCase(JobTreeTest):
             assert midPoint >= 0
             system("rm -rf %s" % tempDir)
 
-def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10000):
+def scriptTree_SortTest(testNo, batchSystem, jobStore='file', lines=10000, maxLineLength=10, N=10000):
     """Tests scriptTree/jobTree by sorting a file in parallel.
     """
     for test in xrange(testNo):
         tempDir = getTempDirectory(os.getcwd())
         tempFile = getTempFile(rootDir=tempDir)
-        jobTreeDir = os.path.join(tempDir, "testJobTree")
+        if jobStore == 'file':
+            jobTreeDir = os.path.join(tempDir, "testJobTree")
+        else:
+            jobTreeDir = jobStore
         makeFileToSort(tempFile, lines=lines, maxLineLength=maxLineLength)
         #First make our own sorted version
         fileHandle = open(tempFile, 'r')
@@ -130,7 +135,15 @@ def scriptTree_SortTest(testNo, batchSystem, lines=10000, maxLineLength=10, N=10
         #Sort the file
         rootPath = os.path.join(workflowRootPath(), "test/sort")
         while True:
-            command = "%s/sort.py --jobTree %s --logLevel=DEBUG --fileToSort=%s --N %i --batchSystem %s --jobTime 1.0 --maxCpus 20 --retryCount 2" % (rootPath, jobTreeDir, tempFile, N, batchSystem) #, retryCount)
+            command = "{rootPath}/sort.py " \
+                      "--jobTree '{jobTreeDir}' " \
+                      "--logLevel=DEBUG " \
+                      "--fileToSort='{tempFile}' " \
+                      "--N {N:d} " \
+                      "--batchSystem {batchSystem} " \
+                      "--jobTime 1000.0 " \
+                      "--maxCpus 20 " \
+                      "--retryCount 2".format( **locals() )
             system(command)
             try:
                 system("jobTreeStatus --jobTree %s --failIfNotComplete" % jobTreeDir)
