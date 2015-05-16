@@ -15,11 +15,9 @@ def sort(file):
         fileHandle.write(line)
     fileHandle.close()
 
-def merge(inputFile1, inputFile2, outputFileHandle):
+def merge(fileHandle1, fileHandle2, outputFileHandle):
     """Merges together two files maintaining sorted order.
     """
-    fileHandle1 = open(inputFile1, 'r')
-    fileHandle2 = open(inputFile2, 'r')
     line2 = fileHandle2.readline()
     for line1 in fileHandle1.readlines():
         while line2 != '' and line2 <= line1:
@@ -29,8 +27,6 @@ def merge(inputFile1, inputFile2, outputFileHandle):
     while line2 != '':
         outputFileHandle.write(line2)
         line2 = fileHandle2.readline()
-    fileHandle1.close()
-    fileHandle2.close()
 
 def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
     """Copies the range (in bytes) between fileStart and fileEnd to the given

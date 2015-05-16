@@ -72,9 +72,10 @@ class TestCase(JobTreeTest):
             makeFileToSort(tempFile2)
             sort(tempFile1)
             sort(tempFile2)
-            fileHandle = open(tempFile3, 'w')
-            merge(tempFile1, tempFile2, fileHandle)
-            fileHandle.close()
+            with open(tempFile3, 'w') as fileHandle:
+                with open( tempFile1 ) as tempFileHandle1:
+                    with open( tempFile2 ) as tempFileHandle2:
+                        merge(tempFileHandle1, tempFileHandle2, fileHandle)
             lines1 = loadFile(tempFile1) + loadFile(tempFile2)
             lines1.sort()
             lines2 = loadFile(tempFile3)

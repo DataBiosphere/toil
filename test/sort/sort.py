@@ -28,9 +28,9 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     if random.random() > 0.5:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
-    target.logToMaster("Am running a down target with length: %i from input file: %s" % (length, inputFile))
     assert length >= 0
     if length > N:
+        target.logToMaster("Splitting range (%i..%i) of file: %s" % (fileStart, fileEnd, inputFile))
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         assert midPoint >= fileStart
         assert midPoint+1 < fileEnd
@@ -42,6 +42,7 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         target.setFollowOnTargetFn(up, (tempFileStoreID1, tempFileStoreID2, outputFileStoreID))                
     else:
         #We can sort this bit of the file
+        target.logToMaster("Sorting range (%i..%i) of file: %s" % (fileStart, fileEnd, inputFile))
         with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
         #Make a local copy and sort the file
@@ -49,14 +50,16 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         sort(tempOutputFile)
         target.updateGlobalFile(outputFileStoreID, tempOutputFile)
 
-def up(target, inputFile1, inputFile2, outputFileStoreID):
+def up(target, inputFileID1, inputFileID2, outputFileStoreID):
     """Merges the two files and places them in the output.
     """
     if random.random() > 0.5:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
-        merge(inputFile1, inputFile2, fileHandle)
-    target.logToMaster("Am running an up target with input files: %s and %s" % (inputFile1, inputFile2))
+        with target.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
+            with target.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
+                merge(inputFileHandle1, inputFileHandle2, fileHandle)
+    target.logToMaster("Merging %s and %s to %s" % (inputFileID1, inputFileID2, outputFileStoreID))
 
 def cleanup(target, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
@@ -98,5 +101,4 @@ def main():
     #    raise RuntimeError("The jobtree contained %i failed jobs" % i)
 
 if __name__ == '__main__':
-    from jobTree.test.sort.sort import *
     main()
