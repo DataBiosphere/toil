@@ -221,6 +221,8 @@ class AbstractJobStore( object ):
 
     sharedFileNameRegex = re.compile( r'^[a-zA-Z0-9._-]+$' )
 
+    # FIXME: Rename to updateSharedFileStream
+
     @abstractmethod
     @contextmanager
     def writeSharedFileStream( self, sharedFileName ):
