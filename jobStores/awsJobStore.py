@@ -22,9 +22,9 @@ from boto.exception import SDBResponseError, S3ResponseError
 import itertools
 import time
 
-from jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
+from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
-from src.job import Job
+from jobTree.src.job import Job
 
 log = logging.getLogger( __name__ )
 

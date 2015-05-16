@@ -8,7 +8,8 @@ from threading import Thread
 import uuid
 from xml.etree.cElementTree import Element
 
-from jobStores.abstractJobStore import NoSuchJobException, NoSuchFileException
+from jobTree.jobStores.abstractJobStore import ( NoSuchJobException, NoSuchFileException,
+                                                 AbstractJobStore )
 
 from jobStores.awsJobStore import AWSJobStore
 from jobStores.fileJobStore import FileJobStore
@@ -33,6 +34,9 @@ class AbstractJobStoreTest( JobTreeTest ):
 
     @abstractmethod
     def createJobStore( self, config=None ):
+        """
+        :rtype: AbstractJobStore
+        """
         raise NotImplementedError( )
 
     def setUp( self ):
@@ -46,6 +50,11 @@ class AbstractJobStoreTest( JobTreeTest ):
         super( AbstractJobStoreTest, self ).tearDown( )
 
     def test( self ):
+        """
+        This is a front-to-back test of the "happy" path in a job store, i.e. covering things
+        that occur in the dat to day life of a job store. The purist might insist that this be
+        split up into several cases and I agree wholeheartedly.
+        """
         master = self.master
 
         # Test initial state
@@ -117,16 +126,41 @@ class AbstractJobStoreTest( JobTreeTest ):
         for childJob in childJobs:
             self.assertEquals( master.load( childJob.jobStoreID ), childJob )
 
+        # Test emptying out the container-like attributes. This is relevant in the AWS job store
+        # since the underlying SimpleDB API can't represent attributes that are None or [] in a
+        # straight-forward manner.
+        #
+        childJob = next( iter( childJobs ) )
+
+        self.assertTrue( len( childJob.followOnCommands ) > 0)
+        self.assertTrue( len( childJob.messages ) > 0)
+        childJob.followOnCommands = []
+        childJob.messages = []
+        self.assertEquals( len( childJob.followOnCommands ), 0)
+        self.assertEquals( len( childJob.messages ), 0)
+        master.store( childJob )
+        childJobOnWorker = worker.load( childJob.jobStoreID )
+        self.assertEquals( len( childJob.followOnCommands ), 0)
+        self.assertEquals( len( childJob.messages ), 0)
+        self.assertEquals( childJobOnWorker, childJob )
+        # Now that one child is without follow-ons, it should omitted from the parent
+        jobOnMaster = master.load( jobOnMaster.jobStoreID )
+        self.assertEquals( len( jobOnMaster.children ), 1 )
+
         # Test job deletions
         #
         for childJob in childJobs:
             master.delete( childJob )
+        jobOnMaster = master.load( jobOnMaster.jobStoreID )
+        self.assertEquals( len( jobOnMaster.children ), 0 )
         for childJob in childJobs:
             self.assertFalse( worker.exists( childJob.jobStoreID ) )
             self.assertRaises( NoSuchJobException, worker.load, childJob.jobStoreID )
         # delete should be idempotent
         for childJob in childJobs:
             master.delete( childJob )
+        jobOnWorker = worker.load( jobOnMaster.jobStoreID )
+        self.assertEquals( jobOnMaster, jobOnWorker )
 
         # Test shared files: Write shared file on master, ...
         #
@@ -190,6 +224,11 @@ class AbstractJobStoreTest( JobTreeTest ):
         # TODO: Test stats methods
 
     def testMultipartUploads( self ):
+        """
+        This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
+        running it against the other job stores as well.
+        """
+
         # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
         bufSize = 65536
         partSize = AWSJobStore._s3_part_size
@@ -202,7 +241,7 @@ class AbstractJobStoreTest( JobTreeTest ):
             checksum = hashlib.md5( )
             checksumQueue = Queue( 2 )
 
-            # FIXME: A separate thread is probably overkill here
+            # FIXME: Having a separate thread is probably overkill here
 
             def checksumThreadFn( ):
                 while True:

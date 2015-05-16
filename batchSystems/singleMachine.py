@@ -27,10 +27,8 @@ import random
 import subprocess
 import time
 
-#from threading import Thread, Lock
-#from Queue import Queue
-from multiprocessing import Process
-from multiprocessing import JoinableQueue as Queue
+from jobTree.src import Process, Queue
+
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 from jobTree.src.worker import main as workerMain

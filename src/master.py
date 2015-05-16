@@ -33,8 +33,7 @@ import os
 import sys
 import os.path
 import time
-#from threading import Thread, Queue
-from multiprocessing import Process, Queue
+from jobTree.src import Process, Queue
 
 from sonLib.bioio import getTotalCpuTime, logStream
 from jobTree.src.common import workflowRootPath
