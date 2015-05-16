@@ -10,9 +10,9 @@ class Job( object ):
     uses 3-tuples of the form (jobStoreId, memory, cpu) instead.
     """
 
-    @staticmethod
-    def create( command, memory, cpu, tryCount, jobStoreID, logJobStoreFileID ):
-        return Job(
+    @classmethod
+    def create( cls, command, memory, cpu, tryCount, jobStoreID, logJobStoreFileID ):
+        return cls(
             remainingRetryCount=tryCount,
             jobStoreID=jobStoreID,
             followOnCommands=[ (command, memory, cpu, 0) ],
@@ -81,20 +81,20 @@ class Job( object ):
             self.messages,
             self.logJobStoreFileID ]
 
-    @staticmethod
-    def fromList( l ):
+    @classmethod
+    def fromList( cls, l ):
         """
         Deprecated. Use fromDict() instead.
         """
-        return Job( *l )
+        return cls( *l )
 
     def toDict( self ):
         return self.__dict__.copy( )
 
-    @staticmethod
-    def fromDict( d ):
-        return Job( **d )
-    
+    @classmethod
+    def fromDict( cls, d ):
+        return cls( **d )
+
     def __hash__( self ):
         return hash( self.jobStoreID )
 
@@ -110,6 +110,6 @@ class Job( object ):
 
     def __ne__( self, other ):
         return not self.__eq__( other )
-    
+
     def __repr__( self ):
-        return 'Job( **%r )' % self.__dict__
+        return '%s( **%r )' % ( self.__class__.__name__, self.__dict__ )
