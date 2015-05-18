@@ -608,12 +608,13 @@ def fromNoneable( v ):
     assert v != ""
     return '' if v is None else v
 
+sort_prefix_length=3
 
-def toList( v ):
-    if isinstance( v, basestring ):
-        return [ v ] if v else [ ]
+def toList( vs ):
+    if isinstance( vs, basestring ):
+        return [ vs ] if vs else [ ]
     else:
-        return v
+        return [ v[sort_prefix_length:] for v in sorted( vs ) ]
 
 
 def fromList( vs ):
@@ -622,8 +623,9 @@ def fromList( vs ):
     elif len( vs ) == 1:
         return vs[ 0 ]
     else:
+        assert len(vs) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
-        return vs
+        return [ str(i).zfill(sort_prefix_length) + v for i,v in enumerate( vs ) ]
 
 
 def passThrough( v ): return v
