@@ -5,27 +5,34 @@ import os
 import subprocess
 import threading
 import sys
+from time import sleep
 
 from jobTree.test.mesos.StressTest import main as stressMain
 from jobTree.test import JobTreeTest
 
-
+lock = threading.Lock()
 class TestMesos( JobTreeTest ):
 
-    class MesosMasterThread( threading.Thread ):
-        def __init__( self ):
-            threading.Thread.__init__( self )
-            self.popen = subprocess.Popen("mesos-master --registry=in_memory --ip=127.0.0.1", shell=True)
-            # FIXME: add blocking wait
-
-    class MesosSlaveThread( threading.Thread ):
-        def __init__( self ):
-            threading.Thread.__init__( self )
+    class MesosMasterThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
             self.popen = None
 
-        def run( self ):
-            self.popen = subprocess.Popen("mesos-slave --ip=127.0.0.1 --master=127.0.0.1:5050", shell=True)
-            # FIXME: add blocking wait
+        def run(self):
+            with lock:
+                self.popen = subprocess.Popen(['/usr/local/sbin/mesos-master', '--registry=in_memory', '--ip=127.0.0.1'])
+            self.popen.wait()
+
+
+    class MesosSlaveThread(threading.Thread):
+        def __init__(self):
+            threading.Thread.__init__(self)
+            self.popen = None
+
+        def run(self):
+            with lock:
+                self.popen = subprocess.Popen(['/usr/local/sbin/mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050'])
+            self.popen.wait()
 
     master = MesosMasterThread( )
     slave = MesosSlaveThread( )
@@ -44,7 +51,7 @@ class TestMesos( JobTreeTest ):
         super( TestMesos, cls ).tearDownClass( )
         cls.master.popen.kill( )
         cls.slave.popen.kill( )
-        # FIMXE: join the threads
+        # FIXME: join the threads
 
     @classmethod
     def killSlave( cls ):
@@ -82,22 +89,25 @@ class TestMesos( JobTreeTest ):
                              "actual files: {}".format( os.listdir( "." ) ) )
             self.assertTrue( os.path.isfile( "./hello_world_followOn_{}.txt".format( i ) ),
                              "actual files: {}".format( os.listdir( "." ) ) )
+            self.assertTrue("hello_world_parentFollowOn_.txt")
 
     def test_stress_good( self ):
         self.__do_test_stress( False, 2 )
 
     def test_stress_bad( self ):
+        # the second argument is the number of targets. Badexecutor fails odd tasks, so certain numbers of tasks
+        # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
 
     @unittest.skip
     def test_resume( self ):
         mainT = threading.Thread( target=self.__do_test_stress, args=(False, 3) )
         mainT.start( )
+        sleep(3)
         # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
         print "killing"
         TestMesos.killSlave( )
         print "killed"
         TestMesos.startSlave( )
-        mainT.join( )
         self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
         self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )

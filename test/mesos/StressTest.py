@@ -68,5 +68,4 @@ def main(numTargets, useBadExecutor=False):
     i = Stack( LongTestTarget( numTargets ) ).startJobTree( options )
 
 if __name__=="__main__":
-    from jobTree.test.mesos.StressTest import *
     main(5, useBadExecutor=True)
