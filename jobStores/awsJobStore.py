@@ -84,31 +84,42 @@ class AWSJobStore( AbstractJobStore ):
         job = AWSJob.create( jobStoreID=jobStoreID,
                              command=command, memory=memory, cpu=cpu,
                              tryCount=self._defaultTryCount( ), logJobStoreFileID=None )
-        assert self.jobs.put_attributes( item_name=jobStoreID,
-                                         attributes=job.toItem( ) )
+        for attempt in retry_sdb( ):
+            with attempt:
+                assert self.jobs.put_attributes( item_name=jobStoreID,
+                                                 attributes=job.toItem( ) )
         return job
 
     def exists( self, jobStoreID ):
-        return bool( self.jobs.get_attributes( item_name=jobStoreID,
-                                               attribute_name=[ ],
-                                               consistent_read=True ) )
+        for attempt in retry_sdb( ):
+            with attempt:
+                return bool( self.jobs.get_attributes( item_name=jobStoreID,
+                                                       attribute_name=[ ],
+                                                       consistent_read=True ) )
 
     def _addChild( self, job, child ):
         if len( child.followOnCommands ) > 0:
             job.children.append( ( child.jobStoreID, ) + child.followOnCommands[ 0 ][ 1:-1 ] )
 
     def load( self, jobStoreID ):
-        # TODO: consider retrieving the parent as part of the select that retrieves the children
-        item = self.jobs.get_attributes( item_name=jobStoreID,
-                                         consistent_read=True )
-        if not item:
-            raise NoSuchJobException( jobStoreID )
-        job = AWSJob.fromItem( item )
         # TODO: check if mentioning individual attributes is faster than using *
-        children = self.jobs.select(
-            query="select * from `%s` where parentJobStoreID = '%s'" % (
-                self.jobs.name, jobStoreID ),
-            consistent_read=True )
+        for attempt in retry_sdb( ):
+            with attempt:
+                result = self.jobs.select(
+                    query="select * from `{domain}` "
+                          "where parentJobStoreID = '{jobStoreID}' "
+                          "or itemName() = '{jobStoreID}'".format( domain=self.jobs.name,
+                                                                   jobStoreID=jobStoreID ),
+                    consistent_read=True )
+        job = None
+        children = [ ]
+        for item in result:
+            if item.name == jobStoreID:
+                job = AWSJob.fromItem( item )
+            else:
+                children.append( item )
+        if job is None:
+            raise NoSuchJobException( jobStoreID )
         for child in children:
             self._addChild( job, AWSJob.fromItem( child ) )
         log.debug( "Loaded job %s with %d children", job.jobStoreID, len( job.children ) )
@@ -116,8 +127,10 @@ class AWSJobStore( AbstractJobStore ):
 
     def store( self, job ):
         log.debug( "Storing job %s", job.jobStoreID )
-        assert self.jobs.put_attributes( item_name=job.jobStoreID,
-                                         attributes=job.toItem( ) )
+        for attempt in retry_sdb( ):
+            with attempt:
+                assert self.jobs.put_attributes( item_name=job.jobStoreID,
+                                                 attributes=job.toItem( ) )
 
     def addChildren( self, job, childCommands ):
         log.debug( "Adding %d children to job %s", len( childCommands ), job.jobStoreID )
@@ -135,25 +148,37 @@ class AWSJobStore( AbstractJobStore ):
         # Persist parent and children
         # TODO: There might be no children, should we still persist the parent?
         items[ job.jobStoreID ] = job.toItem( )
-        self.jobs.batch_put_attributes( items=items )
+        for attempt in retry_sdb( ):
+            with attempt:
+                self.jobs.batch_put_attributes( items=items )
 
     def delete( self, job ):
         log.debug( "Deleting job %s", job.jobStoreID )
-        self.jobs.delete_attributes( item_name=job.jobStoreID )
-        items = list( self.versions.select(
-            "select * from `%s` where jobStoreID='%s'" % ( self.versions.name, job.jobStoreID ),
-            consistent_read=True ) )
+        for attempt in retry_sdb( ):
+            with attempt:
+                self.jobs.delete_attributes( item_name=job.jobStoreID )
+        for attempt in retry_sdb( ):
+            with attempt:
+                items = list( self.versions.select(
+                    query="select * from `%s` "
+                          "where jobStoreID='%s'" % ( self.versions.name, job.jobStoreID ),
+                    consistent_read=True ) )
         if items:
             log.debug( "Deleting %d file(s) associated with job %s", len( items ), job.jobStoreID )
-            self.versions.batch_delete_attributes( { item.name: None for item in items } )
+            for attempt in retry_sdb( ):
+                with attempt:
+                    self.versions.batch_delete_attributes( { item.name: None for item in items } )
             for item in items:
                 self.files.delete_key( key_name=item.name,
                                        version_id=item[ 'version' ] )
 
     def loadJobTreeState( self ):
         jobs = { }
-        for item in self.jobs.select( query='select * from `%s`' % self.jobs.name,
-                                      consistent_read=True ):
+        for attempt in retry_sdb( ):
+            with attempt:
+                items = self.jobs.select( query='select * from `%s`' % self.jobs.name,
+                                          consistent_read=True )
+        for item in items:
             parentJobStoreID = item.get( 'parentJobStoreID', None )
             job = AWSJob.fromItem( item )
             jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
@@ -266,8 +291,10 @@ class AWSJobStore( AbstractJobStore ):
 
     def deleteFile( self, jobStoreFileID ):
         version = self._getFileVersion( jobStoreFileID )
-        self.versions.delete_attributes( jobStoreFileID,
-                                         expected_values=[ 'version', version ] )
+        for attempt in retry_sdb( ):
+            with attempt:
+                self.versions.delete_attributes( jobStoreFileID,
+                                                 expected_values=[ 'version', version ] )
         self.files.delete_key( key_name=jobStoreFileID, version_id=version )
         log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
 
@@ -381,9 +408,11 @@ class AWSJobStore( AbstractJobStore ):
         """
         :rtype: str
         """
-        item = self.versions.get_attributes( item_name=jobStoreFileID,
-                                             attribute_name='version',
-                                             consistent_read=True )
+        for attempt in retry_sdb( ):
+            with attempt:
+                item = self.versions.get_attributes( item_name=jobStoreFileID,
+                                                     attribute_name='version',
+                                                     consistent_read=True )
         return item.get( 'version', None )
 
     _s3_part_size = 50 * 1024 * 1024
@@ -511,9 +540,11 @@ class AWSJobStore( AbstractJobStore ):
         # False stands for absence
         expected = [ 'version', False if oldVersion is None else oldVersion ]
         try:
-            assert self.versions.put_attributes( item_name=jobStoreFileID,
-                                                 attributes=attributes,
-                                                 expected_value=expected )
+            for attempt in retry_sdb( ):
+                with attempt:
+                    assert self.versions.put_attributes( item_name=jobStoreFileID,
+                                                         attributes=attributes,
+                                                         expected_value=expected )
             if oldVersion is not None:
                 self.files.delete_key( jobStoreFileID, version_id=oldVersion )
         except SDBResponseError as e:
@@ -642,3 +673,115 @@ class AWSJob( Job ):
             item[ 'parentJobStoreID' ] = parentJobStoreID
         item = ((k, self.toItemTransform[ k ]( v )) for k, v in item.iteritems( ))
         return { k: v for k, v in item if v is not None }
+
+
+a_short_time = 5
+
+a_long_time = 60 * 60
+
+
+# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
+# FIXME: ... between that code and this is the name of the exception.
+
+def no_such_domain( e ):
+    return e.error_code.endswith( 'NoSuchDomain' )
+
+
+def true( _ ):
+    return True
+
+
+def false( _ ):
+    return False
+
+
+def retry_sdb( retry_after=a_short_time,
+               retry_for=10 * a_short_time,
+               retry_while=no_such_domain ):
+    """
+    Retry an SDB operation while the failure matches a given predicate and until a given timeout
+    expires, waiting a given amount of time in between attempts. This function is a generator
+    that yields contextmanagers. See doctests below for example usage.
+
+    :param retry_after: the delay in seconds between attempts
+
+    :param retry_for: the timeout in seconds.
+
+    :param retry_while: a callable with one argument, an instance of SDBResponseError, returning
+    True if another attempt should be made or False otherwise
+
+    :return: a generator yielding contextmanagers
+
+    Retry for a limited amount of time:
+    >>> i = 0
+    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=true ):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise SDBResponseError( 'foo', 'bar' )
+    Traceback (most recent call last):
+    ...
+    SDBResponseError: SDBResponseError: foo bar
+    <BLANKLINE>
+    >>> i > 1
+    True
+
+    Do exactly one attempt:
+    >>> i = 0
+    >>> for attempt in retry_sdb( retry_for=0 ):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise SDBResponseError( 'foo', 'bar' )
+    Traceback (most recent call last):
+    ...
+    SDBResponseError: SDBResponseError: foo bar
+    <BLANKLINE>
+    >>> i
+    1
+
+    Don't retry on success
+    >>> i = 0
+    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=true ):
+    ...     with attempt:
+    ...         i += 1
+    >>> i
+    1
+
+    Don't retry on unless condition returns
+    >>> i = 0
+    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=false ):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise SDBResponseError( 'foo', 'bar' )
+    Traceback (most recent call last):
+    ...
+    SDBResponseError: SDBResponseError: foo bar
+    <BLANKLINE>
+    >>> i
+    1
+    """
+    if retry_for > 0:
+        go = [ None ]
+
+        @contextmanager
+        def repeated_attempt( ):
+            try:
+                yield
+            except SDBResponseError as e:
+                if time.time( ) + retry_after < expiration and retry_while( e ):
+                    log.info(
+                        '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
+                    time.sleep( retry_after )
+                else:
+                    raise
+            else:
+                go.pop( )
+
+        expiration = time.time( ) + retry_for
+        while go:
+            yield repeated_attempt( )
+    else:
+        @contextmanager
+        def single_attempt( ):
+            yield
+
+        yield single_attempt( )
