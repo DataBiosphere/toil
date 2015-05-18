@@ -18,7 +18,7 @@ from sonLib.bioio import getTempFile
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
-from jobtree.test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 
 class TestCase(JobTreeTest):

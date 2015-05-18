@@ -13,7 +13,7 @@ from sonLib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
 from jobTree.src.common import workflowRootPath
-from jobtree.test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 
 class TestCase(JobTreeTest):
