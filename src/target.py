@@ -314,7 +314,7 @@ class FunctionWrappingTarget(Target):
     """
 
     def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
-        Target.__init__(self, time=time, memory=time, cpu=time)
+        Target.__init__(self, time=time, memory=memory, cpu=cpu)
         moduleName = fn.__module__
         self.fnModuleDirPath, self.fnModuleName = self.resolveMainModule(moduleName)
         self.fnName = str(fn.__name__)
