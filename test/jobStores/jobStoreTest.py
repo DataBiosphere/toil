@@ -71,7 +71,6 @@ class AbstractJobStoreTest( JobTreeTest ):
 
         # Create a second instance of the job store, simulating a worker ...
         #
-        # worker = AWSJobStore( region=self.testRegion, namePrefix=self.namePrefix )
         worker = self.createJobStore()
         self.assertTrue( worker.loadJobTreeState( ).started )
         # ... and load the parent job there.
@@ -97,7 +96,6 @@ class AbstractJobStoreTest( JobTreeTest ):
         self.assertEquals( state.shellJobs, set( ) )
         self.assertEquals( state.updatedJobs, childJobs )
         # The parent should have two children
-        self.maxDiff = 10000
         self.assertEquals( state.childCounts, { jobOnMaster: 2 } )
         self.assertEquals( len( state.childJobStoreIdToParentJob ), 2 )
         # Ensure consistency between children as referred to by the parent and by the jobTree state
