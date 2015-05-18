@@ -30,9 +30,9 @@ class BadExecutor(JobTreeMesosExecutor):
 
     i = itertools.count()
 
-    def _callCommand(self, command):
+    def _callCommand(self, command, taskID):
         if self.i.next() % 2 == 0:
-            result = super(BadExecutor, self)._callCommand(command)
+            result = super(BadExecutor, self)._callCommand(command,taskID)
             if result != 0:
                 log.debug("Command {} actually failed with {}".format(command,result))
             return result

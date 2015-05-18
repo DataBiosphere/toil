@@ -396,13 +396,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             self.__updateState(intID, 0)
 
         if update.state == mesos_pb2.TASK_LOST or \
-           update.state == mesos_pb2.TASK_FAILED:
+           update.state == mesos_pb2.TASK_FAILED or \
+           update.state == mesos_pb2.TASK_KILLED or \
+           update.state == mesos_pb2.TASK_ERROR:
             log.warning( "Task %s is in unexpected state %s with message '%s'" \
                 % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
-            self.__updateState(intID, 1)
-
-        if update.state == mesos_pb2.TASK_KILLED:
-            # check if the killJob call will auto update jobTree state- probably will
             self.__updateState(intID, 1)
             if intID in self.killSet:
                 self.killedQueue.put(intID)

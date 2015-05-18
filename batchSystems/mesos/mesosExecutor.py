@@ -29,6 +29,7 @@ import mesos.native
 
 log = logging.getLogger( __name__ )
 lock = threading.Lock()
+runningTasks={}
 
 class JobTreeMesosExecutor(mesos.interface.Executor):
     """Part of mesos framework, runs on mesos slave. A jobTree job is passed to it via the task.data field,
@@ -63,6 +64,11 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         """
         print "disconnected from slave"
 
+    def killTask(self, driver, taskId):
+        if taskId in runningTasks:
+            os.kill(runningTasks[taskId], 9)
+
+
     def error(self, driver, message):
         """
         Invoked when a fatal error has occurred with the executor and/or executor driver.
@@ -73,10 +79,11 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         log.error(message)
         driver.sendFrameworkMessage(message)
 
-    def _callCommand(self, command):
+    def _callCommand(self, command, taskID):
         log.debug("Invoking command: {}".format(command))
         with lock:
             popen = subprocess.Popen(command,shell=True)
+            runningTasks[taskID]=popen.pid
         return popen.wait()
 
     def launchTask(self, driver, task):
@@ -93,7 +100,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
             jobTreeJob = pickle.loads( task.data )
             os.chdir( jobTreeJob.cwd )
 
-            result = self._callCommand(jobTreeJob.command)
+            result = self._callCommand(jobTreeJob.command,task.task_id.value)
 
             if result != 0:
                 self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
