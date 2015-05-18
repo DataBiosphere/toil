@@ -11,7 +11,7 @@ from sonLib.bioio import system
 from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import TempFileTree
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
-from test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 
 class TestCase(JobTreeTest):

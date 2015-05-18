@@ -13,7 +13,7 @@ from sonLib.bioio import parseSuiteTestOptions
 from sonLib.bioio import system
 from jobTree.src.stack import Stack
 from jobTree.src.common import setupJobTree
-from test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 
 class TestCase(JobTreeTest):

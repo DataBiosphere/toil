@@ -13,7 +13,7 @@ from jobTree.jobStores.abstractJobStore import ( NoSuchJobException, NoSuchFileE
 
 from jobStores.awsJobStore import AWSJobStore
 from jobStores.fileJobStore import FileJobStore
-from test import JobTreeTest
+from jobTree.test import JobTreeTest
 
 logger = logging.getLogger( __name__ )
 
