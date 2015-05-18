@@ -1,11 +1,9 @@
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import os
 import sys
 import time
 import pickle
 from mesos.interface.mesos_pb2 import TaskID
-from jobTree.batchSystems.mesos import ResourceRequirement
-from jobTree.batchSystems.mesos.JobTreeJob import JobTreeJob
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import mesosExecutor, badExecutor
 from Queue import Queue
@@ -15,7 +13,23 @@ from mesos.native import MesosSchedulerDriver
 import mesos
 import logging
 
+
 log = logging.getLogger( __name__ )
+
+class TaskData(namedtuple("TaskData", ["startTime", "slaveID", "executorID"])):
+    pass
+
+class ResourceRequirement(namedtuple("ResourceRequirement", ["memory", "cpu"])):
+    pass
+
+class JobTreeJob:
+    # describes basic job tree job, with various resource requirements.
+    def __init__(self, jobID, cpu, memory, command, cwd):
+        self.resources = ResourceRequirement(memory=memory, cpu=cpu)
+        self.jobID = jobID
+        self.command = command
+        self.cwd = cwd
+
 
 class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     """
@@ -40,14 +54,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # queue of jobs to kill, by jobID.
         self.killSet = set()
 
-        # Dict of launched jobIDs to time they were started. Req'd by jobTree
+        # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and slaveID.
         self.runningJobMap = {}
 
         # Queue of jobs whose status has been updated, according to mesos. Req'd by jobTree
         self.updatedJobsQueue = Queue()
-
-        # Dict of taskID to executorID. Used by mesos to send framework messages
-        self.taskExecutorMap = {}
 
         # checks environment variables to determine wether to use implicit/explicit Acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
@@ -62,13 +73,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             self.executor = self.buildExecutor(bad=False)
 
         self.nextJobID = 0
-        self.tasksLaunched = 0
-        self.tasksFinished = 0
-        self.messagesSent = 0
-        self.messagesReceived = 0
         self.lastReconciliation = time.time()
         self.reconciliationPeriod = 120
 
+        # These refer to the driver thread. We set it to deamon so it doesn't block
         self.setDaemon(True)
         self.start()
 
@@ -132,8 +140,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         and a how long they have been running for (in seconds).
         """
         currentTime= dict()
-        for k,v in self.runningJobMap.iteritems():
-            currentTime[k]= time.time()-v
+        for jobID,data in self.runningJobMap.iteritems():
+            currentTime[jobID] = time.time()-data.startTime
         return currentTime
 
     def getUpdatedJob(self, maxWait):
@@ -283,7 +291,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         job_types = list(self.jobQueueList.keys())
         # sorts from largest to smallest cpu usage
         # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
-        job_types.sort(key=lambda resourceRequirement: ResourceRequirement.ResourceRequirement.cpu)
+        job_types.sort(key=lambda resourceRequirement: ResourceRequirement.cpu)
         job_types.reverse()
 
         if len(job_types)==0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
@@ -317,23 +325,19 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
                                 remainingMem >= self.__bytesToMB(job_type.memory): # job tree specifies mem in bytes.
 
                     jt_job = self._getFromList(self.jobQueueList[job_type])
-                    self.runningJobMap[jt_job.jobID] = time.time()
                     task = self.createTask(jt_job, offer)
+
+                    self.runningJobMap[jt_job.jobID] = TaskData(startTime=time.time(), slaveID=offer.slave_id,
+                                                                executorID=task.executor.executor_id)
+                    tasks.append(task)
 
                     log.debug( "Launching mesos task %s using offer %s" \
                           % (task.task_id.value, offer.id.value))
 
-                    tasks.append(task)
-                    # TODO: You might want to simply place the entire task object into that dictionary
-                    # TODO: When are entries removed from that dictionary?
-                    self.taskExecutorMap[task.task_id.value] = (
-                        offer.slave_id, task.executor.executor_id)
-
                     remainingCpus -= job_type.cpu
                     remainingMem -= self.__bytesToMB(job_type.memory)
 
-            # If we put the launch call inside the while, multiple accepts are used on the same offer. We dont want that.
-            # this explains why it works in the simple hello_world case: there is only one jobType, so offer is accepted once.
+            # If we put the launch call inside the while, multiple accepts are used on the same offer.
             driver.launchTasks(offer.id, tasks)
             if len(tasks) == 0:
                 log.critical("Offer not large enough to run any tasks")
@@ -349,7 +353,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         build the mesos task object from the jobTree job here to avoid
         further cluttering resourceOffers
         """
-        self.tasksLaunched += 1
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(jt_job.jobID)
         task.slave_id.value = offer.slave_id.value
@@ -388,20 +391,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
         intID=int(update.task_id.value) # jobTree keeps jobIds as ints
         stringID=update.task_id.value # mesos keeps jobIds as strings
-
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.tasksFinished += 1
+            slave_id, executor_id = self.runningJobMap[intID].slaveID, self.runningJobMap[intID].executorID,
             self.__updateState(intID, 0)
-            slave_id, executor_id = self.taskExecutorMap[stringID]
-            del self.taskExecutorMap[stringID]
-
-            # im not sure what they are using this for. It seems like this is to know when to shutDown.
-            # we dont want mesos to shut down, and this dictionary does not shrink.
-            self.messagesSent += 1
-            driver.sendFrameworkMessage(
-                executor_id,
-                slave_id,
-                'data with a \0 byte')
 
         if update.state == mesos_pb2.TASK_LOST or \
            update.state == mesos_pb2.TASK_FAILED:
@@ -424,13 +416,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         Invoked when an executor sends a message.
         """
-        self.messagesReceived += 1
-
-        if self.messagesReceived == len(self.runningJobMap):
-            if self.messagesReceived != self.messagesSent:
-                log.error( "ERROR: sent {} but recieved {}".format(self.messagesSent,self.messagesReceived))
-                #sys.exit(1)
-            log.debug( "All tasks done, and all messages received, waiting for more tasks")
+        log.info("Executor {} on slave {} sent a message: {}".format(executorId, slaveId, message))
 
     def __reconcile(self, driver):
         """
