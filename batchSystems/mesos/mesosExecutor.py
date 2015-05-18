@@ -28,7 +28,7 @@ from mesos.interface import mesos_pb2
 import mesos.native
 
 log = logging.getLogger( __name__ )
-
+lock = threading.Lock()
 
 class JobTreeMesosExecutor(mesos.interface.Executor):
     """Part of mesos framework, runs on mesos slave. A jobTree job is passed to it via the task.data field,
@@ -71,11 +71,13 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :return:
         """
         log.error(message)
-        self.frameworkMessage(driver, message)
+        driver.sendFrameworkMessage(message)
 
     def _callCommand(self, command):
         log.debug("Invoking command: {}".format(command))
-        return subprocess.call(command, shell=True)
+        with lock:
+            popen = subprocess.Popen(command,shell=True)
+        return popen.wait()
 
     def launchTask(self, driver, task):
         """
@@ -117,8 +119,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param message:
         :return:
         """
-        # Send it back to the scheduler.
-        driver.sendFrameworkMessage(message)
+        log.debug("Received message from framework: {}".format(message))
 
 
 def main( executorClass ):

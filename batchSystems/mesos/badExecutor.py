@@ -34,10 +34,10 @@ class BadExecutor(JobTreeMesosExecutor):
         if self.i.next() % 2 == 0:
             result = super(BadExecutor, self)._callCommand(command)
             if result != 0:
-                log.debug("Command {} failed with {}".format(command,result))
+                log.debug("Command {} actually failed with {}".format(command,result))
             return result
         else:
-            log.debug("Ignoring command: {}".format(command))
+            log.debug("Mimic failure of command: {}".format(command))
             return 1
 
 if __name__ == "__main__":
