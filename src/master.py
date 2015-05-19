@@ -35,7 +35,7 @@ import os.path
 import time
 from jobTree.src import Process, Queue
 
-from jobTree.lib.bioio import getTotalCpuTime
+from jobTree.lib.bioio import getTotalCpuTime, logStream
 from jobTree.src.common import workflowRootPath
 
 logger = logging.getLogger( __name__ )

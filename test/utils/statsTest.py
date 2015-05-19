@@ -13,11 +13,7 @@ from jobTree.lib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
 from jobTree.src.common import workflowRootPath
-<<<<<<< Updated upstream
 from jobTree.test import JobTreeTest
-=======
->>>>>>> Stashed changes
-
 
 class TestCase(JobTreeTest):
 
