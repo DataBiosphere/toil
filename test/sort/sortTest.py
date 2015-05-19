@@ -28,6 +28,15 @@ class TestCase(JobTreeTest):
         super( TestCase, self ).setUp( )
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
 
+    def testScriptTree_SortSimpleOnAWS(self):
+        """Tests scriptTree/jobTree by sorting a file in parallel.
+        """
+        scriptTree_SortTest(1,
+                            batchSystem="singleMachine",
+                            jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
+                            lines=100,
+                            N=100)
+
     def testScriptTree_SortSimple(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """

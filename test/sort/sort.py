@@ -5,11 +5,12 @@
 from optparse import OptionParser
 import os
 import random
-import shutil
-from sonLib.bioio import getTempFile
 from jobTree.src.target import Target
 from jobTree.src.stack import Stack
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
+
+success_ratio = 0.5
+logToMaster = False
 
 def setup(target, inputFile, N):
     """Sets up the sort.
@@ -25,12 +26,14 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    if random.random() > 0.5:
+    if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
     assert length >= 0
     if length > N:
-        target.logToMaster("Splitting range (%i..%i) of file: %s" % (fileStart, fileEnd, inputFile))
+        if logToMaster:
+            target.logToMaster( "Splitting range (%i..%i) of file: %s"
+                                % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         assert midPoint >= fileStart
         assert midPoint+1 < fileEnd
@@ -42,7 +45,9 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         target.setFollowOnTargetFn(up, (tempFileStoreID1, tempFileStoreID2, outputFileStoreID))                
     else:
         #We can sort this bit of the file
-        target.logToMaster("Sorting range (%i..%i) of file: %s" % (fileStart, fileEnd, inputFile))
+        if logToMaster:
+            target.logToMaster( "Sorting range (%i..%i) of file: %s"
+                                % (fileStart, fileEnd, inputFile) )
         with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
         #Make a local copy and sort the file
@@ -53,18 +58,20 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
 def up(target, inputFileID1, inputFileID2, outputFileStoreID):
     """Merges the two files and places them in the output.
     """
-    if random.random() > 0.5:
+    if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
         with target.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
             with target.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
-    target.logToMaster("Merging %s and %s to %s" % (inputFileID1, inputFileID2, outputFileStoreID))
+    if logToMaster:
+        target.logToMaster( "Merging %s and %s to %s"
+                            % (inputFileID1, inputFileID2, outputFileStoreID) )
 
 def cleanup(target, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    if random.random() > 0.5:
+    if random.random() > success_ratio:
         raise RuntimeError() #This is a test error and not a failure of the tests
     target.readGlobalFile(tempOutputFileStoreID, outputFile)
     #sort(outputFile)
@@ -82,7 +89,7 @@ def main():
     
     options, args = parser.parse_args()
     
-    if options.fileToSort == None:
+    if options.fileToSort is None:
         raise RuntimeError("No file to sort given")
 
     if not os.path.exists(options.fileToSort):
