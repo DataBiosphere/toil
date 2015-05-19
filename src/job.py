@@ -95,6 +95,12 @@ class Job( object ):
     def fromDict( cls, d ):
         return cls( **d )
 
+    def copy(self):
+        """
+        :rtype: Job
+        """
+        return self.__class__( **self.__dict__ )
+
     def __hash__( self ):
         return hash( self.jobStoreID )
 

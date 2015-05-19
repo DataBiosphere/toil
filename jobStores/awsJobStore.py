@@ -49,6 +49,12 @@ class AWSJobStore( AbstractJobStore ):
     field of a job will be stored as a multivalued attribute.
     """
 
+    # FIXME: Eliminate after consolidating behaviour with FileJobStore
+
+    resetJobInLoadState = True
+    """Whether to reset the messages, remainingRetryCount and children attributes of a job when
+    it is loaded by loadJobTreeState."""
+
     @classmethod
     def create( cls, jobStoreString, config=None ):
         region, namePrefix = cls._parseArgs( jobStoreString )
@@ -176,6 +182,9 @@ class AWSJobStore( AbstractJobStore ):
         for item in items:
             parentJobStoreID = item.get( 'parentJobStoreID', None )
             job = AWSJob.fromItem( item )
+            if self.resetJobInLoadState:
+                job.remainingRetryCount = self._defaultTryCount()
+                job.messages = []
             jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
         state = JobTreeState( )
         if jobs:
@@ -185,17 +194,22 @@ class AWSJobStore( AbstractJobStore ):
                 for job, parentJobStoreID in jobs.itervalues( ):
                     if parentJobStoreID is not None:
                         parent = jobs[ parentJobStoreID ][ 0 ]
-                        self._addChild( parent, job )
+                        if not self.resetJobInLoadState:
+                            self._addChild( parent, job )
                         state.childCounts[ parent ] += 1
                         state.childJobStoreIdToParentJob[ job.jobStoreID ] = parent
-                for job, _ in jobs.itervalues( ):
-                    if not job.children:
-                        if job.followOnCommands:
-                            state.updatedJobs.add( job )
-                        else:
-                            state.shellJobs.add( job )
             finally:
                 state.childCounts.default_factory = None
+            for job, _ in jobs.itervalues( ):
+                if self.resetJobInLoadState:
+                    has_children = job in state.childCounts
+                else:
+                    has_children = len( job.children ) > 0
+                if not has_children:
+                    if job.followOnCommands:
+                        state.updatedJobs.add( job )
+                    else:
+                        state.shellJobs.add( job )
         log.debug( "Loaded job tree state for %d jobs, "
                    "%d of which have a parent, "
                    "%d have children, "
