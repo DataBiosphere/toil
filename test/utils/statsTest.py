@@ -5,15 +5,18 @@ import unittest
 import sys
 import os
 
-from sonLib.bioio import TestStatus
-from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import system
-from sonLib.bioio import getTempDirectory
-from sonLib.bioio import getTempFile
+from jobTree.lib.bioio import TestStatus
+from jobTree.lib.bioio import parseSuiteTestOptions
+from jobTree.lib.bioio import system
+from jobTree.lib.bioio import getTempDirectory
+from jobTree.lib.bioio import getTempFile
 
 from jobTree.test.sort.sortTest import makeFileToSort
 from jobTree.src.common import workflowRootPath
+<<<<<<< Updated upstream
 from jobTree.test import JobTreeTest
+=======
+>>>>>>> Stashed changes
 
 
 class TestCase(JobTreeTest):

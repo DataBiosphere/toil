@@ -28,7 +28,7 @@ import xml.etree.cElementTree as ET
 import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
-from sonLib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
+from jobTree.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker

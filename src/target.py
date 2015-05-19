@@ -22,10 +22,7 @@
 
 import sys
 import os
-import logging
-import marshal
-import types
-from sonLib.bioio import getTempFile
+from jobTree.lib.bioio import getTempFile
 import importlib
 
 class Target(object):

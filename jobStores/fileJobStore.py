@@ -9,7 +9,7 @@ import random
 import shutil
 import os
 import re
-from sonLib.bioio import makeSubDir, getTempFile, system, absSymPath
+from jobTree.lib.bioio import makeSubDir, getTempFile, system, absSymPath
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
 from jobTree.src.job import Job
 

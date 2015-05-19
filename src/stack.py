@@ -32,9 +32,10 @@ except ImportError:
     
 import xml.etree.cElementTree as ET
 
-from sonLib.bioio import setLoggingFromOptions
-from sonLib.bioio import system
-from sonLib.bioio import getTotalCpuTimeAndMemoryUsage, getTotalCpuTime
+from jobTree.lib.bioio import setLoggingFromOptions
+from jobTree.lib.bioio import system
+from jobTree.lib.bioio import getTotalCpuTimeAndMemoryUsage
+from jobTree.lib.bioio import getTotalCpuTime
 
 from jobTree.src.common import setupJobTree, addOptions
 from jobTree.src.master import mainLoop

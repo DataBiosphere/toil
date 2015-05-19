@@ -26,7 +26,7 @@ from jobTree.test.staticDeclaration.staticTest import TestCase as staticTest
 from jobTree.test.src.jobTest import TestCase as jobTest
 from jobTree.test.utils.statsTest import TestCase as statsTest
 
-from sonLib.bioio import parseSuiteTestOptions, getBasicOptionParser
+from jobTree.lib.bioio import parseSuiteTestOptions, getBasicOptionParser
 
 def allSuites(options):
     tests = []

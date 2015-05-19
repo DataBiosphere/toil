@@ -9,11 +9,11 @@ import os
 import random
 from uuid import uuid4
 
-from sonLib.bioio import TestStatus
-from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import system
-from sonLib.bioio import getTempDirectory
-from sonLib.bioio import getTempFile
+from jobTree.lib.bioio import TestStatus
+from jobTree.lib.bioio import parseSuiteTestOptions
+from jobTree.lib.bioio import system
+from jobTree.lib.bioio import getTempDirectory
+from jobTree.lib.bioio import getTempFile
 
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 

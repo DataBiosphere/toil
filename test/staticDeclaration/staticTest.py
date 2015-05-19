@@ -1,7 +1,7 @@
 import unittest
 import os
 from optparse import OptionParser
-from sonLib.bioio import getTempFile
+from jobTree.lib.bioio import getTempFile
 from jobTree.src.target import Target
 from jobTree.src.stack import Stack
 

@@ -9,8 +9,8 @@ import sys
 import random
 from optparse import OptionParser
 
-from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import system
+from jobTree.lib.bioio import parseSuiteTestOptions
+from jobTree.lib.bioio import system
 from jobTree.src.stack import Stack
 from jobTree.src.common import setupJobTree
 from jobTree.test import JobTreeTest
