@@ -66,16 +66,11 @@ class AWSJobStore( AbstractJobStore ):
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
         create = config is not None
-        try:
-            self.jobs = self._getOrCreateDomain( 'jobs', create )
-            self.versions = self._getOrCreateDomain( 'versions', create )
-            self.files = self._getOrCreateBucket( 'files', create, versioning=True )
-            self.stats = self._getOrCreateBucket( 'stats', create )
-            super( AWSJobStore, self ).__init__( config=config )
-        except:
-            if create:
-                self.deleteJobStore( )
-            raise
+        self.jobs = self._getOrCreateDomain( 'jobs', create )
+        self.versions = self._getOrCreateDomain( 'versions', create )
+        self.files = self._getOrCreateBucket( 'files', create, versioning=True )
+        self.stats = self._getOrCreateBucket( 'stats', create )
+        super( AWSJobStore, self ).__init__( config=config )
 
     def createFirstJob( self, command, memory, cpu ):
         jobStoreID = self._newJobID( )
