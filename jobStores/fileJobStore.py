@@ -9,8 +9,10 @@ import random
 import shutil
 import os
 import re
+import errno
 from jobTree.lib.bioio import makeSubDir, getTempFile, system, absSymPath
-from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState
+from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
+    NoSuchFileException
 from jobTree.src.job import Job
 
 logger = logging.getLogger( __name__ )
@@ -44,8 +46,14 @@ class FileJobStore(AbstractJobStore):
         updatingFilePresent = self._processAnyUpdatingFile(jobFile)
         newFilePresent = self._processAnyNewFile(jobFile)
         # Now load the job
-        with open(jobFile, 'r') as fileHandle:
-            job = Job.fromList(pickler.load(fileHandle))
+        try:
+            with open(jobFile, 'r') as fileHandle:
+                job = Job.fromList(pickler.load(fileHandle))
+        except IOError as e:
+            if e.errno == errno.ENOENT:
+                raise NoSuchJobException( jobStoreID )
+            else:
+                raise
         # Deal with failure by lowering the retry limit
         if updatingFilePresent or newFilePresent:
             job.setupJobAfterFailure(self.config)
@@ -68,7 +76,15 @@ class FileJobStore(AbstractJobStore):
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, job):
-        os.remove(self._getJobFileName(job.jobStoreID)) #This is the atomic operation, if this file is not present the job is deleted.
+        try:
+            # This is the atomic operation, if this file is not present the job is deleted.
+            os.remove( self._getJobFileName( job.jobStoreID ) )
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                pass
+            else:
+                raise
+
         dirToRemove = job.jobStoreID
         # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially ...
         # FIXME: ... considering that system() launches a full shell
@@ -151,10 +167,14 @@ class FileJobStore(AbstractJobStore):
     
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        if not os.path.exists(jobStoreFileID):
-            raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        with open(jobStoreFileID, 'r') as f:
-            yield f
+        try:
+            with open(jobStoreFileID, 'r') as f:
+                yield f
+        except IOError as e:
+            if e.errno == errno.ENOENT:
+                raise NoSuchFileException( jobStoreFileID )
+            else:
+                raise
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName):
@@ -215,7 +235,11 @@ class FileJobStore(AbstractJobStore):
     def _loadJobTreeState2(self, jobTreeJobsRoot, jobTreeState):
         #Read job
         job = self.load(jobTreeJobsRoot)
-        #Reset the job
+        # FIXME: This is not a good place to do this. Firstly, this behaviour is not documented
+        # FIXME: ... in the abstract superclass. Secondly, this is behavior shared by all
+        # FIXME: ... implementations so it would be nice if it were factored out, either in the
+        # FIXME: ... caller or in the superclass.
+        # Reset the job
         job.messages = []
         job.children = []
         job.remainingRetryCount = self._defaultTryCount( )
