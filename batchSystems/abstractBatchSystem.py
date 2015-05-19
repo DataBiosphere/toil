@@ -84,10 +84,15 @@ class AbstractBatchSystem:
         missing/overlong jobs.
         """
         raise RuntimeError("Abstract method")
-    
+
+    # FIXME: Add a link to the issue tracker for this bug in multiprocessing
+
+    # FIXME: Should be a no-op unless queue is a multiprocessing.Queue
     
     def getFromQueueSafely(self, queue, maxWait):
-        """Returns an object from the given queue, avoiding a nasty bug in some versions of the multiprocessing queue python
+        """
+        Returns an object from the given queue, avoiding a nasty bug in some versions of the
+        multiprocessing queue python
         """
         if maxWait <= 0:
             try:
