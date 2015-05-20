@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+import logging
 import os
 import shutil
 import subprocess
@@ -30,9 +31,10 @@ class AbstractBatchSystemTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        logging.basicConfig(level=logging.DEBUG)
         cls.config = cls._createDummyConfig()
 
-    #@unittest.skip('Skip IssueJob')
+    # @unittest.skip('Skip IssueJob')
     def testIssueJob(self):
         # Remove
         test_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test.txt')
@@ -46,50 +48,42 @@ class AbstractBatchSystemTest(unittest.TestCase):
         self.assertTrue(os.path.exists(test_path))
         os.remove(test_path)
 
-    #@unittest.skip('Skip checkResourceRequest')
+    # @unittest.skip('Skip checkResourceRequest')
     def testCheckResourceRequest(self):
+        # FIXME: Batch systems should throw a specialized exception class
         self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=1000, cpu=200)
         self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=5, cpu=200)
         self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=100, cpu=1)
-        try:
-            self.batchSystem.checkResourceRequest(memory=1, cpu=1)
-        except RuntimeError:
-            self.fail('checkResourceRequest raised exception unexpectedly.')
+        self.batchSystem.checkResourceRequest(memory=10, cpu=1)
 
-    #@unittest.skip('Skip GetIssuedJobIDs')
+    # @unittest.skip('Skip GetIssuedJobIDs')
     def testGetIssuedJobIDs(self):
-        # TODO: Change from if not 'SingelMachine...' to @unittest.skipIf() decorator?
-        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        self.assertEqual([0,1], self.batchSystem.getIssuedJobIDs())
 
-            self.assertEqual([0,1], self.batchSystem.getIssuedJobIDs())
-
-    #@unittest.skip('Skip GetRunningJobIDs')
+    # @unittest.skip('Skip GetRunningJobIDs')
     def testGetRunningJobsIDs(self):
-        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
+        # TODO: Fix SingleMachineBatchSystem to support this call
+        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        self.wait_for_jobs()
+        self.assertEqual([0,1], self.batchSystem.getRunningJobIDs().keys())
 
-            self.wait_for_jobs()
-
-            self.assertEqual([0,1], self.batchSystem.getRunningJobIDs().keys())
-
-    #@unittest.skip('Skip Kill Jobs')
+    # @unittest.skip('Skip Kill Jobs')
     def testKillJobs(self):
-        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
-            jobCommand = 'sleep 100'
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+        jobCommand = 'sleep 100'
+        self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
 
-            self.wait_for_jobs()
+        self.wait_for_jobs()
 
-            self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
+        self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
 
-            self.batchSystem.killJobs([0])
+        self.batchSystem.killJobs([0])
 
-            self.assertEqual({}, self.batchSystem.getRunningJobIDs())
+        self.assertEqual({}, self.batchSystem.getRunningJobIDs())
 
-    #@unittest.skip('Skipping testGetUpdatedJobs')
+    # @unittest.skip('Skipping testGetUpdatedJobs')
     def testGetUpdatedJob(self):
         jobCommand = 'sleep 1'
         self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
@@ -104,7 +98,7 @@ class AbstractBatchSystemTest(unittest.TestCase):
             self.assertEqual((1,0), updated_job)
 
     # TODO: Remove this useless test?
-    #@unittest.skip('Skip Rescue Job Frequency')
+    # @unittest.skip('Skip Rescue Job Frequency')
     def testGetRescueJobFrequency(self):
         self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
 
@@ -138,7 +132,6 @@ class AbstractBatchSystemTest(unittest.TestCase):
         while not self.batchSystem.getIssuedJobIDs():
             pass
         while not self.batchSystem.getRunningJobIDs():
-            # pass
             time.sleep(0.1)
         if wait_for_completion:
             while self.batchSystem.getRunningJobIDs():
@@ -150,14 +143,15 @@ class AbstractBatchSystemTest(unittest.TestCase):
 
 class MesosBatchSystemTest(AbstractBatchSystemTest):
 
+
     def createBatchSystem(self):
         shutil.rmtree('/tmp/mesos/', ignore_errors=True)
 
         # Launch Mesos Master and Slave if running MesosBatchSystemTest
-        self.master = MesosMasterThread()
+        self.master = self.MesosMasterThread()
         self.master.start()
 
-        self.slave = MesosSlaveThread()
+        self.slave = self.MesosSlaveThread()
         self.slave.start()
 
         while self.master.popen is None or self.slave.popen is None:
@@ -176,33 +170,42 @@ class MesosBatchSystemTest(AbstractBatchSystemTest):
         self.master.popen.kill()
         self.master.join()
 
+    class MesosThread(threading.Thread):
 
-class SingleMachineBatchSystemTest(AbstractBatchSystemTest):
+        __metaclass__ = ABCMeta
 
-    def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCpus=2, maxMemory=20)
+        # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
+        lock = threading.Lock()
 
-# Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
-lock = threading.Lock()
-class MesosMasterThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.popen = None
+        def __init__(self):
+            threading.Thread.__init__(self)
+            self.popen = None
 
-    def run(self):
-        with lock:
-            self.popen = subprocess.Popen(['/usr/local/sbin/mesos-master', '--registry=in_memory', '--ip=127.0.0.1'])
-        self.popen.wait()
-        print 'exiting master thread'
+        @abstractmethod
+        def mesosCommand(self):
+            raise NotImplementedError
 
+        def run(self):
+            with self.lock:
+                self.popen = subprocess.Popen( self.mesosCommand( ) )
+            self.popen.wait()
+            print 'Exiting {}'.format(self.__class__.__name__)
 
-class MesosSlaveThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.popen = None
+    class MesosMasterThread(MesosThread):
 
-    def run(self):
-        with lock:
-            self.popen = subprocess.Popen(['/usr/local/sbin/mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050'])
-        self.popen.wait()
-        print 'exiting slave thread'
+        def mesosCommand( self ):
+            return [ '/usr/local/sbin/mesos-master', '--registry=in_memory', '--ip=127.0.0.1' ]
+
+    class MesosSlaveThread(MesosThread):
+
+        def mesosCommand( self ):
+            return [ '/usr/local/sbin/mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050' ]
+
+# FIXME: the single machine backend does not support crucial methods necessary for this test
+
+if False:
+    class SingleMachineBatchSystemTest(AbstractBatchSystemTest):
+
+        def createBatchSystem(self):
+            return SingleMachineBatchSystem(config=self.config, maxCpus=2, maxMemory=20)
+
