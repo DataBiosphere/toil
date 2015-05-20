@@ -22,7 +22,6 @@ class AbstractBatchSystemTest(unittest.TestCase):
         """
         raise NotImplementedError
 
-
     def setUp(self):
         super(AbstractBatchSystemTest, self).setUp()
         self.batchSystem = self.createBatchSystem()
@@ -33,19 +32,21 @@ class AbstractBatchSystemTest(unittest.TestCase):
     def setUpClass(cls):
         cls.config = cls._createDummyConfig()
 
-
+    #@unittest.skip('Skip IssueJob')
     def testIssueJob(self):
+        # Remove
         test_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test.txt')
         self.robust_remove(test_path)
 
         jobCommand = 'touch {}'.format(test_path)
         self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
 
-        time.sleep(1)
+        self.wait_for_jobs(wait_for_completion=True)
 
         self.assertTrue(os.path.exists(test_path))
         os.remove(test_path)
 
+    #@unittest.skip('Skip checkResourceRequest')
     def testCheckResourceRequest(self):
         self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=1000, cpu=200)
         self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=5, cpu=200)
@@ -55,33 +56,57 @@ class AbstractBatchSystemTest(unittest.TestCase):
         except RuntimeError:
             self.fail('checkResourceRequest raised exception unexpectedly.')
 
+    #@unittest.skip('Skip GetIssuedJobIDs')
     def testGetIssuedJobIDs(self):
-        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
-        self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+        # TODO: Change from if not 'SingelMachine...' to @unittest.skipIf() decorator?
+        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
 
-        self.assertEqual([0,1], self.batchSystem.getIssuedJobIDs())
+            self.assertEqual([0,1], self.batchSystem.getIssuedJobIDs())
 
+    #@unittest.skip('Skip GetRunningJobIDs')
     def testGetRunningJobsIDs(self):
-        self.batchSystem.issueJob('sleep 5', memory=10, cpu=1)
-        self.batchSystem.issueJob('sleep 5', memory=10, cpu=1)
+        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
 
-        time.sleep(4)
+            self.wait_for_jobs()
 
-        self.assertEqual([0,1], self.batchSystem.getRunningJobIDs().keys())
+            self.assertEqual([0,1], self.batchSystem.getRunningJobIDs().keys())
 
-    if False:
-        def testKillJobs(self):
-
+    #@unittest.skip('Skip Kill Jobs')
+    def testKillJobs(self):
+        if not 'SingleMachineBatchSystem' in str(self.batchSystem):
             jobCommand = 'sleep 100'
             self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
 
-            print self.batchSystem.getIssuedJobIDs()
-            print 'test: {}'.format(self.batchSystem.getUpdatedJob(1))
+            self.wait_for_jobs()
 
-            print self.batchSystem.getIssuedJobIDs()
+            self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
+
             self.batchSystem.killJobs([0])
 
             self.assertEqual({}, self.batchSystem.getRunningJobIDs())
+
+    #@unittest.skip('Skipping testGetUpdatedJobs')
+    def testGetUpdatedJob(self):
+        jobCommand = 'sleep 1'
+        self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+        self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+
+        self.wait_for_jobs(wait_for_completion=True)
+
+        updated_job = self.batchSystem.getUpdatedJob(1)
+        try:
+            self.assertEqual((0,0), updated_job)
+        except:
+            self.assertEqual((1,0), updated_job)
+
+    # TODO: Remove this useless test?
+    #@unittest.skip('Skip Rescue Job Frequency')
+    def testGetRescueJobFrequency(self):
+        self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
 
     @staticmethod
     def _createDummyConfig():
@@ -109,6 +134,19 @@ class AbstractBatchSystemTest(unittest.TestCase):
         except OSError:
             pass
 
+    def wait_for_jobs(self, wait_for_completion=False):
+        while not self.batchSystem.getIssuedJobIDs():
+            pass
+        while not self.batchSystem.getRunningJobIDs():
+            # pass
+            time.sleep(0.1)
+        if wait_for_completion:
+            while self.batchSystem.getRunningJobIDs():
+                time.sleep(0.1)
+                # pass does not work here, which is why I'm using time.sleep(0.1):
+                # for jobID,data in self.runningJobMap.iteritems():
+                # RuntimeError: dictionary changed size during iteration
+
 
 class MesosBatchSystemTest(AbstractBatchSystemTest):
 
@@ -122,10 +160,8 @@ class MesosBatchSystemTest(AbstractBatchSystemTest):
         self.slave = MesosSlaveThread()
         self.slave.start()
 
-
         while self.master.popen is None or self.slave.popen is None:
-            time.sleep(2)
-            print self.master.popen, self.slave.popen
+            time.sleep(1)
 
         return MesosBatchSystem(config=self.config, maxCpus=2, maxMemory=20, badExecutor=False)
 
