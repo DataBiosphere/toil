@@ -31,7 +31,11 @@ import time
 
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
-from sonLib.bioio import logger, logFile, getBasicOptionParser, parseBasicOptions
+
+from jobTree.lib.bioio import logger
+from jobTree.lib.bioio import getBasicOptionParser
+from jobTree.lib.bioio import parseBasicOptions
+
 from jobTree.src.common import loadJobStore
 
 class JTTag(object):

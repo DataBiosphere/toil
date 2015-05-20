@@ -27,11 +27,11 @@ import sys
 import os
 
 import xml.etree.cElementTree as ET
-from sonLib.bioio import logger
-from sonLib.bioio import logStream 
 
-from sonLib.bioio import getBasicOptionParser
-from sonLib.bioio import parseBasicOptions
+from jobTree.lib.bioio import logger
+from jobTree.lib.bioio import logStream
+from jobTree.lib.bioio import getBasicOptionParser
+from jobTree.lib.bioio import parseBasicOptions
 
 from jobTree.src.common import loadJobStore
 

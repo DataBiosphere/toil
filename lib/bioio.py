@@ -16,8 +16,12 @@ import math
 import shutil
 from argparse import ArgumentParser
 from optparse import OptionParser, OptionContainer, OptionGroup
-from tree import BinaryTree
-from misc import close
+# FIXME: Remove unnecessary methods from this file.
+try:
+    from tree import BinaryTree
+    from misc import close
+except:
+    pass
 import subprocess
 import array
 import xml.etree.cElementTree as ET

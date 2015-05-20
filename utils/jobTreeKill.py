@@ -25,7 +25,8 @@
 import logging
 import sys
 
-from sonLib.bioio import getBasicOptionParser, parseBasicOptions
+from jobTree.lib.bioio import getBasicOptionParser
+from jobTree.lib.bioio import parseBasicOptions
 from jobTree.src.common import loadJobStore, loadBatchSystem
 
 logger = logging.getLogger( __name__ )

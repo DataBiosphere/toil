@@ -7,9 +7,10 @@ import os
 import os.path
 import sys
 
-from sonLib.bioio import system
-from sonLib.bioio import parseSuiteTestOptions
-from sonLib.bioio import TempFileTree
+from jobTree.lib.bioio import system
+from jobTree.lib.bioio import parseSuiteTestOptions
+from jobTree.lib.bioio import TempFileTree
+
 from jobTree.src.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 from jobTree.test import JobTreeTest
 

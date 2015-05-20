@@ -80,12 +80,14 @@ def main():
     sys.argv.remove(sys.argv[1])
     
     #Now we can import all the stuff..
-    from sonLib.bioio import setLogLevel
-    from sonLib.bioio import getTotalCpuTime, getTotalCpuTimeAndMemoryUsage
-    from sonLib.bioio import getTempDirectory
-    from sonLib.bioio import makeSubDir
+    from jobTree.lib.bioio import setLogLevel
+    from jobTree.lib.bioio import getTotalCpuTime
+    from jobTree.lib.bioio import getTotalCpuTimeAndMemoryUsage
+    from jobTree.lib.bioio import getTempDirectory
+    from jobTree.lib.bioio import makeSubDir
+    from jobTree.lib.bioio import system
+
     from jobTree.src.common import loadJobStore
-    from sonLib.bioio import system
     
     ########################################## 
     #Input args

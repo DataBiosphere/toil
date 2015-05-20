@@ -29,7 +29,8 @@ import xml.etree.cElementTree as ET
 from optparse import OptionParser
 from jobTree.src.master import mainLoop
 from jobTree.src.common import addOptions, setupJobTree
-from sonLib.bioio import logger, getLogLevelString, setLoggingFromOptions
+
+from jobTree.lib.bioio import setLoggingFromOptions
     
 def main():
     """Restarts a jobTree.
