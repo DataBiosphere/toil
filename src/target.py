@@ -25,133 +25,125 @@ import os
 from jobTree.lib.bioio import getTempFile
 import importlib
 
-class Target(object):
-    """Each job wrapper extends this class.
-    """
-    @staticmethod
-    def resolveMainModule( moduleName ):
-        """
-        Returns a tuple of two elements, the first element being the path to the directory containing the given
-        module and the second element being the name of the module. If the given module name is "__main__",
-        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
-        caller can then add the first element of the returned tuple to sys.path and load the module from there.
-        See also worker.loadStack().
-        """
-        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        if moduleName.endswith('.py'):
-            moduleName = moduleName[:-3]
-        elif moduleName.endswith('.pyc'):
-            moduleName = moduleName[:-4]
-        else:
-            raise RuntimeError(
-                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                moduleName)
-        return moduleDirPath, moduleName
+try:
+    import cPickle 
+except ImportError:
+    import pickle as cPickle
 
-    def __init__(self, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
-        """This method must be called by any overiding constructor.
+class Target(object):
+    """
+    Represents a unit of work jobTree.
+    """
+    def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+        """
+        This method must be called by any overiding constructor.
         """
         self.__followOn = None
         self.__children = []
         self.__childCommands = []
         self.__memory = memory
-        self.__time = time #This parameter is no longer used by the batch system.
         self.__cpu = cpu
-        self._rMap = None
-        self.dirName, moduleName = self.resolveMainModule(self.__module__)
+        self.dirName, moduleName = self._resolveMainModule(self.__module__)
         self.importStrings = {moduleName + '.' + self.__class__.__name__}
         self.loggingMessages = []
+        self._rvs = {}
 
     def run(self):
-        """Do user stuff here, including creating any follow on jobs.
+        """
+        Do user stuff here, including creating any follow on jobs.
         This function must not re-pickle the pickle file, which is an input file.
+        
+        The return values,considered as a tuple, can be passed to other targets
+        by means of the rv() function. For example rv(1) would refer to the second
+        value returned by the run function (if it exists). 
         """
         pass
     
-    def setFollowOn(self, followOn, rMap=None):
-        """Set the follow on target.
-        Will complain if follow on already set.
-        
-        rMap is a dictionary used to provide the return arguments of the target's run function 
-        to the followOn/child. It is accessible in the followOn/child
-        by the method getRMap(). The values of the rMap must be integers, which 
-        correspond to the indices of the run functions return values (treated as a tuple).
-        These indices are replaced with the Target's return values once the targets
-        run method has been evaluated. For example, if the target's run method returns
-        (foo, bar) and rMap= { "foo":0, "bar":1 } then when the followOn/child's run method
-        is run the followOn/child's getRMap() function will return { "foo":foo, "bar":bar }.
-        If rMap is None, then the followOn/child's getRMap() will return None.
-        This design allows the selective transmission of return values between parents/predcessors
-        and child/followOn targets. 
-        See FunctionWrappingTarget for explanation of how rMap is used to pass arguments to wrapped functions.
+    def setFollowOn(self, followOnTarget):
+        """
+        Set the follow on target. 
         """
         assert self.__followOn == None
-        self.__followOn = followOn 
-        followOn._setRMap(rMap)
-
-    def setFollowOnFn(self, fn, args=(), kwargs={}, time=sys.maxint, \
-                      memory=sys.maxint, cpu=sys.maxint, rMap=None):
-        """Sets a follow on target fn. See FunctionWrappingTarget.
-        """
-        self.setFollowOn(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
-                                time=time, memory=memory, cpu=cpu), rMap=rMap)
-
-    def setFollowOnTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint,\
-                            memory=sys.maxint, cpu=sys.maxint, rMap=None):
-        """Sets a follow on target fn. See TargetFunctionWrappingTarget.
-        """
-        self.setFollowOn(TargetFunctionWrappingTarget(fn=fn, args=args, \
-                    kwargs=kwargs, time=time, memory=memory, cpu=cpu), rMap=rMap) 
+        self.__followOn = followOnTarget 
+        return followOnTarget
         
-    def addChild(self, childTarget, rMap=None):
-        """Adds the child target to be run as child of this target. See setFollowOn
-        for explanation of rMap, replacing followOn for child.
+    def addChild(self, childTarget):
+        """
+        Adds the child target to be run as child of this target. 
         """
         self.__children.append(childTarget)
-        childTarget._setRMap(rMap)
-    
-    def addChildFn(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, \
-                   cpu=sys.maxint, rMap=None):
-        """Adds a child fn. See FunctionWrappingTarget.
-        """
-        self.addChild(FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
-                                    time=time, memory=memory, cpu=cpu), rMap=rMap)
+        return childTarget
+        
+    ##Convenience functions for creating targets
 
-    def addChildTargetFn(self, fn, args=(), kwargs={}, time=sys.maxint, \
-                         memory=sys.maxint, cpu=sys.maxint, rMap=None):
-        """Adds a child target fn. See TargetFunctionWrappingTarget.
+    def setFollowOnFn(self, fn, *args, **kwargs):
         """
-        self.addChild(TargetFunctionWrappingTarget(fn=fn, args=args, \
-                kwargs=kwargs, time=time, memory=memory, cpu=cpu), rMap=rMap) 
+        Sets a follow on fn. See FunctionWrappingTarget.
+        """
+        return self.setFollowOn(FunctionWrappingTarget(fn, *args, **kwargs))
+
+    def setFollowOnTargetFn(self, fn, *args, **kwargs):
+        """
+        Sets a follow on target fn. See TargetFunctionWrappingTarget.
+        """
+        return self.setFollowOn(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
-    def addChildCommand(self, childCommand, runTime=sys.maxint):
-        """A command to be run as child of the job tree.
+    def addChildFn(self, fn, *args, **kwargs):
         """
-        self.__childCommands.append((str(childCommand), float(runTime)))
+        Adds a child fn. See FunctionWrappingTarget.
+        """
+        return self.addChild(FunctionWrappingTarget(fn, *args, **kwargs))
+
+    def addChildTargetFn(self, fn, *args, **kwargs):
+        """
+        Adds a child target fn. See TargetFunctionWrappingTarget.
+        """
+        return self.addChild(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
-    def getRunTime(self):
-        """Get the time the target is anticipated to run.
+    def addChildCommand(self, childCommand):
         """
-        return self.__time
+        A command to be run as child of the job tree.
+        """
+        return self.__childCommands.append(str(childCommand))
+    
+    @staticmethod
+    def wrapTargetFn(fn, *args, **kwargs):
+        """
+        Makes a Target out of a target function.
+        
+        Convenience function for constructor of TargetFunctionWrappingTarget
+        """
+        return TargetFunctionWrappingTarget(fn, *args, **kwargs)
+ 
+    @staticmethod
+    def wrapFn(fn, *args, **kwargs):
+        """
+        Makes a Target out of a function.
+        
+        Convenience function for constructor of FunctionWrappingTarget
+        """
+        return FunctionWrappingTarget(fn, *args, **kwargs)
     
     ##The following functions are used for creating/writing/updating/reading/deleting global files.
     ##
     
     def writeGlobalFile(self, localFileName):
-        """Takes a file (as a path) and uploads it to to the global file store, returns
+        """
+        Takes a file (as a path) and uploads it to to the global file store, returns
         an ID that can be used to retrieve the file. 
         """
         return self.jobStore.writeFile(self.job.jobStoreID, localFileName)
     
     def updateGlobalFile(self, fileStoreID, localFileName):
-        """Replaces the existing version of a file in the global file store, keyed by the fileStoreID. 
+        """
+        Replaces the existing version of a file in the global file store, keyed by the fileStoreID. 
         Throws an exception if the file does not exist.
         """
         self.jobStore.updateFile(fileStoreID, localFileName)
     
     def readGlobalFile(self, fileStoreID, localFilePath=None):
-        """Returns a path to a local copy of the file keyed by fileStoreID. The version
+        """
+        Returns a path to a local copy of the file keyed by fileStoreID. The version
         will be consistent with the last copy of the file written/updated to the global
         file store. If localFilePath is not None, the returned file path will be localFilePath.
         """
@@ -161,7 +153,8 @@ class Target(object):
         return localFilePath
     
     def deleteGlobalFile(self, fileStoreID):
-        """Deletes a global file with the given fileStoreID. Returns true if file exists, else false.
+        """
+        Deletes a global file with the given fileStoreID. Returns true if file exists, else false.
         """
         return self.jobStore.deleteFile(fileStoreID)
     
@@ -182,7 +175,8 @@ class Target(object):
         return self.jobStore.updateFileStream(fileStoreID)
     
     def getEmptyFileStoreID(self):
-        """Returns the ID of a new, empty file.
+        """
+        Returns the ID of a new, empty file.
         """
         return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
     
@@ -192,6 +186,28 @@ class Target(object):
         be read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         return self.jobStore.readFileStream(fileStoreID)
+    
+    ##The following function is used for passing return values between target run functions
+    
+    
+    def rV(self, argIndex):
+        """
+        Gets a PromisedTargetReturnValue, representing the argIndex return 
+        value of the run function.
+        This PromisedTargetReturnValue, if a class attribute of a Target T will be replaced
+        by the actual return value just before the run function of T is called. 
+        rV therefore allows the output from one Target to wired as input to another 
+        Target before either is actually run. 
+        """
+        #Check if the return value has already been promised and if it has
+        #return it
+        if argIndex in self._rvs:
+            return self._rvs[argIndex]
+        #Create, store, return new PromisedTargetReturnValue
+        self._rvs[argIndex] = PromisedTargetReturnValue()
+        return self._rvs[argIndex]
+       
+    ##Functions interrogating attributes of the target
     
     def getLocalTempDir(self):
         """Get the local temporary directory.
@@ -227,63 +243,73 @@ class Target(object):
         """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
         """
         self.loggingMessages.append(str(string))
-        
-    def getRMap(self):
-        """Get rMap representing return values from parent/predecessor Target, if set.
-        (see setFollowOn for explanation of rMap).
-        """
-        return self._rMap
-        
-    @staticmethod
-    def wrapTargetFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, \
-                     cpu=sys.maxint):
-        """Makes a Target out of a target function! 
-        In a target function, the first argument to the function will 
-        be a reference to the wrapping target, allowing
-        the function to create children/follow ons.
-        
-        Convenience function for constructor of TargetFunctionWrappingTarget
-        """
-        return TargetFunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, \
-                                time=time, memory=memory, cpu=cpu)
- 
-    @staticmethod
-    def wrapFn(fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
-        """Makes a Target out of a function.
-        
-        Convenience function for constructor of FunctionWrappingTarget
-        """
-        return FunctionWrappingTarget(fn=fn, args=args, kwargs=kwargs, time=time, memory=memory, cpu=cpu)
 
 ####
 #Private functions
 #### 
-    def _setRMap(self, rMap):
-        """Sets the rMap object if rMap is not None.
+    @staticmethod
+    def _resolveMainModule( moduleName ):
         """
-        if rMap != None:
-            if self._rMap != None:
-                raise RuntimeError("rMap is already set")
-            self._rMap = rMap
-
-    def _passReturnValues(self, returnValues):
-        """Replaces the values in rMap with the corresponding return values
-        from the parent/predecessor target.
+        Returns a tuple of two elements, the first element being the path to the directory containing the given
+        module and the second element being the name of the module. If the given module name is "__main__",
+        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
+        caller can then add the first element of the returned tuple to sys.path and load the module from there.
+        See also worker.loadStack().
         """
-        if self._rMap != None and len(self._rMap) > 0:
-            returnValues = tuple(returnValues)
-            for arg in self._rMap:
-                self._rMap[arg] = returnValues[self._rMap[arg]]
+        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
+        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
+        if moduleName.endswith('.py'):
+            moduleName = moduleName[:-3]
+        elif moduleName.endswith('.pyc'):
+            moduleName = moduleName[:-4]
+        else:
+            raise RuntimeError(
+                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
+                moduleName)
+        return moduleDirPath, moduleName
+    
+    def _switchOutPromisedTargetReturnValues(self):
+        """
+        Replaces each PromisedTargetReturnValue instance that is a class 
+        attribute of the target with PromisedTargetReturnValue's stored value.
+        Will do this also for PromisedTargetReturnValue instances within lists, 
+        tuples, sets or dictionaries that are class attributes of the Target.
+        
+        This function is called just before the run method.
+        """
+        #Iterate on the class attributes of the Target instance.
+        for attr, value in self.__dict__.iteritems():
+            #If the variable is a PromisedTargetReturnValue replace with the 
+            #actual stored return value of the PromisedTargetReturnValue
+            #else if the variable is a list, tuple or set or dict replace any 
+            #PromisedTargetReturnValue instances within
+            #the container with the stored return value.
+            f = lambda : map(lambda x : x.loadValue(self.jobStore) if 
+                        isinstance(x, PromisedTargetReturnValue) else x, value)
+            if isinstance(value, PromisedTargetReturnValue):
+                self.__dict__[attr] = value.loadValue(self.jobStore)
+            elif isinstance(value, list):
+                self.__dict__[attr] = f()
+            elif isinstance(value, tuple):
+                self.__dict__[attr] = tuple(f())
+            elif isinstance(value, set):
+                self.__dict__[attr] = set(f())
+            elif isinstance(value, dict):
+                self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(self.jobStore) if 
+                        isinstance(x, PromisedTargetReturnValue) else value[x]), value))
     
     def _setFileVariables(self, jobStore, job, localTempDir):
-        """Sets the jobStore for the target.
+        """
+        Sets the jobStore, job and localTemptDir for the target, each
+        of which is used for computation.
         """
         self.jobStore = jobStore
         self.job = job
         self.localTempDir = localTempDir
         
     def _unsetFileVariables(self):
-        """Unsets the file variables, so that they don't get pickled.
+        """
+        Unsets the file variables, so that they don't get pickled.
         """
         self.jobStore = None
         self.job = None
@@ -293,64 +319,70 @@ class Target(object):
         return self.loggingMessages[:]
 
 class FunctionWrappingTarget(Target):
-    """Target used to wrap a function.
+    """
+    Target used to wrap a function.
     
     Function can not be nested function or class function, currently.
-    
-    If rMap is set (see Target.setFollowOn) then it is used populate the 
-    keyword arguments of the wrapped function. 
-    This is done by mapping the the return values of the parent/predecessor target
-    to the arguments of the wrapped function.
-    The keys of rMap are the names of argument in the wrapped function.
-    The values of rMap are the indices corresponding the return values of parent/predecessor target.
-    For example, if the wrapped function foo has declaration foo(bar, foo2) and 
-    rMap={ "bar":0 }, then the first return value from the parent/predecessor target is made the argument
-    "bar" to the wrapped function.  
-    Duplicate arguments are not allowed, so if the "bar" argument is set both by rMap and the args or kwargs
-    of the wrapping target then an exception is thrown.
+    *args and **kwargs are used as the arguments to the function.
     """
-
-    def __init__(self, fn, args=(), kwargs={}, time=sys.maxint, memory=sys.maxint, cpu=sys.maxint):
-        Target.__init__(self, time=time, memory=memory, cpu=cpu)
-        moduleName = fn.__module__
-        self.fnModuleDirPath, self.fnModuleName = self.resolveMainModule(moduleName)
+    def __init__(self, fn, *args, **kwargs):
+        cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
+        Target.__init__(self, memory=memory, cpu=cpu)
+        self.fnModuleDirPath, self.fnModuleName = self._resolveMainModule(fn.__module__)
         self.fnName = str(fn.__name__)
         self._args=args
         self._kwargs=kwargs
-
+        
     def _getFunc( self ):
         if self.fnModuleDirPath not in sys.path:
             sys.path.append( self.fnModuleDirPath )
         return getattr( importlib.import_module( self.fnModuleName ), self.fnName )
-    
-    def _addRMap(self):
-        """Processes the rMap (if set), and uses it to populate the keyword arguments
-        of the wrapped function.
-        """
-        if self._rMap != None:
-            for arg in self._rMap:
-                if isinstance(arg, str):  
-                    #Add to kwargs
-                    if self._rMap[arg] in self._kwargs: #Do not allow silent replacement of a kwarg.
-                        raise RuntimeError("Keyword argument: %s is duplicated" % arg)
-                    self._kwargs[arg] = self._rMap[arg]
-                else:
-                    raise RuntimeError("Argument in rMap is not a string: %s" % arg)
 
     def run(self):
         func = self._getFunc( )
-        self._addRMap()
         #Now run the wrapped function
         return func(*self._args, **self._kwargs)
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
-    """Target used to wrap a function.
+    """
+    Target used to wrap a function.
     A target function is a function which takes as its first argument a reference
     to the wrapping target.
-    
-    Target function can not be closure.
     """
     def run(self):
         func = self._getFunc( )
-        self._addRMap()
         return func(*((self,) + tuple(self._args)), **self._kwargs)
+
+class PromisedTargetReturnValue():
+    """
+    References a return value from a Target's run function. Let T be a target. 
+    Instances of PromisedTargetReturnValue are created by
+    T.rV(i), where i is an integer reference to a return value of T's run function
+    (casting the return value as a tuple). 
+    When passed to the constructor of a different Target the PromisedTargetReturnValue
+    will be replaced by the actual referenced return value after the Target's run function 
+    has finished (see Target._switchOutPromisedTargetReturnValues). 
+    This mechanism allows a return values from one Target's run method to be input
+    argument to Target before the former Target's run function has been executed.
+    """ 
+    def __init__(self):
+        self.jobStoreFileID = None #The None value is
+        #replaced with a real jobStoreFileID by the Stack object.
+        
+    def loadValue(self, jobStore):
+        """
+        Unpickles the promised value and returns it. 
+        """
+        assert self.jobStoreFileID != None 
+        with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
+            return cPickle.load(fileHandle) #If this doesn't work, then it is 
+        #likely the Target that is promising value has not yet been run.
+
+    def _storeValue(self, valueToStore, jobStore):
+        """
+        Pickle the promised value. This is done by the stack.
+        """
+        assert self.jobStoreFileID != None
+        with jobStore.updateFileStream(self.jobStoreFileID) as fileHandle:
+            cPickle.dump(valueToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)

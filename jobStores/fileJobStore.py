@@ -244,7 +244,7 @@ class FileJobStore(AbstractJobStore):
         job.children = []
         job.remainingRetryCount = self._defaultTryCount( )
         #Get children
-        childJobs = reduce(lambda x,y:x+y, map(lambda childDir : \
+        childJobs = reduce(lambda x,y:x+y, map(lambda childDir : 
             self._loadJobTreeState(childDir, jobTreeState), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
         if len(childJobs) > 0:
             jobTreeState.childCounts[job] = len(childJobs)

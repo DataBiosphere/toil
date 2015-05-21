@@ -16,8 +16,8 @@ def setup(target, inputFile, N):
     """Sets up the sort.
     """
     tempOutputFileStoreID = target.getEmptyFileStoreID()
-    target.addChildTargetFn(down, (inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID))
-    target.setFollowOnTargetFn(cleanup, (tempOutputFileStoreID, inputFile))
+    target.addChildTargetFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
+    target.setFollowOnTargetFn(cleanup, tempOutputFileStoreID, inputFile)
 
 def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
@@ -40,9 +40,9 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         #We will subdivide the file
         tempFileStoreID1 = target.getEmptyFileStoreID()
         tempFileStoreID2 = target.getEmptyFileStoreID()
-        target.addChildTargetFn(down, (inputFile, fileStart, midPoint+1, N, tempFileStoreID1))
-        target.addChildTargetFn(down, (inputFile, midPoint+1, fileEnd, N, tempFileStoreID2)) #Add one to avoid the newline
-        target.setFollowOnTargetFn(up, (tempFileStoreID1, tempFileStoreID2, outputFileStoreID))                
+        target.addChildTargetFn(down, inputFile, fileStart, midPoint+1, N, tempFileStoreID1)
+        target.addChildTargetFn(down, inputFile, midPoint+1, fileEnd, N, tempFileStoreID2) #Add one to avoid the newline
+        target.setFollowOnTargetFn(up, tempFileStoreID1, tempFileStoreID2, outputFileStoreID)                
     else:
         #We can sort this bit of the file
         if logToMaster:
@@ -102,7 +102,7 @@ def main():
         raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
-    i = Stack(Target.wrapTargetFn(setup, (options.fileToSort, int(options.N)))).startJobTree(options)
+    i = Stack(Target.wrapTargetFn(setup, options.fileToSort, int(options.N))).startJobTree(options)
     
     #if i:
     #    raise RuntimeError("The jobtree contained %i failed jobs" % i)

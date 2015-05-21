@@ -29,7 +29,6 @@ try:
     import cPickle 
 except ImportError:
     import pickle as cPickle
-    
 import xml.etree.cElementTree as ET
 
 from jobTree.lib.bioio import setLoggingFromOptions
@@ -56,7 +55,8 @@ class Stack(object):
         
     @staticmethod
     def getDefaultOptions():
-        """Returns am optparse.Values object name (string) : value
+        """
+        Returns am optparse.Values object name (string) : value
         options used by job-tree. See the help string 
         of jobTree to see these options.
         """
@@ -89,6 +89,8 @@ class Stack(object):
             #Make job, set the command to None initially
             logger.info("Adding the first job")
             job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
+            #This calls gives valid jobStoreFileIDs to each promised value
+            self.setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
             #Now set the command properly (this is a hack)
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
@@ -107,6 +109,24 @@ class Stack(object):
 #####
 #The remainder of the class is private to the user
 ####
+    @staticmethod
+    def setFileIDsForPromisedValues(target, jobStore, jobStoreID):
+        """
+        Sets the jobStoreFileID for each PromisedTargetReturnValue in the 
+        graph of targets created.
+        """
+        #Replace any None references with valid jobStoreFileIDs. We 
+        #do this here, rather than within the original constructor of the
+        #promised value because we don't necessarily have access to the jobStore when 
+        #the PromisedTargetReturnValue instances are created.
+        for PromisedTargetReturnValue in target._rvs.values():
+            if PromisedTargetReturnValue.jobStoreFileID == None:
+                PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
+        #Now recursively do the same for the children and follow ons.
+        for childTarget in target.getChildren():
+            Stack.setFileIDsForPromisedValues(childTarget, jobStore, jobStoreID)
+        if target.getFollowOn() != None:
+            Stack.setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
         
     def makeRunnable(self, jobStore, jobStoreID):
         with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
@@ -146,8 +166,15 @@ class Stack(object):
             assert targetCpu <= cpuAvailable
         #Set the jobStore for the target, used for file access
         self.target._setFileVariables(jobStore, job, localTempDir)
+        #Switch out any promised return value instances with the actual values
+        self.target._switchOutPromisedTargetReturnValues()
         #Run the target, first cleanup then run.
         returnValues = self.target.run()
+        #Set the promised value jobStoreFileIDs
+        self.setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
+        #Store the return values for any promised return value
+        for i in self.target._rvs:
+            self.target._rvs[i]._storeValue(tuple(returnValues)[i], jobStore)
         #Now unset the job store to prevent it being serialised
         self.target._unsetFileVariables()
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
@@ -158,7 +185,7 @@ class Stack(object):
         #Handle the follow on
         followOn = self.target.getFollowOn()
         if followOn is not None: #Target to get rid of follow on when done.
-            followOn._passReturnValues(returnValues)
+            #followOn._passReturnValues(returnValues)
             followOnStack = Stack(followOn)
             job.followOnCommands.append((followOnStack.makeRunnable(jobStore, job.jobStoreID),
                                          followOnStack.getMemory(defaultMemory),
@@ -171,14 +198,14 @@ class Stack(object):
         assert len(job.children) == 0
         while len(newChildren) > 0:
             child = newChildren.pop()
-            child._passReturnValues(returnValues)
+            #child._passReturnValues(returnValues)
             childStack = Stack(child)
             job.children.append((childStack.makeRunnable(jobStore, job.jobStoreID),
                      childStack.getMemory(defaultMemory),
                      childStack.getCpu(defaultCpu)))
         
          #Now build jobs for each child command
-        for childCommand, runTime in self.target.getChildCommands():
+        for childCommand in self.target.getChildCommands():
             job.children.append((childCommand, defaultMemory, defaultCpu))
             
         for message in self.target._getMasterLoggingMessages():
@@ -205,7 +232,7 @@ class Stack(object):
                                 "Did you remember to pass an instance of a Target subclass?" )
         else:
             required = ['_Target__followOn', '_Target__children', '_Target__childCommands',
-                    '_Target__time', '_Target__memory', '_Target__cpu']
+                    '_Target__memory', '_Target__cpu']
             for r in required:
                 if r not in attributes:
                     raise RuntimeError("Error, there is a missing attribute, %s, from a Target sub instance %s, "
