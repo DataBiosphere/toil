@@ -617,6 +617,7 @@ def processData(config, stats, options):
     for targetName in targetNames:
         targetTypes = [ target for target in targets
                         if target.attrib["class"] == targetName ]
+        # FIXME: unused assignment
         targetTypeTag = buildElement(targetTypesTag, targetTypes, targetName)
     return collatedStatsTag
 
