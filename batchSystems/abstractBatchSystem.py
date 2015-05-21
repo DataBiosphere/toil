@@ -42,10 +42,9 @@ class AbstractBatchSystem:
         assert memory != None
         assert cpu != None
         if cpu > self.maxCpus:
-            raise RuntimeError("Requesting more cpus than available. Requested: %s, Available: %s" % (cpu, self.maxCpus))
+            raise InsufficientSystemResources('CPUs', cpu, self.maxCpus)
         if memory > self.maxMemory:
-            raise RuntimeError("Requesting more memory than available. Requested: %s, Available: %s" % (memory, self.maxMemory))
-    
+            raise InsufficientSystemResources('memory', memory, self.maxMemory)
     def issueJob(self, command, memory, cpu):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
@@ -103,3 +102,12 @@ class AbstractBatchSystem:
             return queue.get(timeout=maxWait)
         except Empty:
             return None
+
+class InsufficientSystemResources(Exception):
+    def __init__(self, cpu_or_mem, requested, available):
+        self.requested = requested
+        self.available = available
+        self.cpu_or_mem = cpu_or_mem
+    def __str__(self):
+        return 'Requesting more {} than available. Requested: {}, Available: {}' \
+               ''.format(self.cpu_or_mem, self.requested, self.available)
