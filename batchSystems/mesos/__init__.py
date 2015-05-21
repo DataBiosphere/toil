@@ -97,7 +97,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
         self.jobQueueList[job_type].append(job)
-        log.debug("... done")
+        log.debug("... queued")
 
         return jobID
 
@@ -284,71 +284,96 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         log.debug("Registered with framework ID %s" % frameworkId.value)
 
-    def resourceOffers(self, driver, offers):
-        """
-        Invoked when resources have been offered to this framework.
-        """
+    def _sortJobsByResourceReq(self):
         job_types = list(self.jobQueueList.keys())
         # sorts from largest to smallest cpu usage
         # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
         job_types.sort(key=lambda resourceRequirement: ResourceRequirement.cpu)
         job_types.reverse()
+        return job_types
+
+    def _declineAllOffers(self, driver, offers):
+        for offer in offers:
+            log.warning("No jobs to assign. Rejecting offer".format(offer.id.value))
+            driver.declineOffer(offer.id)
+
+    def _determineOfferResources(self, offer):
+        offerCpus = 0
+        offerMem = 0
+        for resource in offer.resources:
+            if resource.name == "cpus":
+                offerCpus += resource.scalar.value
+            elif resource.name == "mem":
+                offerMem += resource.scalar.value
+        return offerCpus, offerMem
+
+    def _prepareToRun(self, job_type, offer, index):
+        jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
+        task = self._createTask(jt_job, offer)
+        return task
+
+    def _deleteByJobID(self, jobID,):
+        for key, jobType in self.jobQueueList.iteritems():
+            for job in jobType:
+                if jobID == job.jobID:
+                    jobType.remove(job)
+
+    def _updateStateToRunning(self, offer, task):
+        self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(), slaveID=offer.slave_id,
+                                                               executorID=task.executor.executor_id)
+        # remove the element from the list FIXME: not efficient, I'm sure.
+        self._deleteByJobID(int(task.task_id.value))
+
+    def resourceOffers(self, driver, offers):
+        """
+        Invoked when resources have been offered to this framework.
+        """
+        job_types = self._sortJobsByResourceReq()
 
         if len(job_types)==0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
-            for offer in offers:
-                log.warning( "No jobs to assign. Rejecting offer".format(offer.id.value))
-                driver.declineOffer(offer.id)
+            log.debug("Declining offers")
+            # If there are no jobs, we can get stuck with no jobs and no new offers until we decline it.
+            self._declineAllOffers(driver, offers)
             return
 
         # right now, gives priority to largest jobs
         for offer in offers:
             tasks = []
-
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCpus = 0
-            offerMem = 0
-            for resource in offer.resources:
-                if resource.name == "cpus":
-                    offerCpus += resource.scalar.value
-                elif resource.name == "mem":
-                    offerMem += resource.scalar.value
-
+            offerCpus, offerMem = self._determineOfferResources(offer)
             log.debug( "Received offer %s with cpus: %s and mem: %s" \
                   % (offer.id.value, offerCpus, offerMem))
-
             remainingCpus = offerCpus
             remainingMem = offerMem
 
             for job_type in job_types:
-                while  len(self.jobQueueList[job_type]) !=  0  and \
+                nextToLaunchIndex=0
+                # Because we are not removing from the list until outside of the while loop, we must decrement the
+                # number of jobs left to run ourselves to avoid infinite loop.
+                while (len(self.jobQueueList[job_type])-nextToLaunchIndex > 0) and \
                                 remainingCpus >= job_type.cpu and \
-                                remainingMem >= self.__bytesToMB(job_type.memory): # job tree specifies mem in bytes.
+                                remainingMem >= self.__bytesToMB(job_type.memory):  # job tree specifies mem in bytes.
 
-                    jt_job = self._getFromList(self.jobQueueList[job_type])
-                    task = self.createTask(jt_job, offer)
+                    task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
+                    if int(task.task_id.value) not in self.runningJobMap:
+                        # check to make sure task isn't already running (possibly in very unlikely edge case)
+                        tasks.append(task)
+                        log.debug( "Preparing to launch mesos task %s using offer %s..." % (task.task_id.value, offer.id.value))
+                        remainingCpus -= job_type.cpu
+                        remainingMem -= self.__bytesToMB(job_type.memory)
+                    nextToLaunchIndex+=1
 
-                    self.runningJobMap[jt_job.jobID] = TaskData(startTime=time.time(), slaveID=offer.slave_id,
-                                                                executorID=task.executor.executor_id)
-                    tasks.append(task)
-
-                    log.debug( "Launching mesos task %s using offer %s" \
-                          % (task.task_id.value, offer.id.value))
-
-                    remainingCpus -= job_type.cpu
-                    remainingMem -= self.__bytesToMB(job_type.memory)
-
-            # If we put the launch call inside the while, multiple accepts are used on the same offer.
+            # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
             driver.launchTasks(offer.id, tasks)
+
+            for task in tasks:
+                self._updateStateToRunning(offer, task)
+                log.debug( "...launching mesos task %s" % task.task_id.value)
+
             if len(tasks) == 0:
                 log.critical("Offer not large enough to run any tasks")
 
-    def _getFromList(self, list):
-        # mimics Queue.get method. Gets first item in list and removes it. 
-        result = list[0]
-        list.remove(result)
-        return result
-
-    def createTask(self, jt_job, offer):
+    def _createTask(self, jt_job, offer):
         """
         build the mesos task object from the jobTree job here to avoid
         further cluttering resourceOffers
