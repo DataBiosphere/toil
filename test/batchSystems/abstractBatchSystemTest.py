@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import threading
 import unittest
 from xml.etree import ElementTree
@@ -11,6 +12,7 @@ import time
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import MesosBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
+from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
 
 
 log = logging.getLogger(__name__)
@@ -32,31 +34,28 @@ class AbstractBatchSystemTest(unittest.TestCase):
     def setUp(self):
         super(AbstractBatchSystemTest, self).setUp()
         self.batchSystem = self.createBatchSystem()
+        self.tempDir = tempfile.mkdtemp( )
 
     config = None
+    tempDir = None
 
     @classmethod
     def setUpClass(cls):
         logging.basicConfig(level=logging.DEBUG)
         cls.config = cls._createDummyConfig()
+        cls.tempDir = tempfile.mkdtemp()
 
     def testIssueJob(self):
-        # FIXME: In the long run, we should move away from having tests create files in the source tree because
-        # FIXME: ... reduces the risk of clobbering the source code. Use a temporary directory or a directory at the
-        # FIXME: ... project root that is dedicated to contain test files.
-        test_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test.txt')
-        self.robust_remove(test_path)
+        test_path = os.path.join(self.tempDir, 'test.txt')
         jobCommand = 'touch {}'.format(test_path)
         self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
         self.wait_for_jobs(wait_for_completion=True)
         self.assertTrue(os.path.exists(test_path))
-        os.remove(test_path)
 
     def testCheckResourceRequest(self):
-        # FIXME: Batch systems should throw a specialized exception class
-        self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=1000, cpu=200)
-        self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=5, cpu=200)
-        self.assertRaises(RuntimeError, self.batchSystem.checkResourceRequest, memory=100, cpu=1)
+        self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=1000, cpu=200)
+        self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cpu=200)
+        self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=100, cpu=1)
         self.batchSystem.checkResourceRequest(memory=10, cpu=1)
 
     def testGetIssuedJobIDs(self):
@@ -113,13 +112,6 @@ class AbstractBatchSystemTest(unittest.TestCase):
         config.attrib["max_threads"] = str(1)
         return config
 
-    @classmethod
-    def robust_remove(cls, name):
-        try:
-            os.remove(name)
-        except OSError:
-            pass
-
     def wait_for_jobs(self, wait_for_completion=False):
         while not self.batchSystem.getIssuedJobIDs():
             pass
@@ -132,6 +124,9 @@ class AbstractBatchSystemTest(unittest.TestCase):
                 # for jobID,data in self.runningJobMap.iteritems():
                 # RuntimeError: dictionary changed size during iteration
 
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tempDir)
 
 class MesosBatchSystemTest(AbstractBatchSystemTest):
     """
