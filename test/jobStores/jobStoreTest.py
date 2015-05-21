@@ -10,8 +10,8 @@ from xml.etree.cElementTree import Element
 
 from jobTree.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException,
                                                 AbstractJobStore)
-from jobStores.awsJobStore import AWSJobStore
-from jobStores.fileJobStore import FileJobStore
+from jobTree.jobStores.awsJobStore import AWSJobStore
+from jobTree.jobStores.fileJobStore import FileJobStore
 from jobTree.test import JobTreeTest
 
 logger = logging.getLogger( __name__ )
