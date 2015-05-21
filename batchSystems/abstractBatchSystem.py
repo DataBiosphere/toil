@@ -55,24 +55,25 @@ class AbstractBatchSystem:
         the number of bytes the job needs to run in and cpu is the number of cpus needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: issueJob')
+
     
     def killJobs(self, jobIDs):
         """Kills the given job IDs.
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: killJobs')
     
     def getIssuedJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
         just waiting).
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: getIssuedJobIDs')
     
     def getRunningJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
         and a how long they have been running for (in seconds).
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: getRunningJobIDs')
     
     def getUpdatedJob(self, maxWait):
         """Gets a job that has updated its status,
@@ -80,13 +81,13 @@ class AbstractBatchSystem:
         waiting for a result. If a result is available returns (jobID, exitValue)
         else it returns None.
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: getUpdatedJob')
     
     def getRescueJobFrequency(self):
         """Gets the period of time to wait (floating point, in seconds) between checking for 
         missing/overlong jobs.
         """
-        raise RuntimeError("Abstract method")
+        raise NotImplementedError('Abstract method: getRescueJobFrequency')
 
     # FIXME: Add a link to the issue tracker for this bug in multiprocessing
 
