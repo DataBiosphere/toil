@@ -26,10 +26,10 @@ class TestCase(unittest.TestCase):
         
         #Create the targets
         A = Target.wrapFn(f, "A", outFile)
-        B = Target.wrapFn(f, A.rV(0), outFile)
-        C = Target.wrapFn(f, B.rV(0), outFile)
-        D = Target.wrapFn(f, C.rV(0), outFile)
-        E = Target.wrapFn(f, D.rV(0), outFile)
+        B = Target.wrapFn(f, A.rv(0), outFile)
+        C = Target.wrapFn(f, B.rv(0), outFile)
+        D = Target.wrapFn(f, C.rv(0), outFile)
+        E = Target.wrapFn(f, D.rv(0), outFile)
         
         #Connect them into a workflow
         A.addChild(B)
@@ -54,7 +54,7 @@ def f(string, outFile):
     fH = open(outFile, 'a')
     fH.write(string)
     fH.close()   
-    return chr(ord(string)+1), outFile     
+    return chr(ord(string[0])+1)     
 
 if __name__ == '__main__':
     unittest.main()

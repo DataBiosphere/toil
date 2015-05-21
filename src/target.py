@@ -61,7 +61,7 @@ class Target(object):
     
     def setFollowOn(self, followOnTarget):
         """
-        Set the follow on target. 
+        Set the follow on target, returns the followOnTarget.
         """
         assert self.__followOn == None
         self.__followOn = followOnTarget 
@@ -69,7 +69,7 @@ class Target(object):
         
     def addChild(self, childTarget):
         """
-        Adds the child target to be run as child of this target. 
+        Adds the child target to be run as child of this target. Returns childTarget.
         """
         self.__children.append(childTarget)
         return childTarget
@@ -78,25 +78,27 @@ class Target(object):
 
     def setFollowOnFn(self, fn, *args, **kwargs):
         """
-        Sets a follow on fn. See FunctionWrappingTarget.
+        Sets a follow on fn. See FunctionWrappingTarget. Returns new follow-on Target.
         """
         return self.setFollowOn(FunctionWrappingTarget(fn, *args, **kwargs))
 
     def setFollowOnTargetFn(self, fn, *args, **kwargs):
         """
-        Sets a follow on target fn. See TargetFunctionWrappingTarget.
+        Sets a follow on target fn. See TargetFunctionWrappingTarget. 
+        Returns new follow-on Target.
         """
         return self.setFollowOn(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
     def addChildFn(self, fn, *args, **kwargs):
         """
-        Adds a child fn. See FunctionWrappingTarget.
+        Adds a child fn. See FunctionWrappingTarget. Returns new child Target.
         """
         return self.addChild(FunctionWrappingTarget(fn, *args, **kwargs))
 
     def addChildTargetFn(self, fn, *args, **kwargs):
         """
-        Adds a child target fn. See TargetFunctionWrappingTarget.
+        Adds a child target fn. See TargetFunctionWrappingTarget. 
+        Returns new child Target.
         """
         return self.addChild(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
@@ -190,14 +192,21 @@ class Target(object):
     ##The following function is used for passing return values between target run functions
     
     
-    def rV(self, argIndex):
+    def rv(self, argIndex):
         """
         Gets a PromisedTargetReturnValue, representing the argIndex return 
         value of the run function.
-        This PromisedTargetReturnValue, if a class attribute of a Target T will be replaced
+        This PromisedTargetReturnValue, if a class attribute of a Target instance, call it T, will be replaced
         by the actual return value just before the run function of T is called. 
-        rV therefore allows the output from one Target to wired as input to another 
+        rv therefore allows the output from one Target to wired as input to another 
         Target before either is actually run. 
+        
+        It is possible to nest these promises, so that the return value from one target
+        can be a PromisedTargetReturnValue from another, child or follow-on, target.
+        The tests/sort/sort.py gives an example of this approach. When promises are nested
+        you get recursive containment, so that a PromisedTargetReturnValue instance's initialised
+        value is another PromisedTargetReturnValue instance. This is undone at runtime, so that what
+        is left is the intended, nested reference.  
         """
         #Check if the return value has already been promised and if it has
         #return it
@@ -358,7 +367,7 @@ class PromisedTargetReturnValue():
     """
     References a return value from a Target's run function. Let T be a target. 
     Instances of PromisedTargetReturnValue are created by
-    T.rV(i), where i is an integer reference to a return value of T's run function
+    T.rv(i), where i is an integer reference to a return value of T's run function
     (casting the return value as a tuple). 
     When passed to the constructor of a different Target the PromisedTargetReturnValue
     will be replaced by the actual referenced return value after the Target's run function 
@@ -373,11 +382,19 @@ class PromisedTargetReturnValue():
     def loadValue(self, jobStore):
         """
         Unpickles the promised value and returns it. 
+        
+        If it encounters a chain of promises it will traverse the chain until
+        if finds the intended value.
         """
         assert self.jobStoreFileID != None 
-        with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
-            return cPickle.load(fileHandle) #If this doesn't work, then it is 
-        #likely the Target that is promising value has not yet been run.
+        id = self.jobStoreFileID
+        while True:
+            with jobStore.readFileStream(id) as fileHandle:
+                value = cPickle.load(fileHandle) #If this doesn't work, then it is likely the Target that is promising value has not yet been run.
+                if not isinstance(value, PromisedTargetReturnValue):
+                    return value 
+                else: #We have found a nested promise, keep recursing
+                    id = value.jobStoreFileID
 
     def _storeValue(self, valueToStore, jobStore):
         """

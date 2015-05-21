@@ -25,6 +25,7 @@ import math
 from optparse import OptionParser
 from jobTree.src.target import Target
 from jobTree.src.stack import Stack
+from jobTree.lib.bioio import spawnDaemon
 
 def writeLog(self, msg, startTime):
     timeStamp = str(datetime.datetime.now() - startTime)       
@@ -225,7 +226,6 @@ def main():
                       help="Cpus per job", default="1")
         
     options, args = parser.parse_args()
-    setLoggingFromOptions(options)
 
     startTime = datetime.datetime.now()
 

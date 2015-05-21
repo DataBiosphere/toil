@@ -90,7 +90,7 @@ class Stack(object):
             logger.info("Adding the first job")
             job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
             #This calls gives valid jobStoreFileIDs to each promised value
-            self.setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
+            self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
             #Now set the command properly (this is a hack)
             job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
             #Now write
@@ -110,7 +110,7 @@ class Stack(object):
 #The remainder of the class is private to the user
 ####
     @staticmethod
-    def setFileIDsForPromisedValues(target, jobStore, jobStoreID):
+    def _setFileIDsForPromisedValues(target, jobStore, jobStoreID):
         """
         Sets the jobStoreFileID for each PromisedTargetReturnValue in the 
         graph of targets created.
@@ -124,9 +124,9 @@ class Stack(object):
                 PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
         #Now recursively do the same for the children and follow ons.
         for childTarget in target.getChildren():
-            Stack.setFileIDsForPromisedValues(childTarget, jobStore, jobStoreID)
+            Stack._setFileIDsForPromisedValues(childTarget, jobStore, jobStoreID)
         if target.getFollowOn() != None:
-            Stack.setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
+            Stack._setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
         
     def makeRunnable(self, jobStore, jobStoreID):
         with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
@@ -171,10 +171,9 @@ class Stack(object):
         #Run the target, first cleanup then run.
         returnValues = self.target.run()
         #Set the promised value jobStoreFileIDs
-        self.setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
+        self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
         #Store the return values for any promised return value
-        for i in self.target._rvs:
-            self.target._rvs[i]._storeValue(tuple(returnValues)[i], jobStore)
+        self._setReturnValuesForPromises(self.target, returnValues, jobStore)
         #Now unset the job store to prevent it being serialised
         self.target._unsetFileVariables()
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
@@ -219,6 +218,22 @@ class Stack(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = ".".join((self.target.__class__.__name__,))
             stats.attrib["memory"] = str(totalMemoryUsage)
+    
+    @staticmethod
+    def _setReturnValuesForPromises(target, returnValues, jobStore):
+        """
+        Sets the values for promises using the return values from the target's
+        run function.
+        """
+        for i in target._rvs.keys():
+            if isinstance(returnValues, tuple):
+                argToStore = returnValues[i]
+            else:
+                if i != 0:
+                    raise RuntimeError("Referencing return value index (%s)"
+                                " that is out of range: %s" % (i, returnValues))
+                argToStore = returnValues
+            target._rvs[i]._storeValue(argToStore, jobStore)
 
     def verifyTargetAttributesExist(self, target):
         """ verifyTargetAttributesExist() checks to make sure that the Target
