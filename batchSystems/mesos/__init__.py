@@ -41,7 +41,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         Thread.__init__(self)
 
         # written to when mesos kills tasks, as directed by jobtree
-        self.killedQueue = Queue()
+        self.killedSet = set()
 
         # dictionary of queues, which jobTree assigns jobs to. Each queue represents a job type,
         # defined by resource usage
@@ -102,7 +102,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         return jobID
 
     def killJobs(self, jobIDs):
-        """Kills the given job IDs. But when is it called?
+        """Kills the given job IDs.
         """
         localSet = set()
         if self.driver is None:
@@ -111,15 +111,24 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             log.debug("passing tasks to kill to mesos driver")
             self.killSet.add(jobID)
             localSet.add(jobID)
-            taskId = TaskID()
-            taskId.value = str(jobID)
-            self.driver.killTask(taskId)
+
+            if jobID not in self.getIssuedJobIDs():
+                self.killSet.remove(jobID)
+                localSet.remove(jobID)
+                log.debug("Job %s already finished", jobID)
+            else:
+                taskId = TaskID()
+                taskId.value = str(jobID)
+                self.driver.killTask(taskId)
 
         while localSet:
-            i = self.getFromQueueSafely(self.killedQueue, 3)
-            if i is not None:
-                self.killSet.remove(i)
-                localSet.remove(i)
+            log.debug("in while loop")
+            intersection=localSet.intersection(self.killedSet)
+            localSet-=intersection
+            self.killedSet-=intersection
+            if not intersection:
+                log.debug("sleeping in the while")
+                time.sleep(1)
 
     def getIssuedJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe
@@ -416,8 +425,15 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
         intID=int(update.task_id.value) # jobTree keeps jobIds as ints
         stringID=update.task_id.value # mesos keeps jobIds as strings
+
+        try:
+            self.killSet.remove(intID)
+        except KeyError:
+            pass
+        else:
+            self.killedSet.add(intID)
+
         if update.state == mesos_pb2.TASK_FINISHED:
-            slave_id, executor_id = self.runningJobMap[intID].slaveID, self.runningJobMap[intID].executorID,
             self.__updateState(intID, 0)
 
         if update.state == mesos_pb2.TASK_LOST or \
@@ -427,8 +443,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             log.warning( "Task %s is in unexpected state %s with message '%s'" \
                 % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
             self.__updateState(intID, 1)
-            if intID in self.killSet:
-                self.killedQueue.put(intID)
 
         # Explicitly acknowledge the update if implicit acknowledgements
         # are not being used.
