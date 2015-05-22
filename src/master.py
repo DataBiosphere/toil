@@ -38,29 +38,38 @@ from jobTree.src import Process, Queue
 from jobTree.lib.bioio import getTotalCpuTime, logStream
 from jobTree.src.common import workflowRootPath
 
+import xml.etree.cElementTree as ET
+
 logger = logging.getLogger( __name__ )
 
 #####
-##The following function is used for collating stats from the workers
+##The following function is used for collating stats/reporting log messages from the workers
 ####
 
-def statsAggregatorProcess(jobStore, stop):
+def statsAndLoggingAggregatorProcess(jobStore, stop):
     #Overall timing
     startTime = time.time()
     startClock = getTotalCpuTime()
 
     #Start off the stats file
-    with jobStore.writeSharedFileStream("stats.xml") as fileHandle:
+    with jobStore.writeSharedFileStream("statsAndLogging.xml") as fileHandle:
         fileHandle.write('<?xml version="1.0" ?><stats>')
-    
+        
+        #Call back function
+        def statsAndLoggingCallBackFn(fileHandle2):
+            node = ET.parse(fileHandle2).getroot()
+            for message in node.find("messages").findall("message"):
+                logger.critical("Got message from job at time: %s : %s" % \
+                                    (time.strftime("%m-%d-%Y %H:%M:%S"), message.text))
+            ET.ElementTree(node).write(fileHandle)
         #The main loop
         timeSinceOutFileLastFlushed = time.time()
         while True:
             if not stop.empty(): #This is a indirect way of getting a message to
                 #the process to exit
-                jobStore.readStats(fileHandle)
+                jobStore.readStatsAndLogging(statsAndLoggingCallBackFn)
                 break
-            if jobStore.readStats(fileHandle) == 0:
+            if jobStore.readStatsAndLogging(statsAndLoggingCallBackFn) == 0:
                 time.sleep(0.5) #Avoid cycling too fast
             if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the
                 #results file every minute
@@ -228,10 +237,6 @@ class JobBatcher:
                 #job is done we can add it to the list of updated job files
                 logger.debug("Added job: %s to active jobs" % jobStoreID)
             else:
-                for message in job.messages: #This is here because jobs with no children 
-                    #or follow ons may log to master.
-                    logger.critical("Got message from job at time: %s : %s" % \
-                                    (time.strftime("%m-%d-%Y %H:%M:%S"), message))
                 logger.debug("Job has no follow-ons or children despite job file "
                              "being present so we'll consider it done: %s" % jobStoreID)
                 self._updateParentStatus(jobStoreID)
@@ -285,14 +290,12 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
     logger.info("Found %s jobs to start and %i parent jobs with children to run" % \
                 (len(jobTreeState.updatedJobs), len(jobTreeState.childCounts)))
 
-    stats = config.attrib.has_key("stats")
-    if stats:
-        stop = Queue()
-        #statsFile, jobStore, stop
-        worker = Process(target=statsAggregatorProcess, \
-                         args=(jobStore, stop))
-        worker.daemon = True
-        worker.start()
+    stop = Queue()
+    #statsFile, jobStore, stop
+    worker = Process(target=statsAndLoggingAggregatorProcess,
+                     args=(jobStore, stop))
+    worker.daemon = True
+    worker.start()
 
     timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
     totalFailedJobs = 0
@@ -303,11 +306,6 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                          (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
 
             for job in jobTreeState.updatedJobs:
-                for message in job.messages:
-                    logger.critical("Got message from job at time: %s : %s" % \
-                                    (time.strftime("%m-%d-%Y %H:%M:%S"), message))
-                job.messages = []
-
                 if len(job.children) > 0:
                     logger.debug("Job: %s has %i children to schedule" % \
                                  (job.jobStoreID, len(job.children)))
@@ -366,11 +364,10 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
 
     logger.info("Finished the main loop")
 
-    if stats:
-        startTime = time.time()
-        logger.info("Waiting for stats collator process to finish")
-        stop.put(True)
-        worker.join()
-        logger.info("Stats finished collating in %s seconds" % (time.time() - startTime))
+    startTime = time.time()
+    logger.info("Waiting for stats collator process to finish")
+    stop.put(True)
+    worker.join()
+    logger.info("Stats finished collating in %s seconds" % (time.time() - startTime))
 
     return totalFailedJobs #Returns number of failed jobs

@@ -39,6 +39,7 @@ class TestCase(unittest.TestCase):
         
         #Create the runner for the workflow.
         options = Stack.getDefaultOptions()
+        options.logLevel = "INFO"
         s = Stack(A)
         #Run the workflow, the return value being the number of failed jobs
         self.assertEquals(s.startJobTree(options), 0)

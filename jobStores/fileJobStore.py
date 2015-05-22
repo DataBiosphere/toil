@@ -106,7 +106,8 @@ class FileJobStore(AbstractJobStore):
             except os.error: #In case stuff went wrong, but as this is not critical we let it slide
                 # FIXME: should still log a warning-level message
                 break
-    
+            
+    ##TO BE DELETED
     def loadJobTreeState(self):
         jobTreeState = JobTreeState()
         if not os.path.exists(self._getJobFileDirName()):
@@ -114,6 +115,22 @@ class FileJobStore(AbstractJobStore):
         jobTreeState.started = True
         self._loadJobTreeState(self._getJobFileDirName(), jobTreeState)
         return jobTreeState
+    ##END TO BE DELETED
+    
+    def loadJobsInStore(self):
+        if not os.path.exists(self._getJobFileDirName()): #Case dir does not yet exist
+            return []
+        jobs = []
+        def _loadJobs(jobTreeJobsRoot):
+            #Fn recursively walk over hierarchy of jobs and parses the jobs files.
+            jobFile = self._getJobFileName(jobTreeJobsRoot)
+            if os.path.exists(jobFile):
+                job = self.load(jobTreeJobsRoot)
+                jobs.append(job)
+            for childDir in FileJobStore._listChildDirs(jobTreeJobsRoot):
+                _loadJobs(childDir)
+        _loadJobs(self._getJobFileDirName())
+        return jobs
     
     def writeFile(self, jobStoreID, localFilePath):
         if not os.path.exists(jobStoreID):
@@ -188,24 +205,22 @@ class FileJobStore(AbstractJobStore):
         with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
             yield f
     
-    def writeStats(self, statsString):
+    def writeStatsAndLogging(self, statsAndLoggingString):
         tempStatsFile = os.path.join(random.choice(self.statsDirs), \
                             "%s_%s.xml" % (socket.gethostname(), os.getpid()))
         fileHandle = open(tempStatsFile + ".new", "w")
-        fileHandle.write(statsString)
+        fileHandle.write(statsAndLoggingString)
         fileHandle.close()
         os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
     
-    def readStats(self, fileHandle):
+    def readStatsAndLogging( self, statsAndLoggingCallBackFn):
         numberOfFilesProcessed = 0
         for dir in self.statsDirs:
             for tempFile in os.listdir(dir):
                 if not tempFile.endswith( '.new' ):
                     absTempFile = os.path.join(dir, tempFile)
-                    fH = open(absTempFile, 'r')
-                    for line in fH.readlines():
-                        fileHandle.write(line)
-                    fH.close()
+                    with open(absTempFile, 'r') as fH:
+                        statsAndLoggingCallBackFn(fH)
                     os.remove(absTempFile)
                     numberOfFilesProcessed += 1
         return numberOfFilesProcessed
@@ -231,7 +246,8 @@ class FileJobStore(AbstractJobStore):
     
     def _getJobFileName(self, jobStoreID):
         return os.path.join(jobStoreID, "job")
-    
+        
+    ##START TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED    
     def _loadJobTreeState2(self, jobTreeJobsRoot, jobTreeState):
         #Read job
         job = self.load(jobTreeJobsRoot)
@@ -240,7 +256,6 @@ class FileJobStore(AbstractJobStore):
         # FIXME: ... implementations so it would be nice if it were factored out, either in the
         # FIXME: ... caller or in the superclass.
         # Reset the job
-        job.messages = []
         job.children = []
         job.remainingRetryCount = self._defaultTryCount( )
         #Get children
@@ -264,6 +279,7 @@ class FileJobStore(AbstractJobStore):
         return reduce(lambda x,y:x+y, map(lambda childDir : \
             self._loadJobTreeState2(childDir, jobTreeState), \
             FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
+    ##END TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED
     
     def _processAnyUpdatingFile(self, jobFile):
         if os.path.isfile(jobFile + ".updating"):

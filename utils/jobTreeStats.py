@@ -562,13 +562,13 @@ def getStats(options):
     
     jobStore = loadJobStore(options.jobTree)
     try:
-        with jobStore.readSharedFileStream("stats.xml") as fH:
+        with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
             stats = ET.parse(fH).getroot() # Try parsing the whole file.
     except ET.ParseError: # If it doesn't work then we build the file incrementally
         sys.stderr.write("The job tree stats file is incomplete or corrupt, "
                          "we'll try instead to parse what's in the file "
                          "incrementally until we reach an error.\n")
-        with jobStore.readSharedFileStream("stats.xml") as fH:
+        with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
             stats = ET.Element("stats")
             try:
                 for event, elem in ET.iterparse(fH):

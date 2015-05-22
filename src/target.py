@@ -51,11 +51,24 @@ class Target(object):
     def run(self):
         """
         Do user stuff here, including creating any follow on jobs.
-        This function must not re-pickle the pickle file, which is an input file.
         
-        The return values,considered as a tuple, can be passed to other targets
-        by means of the rv() function. For example rv(1) would refer to the second
-        value returned by the run function (if it exists). 
+        The return values can be passed to other targets
+        by means of the rv() function. 
+        If the return value is a tuple, rv(1) would refer to the second
+        member of the tuple. If the return value is not a tuple then rV(0) would
+        refer to the return value of the function. 
+        
+        We disallow return values to be PromisedTargetReturnValue instances (generated
+        by the Target.rv() function - see below). 
+        A check is made when deserialisaing the values PromisedTargetReturnValue instances 
+        that will result in a runtime error if you attempt to do this.
+        Allowing PromisedTargetReturnValue instances to be returned does not work, because
+        the mechanism to pass the promise uses a fileStoreID that will be deleted once
+        the current job and its follow ons have been completed. This is similar to
+        scope rules in a language like C, where returning a reference to memory allocated
+        on the stack within a function will produce an undefined reference. 
+        Disallowing this also avoids nested promises (PromisedTargetReturnValue instances that contain
+        other PromisedTargetReturnValue). 
         """
         pass
     
@@ -196,17 +209,11 @@ class Target(object):
         """
         Gets a PromisedTargetReturnValue, representing the argIndex return 
         value of the run function.
-        This PromisedTargetReturnValue, if a class attribute of a Target instance, call it T, will be replaced
+        This PromisedTargetReturnValue, if a class attribute of a Target instance, 
+        call it T, will be replaced
         by the actual return value just before the run function of T is called. 
-        rv therefore allows the output from one Target to wired as input to another 
-        Target before either is actually run. 
-        
-        It is possible to nest these promises, so that the return value from one target
-        can be a PromisedTargetReturnValue from another, child or follow-on, target.
-        The tests/sort/sort.py gives an example of this approach. When promises are nested
-        you get recursive containment, so that a PromisedTargetReturnValue instance's initialised
-        value is another PromisedTargetReturnValue instance. This is undone at runtime, so that what
-        is left is the intended, nested reference.  
+        rv therefore allows the output from one Target to be wired as input to another 
+        Target before either is actually run.  
         """
         #Check if the return value has already been promised and if it has
         #return it
@@ -387,14 +394,12 @@ class PromisedTargetReturnValue():
         if finds the intended value.
         """
         assert self.jobStoreFileID != None 
-        id = self.jobStoreFileID
-        while True:
-            with jobStore.readFileStream(id) as fileHandle:
-                value = cPickle.load(fileHandle) #If this doesn't work, then it is likely the Target that is promising value has not yet been run.
-                if not isinstance(value, PromisedTargetReturnValue):
-                    return value 
-                else: #We have found a nested promise, keep recursing
-                    id = value.jobStoreFileID
+        with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
+            value = cPickle.load(fileHandle) #If this doesn't work, then it is 
+            #likely the Target that is promising value has not yet been run.
+            if isinstance(value, PromisedTargetReturnValue):
+                raise RuntimeError("A nested PromisedTargetReturnValue has been found.") #We do not allow the return of PromisedTargetReturnValue instance from the run function
+            return value
 
     def _storeValue(self, valueToStore, jobStore):
         """

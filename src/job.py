@@ -16,17 +16,15 @@ class Job( object ):
             remainingRetryCount=tryCount,
             jobStoreID=jobStoreID,
             followOnCommands=[ (command, memory, cpu, 0) ],
-            messages=[ ],
             logJobStoreFileID=logJobStoreFileID )
 
     def __init__( self, remainingRetryCount, jobStoreID,
-                  children=None, followOnCommands=None, messages=None, logJobStoreFileID=None ):
+                  children=None, followOnCommands=None, logJobStoreFileID=None ):
         self.remainingRetryCount = remainingRetryCount
         self.jobStoreID = jobStoreID
         # TODO: Consider using a set for children
         self.children = children or [ ]
         self.followOnCommands = followOnCommands or [ ]
-        self.messages = messages or [ ]
         self.logJobStoreFileID = logJobStoreFileID
 
     def setupJobAfterFailure( self, config ):
@@ -78,7 +76,6 @@ class Job( object ):
             self.jobStoreID,
             self.children,
             self.followOnCommands,
-            self.messages,
             self.logJobStoreFileID ]
 
     @classmethod
@@ -111,7 +108,6 @@ class Job( object ):
             and self.jobStoreID == other.jobStoreID
             and set( self.children ) == set( other.children )
             and self.followOnCommands == other.followOnCommands
-            and self.messages == other.messages
             and self.logJobStoreFileID == other.logJobStoreFileID )
 
     def __ne__( self, other ):

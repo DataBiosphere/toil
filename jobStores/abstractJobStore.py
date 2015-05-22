@@ -27,7 +27,6 @@ class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
         super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
 
-
 class ConcurrentFileModificationException( Exception ):
     def __init__( self, jobStoreFileID ):
         super( ConcurrentFileModificationException, self ).__init__(
@@ -135,6 +134,13 @@ class AbstractJobStore( object ):
         Returns a jobTreeState object based on the state of the store.
 
         :rtype : JobTreeState
+        """
+        raise NotImplementedError( )
+    
+    @abstractmethod
+    def loadJobsInStore(self):
+        """
+        Returns a list of all the jobs in the jobStore.
         """
         raise NotImplementedError( )
 
@@ -248,19 +254,21 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def writeStats( self, statsString ):
+    def writeStatsAndLogging( self, statsAndLoggingString ):
         """
-        Adds the given statistics string to the store of statistics info.
+        Adds the given statistics/logging string to the store of statistics info.
         """
         raise NotImplementedError( )
 
     @abstractmethod
-    def readStats( self, fileHandle ):
+    def readStatsAndLogging( self, statsAndLoggingCallBackFn):
         """
-        Reads stats strings accumulated by "writeStats" function, writing each
-        one to the given fileHandle. Returns the number of stat strings processed. Stats are
-        only read once and are removed from the file store after being written to the given 
-        file handle.
+        Reads stats/logging strings accumulated by "writeStatsAndLogging" function. 
+        For each stats/logging file calls the statsAndLoggingCallBackFn with 
+        an open, readable file-handle that can be used to parse the stats.
+        Returns the number of stat/logging strings processed. 
+        Stats/logging files are only read once and are removed from the 
+        file store after being written to the given file handle.
         """
         raise NotImplementedError( )
     

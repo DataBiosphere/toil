@@ -206,9 +206,6 @@ class Stack(object):
          #Now build jobs for each child command
         for childCommand in self.target.getChildCommands():
             job.children.append((childCommand, defaultMemory, defaultCpu))
-            
-        for message in self.target._getMasterLoggingMessages():
-            job.messages.append(message)
         
         #Finish up the stats
         if stats != None:
@@ -218,6 +215,9 @@ class Stack(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = ".".join((self.target.__class__.__name__,))
             stats.attrib["memory"] = str(totalMemoryUsage)
+        
+        #Return any logToMaster logging messages
+        return self.target._getMasterLoggingMessages()
     
     @staticmethod
     def _setReturnValuesForPromises(target, returnValues, jobStore):

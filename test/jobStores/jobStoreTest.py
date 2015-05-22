@@ -135,7 +135,6 @@ class AbstractJobStoreTest( JobTreeTest ):
         # Test changing and persisting job state
         #
         for childJob in childJobs:
-            childJob.messages.append( 'foo' )
             childJob.followOnCommands.append( ("command4", 45, 67, 0) )
             childJob.logJobStoreFileID = str( uuid.uuid4( ) )
             childJob.remainingRetryCount = 66
@@ -151,15 +150,11 @@ class AbstractJobStoreTest( JobTreeTest ):
         #
         childJob = next( iter( childJobs ) )
         self.assertTrue( len( childJob.followOnCommands ) > 0 )
-        self.assertTrue( len( childJob.messages ) > 0 )
         childJob.followOnCommands = [ ]
-        childJob.messages = [ ]
         self.assertEquals( len( childJob.followOnCommands ), 0 )
-        self.assertEquals( len( childJob.messages ), 0 )
         master.store( childJob )
         childJobOnWorker = worker.load( childJob.jobStoreID )
         self.assertEquals( len( childJob.followOnCommands ), 0 )
-        self.assertEquals( len( childJob.messages ), 0 )
         self.assertEquals( childJobOnWorker, childJob )
         # Now that one child is without follow-ons, it should omitted from the parent
         jobOnMaster = master.load( jobOnMaster.jobStoreID )
@@ -344,7 +339,6 @@ class AbstractJobStoreTest( JobTreeTest ):
         """
         copy = job.copy( )
         copy.children = [ ]
-        copy.messages = [ ]
         copy.remainingRetryCount = self.default_try_count
         return copy
 

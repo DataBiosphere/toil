@@ -121,7 +121,7 @@ def main():
                 sys.path.append(e)
     #os.environ = environment
     #os.putenv(key, value)
-        
+    
     ##########################################
     #Setup the temporary directories.
     ##########################################
@@ -133,7 +133,7 @@ def main():
     ##########################################
     #Setup the logging
     ##########################################
-    
+
     #Setup the logging. This is mildly tricky because we don't just want to
     #redirect stdout and stderr for this Python process; we want to redirect it
     #for this process and all children. Consequently, we can't just replace
@@ -190,9 +190,8 @@ def main():
     ##########################################
     
     job = jobStore.load(jobStoreID)
-    job.messages = [] #This is the only way to stop messages logging twice, 
+    job.children = []  #This is the only way to flush children, 
     #as are read only in the master
-    job.children = [] #Similarly, this is where old children are flushed out.
     if job.logJobStoreFileID != None:
         job.clearLogFile(jobStore) #This cleans the old log file
     jobStore.store(job) #Update status, to avoid reissuing children after
@@ -261,7 +260,7 @@ def main():
                     #Run the target
                     ##########################################
 
-                    loadStack(command,jobStore).execute(job=job, stats=stats,
+                    messages = loadStack(command,jobStore).execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
@@ -270,6 +269,7 @@ def main():
             
                 else: #Is another command
                     system(command)
+                    messages = []
             
             ##########################################
             #Cleanup/reset a successful job/checkpoint
@@ -331,7 +331,16 @@ def main():
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
-            jobStore.writeStats(ET.tostring(stats))
+            m = ET.SubElement(stats, "messages")
+            for message in messages:
+                ET.SubElement(m, "message").text = message
+            jobStore.writeStatsAndLogging(ET.tostring(stats))
+        elif len(messages) > 0: #No stats, but still need to report log messages
+            l = ET.Element("worker")
+            m = ET.SubElement(l, "messages")
+            for message in messages:
+                ET.SubElement(m, "message").text = message
+            jobStore.writeStatsAndLogging(ET.tostring(l))
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
     
@@ -385,11 +394,8 @@ def main():
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not workerFailed) and len(job.followOnCommands) == 0 and len(job.children) == 0:
-        #Cleanup global files at the end of the chain
-        
-        if len(job.messages) == 0:
-            #We can also safely get rid of the job
-            jobStore.delete(job)
+        #We can now safely get rid of the job
+        jobStore.delete(job)
             
 def _test():
     import doctest      

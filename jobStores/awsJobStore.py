@@ -184,7 +184,6 @@ class AWSJobStore( AbstractJobStore ):
             job = AWSJob.fromItem( item )
             if self.resetJobInLoadState:
                 job.remainingRetryCount = self._defaultTryCount()
-                job.messages = []
             jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
         state = JobTreeState( )
         if jobs:
@@ -313,10 +312,10 @@ class AWSJobStore( AbstractJobStore ):
         log.debug( "Registered empty file %s for job %s", jobStoreFileID, jobStoreID )
         return jobStoreFileID
 
-    def writeStats( self, statsString ):
+    def writeStatsAndLogging( self, statsAndLoggingString ):
         raise NotImplementedError( )
 
-    def readStats( self, fileHandle ):
+    def readStatsAndLogging( self, statsCallBackFn ):
         raise NotImplementedError( )
 
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket

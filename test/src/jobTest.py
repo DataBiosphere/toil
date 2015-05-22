@@ -45,7 +45,6 @@ class TestCase(JobTreeTest):
                 self.assertEquals(j.remainingRetryCount, tryCount)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertEquals(j.messages, [])
                 self.jobStore.store(j)
                 jobStoreID = j.jobStoreID
                 j = self.jobStore.load(j.jobStoreID)
@@ -53,7 +52,6 @@ class TestCase(JobTreeTest):
                 self.assertEquals(j.jobStoreID, jobStoreID)
                 self.assertEquals(j.children, [])
                 self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertEquals(j.messages, [])
                 self.assertTrue(self.jobStore.exists(j.jobStoreID))
                 self.jobStore.delete(j)
                 self.assertTrue(not self.jobStore.exists(j.jobStoreID))
@@ -81,7 +79,6 @@ class TestCase(JobTreeTest):
                 #self.assertEquals(cJ.jobDir, os.path.split(cJ)[0])
                 self.assertEquals(cJ.children, [])
                 self.assertEquals(cJ.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertEquals(cJ.messages, [])
                 self.assertTrue(self.jobStore.exists(cJ.jobStoreID))
                 self.jobStore.delete(cJ)
                 self.assertTrue(not self.jobStore.exists(cJ.jobStoreID))
