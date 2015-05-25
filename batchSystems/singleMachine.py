@@ -35,31 +35,12 @@ from jobTree.src.worker import main as workerMain
 
 logger = logging.getLogger( __name__ )
 
-def worker(inputQueue, outputQueue):
-    while True:
-        args = inputQueue.get()
-        if args == None: #Case where we are reducing threads for max number of CPUs
-            inputQueue.task_done()
-            return
-        command, jobID, threadsToStart = args
 
-        command = command.split( )
-        # Don't run the worker in the master process if an arbitrary command is passed.
-        # This allows for execution of commands that are not worker.py (ex: in UnitTests)
-        if any(x.endswith('worker.py') for x in command):
-            sys.argv = command[2:]
-            workerMain()
-        else:
-            subprocess.check_call( command )
-
-        outputQueue.put((jobID, 0, threadsToStart))
-        inputQueue.task_done()
-        
 class SingleMachineBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on a single machine, runs all the jobs you
     give it as they come in, but in parallel.
     """
-    def __init__(self, config, maxCpus, maxMemory, workerFn=worker):
+    def __init__(self, config, maxCpus, maxMemory, badWorker=False):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.jobIndex = 0
         self.jobs = {}
@@ -74,11 +55,49 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert self.memoryPerThread >= 1
         self.inputQueue = Queue()
         self.outputQueue = Queue()
-        self.workerFn = workerFn
-        for i in xrange(self.maxThreads): #Setup the threads
-            worker = Process(target=workerFn, args=(self.inputQueue, self.outputQueue))
+        self.popen = None
+
+        # Setup threads for the worker process
+        self.workerFn = self.badWorker if badWorker else self.worker
+        for i in xrange(self.maxThreads):
+            worker = Process(target=self.workerFn, args=(self.inputQueue, self.outputQueue))
             worker.daemon = True
             worker.start()
+
+    def worker(self, inputQueue, outputQueue):
+        while True:
+            args = inputQueue.get()
+            if args is None: #Case where we are reducing threads for max number of CPUs
+                inputQueue.task_done()
+                return
+
+            command, jobID, threadsToStart = args
+            self.popen = subprocess.Popen(command.split())
+
+            outputQueue.put((jobID, 0, threadsToStart))
+            inputQueue.task_done()
+
+    def badWorker(self, inputQueue, outputQueue):
+        """This is used to test what happens if we fail and restart jobs
+        """
+        fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the worker and will be reported if there is an error)
+        while True:
+            args = inputQueue.get()
+            if args == None: #Case where we are reducing threads for max number of CPUs
+                inputQueue.task_done()
+                return
+            command, jobID, threadsToStart = args
+            #Run to first calculate the runtime..
+            process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
+            if random.choice((False, True)):
+                time.sleep(random.random())
+                process.kill()
+                process.wait()
+                outputQueue.put((jobID, 1, threadsToStart))
+            else:
+                process.wait()
+                outputQueue.put((jobID, process.returncode, threadsToStart))
+            inputQueue.task_done()
 
     def issueJob(self, command, memory, cpu):
         """Runs the jobs right away.
@@ -134,26 +153,4 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """This should not really occur, wihtout an error. To exercise the 
         system we allow it every 90 minutes. 
         """
-        return 5400  
-    
-def badWorker(inputQueue, outputQueue):
-    """This is used to test what happens if we fail and restart jobs
-    """
-    fnull = open(os.devnull, 'w') #Pipe the output to dev/null (it is caught by the worker and will be reported if there is an error)
-    while True:
-        args = inputQueue.get()
-        if args == None: #Case where we are reducing threads for max number of CPUs
-            inputQueue.task_done()
-            return
-        command, jobID, threadsToStart = args
-        #Run to first calculate the runtime..
-        process = subprocess.Popen(command, shell=True, stdout = fnull, stderr = fnull)
-        if random.choice((False, True)):
-            time.sleep(random.random())
-            process.kill()
-            process.wait()
-            outputQueue.put((jobID, 1, threadsToStart))
-        else:
-            process.wait()
-            outputQueue.put((jobID, process.returncode, threadsToStart))
-        inputQueue.task_done()
+        return 5400
