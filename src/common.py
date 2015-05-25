@@ -31,7 +31,7 @@ from optparse import OptionContainer, OptionGroup
 from jobTree.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from jobTree.batchSystems.parasol import ParasolBatchSystem
 from jobTree.batchSystems.gridengine import GridengineBatchSystem
-from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem, badWorker
+from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 
@@ -225,7 +225,7 @@ def loadBatchSystem(config):
             config.attrib["try_count"] = str(32) #The chance that a job does not
             #complete after 32 goes in one in 4 billion, so you need a lot of 
             #jobs before this becomes probable
-            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, workerFn=badWorker)
+            batchSystem = SingleMachineBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory, badWorker=True)
         elif batchSystemString == "lsf" or batchSystemString == "LSF":
             batchSystem = LSFBatchSystem(config, maxCpus=maxCpus, maxMemory=maxMemory)
             logger.info("Using the lsf batch system")
