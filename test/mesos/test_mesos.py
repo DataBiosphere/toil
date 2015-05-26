@@ -95,7 +95,7 @@ class TestMesos( JobTreeTest ):
         self.__do_test_stress( False, 2 )
 
     def test_stress_bad( self ):
-        # the second argument is the number of targets. Badexecutor fails odd tasks, so certain numbers of tasks
+        # the second argument is the number of targets. BadExecutor fails odd tasks, so certain numbers of tasks
         # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
 

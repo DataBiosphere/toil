@@ -12,7 +12,7 @@ def touchFile( name, i='' ):
 
 class LongTestTarget(Target):
     def __init__(self, numTargets):
-        Target.__init__(self, time=1, memory=100000, cpu=0.01)
+        Target.__init__(self,  memory=100000, cpu=0.01)
         self.numTargets = numTargets
 
     def run(self):
@@ -24,7 +24,7 @@ class LongTestTarget(Target):
 class LongTestFollowOn(Target):
 
     def __init__(self):
-        Target.__init__(self, time=1, memory=1000000, cpu=0.01)
+        Target.__init__(self,  memory=1000000, cpu=0.01)
 
     def run(self):
         touchFile( 'parentFollowOn' )
@@ -33,7 +33,7 @@ class LongTestFollowOn(Target):
 class HelloWorldTarget(Target):
 
     def __init__(self,i):
-        Target.__init__(self, time=1, memory=100000, cpu=0.01)
+        Target.__init__(self,  memory=100000, cpu=0.01)
         self.i=i
 
 
@@ -45,7 +45,7 @@ class HelloWorldTarget(Target):
 class HelloWorldFollowOn(Target):
 
     def __init__(self,i):
-        Target.__init__(self, time=1, memory=200000, cpu=0.01)
+        Target.__init__(self,  memory=200000, cpu=0.01)
         self.i = i
 
     def run(self):
@@ -56,8 +56,6 @@ def main(numTargets, useBadExecutor=False):
     args .append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
     args .append("--retryCount=3")
     args .append("--logDebug")
-    # Needed on some installations of Mesos (like Hannes' MBP)
-    os.environ['LIBPROCESS_IP'] = '127.0.0.1'
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
@@ -68,4 +66,4 @@ def main(numTargets, useBadExecutor=False):
     i = Stack( LongTestTarget( numTargets ) ).startJobTree( options )
 
 if __name__=="__main__":
-    main(5, useBadExecutor=True)
+    main(5, useBadExecutor=False)
