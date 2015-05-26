@@ -22,6 +22,8 @@ import threading
 import pickle
 import logging
 import subprocess
+if False:
+    import psutil
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -46,6 +48,10 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :return:
         """
         log.debug("Registered with framework")
+        if False:
+            statThread = threading.Thread(target=self._sendStats, args=driver)
+            statThread.setDaemon(True)
+            statThread.start()
 
     def reregistered(self, driver, slaveInfo):
         """
@@ -79,6 +85,12 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         log.error(message)
         driver.sendFrameworkMessage(message)
 
+    def _sendStats(self, driver):
+        while True:
+            cpuUsage = str(psutil.cpu_percent())
+            ramUsage = str(psutil.virtual_memory().percent)
+            driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s", cpuUsage, ramUsage)
+
     def _callCommand(self, command, taskID):
         log.debug("Invoking command: {}".format(command))
         with lock:
@@ -102,10 +114,12 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
 
             result = self._callCommand(jobTreeJob.command,task.task_id.value)
 
-            if result != 0:
-                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
-            else:
+            if result == 0:
                 self._sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
+            elif result == -9:
+                self._sendUpdate(driver, task, mesos_pb2.TASK_KILLED)
+            else:
+                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
 
         # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
         thread = threading.Thread(target=_run_task)
