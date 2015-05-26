@@ -70,10 +70,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None: #Case where we are reducing threads for max number of CPUs
                 inputQueue.task_done()
                 return
-
             command, jobID, threadsToStart = args
-            self.popen = subprocess.Popen(command.split())
-
+            self.popen = subprocess.Popen( command, shell=True )
+            statusCode = self.popen.wait()
+            if 0 != statusCode:
+                raise subprocess.CalledProcessError(statusCode, command)
             outputQueue.put((jobID, 0, threadsToStart))
             inputQueue.task_done()
 
