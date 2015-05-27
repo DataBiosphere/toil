@@ -76,7 +76,7 @@ class AbstractJobStore( object ):
         Creates and returns the root job of the jobTree from which all others must be created.
         This will only be called once, at the very beginning of the jobTree creation.
 
-        :rtype : src.job.Job
+        :rtype : job.Job
         """
         raise NotImplementedError( )
 
@@ -94,7 +94,7 @@ class AbstractJobStore( object ):
         """
         Loads a job for the given jobStoreID and returns it.
 
-        :rtype : src.job.Job
+        :rtype : job.Job
 
         :raises: NoSuchJobException if there is no job with the given jobStoreID
         """
