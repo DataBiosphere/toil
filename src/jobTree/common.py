@@ -22,6 +22,7 @@
 #THE SOFTWARE.
 import logging
 import os
+from subprocess import CalledProcessError
 import sys
 import xml.etree.cElementTree as ET
 import cPickle
@@ -51,7 +52,7 @@ def gridEngineIsInstalled():
     """
     try:
         return system("qstat -help") == 0
-    except RuntimeError:
+    except CalledProcessError:
         return False
 
 def parasolIsInstalled():
@@ -59,7 +60,7 @@ def parasolIsInstalled():
     """
     try:
         return system("parasol status") == 0
-    except RuntimeError:
+    except CalledProcessError:
         return False
 
 ####
