@@ -55,6 +55,9 @@ class AWSJobStore( AbstractJobStore ):
     """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadJobTreeState."""
 
+    def loadJobsInStore(self):
+        raise NotImplementedError
+
     @classmethod
     def create( cls, jobStoreString, config=None ):
         region, namePrefix = cls._parseArgs( jobStoreString )
