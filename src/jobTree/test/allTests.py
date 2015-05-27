@@ -1,8 +1,7 @@
-
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
 #in the Software without restriction, including without limitation the rights
 #to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 #copies of the Software, and to permit persons to whom the Software is
@@ -21,44 +20,38 @@
 
 import unittest
 
-from jobTree.test.sort.sortTest import TestCase as sortTest
-from jobTree.test.staticDeclaration.staticTest import TestCase as staticTest
-from jobTree.test.src.jobTest import TestCase as jobTest
-from jobTree.test.utils.statsTest import TestCase as statsTest
-from jobTree.test.dependencies.dependenciesTest import TestCase as dependenciesTest
+from jobTree.test.sort.sortTest import SortTest
+from jobTree.test.staticDeclaration.staticTest import StaticTest
+from jobTree.test.src.jobTest import JobTest
+from jobTree.test.utils.statsTest import StatsTest
+from jobTree.test.dependencies.dependenciesTest import DependenciesTest
 from jobTree.lib.bioio import parseSuiteTestOptions, getBasicOptionParser
+
+testCases = {c.__name__[:-4].lower(): c for c in ( JobTest, DependenciesTest, SortTest, StatsTest, StaticTest )}
 
 
 def allSuites(options):
-    tests = []
-    if 'job' in options.tests:
-        tests.append(unittest.makeSuite(jobTest, 'test'))
-    if 'dependencies' in options.tests:
-        tests.append(unittest.makeSuite(dependenciesTest, 'test'))
-    if 'sort' in options.tests:
-        tests.append(unittest.makeSuite(sortTest, 'test'))
-    if 'stats' in options.tests:
-        tests.append(unittest.makeSuite(statsTest, 'test'))
-    if 'static' in options.tests:
-        tests.append(unittest.makeSuite(staticTest, 'static'))
-    allTests = unittest.TestSuite(tests)
-    return allTests
+    return unittest.TestSuite(unittest.makeSuite(module, 'test')
+                              for name, module in testCases.iteritems()
+                              if name in options.tests)
+
 
 def initializeOptions(parser):
     parser.add_option('--tests',
-                      help=('comma separated list of tests. omit to test all. '
-                            'possbile tests: job, dependencies, scriptTree, sort, stats'))
+                      help='Comma-separated list of tests. Omit to run all tests. '
+                           'Valid choices: %s' % testCases.keys())
+
 
 def checkOptions(options, parser):
-    tests = ['job', 'dependencies', 'sort', 'stats', 'static']
     if options.tests is None:
-        options.tests = tests
+        options.tests = testCases.keys()
     else:
         requested_tests = options.tests.split(',')
         for t in requested_tests:
-            if t not in tests:
-                parser.error('Unknown test %s. Must be from %s'
-                             % (t, str(tests)))
+            if t not in testCases.keys():
+                parser.error('Unknown test %s. Must be one or more of %s' % (t, str(testCases.keys())))
+        options.tests = requested_tests
+
 
 def main():
     parser = getBasicOptionParser()
@@ -71,6 +64,7 @@ def main():
     sys.argv[1:] = args
     i = runner.run(suite)
     return len(i.failures) + len(i.errors)
+
 
 if __name__ == '__main__':
     if False:

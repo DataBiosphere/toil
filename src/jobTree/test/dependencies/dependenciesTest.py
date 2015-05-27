@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-"""Tests jobTree with the single machine batch system.
-"""
 
 import unittest
 import os
@@ -14,16 +12,19 @@ from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, workflowRo
 from jobTree.test import JobTreeTest
 
 
-class TestCase(JobTreeTest):
-    
+class DependenciesTest(JobTreeTest):
+    """
+    Tests jobTree with the single machine batch system.
+    """
+
     def setUp(self):
-        super( TestCase, self).setUp()
+        super( DependenciesTest, self).setUp()
         self.jobTreeDir = os.path.join(os.getcwd(), "testJobTree") #A directory for the job tree to be created in
         self.tempFileTreeDir = os.path.join(os.getcwd(), "tempFileTree") #Ensures that file tree is visible
         self.tempFileTree = TempFileTree(self.tempFileTreeDir) #A place to get temp files from
     
     def tearDown(self):
-        super( TestCase, self).tearDown( )
+        super( DependenciesTest, self).tearDown( )
         self.tempFileTree.destroyTempFiles()
         system("rm -rf %s %s" % (self.jobTreeDir, self.tempFileTreeDir)) #Cleanup the job tree in case it hasn't already been cleaned up.
    
@@ -32,7 +33,16 @@ class TestCase(JobTreeTest):
         def fn(tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime):
             system("rm -rf %s" % self.jobTreeDir)
             logName = self.tempFileTree.getTempFile(suffix="_comblog.txt", makeDir=False)
-            commandLine = "%s/dependencies.py --jobTree %s --logFile %s --batchSystem '%s' --tree %s --maxCpus %s --maxThreads %s --size %s --cpusPerJob=%s --sleepTime %s %s" % \
+            commandLine = "%s/dependencies.py " \
+                          "--jobTree %s " \
+                          "--logFile %s " \
+                          "--batchSystem '%s' " \
+                          "--tree %s " \
+                          "--maxCpus %s " \
+                          "--maxThreads %s " \
+                          "--size %s --cpusPerJob=%s " \
+                          "--sleepTime %s " \
+                          "%s" % \
             (os.path.join(workflowRootPath(), "test", "dependencies"), self.jobTreeDir, logName, 
              batchSystem, tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime, furtherOptionsString)
             system(commandLine)
@@ -50,15 +60,14 @@ class TestCase(JobTreeTest):
         self.dependenciesTest(batchSystem="singleMachine")
         
     def testJobTree_dependencies_combined(self):
-        self.dependenciesTest(batchSystem="singleMachine", furtherOptionsString="--bigBatchSystem singleMachine --bigMemoryThreshold 1000000")
+        self.dependenciesTest(batchSystem="singleMachine",
+                              furtherOptionsString="--bigBatchSystem singleMachine --bigMemoryThreshold 1000000")
         
     def testJobTree_dependencies_parasol(self):
-        return
         if parasolIsInstalled():
             self.dependenciesTest(batchSystem="parasol")
             
     def testJobTree_dependencies_gridengine(self):
-        return
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
 

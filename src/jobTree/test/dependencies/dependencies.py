@@ -14,6 +14,12 @@ specified (--logFile [path] option)
 
 --Glenn Hickey
 """
+import datetime
+from optparse import OptionParser
+import time
+import math
+from jobTree.lib.bioio import spawnDaemon
+from jobTree.stack import Stack
 
 from jobTree.target import Target
 
@@ -104,7 +110,7 @@ class FirstJob(Target):
         self.cpu = cpu
 
     def run(self):
-        sleep(1)
+        time.sleep(1)
         self.addChild(DownJob(self.tree, self.event,
                               self.sleepTime, self.startTime, self.cpu))
 
@@ -115,7 +121,7 @@ class LastJob(Target):
         Target.__init__(self)
 
     def run(self):
-        sleep(1)
+        time.sleep(1)
         pass
     
 class DownJob(Target):
@@ -153,7 +159,7 @@ class UpJob(Target):
     def run(self):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
 
-        sleep(self.sleepTime)
+        time.sleep(self.sleepTime)
         spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))       
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 

@@ -20,15 +20,15 @@ from jobTree.test import JobTreeTest
 
 log = logging.getLogger(__name__)
 
-class TestCase(JobTreeTest):
+class SortTest(JobTreeTest):
 
     @classmethod
     def setUpClass(cls):
-        super(TestCase, cls).setUpClass()
+        super(SortTest, cls).setUpClass()
         logging.basicConfig()
 
     def setUp(self):
-        super( TestCase, self ).setUp( )
+        super( SortTest, self ).setUp( )
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
 
     def testScriptTree_SortSimpleOnAWS(self):

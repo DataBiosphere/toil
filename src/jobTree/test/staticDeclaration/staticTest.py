@@ -4,13 +4,14 @@ import os
 from jobTree.lib.bioio import getTempFile
 from jobTree.target import Target
 from jobTree.stack import Stack
+from jobTree.test import JobTreeTest
 
 
-"""
-Tests creating a jobTree inline.
-"""
 
-class TestCase(unittest.TestCase):
+class StaticTest(JobTreeTest):
+    """
+    Tests creating a jobTree inline.
+    """
 
     def setUp(self):
         unittest.TestCase.setUp(self)

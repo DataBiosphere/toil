@@ -16,10 +16,10 @@ from jobTree.common import setupJobTree
 from jobTree.test import JobTreeTest
 
 
-class TestCase(JobTreeTest):
+class JobTest(JobTreeTest):
 
     def setUp(self):
-        super( TestCase, self ).setUp( )
+        super( JobTest, self ).setUp( )
         self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
         Stack.addJobTreeOptions(parser)
@@ -29,7 +29,7 @@ class TestCase(JobTreeTest):
         self.jobStore = jobStore
         
     def tearDown(self):
-        super( TestCase, self ).tearDown( )
+        super( JobTest, self ).tearDown( )
         system("rm -rf %s" % self.testJobTree)
     
     def testJobStoreLoadWriteAndDelete(self):        
