@@ -5,3 +5,6 @@
 tmp_*
 /tmpFileTree/
 /testJobTree/
+/build
+/dist
+
