@@ -25,9 +25,14 @@ from jobTree.test.staticDeclaration.staticTest import StaticTest
 from jobTree.test.src.jobTest import JobTest
 from jobTree.test.utils.statsTest import StatsTest
 from jobTree.test.dependencies.dependenciesTest import DependenciesTest
+from jobTree.test.batchSystems.abstractBatchSystemTest import SingleMachineBatchSystemTest, MesosBatchSystemTest
+from jobTree.test.jobStores.jobStoreTest import AWSJobStoreTest, FileJobStoreTest
+
 from jobTree.lib.bioio import parseSuiteTestOptions, getBasicOptionParser
 
-testCases = {c.__name__[:-4].lower(): c for c in ( JobTest, DependenciesTest, SortTest, StatsTest, StaticTest )}
+testCases = {c.__name__[:-4].lower(): c for c in ( JobTest, DependenciesTest, SortTest, StatsTest, StaticTest,
+                                                   AWSJobStoreTest, FileJobStoreTest,
+                                                   SingleMachineBatchSystemTest, MesosBatchSystemTest )}
 
 
 def allSuites(options):
