@@ -13,10 +13,9 @@ from jobTree.lib.bioio import parseSuiteTestOptions
 from jobTree.lib.bioio import system
 from jobTree.stack import Stack
 from jobTree.common import setupJobTree
-from jobTree.test import JobTreeTest
 
 
-class JobTest(JobTreeTest):
+class JobTest(unittest.TestCase):
 
     def setUp(self):
         super( JobTest, self ).setUp( )
