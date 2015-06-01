@@ -1,6 +1,8 @@
 *.o
 *.pyc
 *.a
+*.egg-info
+*.DS_Store
 /bin/
 tmp_*
 /tmpFileTree/
