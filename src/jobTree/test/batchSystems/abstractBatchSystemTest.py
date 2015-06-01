@@ -92,10 +92,13 @@ class AbstractBatchSystemTest(unittest.TestCase):
         self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
         self.wait_for_jobs(wait_for_completion=True)
         updated_job = self.batchSystem.getUpdatedJob(1)
+
+        # GetUpdatedJob will return an arbitrary updated job from the pool.
+        # This Try/Except checks for one of the two jobs that should be available, otherwise an error is raised.
         try:
             self.assertEqual((0, 0), updated_job)
-        except:  # FIXME: catch more specific exception and document the purpose of this unorthodox idiom
-            self.assertEqual((1, 0), updated_job)
+        except AssertionError:
+            self.assertEqual((0, 1), updated_job)
 
     def testGetRescueJobFrequency(self):
         self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
