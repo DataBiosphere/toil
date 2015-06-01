@@ -167,6 +167,7 @@ class MesosBatchSystemTest(AbstractBatchSystemTest):
         self.slave.join()
         self.master.popen.kill()
         self.master.join()
+        self.batchSystem.shutDown()
 
     class MesosThread(threading.Thread):
         __metaclass__ = ABCMeta

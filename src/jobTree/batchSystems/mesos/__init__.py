@@ -284,9 +284,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         driver_result = self.driver.run()
         status = 0 if driver_result == mesos_pb2.DRIVER_STOPPED else 1
 
-        # Ensure that the driver process terminates.
+    def shutDown(self):
         self.driver.stop()
-        sys.exit(status)
+        self.join()
 
     def registered(self, driver, frameworkId, masterInfo):
         """
