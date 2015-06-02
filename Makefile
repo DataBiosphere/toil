@@ -7,4 +7,4 @@ clean :
 	echo Nothing to be done.
 
 test :
-	PYTHONPATH=src python src/jobTree/test/allTests.py --testLength=SHORT
+	PYTHONPATH=src python -m jobTree.test.allTests --testLength=SHORT
