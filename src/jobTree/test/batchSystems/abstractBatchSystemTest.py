@@ -95,12 +95,12 @@ class hidden:
             delay = 1
             num_jobs = 2
             jobCommand = 'sleep %i' % delay
-            for i in range( 2 ):
+            for i in range( num_jobs ):
                 self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
             jobs = set((i,0) for i in range(num_jobs))
             self.wait_for_jobs(wait_for_completion=True)
             for i in range( num_jobs ):
-                jobs.remove(self.batchSystem.getUpdatedJob(1))
+                jobs.remove(self.batchSystem.getUpdatedJob(delay * 2))
             self.assertFalse( jobs )
 
 
