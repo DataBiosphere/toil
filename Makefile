@@ -6,5 +6,7 @@ all :
 clean :
 	echo Nothing to be done.
 
+tests=job,sort,stats,static,awsjobstore,filejobstore,singlemachinebatchsystem,mesosbatchsystem
+
 test :
-	PYTHONPATH=src python -m jobTree.test.allTests --testLength=SHORT
+	PYTHONPATH=$${PWD}/src python -m jobTree.test.allTests --testLength=SHORT --tests=$(tests)
