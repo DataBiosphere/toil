@@ -14,7 +14,6 @@ from jobTree.batchSystems.mesos import MesosBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
 
-
 log = logging.getLogger(__name__)
 
 
@@ -74,13 +73,13 @@ class hidden:
         def testGetIssuedJobIDs(self):
             self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
             self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
-            self.assertEqual([0, 1], self.batchSystem.getIssuedJobIDs())
+            self.assertEqual({0, 1}, set( self.batchSystem.getIssuedJobIDs()))
 
         def testGetRunningJobIDs(self):
             self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
             self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
             self.wait_for_jobs()
-            self.assertEqual([0, 1], self.batchSystem.getRunningJobIDs().keys())
+            self.assertEqual({0, 1}, set( self.batchSystem.getRunningJobIDs().keys()))
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
@@ -89,21 +88,21 @@ class hidden:
             self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killJobs([0])
             self.assertEqual({}, self.batchSystem.getRunningJobIDs())
+            # Make sure that killJob doesn't hang on unknown job IDs
             self.batchSystem.killJobs([0])
 
         def testGetUpdatedJob(self):
-            jobCommand = 'sleep 1'
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+            delay = 1
+            num_jobs = 2
+            jobCommand = 'sleep %i' % delay
+            for i in range( 2 ):
+                self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+            jobs = set((i,0) for i in range(num_jobs))
             self.wait_for_jobs(wait_for_completion=True)
-            updated_job = self.batchSystem.getUpdatedJob(1)
+            for i in range( num_jobs ):
+                jobs.remove(self.batchSystem.getUpdatedJob(1))
+            self.assertFalse( jobs )
 
-            # GetUpdatedJob will return an arbitrary updated job from the pool.
-            # This Try/Except checks for one of the two jobs that should be available, otherwise an error is raised.
-            try:
-                self.assertEqual((0, 0), updated_job)
-            except AssertionError:
-                self.assertEqual((0, 1), updated_job)
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
