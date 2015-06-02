@@ -40,7 +40,8 @@ class DependenciesTest(JobTreeTest):
                           "--tree %s " \
                           "--maxCpus %s " \
                           "--maxThreads %s " \
-                          "--size %s --cpusPerJob=%s " \
+                          "--size %s " \
+                          "--cpusPerJob=%s " \
                           "--sleepTime %s " \
                           "%s" % \
             (os.path.join(workflowRootPath(), "test", "dependencies"), self.jobTreeDir, logName, 

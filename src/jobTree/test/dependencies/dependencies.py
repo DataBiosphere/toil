@@ -16,9 +16,10 @@ specified (--logFile [path] option)
 """
 import datetime
 from optparse import OptionParser
+import os
 import time
 import math
-from jobTree.lib.bioio import spawnDaemon
+from jobTree.lib.bioio import system
 from jobTree.stack import Stack
 
 from jobTree.target import Target
@@ -156,11 +157,18 @@ class UpJob(Target):
         self.startTime = startTime
         self.cpu = cpu
 
+    def spawnDaemon(self, command):
+        """
+        Launches a command as a daemon.  It will need to be explicitly killed
+        """
+        sonLib_daemonize_py = os.path.join( os.path.dirname( os.path.abspath( __file__ ) ), 'sonLib_daemonize.py' )
+        return system( "%s \'%s\'" % ( sonLib_daemonize_py, command) )
+
     def run(self):
         writeLog(self, "begin UP: %s" % self.event, self.startTime)
 
         time.sleep(self.sleepTime)
-        spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))       
+        self.spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))
         writeLog(self, "end UP: %s" % self.event, self.startTime)
 
 # let k = maxThreads.  we make sure that jobs are fired in batches of k
@@ -242,5 +250,4 @@ def main():
         checkLog(options)
     
 if __name__ == '__main__':
-    from jobTree.test.dependencies.dependencies import *
     main()

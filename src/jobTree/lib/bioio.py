@@ -232,11 +232,6 @@ def popenPush(command, stdinString=None):
         if sts != 0:
             raise RuntimeError("Command: %s with stdin string '%s' exited with non-zero status %i" % (command, stdinString, sts))
 
-def spawnDaemon(command):
-    """Launches a command as a daemon.  It will need to be explicitly killed
-    """
-    return system("sonLib_daemonize.py \'%s\'" % command)
-
 def getTotalCpuTimeAndMemoryUsage():
     """Gives the total cpu time and memory usage of itself and its children.
     """
