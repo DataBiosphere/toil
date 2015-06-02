@@ -62,10 +62,13 @@ class AbstractBatchSystem:
         """Kills the given job IDs.
         """
         raise NotImplementedError('Abstract method: killJobs')
-    
+
+    # FIXME: Return value should be a set (then also fix the tests)
+
     def getIssuedJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
-        just waiting).
+        just waiting). Despite the result being a list, the ordering should not
+        be depended upon.
         """
         raise NotImplementedError('Abstract method: getIssuedJobIDs')
     
