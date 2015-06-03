@@ -58,7 +58,7 @@ class hidden:
         def testIssueJob(self):
             test_path = os.path.join(self.tempDir, 'test.txt')
             jobCommand = 'touch {}'.format(test_path)
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
@@ -71,19 +71,19 @@ class hidden:
             self.batchSystem.checkResourceRequest(memory=10, cpu=1)
 
         def testGetIssuedJobIDs(self):
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=1)
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=.1)
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=.1)
             self.assertEqual({0, 1}, set( self.batchSystem.getIssuedJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=1)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
             self.wait_for_jobs()
             self.assertEqual({0, 1}, set( self.batchSystem.getRunningJobIDs().keys()))
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
+            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
             self.wait_for_jobs()
             self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killJobs([0])
