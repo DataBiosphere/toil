@@ -13,6 +13,7 @@ from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import MesosBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from jobTree.test import JobTreeTest
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class hidden:
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractBatchSystemTest(unittest.TestCase):
+    class AbstractBatchSystemTest(JobTreeTest):
         """
         A base test case with generic tests that every batch system should pass
         """
@@ -47,7 +48,6 @@ class hidden:
 
         @classmethod
         def setUpClass(cls):
-            logging.basicConfig(level=logging.DEBUG)
             cls.config = cls._createDummyConfig()
             cls.tempDir = tempfile.mkdtemp()
 

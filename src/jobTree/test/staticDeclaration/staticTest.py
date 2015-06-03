@@ -13,12 +13,6 @@ class StaticTest(JobTreeTest):
     Tests creating a jobTree inline.
     """
 
-    def setUp(self):
-        unittest.TestCase.setUp(self)
-
-    def tearDown(self):
-        unittest.TestCase.tearDown(self)
-
     def testStatic1(self):
         """
         Create a tree of targets non-dynamically and run it.

@@ -43,12 +43,6 @@ class hidden:
 
         maxDiff = None
 
-        @classmethod
-        def setUpClass( cls ):
-            super( hidden.AbstractJobStoreTest, cls ).setUpClass( )
-            logging.basicConfig( level=logging.DEBUG )
-            logging.getLogger( 'boto' ).setLevel( logging.INFO )
-
         def _dummyConfig( self ):
             config = Element( "config" )
             config.attrib[ "try_count" ] = str( self.default_try_count )

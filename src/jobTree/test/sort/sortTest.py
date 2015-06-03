@@ -22,11 +22,6 @@ log = logging.getLogger(__name__)
 
 class SortTest(JobTreeTest):
 
-    @classmethod
-    def setUpClass(cls):
-        super(SortTest, cls).setUpClass()
-        logging.basicConfig()
-
     def setUp(self):
         super( SortTest, self ).setUp( )
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
