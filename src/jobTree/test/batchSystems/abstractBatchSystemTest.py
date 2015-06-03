@@ -196,11 +196,11 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
 
     class MesosMasterThread(MesosThread):
         def mesosCommand(self):
-            return ['/usr/local/sbin/mesos-master', '--registry=in_memory', '--ip=127.0.0.1']
+            return ['mesos-master', '--registry=in_memory', '--ip=127.0.0.1']
 
     class MesosSlaveThread(MesosThread):
         def mesosCommand(self):
-            return ['/usr/local/sbin/mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050']
+            return ['mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050']
 
 
 # FIXME: the single machine backend does not support crucial methods necessary for this test
