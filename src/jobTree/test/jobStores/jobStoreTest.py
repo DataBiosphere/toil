@@ -248,7 +248,6 @@ class hidden:
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
             """
-
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
@@ -274,7 +273,7 @@ class hidden:
                 checksumThread = Thread( target=checksumThreadFn )
                 checksumThread.start( )
                 try:
-                    with open( '/dev/random' ) as readable:
+                    with open( '/dev/urandom' ) as readable:
                         with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
