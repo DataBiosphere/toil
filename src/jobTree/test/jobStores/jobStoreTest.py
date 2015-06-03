@@ -248,6 +248,8 @@ class hidden:
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
             """
+            # Should not block. On Linux, /dev/random blocks when its running low on entropy
+            random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
@@ -273,7 +275,7 @@ class hidden:
                 checksumThread = Thread( target=checksumThreadFn )
                 checksumThread.start( )
                 try:
-                    with open( '/dev/urandom' ) as readable:
+                    with open(random_device) as readable:
                         with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
@@ -301,7 +303,7 @@ class hidden:
                 fh, path = tempfile.mkstemp( )
                 try:
                     with os.fdopen( fh, 'r+' ) as writable:
-                        with open( '/dev/random' ) as readable:
+                        with open(random_device) as readable:
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
                                 writable.write( buf )
