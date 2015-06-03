@@ -28,7 +28,7 @@ def hello_world(target):
     hw.foo_bam = target.writeGlobalFile('foo_bam.txt')
 
     # Spawn child
-    target.addChildTargetFn(hello_world_child, (hw,))
+    target.addChildTargetFn(hello_world_child, hw)
 
 
 def hello_world_child(target, hw):

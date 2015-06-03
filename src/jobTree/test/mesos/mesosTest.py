@@ -6,12 +6,12 @@ import subprocess
 import threading
 from time import sleep
 
-from jobTree.test.mesos.StressTest import main as stressMain
+from jobTree.test.mesos.stress import main as stressMain
 from jobTree.test import JobTreeTest
 
 
 lock = threading.Lock()
-class TestMesos( JobTreeTest ):
+class MesosTest( JobTreeTest ):
 
     class MesosMasterThread(threading.Thread):
         def __init__(self):
@@ -20,7 +20,7 @@ class TestMesos( JobTreeTest ):
 
         def run(self):
             with lock:
-                self.popen = subprocess.Popen(['/usr/local/sbin/mesos-master', '--registry=in_memory', '--ip=127.0.0.1'])
+                self.popen = subprocess.Popen(['mesos-master', '--registry=in_memory', '--ip=127.0.0.1'])
             self.popen.wait()
 
 
@@ -31,7 +31,7 @@ class TestMesos( JobTreeTest ):
 
         def run(self):
             with lock:
-                self.popen = subprocess.Popen(['/usr/local/sbin/mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050'])
+                self.popen = subprocess.Popen(['mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050'])
             self.popen.wait()
 
     master = MesosMasterThread( )
@@ -39,7 +39,7 @@ class TestMesos( JobTreeTest ):
 
     @classmethod
     def setUpClass( cls ):
-        super( TestMesos, cls ).setUpClass( )
+        super( MesosTest, cls ).setUpClass( )
         # FIXME: avoid daemon threads use join
         cls.master.setDaemon( True )
         cls.slave.setDaemon( True )
@@ -48,7 +48,7 @@ class TestMesos( JobTreeTest ):
 
     @classmethod
     def tearDownClass( cls ):
-        super( TestMesos, cls ).tearDownClass( )
+        super( MesosTest, cls ).tearDownClass( )
         cls.master.popen.kill( )
         cls.slave.popen.kill( )
         # FIXME: join the threads
@@ -74,8 +74,8 @@ class TestMesos( JobTreeTest ):
         shutil.rmtree( self.tempDir )
 
     def test_hello_world( self ):
-        dir = os.path.abspath( os.path.dirname( __file__ ) )
-        subprocess.check_call("python {}/jobTree_HelloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
+        dir = os.path.dirname( os.path.abspath( __file__ ) )
+        subprocess.check_call("python {}/helloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
         self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
     def __do_test_stress( self, useBadExecutor, numTargets ):
@@ -99,15 +99,17 @@ class TestMesos( JobTreeTest ):
         # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
 
-    @unittest.skip
-    def test_resume( self ):
-        mainT = threading.Thread( target=self.__do_test_stress, args=(False, 3) )
-        mainT.start( )
-        sleep(3)
-        # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
-        print "killing"
-        TestMesos.killSlave( )
-        print "killed"
-        TestMesos.startSlave( )
-        self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
-        self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )
+    # FIXME: Make this work or remove
+
+    if False:
+        def test_resume( self ):
+            mainT = threading.Thread( target=self.__do_test_stress, args=(False, 3) )
+            mainT.start( )
+            sleep(3)
+            # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
+            print "killing"
+            MesosTest.killSlave( )
+            print "killed"
+            MesosTest.startSlave( )
+            self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
+            self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )

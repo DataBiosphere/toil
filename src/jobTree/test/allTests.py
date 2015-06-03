@@ -19,6 +19,7 @@
 #THE SOFTWARE.
 
 import unittest
+from jobTree.test.mesos.mesosTest import MesosTest
 
 from jobTree.test.sort.sortTest import SortTest
 from jobTree.test.staticDeclaration.staticTest import StaticTest
@@ -31,6 +32,7 @@ from jobTree.test.jobStores.jobStoreTest import AWSJobStoreTest, FileJobStoreTes
 from jobTree.lib.bioio import parseSuiteTestOptions, getBasicOptionParser
 
 testCases = {c.__name__[:-4].lower(): c for c in ( JobTest, DependenciesTest, SortTest, StatsTest, StaticTest,
+                                                   MesosTest,
                                                    AWSJobStoreTest, FileJobStoreTest,
                                                    SingleMachineBatchSystemTest, MesosBatchSystemTest )}
 
