@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import tempfile
 import threading
-import unittest
 from xml.etree import ElementTree
 import time
 
@@ -152,15 +151,14 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
 
     def createBatchSystem(self):
-        shutil.rmtree('/tmp/mesos/', ignore_errors=True)
-        # Launch Mesos Master and Slave if running MesosBatchSystemTest
+        shutil.rmtree('/tmp/mesos', ignore_errors=True)
         self.master = self.MesosMasterThread()
         self.master.start()
         self.slave = self.MesosSlaveThread()
         self.slave.start()
         while self.master.popen is None or self.slave.popen is None:
             log.info("Waiting for master and slave processes")
-            time.sleep(1)
+            time.sleep(.1)
         return MesosBatchSystem(config=self.config, maxCpus=2, maxMemory=20, badExecutor=False)
 
     def setUp(self):

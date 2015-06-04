@@ -1,6 +1,5 @@
 import tempfile
 import shutil
-import unittest
 import os
 import subprocess
 import threading
@@ -8,7 +7,6 @@ from time import sleep
 
 from jobTree.test.mesos.stress import main as stressMain
 from jobTree.test import JobTreeTest
-
 
 lock = threading.Lock()
 class MesosTest( JobTreeTest ):
@@ -40,6 +38,7 @@ class MesosTest( JobTreeTest ):
     @classmethod
     def setUpClass( cls ):
         super( MesosTest, cls ).setUpClass( )
+        shutil.rmtree('/tmp/mesos', ignore_errors=True)
         # FIXME: avoid daemon threads use join
         cls.master.setDaemon( True )
         cls.slave.setDaemon( True )
