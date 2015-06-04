@@ -47,6 +47,7 @@ class hidden:
 
         @classmethod
         def setUpClass(cls):
+            super(hidden.AbstractBatchSystemTest, cls).setUpClass()
             cls.config = cls._createDummyConfig()
             cls.tempDir = tempfile.mkdtemp()
 
