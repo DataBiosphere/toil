@@ -407,3 +407,4 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 * _Why am I getting the error "ImportError: No module named etree.ElementTree"?_
 
     The version of python in your path is less than 2.5. When jobTree spawns a new job it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
+
