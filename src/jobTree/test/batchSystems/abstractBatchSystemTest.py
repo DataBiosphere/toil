@@ -7,6 +7,7 @@ import tempfile
 import threading
 from xml.etree import ElementTree
 import time
+import multiprocessing
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import MesosBatchSystem
@@ -15,6 +16,25 @@ from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from jobTree.test import JobTreeTest
 
 log = logging.getLogger(__name__)
+
+# How many cores should be utilized by this test. The test will fail if the running system doesn't have at least that
+# many cores.
+#
+numCores = 2
+
+# How many jobs to run. This is only read by tests that run multiple jobs.
+#
+numJobs = 2
+
+# How many cores the Mesos batch system allocates for its executor.
+#
+# TODO: This is an implementation detail of the Mesos batch system and shouldn't pollute testing of other batch systems
+#
+numCoresForMesosExecutor = 0.1
+
+# How much CPU to allocate for a particular job
+#
+numCoresPerJob = (numCores - numCoresForMesosExecutor) / numJobs
 
 
 class hidden:
@@ -51,14 +71,13 @@ class hidden:
             cls.config = cls._createDummyConfig()
             cls.tempDir = tempfile.mkdtemp()
 
-        ###################
-        # Begin Tests   #
-        ###################
+        def testAvailableCores(self):
+            self.assertTrue(multiprocessing.cpu_count() >= numCores)
 
         def testIssueJob(self):
             test_path = os.path.join(self.tempDir, 'test.txt')
             jobCommand = 'touch {}'.format(test_path)
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
+            self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
@@ -71,19 +90,19 @@ class hidden:
             self.batchSystem.checkResourceRequest(memory=10, cpu=1)
 
         def testGetIssuedJobIDs(self):
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=.1)
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=.1)
-            self.assertEqual({0, 1}, set( self.batchSystem.getIssuedJobIDs()))
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=numCoresPerJob)
+            self.batchSystem.issueJob('sleep 1', memory=10, cpu=numCoresPerJob)
+            self.assertEqual({0, 1}, set(self.batchSystem.getIssuedJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=numCoresPerJob)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=numCoresPerJob)
             self.wait_for_jobs()
-            self.assertEqual({0, 1}, set( self.batchSystem.getRunningJobIDs().keys()))
+            self.assertEqual({0, 1}, set(self.batchSystem.getRunningJobIDs().keys()))
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
+            self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
             self.wait_for_jobs()
             self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killJobs([0])
@@ -93,23 +112,17 @@ class hidden:
 
         def testGetUpdatedJob(self):
             delay = 1
-            num_jobs = 2
             jobCommand = 'sleep %i' % delay
-            for i in range( num_jobs ):
-                self.batchSystem.issueJob(jobCommand, memory=10, cpu=1)
-            jobs = set((i,0) for i in range(num_jobs))
+            for i in range(numJobs):
+                self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
+            jobs = set((i, 0) for i in range(numJobs))
             self.wait_for_jobs(wait_for_completion=True)
-            for i in range( num_jobs ):
+            for i in range(numJobs):
                 jobs.remove(self.batchSystem.getUpdatedJob(delay * 2))
-            self.assertFalse( jobs )
-
+            self.assertFalse(jobs)
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
-
-        #################
-        #   End Tests   #
-        #################
 
         @staticmethod
         def _createDummyConfig():
@@ -160,7 +173,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
         while self.master.popen is None or self.slave.popen is None:
             log.info("Waiting for master and slave processes")
             time.sleep(.1)
-        return MesosBatchSystem(config=self.config, maxCpus=2, maxMemory=20, badExecutor=False)
+        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20)
 
     def setUp(self):
         super(MesosBatchSystemTest, self).setUp()
@@ -199,14 +212,19 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
 
     class MesosSlaveThread(MesosThread):
         def mesosCommand(self):
-            return ['mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050']
+            # NB: The --resources parameter forces this test to use a predictable number of cores, independent of how
+            # many cores the system running the test actually has.
+            return ['mesos-slave',
+                    '--ip=127.0.0.1',
+                    '--master=127.0.0.1:5050',
+                    '--resources=cpus(*):%i' % numCores]
 
 
 # FIXME: the single machine backend does not support crucial methods necessary for this test
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCpus=2, maxMemory=20)
+        return SingleMachineBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20)
 
     def testGetIssuedJobIDs(self):
         # TODO: Fix SingleMachineBatchSystem to support this call
@@ -227,5 +245,3 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def testKillJobs(self):
         # TODO: Fix SingleMachineBatchSystem to support this call
         pass
-
-
