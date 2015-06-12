@@ -36,8 +36,6 @@ log = logging.getLogger( __name__ )
 # FIXME: enforce SimpleDB limits early
 
 
-
-
 class AWSJobStore( AbstractJobStore ):
     """
     A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
@@ -649,7 +647,7 @@ class AWSJob( Job ):
     """
     A Job that can be converted to and from a SimpleDB Item
     """
-    fromItemTransform = defaultdict( default_factory=lambda: passThrough,
+    fromItemTransform = defaultdict( lambda: passThrough,
                                      messages=toList,
                                      followOnCommands=lambda v: map( literal_eval, toList( v ) ),
                                      remainingRetryCount=int,
@@ -688,13 +686,13 @@ class AWSJob( Job ):
         return { k: v for k, v in item if v is not None }
 
 
+# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
+# FIXME: ... between that code and this is the name of the exception.
+
 a_short_time = 5
 
 a_long_time = 60 * 60
 
-
-# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
-# FIXME: ... between that code and this is the name of the exception.
 
 def no_such_domain( e ):
     return e.error_code.endswith( 'NoSuchDomain' )
@@ -781,8 +779,7 @@ def retry_sdb( retry_after=a_short_time,
                 yield
             except SDBResponseError as e:
                 if time.time( ) + retry_after < expiration and retry_while( e ):
-                    log.info(
-                        '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
+                    log.info( '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
                     time.sleep( retry_after )
                 else:
                     raise
