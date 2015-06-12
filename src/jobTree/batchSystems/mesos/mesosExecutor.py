@@ -82,7 +82,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param message:
         :return:
         """
-        log.error(message)
+        log.warn(message)
         driver.sendFrameworkMessage(message)
 
     def _sendStats(self, driver):

@@ -101,7 +101,7 @@ def main():
     ##########################################
     
     jobStore = loadJobStore(jobStoreString)
-    config = jobStore.config 
+    config = jobStore.config
     setLogLevel(config.attrib["log_level"])
     
     ##########################################
@@ -349,7 +349,7 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.critical("Exiting the worker because of a failed job on host %s", socket.gethostname())
+        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         job = jobStore.load(jobStoreID)
         job.setupJobAfterFailure(config)
         workerFailed = True
@@ -402,5 +402,5 @@ def _test():
     return doctest.testmod()
 
 if __name__ == '__main__':
-    _test()
+    logging.basicConfig()
     main()

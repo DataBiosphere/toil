@@ -6,7 +6,6 @@
 
 import sys
 import os
-import re
 import logging
 import resource
 import logging.handlers
@@ -17,40 +16,24 @@ import shutil
 from argparse import ArgumentParser
 from optparse import OptionParser, OptionContainer, OptionGroup
 import subprocess
-import array
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
 
+# TODO: looks like this can be removed
+
 DEFAULT_DISTANCE = 0.001
 
-#########################################################
-#########################################################
-#########################################################
-#global logging settings / log functions
-#########################################################
-#########################################################
-#########################################################
+defaultLogLevel = logging.INFO
+
+# TODO: looks like this can be removed
 
 loggingFormatter = logging.Formatter('%(asctime)s %(levelname)s %(lineno)s %(message)s')
 
-logger = logging.getLogger()
-
-logLevelString = "CRITICAL"
-
-def redirectLoggerStreamHandlers(oldStream, newStream):
-    """Redirect the stream of a stream handler to a different stream
-    """
-    for handler in list(logger.handlers): #Remove old handlers
-        if handler.stream == oldStream:
-            handler.close()
-            logger.removeHandler(handler)
-    for handler in logger.handlers: #Do not add a duplicate handler
-        if handler.stream == newStream:
-           return
-    logger.addHandler(logging.StreamHandler(newStream))
+logger = logging.getLogger(__name__)
+rootLogger = logging.getLogger()
 
 def getLogLevelString():
-    return logLevelString
+    return logging.getLevelName(rootLogger.getEffectiveLevel())
 
 __loggingFiles = []
 def addLoggingFileHandler(fileName, rotatingLogging=False):
@@ -61,22 +44,15 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
         handler = logging.handlers.RotatingFileHandler(fileName, maxBytes=1000000, backupCount=1)
     else:
         handler = logging.FileHandler(fileName)
-    logger.addHandler(handler)
+    rootLogger.addHandler(handler)
     return handler
 
-def setLogLevel(logLevel):
-    logLevel = logLevel.upper()
-    assert logLevel in [ "OFF", "CRITICAL", "INFO", "DEBUG" ] #Log level must be one of these strings.
-    global logLevelString
-    logLevelString = logLevel
-    if logLevel == "OFF":
-        logger.setLevel(logging.FATAL)
-    elif logLevel == "INFO":
-        logger.setLevel(logging.INFO)
-    elif logLevel == "DEBUG":
-        logger.setLevel(logging.DEBUG)
-    elif logLevel == "CRITICAL":
-        logger.setLevel(logging.CRITICAL)
+def setLogLevel(level):
+    level = level.upper()
+    if level == "OFF": level = "CRITICAL"
+    # Note that getLevelName works in both directions, numeric to textual and textual to numeric
+    assert logging.getLevelName( logging.getLevelName( level ) ) == level
+    rootLogger.setLevel( logging.getLevelName( level ) )
 
 def logFile(fileName, printFunction=logger.info):
     """Writes out a formatted version of the given log file
@@ -122,70 +98,48 @@ def addLoggingOptions(parser):
                            "Either optparse.OptionParser or "
                            "argparse.ArgumentParser" % parser.__class__)
 
+supportedLogLevels = (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG)
+
 def _addLoggingOptions(addOptionFn):
-    """Adds logging options
     """
-    ##################################################
-    # BEFORE YOU ADD OR REMOVE OPTIONS TO THIS FUNCTION, KNOW THAT
-    # YOU MAY ONLY USE VARIABLES ACCEPTED BY BOTH optparse AND argparse
-    # FOR EXAMPLE, YOU MAY NOT USE default=%default OR default=%(default)s
-    ##################################################
-    addOptionFn("--logOff", dest="logOff", action="store_true", default=False,
-                     help="Turn off logging. (default is CRITICAL)")
-    addOptionFn(
-        "--logInfo", dest="logInfo", action="store_true", default=False,
-        help="Turn on logging at INFO level. (default is CRITICAL)")
-    addOptionFn(
-        "--logDebug", dest="logDebug", action="store_true", default=False,
-        help="Turn on logging at DEBUG level. (default is CRITICAL)")
-    addOptionFn(
-        "--logLevel", dest="logLevel", default='CRITICAL',
-        help=("Log at level (may be either OFF/INFO/DEBUG/CRITICAL). "
-              "(default is CRITICAL)"))
+    Adds logging options
+    """
+    # BEFORE YOU ADD OR REMOVE OPTIONS TO THIS FUNCTION, KNOW THAT YOU MAY ONLY USE VARIABLES ACCEPTED BY BOTH
+    # optparse AND argparse FOR EXAMPLE, YOU MAY NOT USE default=%default OR default=%(default)s
+    defaultLogLevelName = logging.getLevelName( defaultLogLevel )
+    addOptionFn("--logOff", dest="logCritical", action="store_true", default=False,
+                help="Same as --logCritical")
+    for level in supportedLogLevels:
+        levelName = logging.getLevelName(level)
+        levelNameCapitalized = levelName.capitalize()
+        addOptionFn("--log" + levelNameCapitalized, dest="log" + levelNameCapitalized,
+                    action="store_true", default=False,
+                    help="Turn on logging at level %s and above. (default is %s)" % (levelName, defaultLogLevelName))
+    addOptionFn("--logLevel", dest="logLevel", default=defaultLogLevelName,
+                help=("Log at given level (may be either OFF (or CRITICAL), ERROR, WARN (or WARNING), INFO or DEBUG). "
+                      "(default is %s)" % defaultLogLevelName))
     addOptionFn("--logFile", dest="logFile", help="File to log in")
-    addOptionFn(
-        "--rotatingLogging", dest="logRotating", action="store_true",
-        default=False, help=("Turn on rotating logging, which prevents log "
-                             "files getting too big."))
+    addOptionFn("--rotatingLogging", dest="logRotating", action="store_true", default=False,
+                help="Turn on rotating logging, which prevents log files getting too big.")
 
 def setLoggingFromOptions(options):
-    """Sets the logging from a dictionary of name/value options.
     """
-    for handler in logger.handlers: #Do not add a duplicate handler unless needed
-        if handler.stream == sys.stderr:
-            return logger
-    handler = logging.StreamHandler(sys.stderr)
-    logger.addHandler(handler)
-    # FIXME: CRITICAL seems rather high. Keep in mind that exceptions are logged at ERROR which ...
-    # FIXME: ... is below CRITICAL. I think warning would be a more sensible default.
-    logger.setLevel(logging.CRITICAL)
-
-    #We can now set up the logging info.
+    Sets the logging from a dictionary of name/value options.
+    """
+    logging.basicConfig()
+    rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:
-        setLogLevel(options.logLevel) #Use log level, unless flags are set..
-
-    if options.logOff:
-        setLogLevel("OFF")
-    elif options.logInfo:
-        setLogLevel("INFO")
-    elif options.logDebug:
-        setLogLevel("DEBUG")
-
-    logger.info("Logging set at level: %s" % logLevelString)
-
+        setLogLevel(options.logLevel)
+    for level in supportedLogLevels:
+        levelName = logging.getLevelName(level)
+        levelNameCapitalized = levelName.capitalize()
+        if getattr( options, 'log' + levelNameCapitalized ):
+            setLogLevel( levelName )
+    logger.info("Logging set at level: %s" % getLogLevelString())
     if options.logFile is not None:
         addLoggingFileHandler(options.logFile, options.logRotating)
+        logger.info("Logging to file: %s" % options.logFile)
 
-    logger.info("Logging to file: %s" % options.logFile)
-
-
-#########################################################
-#########################################################
-#########################################################
-#system wrapper command
-#########################################################
-#########################################################
-#########################################################
 
 def system(command):
     logger.debug("Running the command: %s" % command)
@@ -337,14 +291,6 @@ def saveInputs(savedInputsDir, listOfFilesAndDirsToSave):
         createdFiles.append(copiedFileName)
     return createdFiles
 
-#########################################################
-#########################################################
-#########################################################
-#options parser functions
-#########################################################
-#########################################################
-#########################################################
-
 def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", parser=None):
     if parser is None:
         parser = OptionParser(usage=usage, version=version)
@@ -413,14 +359,6 @@ def nameValue(name, value, valueType=str, quotes=False):
     if quotes:
         return "--%s '%s'" % (name, valueType(value))
     return "--%s %s" % (name, valueType(value))
-
-#########################################################
-#########################################################
-#########################################################
-#temp files
-#########################################################
-#########################################################
-#########################################################
 
 def getRandomAlphaNumericString(length=10):
     """Returns a random alpha numeric string of the given length.

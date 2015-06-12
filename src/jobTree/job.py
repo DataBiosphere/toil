@@ -27,21 +27,22 @@ class Job( object ):
         self.followOnCommands = followOnCommands or [ ]
         self.logJobStoreFileID = logJobStoreFileID
 
-    def setupJobAfterFailure( self, config ):
-        if len( self.followOnCommands ) > 0:
-            self.remainingRetryCount = max( 0, self.remainingRetryCount - 1 )
-            logger.critical( "Due to failure we are reducing the remaining retry count of job %s to %s" % (self.jobStoreID, self.remainingRetryCount) )
+    def setupJobAfterFailure(self, config):
+        if len(self.followOnCommands) > 0:
+            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
+            logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s" %
+                        (self.jobStoreID, self.remainingRetryCount))
             # Set the default memory to be at least as large as the default, in
             # case this was a malloc failure (we do this because of the combined
             # batch system)
-            self.followOnCommands[ -1 ] = (self.followOnCommands[ -1 ][ 0 ], \
-                max( self.followOnCommands[ -1 ][ 1 ],
-                     float( config.attrib[ "default_memory" ] ) )) + \
-                                          self.followOnCommands[ -1 ][ 2: ]
-            logger.critical( "We have set the default memory of the failed job to %s bytes" \
-                             % self.followOnCommands[ -1 ][ 1 ] )
+            self.followOnCommands[-1] = (
+                                            self.followOnCommands[-1][0],
+                                            max(self.followOnCommands[-1][1], float(config.attrib["default_memory"]))
+                                        ) + self.followOnCommands[-1][2:]
+            logger.warn("We have set the default memory of the failed job to %s bytes" %
+                        self.followOnCommands[-1][1])
         else:
-            logger.critical( "The job %s has no follow on jobs to reset" % self.jobStoreID )
+            logger.warn("The job %s has no follow on jobs to reset" % self.jobStoreID)
 
     def clearLogFile( self, jobStore ):
         """Clears the log file, if it is set.

@@ -96,7 +96,7 @@ class Stack(object):
             jobStore.store(job)
             jobTreeState = jobStore.loadJobTreeState() #This reloads the state
         else:
-            logger.critical("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
+            logger.info("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
         return mainLoop(config, batchSystem, jobStore, jobTreeState)
     
     def cleanup(self, options):

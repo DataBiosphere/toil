@@ -163,7 +163,8 @@ class Worker(Thread):
                     self.forgetJob(jobID)
 
             if len(killList) > 0:
-                logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
+                logger.warn("Tried to kill some jobs, but something happened and they are still going, "
+                            "so I'll try again")
                 time.sleep(5)
 
     def createJobs(self):
