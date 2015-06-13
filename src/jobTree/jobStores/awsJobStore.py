@@ -778,10 +778,15 @@ def retry_sdb( retry_after=a_short_time,
             try:
                 yield
             except SDBResponseError as e:
-                if time.time( ) + retry_after < expiration and retry_while( e ):
-                    log.info( '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
-                    time.sleep( retry_after )
+                if time.time( ) + retry_after < expiration:
+                    if retry_while( e ):
+                        log.info( '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
+                        time.sleep( retry_after )
+                    else:
+                        log.info('Exception failed predicate, giving up.' )
+                        raise
                 else:
+                    log.info('Retry timeout expired, giving up.')
                     raise
             else:
                 go.pop( )
