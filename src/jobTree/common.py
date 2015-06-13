@@ -289,7 +289,6 @@ def loadJobStore( jobStoreString, config=None ):
         from jobTree.jobStores.fileJobStore import FileJobStore
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
-        logging.getLogger('boto').setLevel(logging.INFO)
         from jobTree.jobStores.awsJobStore import AWSJobStore
         return AWSJobStore.create( jobStoreArgs, config=config )
     else:
