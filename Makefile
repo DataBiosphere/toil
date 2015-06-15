@@ -10,6 +10,7 @@ clean :
 
 # Override on the command line to run a particular test, e.g. tests=jobTree.test.src.jobTest.JobTest
 tests=discover -s src -p "*Test.py"
-
+testLength=SHORT
+testLogLevel=INFO
 test :
-	PYTHONPATH=$${PWD}/src JOBTREE_TEST_ARGS="--logDebug --testLength=SHORT" $(python) -m unittest $(tests)
+	PYTHONPATH=$${PWD}/src JOBTREE_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) -m unittest $(tests)

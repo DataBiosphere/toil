@@ -35,11 +35,11 @@ class JobTreeTest(unittest.TestCase):
         super(JobTreeTest, cls).tearDownClass()
 
     def setUp(self):
-        log.debug("Setting up %s", self.id())
+        log.info("Setting up %s", self.id())
         super(JobTreeTest, self).setUp()
 
     def tearDown(self):
         super(JobTreeTest, self).tearDown()
-        log.debug("Tearing down down %s", self.id())
+        log.info("Tearing down down %s", self.id())
 
 

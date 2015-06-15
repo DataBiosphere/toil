@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 """Tests the scriptTree jobTree-script compiler.
 """
-
+from subprocess import CalledProcessError
 import unittest
-import sys
 import os
 import random
 from uuid import uuid4
 import logging
 
-from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
+from jobTree.lib.bioio import TestStatus, getLogLevelString
 from jobTree.lib.bioio import system
 from jobTree.lib.bioio import getTempDirectory
 from jobTree.lib.bioio import getTempFile
@@ -20,34 +18,33 @@ from jobTree.test import JobTreeTest
 
 log = logging.getLogger(__name__)
 
-class SortTest(JobTreeTest):
 
+class SortTest(JobTreeTest):
     def setUp(self):
-        super( SortTest, self ).setUp( )
+        super(SortTest, self).setUp()
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
 
     def testScriptTree_SortSimpleOnAWS(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
         self.scriptTree_SortTest(1,
-                            batchSystem="singleMachine",
-                            jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
-                            lines=100,
-                            N=100)
+                                 batchSystem="singleMachine",
+                                 jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
+                                 lines=100,
+                                 N=100)
 
     def testScriptTree_SortSimple(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
         self.scriptTree_SortTest(self.testNo, "singleMachine")
 
-
     def testScriptTree_SortGridEngine(self):
-        #Tests scriptTree/jobTree by sorting a file in parallel.
+        # Tests scriptTree/jobTree by sorting a file in parallel.
         if gridEngineIsInstalled():
             self.scriptTree_SortTest(self.testNo, "gridengine")
 
     def testScriptTree_Parasol(self):
-        #Tests scriptTree/jobTree by sorting a file in parallel.
+        # Tests scriptTree/jobTree by sorting a file in parallel.
         if parasolIsInstalled():
             self.scriptTree_SortTest(self.testNo, "parasol")
 
@@ -59,7 +56,7 @@ class SortTest(JobTreeTest):
 
 
 
-    #The following functions test the functions in the test!
+    # The following functions test the functions in the test!
 
     def testSort(self):
         for test in xrange(self.testNo):
@@ -84,8 +81,8 @@ class SortTest(JobTreeTest):
             sort(tempFile1)
             sort(tempFile2)
             with open(tempFile3, 'w') as fileHandle:
-                with open( tempFile1 ) as tempFileHandle1:
-                    with open( tempFile2 ) as tempFileHandle2:
+                with open(tempFile1) as tempFileHandle1:
+                    with open(tempFile2) as tempFileHandle2:
                         merge(tempFileHandle1, tempFileHandle2, fileHandle)
             lines1 = loadFile(tempFile1) + loadFile(tempFile2)
             lines1.sort()
@@ -125,9 +122,9 @@ class SortTest(JobTreeTest):
             assert midPoint >= 0
             system("rm -rf %s" % tempDir)
 
-
     def scriptTree_SortTest(self, testNo, batchSystem, jobStore='file', lines=10000, maxLineLength=10, N=10000):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
+        """
+        Tests scriptTree/jobTree by sorting a file in parallel.
         """
         for test in xrange(testNo):
             tempDir = getTempDirectory(os.getcwd())
@@ -137,37 +134,42 @@ class SortTest(JobTreeTest):
             else:
                 jobTreeDir = jobStore
             makeFileToSort(tempFile, lines=lines, maxLineLength=maxLineLength)
-            #First make our own sorted version
+            # First make our own sorted version
             fileHandle = open(tempFile, 'r')
             l = fileHandle.readlines()
             l.sort()
             fileHandle.close()
-            #Sort the file
+            # Sort the file
             rootPath = os.path.join(workflowRootPath(), "test/sort")
+            logLevel = getLogLevelString()
             while True:
-                command = "{rootPath}/sort.py " \
-                          "--jobTree '{jobTreeDir}' " \
-                          "--logLevel=DEBUG " \
-                          "--fileToSort='{tempFile}' " \
-                          "--N {N:d} " \
-                          "--batchSystem {batchSystem} " \
-                          "--jobTime 1000.0 " \
-                          "--maxCpus 20 " \
-                          "--retryCount 2".format( **locals() )
-                system(command)
+                system("{rootPath}/sort.py "
+                       "--jobTree '{jobTreeDir}' "
+                       "--logLevel={logLevel} "
+                       "--fileToSort='{tempFile}' "
+                       "--N {N:d} "
+                       "--batchSystem {batchSystem} "
+                       "--jobTime 1000.0 "
+                       "--maxCpus 20 "
+                       "--retryCount 2".format(**locals()))
+                jobTreeStatus = self.getScriptPath('jobTreeStatus')
                 try:
-                    system("%s --jobTree %s --failIfNotComplete" % ( self.getScriptPath('jobTreeStatus'), jobTreeDir))
+                    system("{jobTreeStatus} "
+                           "--jobTree {jobTreeDir} "
+                           "--logLevel={logLevel} "
+                           "--failIfNotComplete".format(**locals()))
                     break
-                except:
+                except CalledProcessError:
                     log.warn('jobTree failed and will be restarted', exc_info=True)
 
-            #Now check the file is properly sorted..
-            #Now get the sorted file
+            # Now check the file is properly sorted..
+            # Now get the sorted file
             fileHandle = open(tempFile, 'r')
             l2 = fileHandle.readlines()
             fileHandle.close()
             checkEqual(l, l2)
             system("rm -rf %s" % tempDir)
+
 
 def checkEqual(i, j):
     if i != j:
@@ -176,14 +178,18 @@ def checkEqual(i, j):
         print "false", j
     assert i == j
 
+
 def loadFile(file):
     fileHandle = open(file, 'r')
     lines = fileHandle.readlines()
     fileHandle.close()
     return lines
 
+
 def getRandomLine(maxLineLength):
-    return "".join([ random.choice([ 'a', 'c', 't', 'g', "A", "C", "G", "T", "N", "X", "Y", "Z" ]) for i in xrange(maxLineLength) ]) + "\n"
+    return "".join([random.choice(['a', 'c', 't', 'g', "A", "C", "G", "T", "N", "X", "Y", "Z"]) for i in
+                    xrange(maxLineLength)]) + "\n"
+
 
 def makeFileToSort(fileName, lines=10, maxLineLength=10):
     fileHandle = open(fileName, 'w')
@@ -191,10 +197,6 @@ def makeFileToSort(fileName, lines=10, maxLineLength=10):
         fileHandle.write(getRandomLine(maxLineLength))
     fileHandle.close()
 
-def main():
-    parseSuiteTestOptions()
-    sys.argv = sys.argv[:1]
-    unittest.main()
 
 if __name__ == '__main__':
-    main()
+    unittest.main()

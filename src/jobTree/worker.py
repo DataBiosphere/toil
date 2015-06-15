@@ -102,8 +102,7 @@ def main():
     
     jobStore = loadJobStore(jobStoreString)
     config = jobStore.config
-    setLogLevel(config.attrib["log_level"])
-    
+
     ##########################################
     #Load the environment for the job
     ##########################################
@@ -119,9 +118,9 @@ def main():
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-    #os.environ = environment
-    #os.putenv(key, value)
-    
+
+    setLogLevel(config.attrib["log_level"])
+
     ##########################################
     #Setup the temporary directories.
     ##########################################

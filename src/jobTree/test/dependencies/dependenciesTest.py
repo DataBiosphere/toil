@@ -72,10 +72,6 @@ class DependenciesTest(JobTreeTest):
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
 
-def main():
-    parseSuiteTestOptions()
-    sys.argv = sys.argv[:1]
-    unittest.main()
 
 if __name__ == '__main__':
-    main()
+    unittest.main()

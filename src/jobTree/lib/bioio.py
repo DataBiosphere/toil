@@ -47,12 +47,14 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
     rootLogger.addHandler(handler)
     return handler
 
+
 def setLogLevel(level):
     level = level.upper()
     if level == "OFF": level = "CRITICAL"
     # Note that getLevelName works in both directions, numeric to textual and textual to numeric
-    assert logging.getLevelName( logging.getLevelName( level ) ) == level
-    rootLogger.setLevel( logging.getLevelName( level ) )
+    numericLevel = logging.getLevelName(level)
+    assert logging.getLevelName(numericLevel) == level
+    rootLogger.setLevel(numericLevel)
 
 def logFile(fileName, printFunction=logger.info):
     """Writes out a formatted version of the given log file

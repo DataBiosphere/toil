@@ -1,12 +1,7 @@
-"""Tests the scriptTree jobTree-script compiler.
-"""
-
 import unittest
-import sys
 import os
 
 from jobTree.lib.bioio import TestStatus
-from jobTree.lib.bioio import parseSuiteTestOptions
 from jobTree.lib.bioio import system
 from jobTree.lib.bioio import getTempDirectory
 from jobTree.lib.bioio import getTempFile
@@ -16,12 +11,17 @@ from jobTree.test import JobTreeTest
 
 
 class StatsTest(JobTreeTest):
+    """
+    Tests the scriptTree jobTree-script compiler.
+    """
+
     def setUp(self):
         super(StatsTest, self).setUp()
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
 
     def testJobTreeStats_SortSimple(self):
-        """Tests the jobTreeStats utility using the scriptTree_sort example.
+        """
+        Tests the jobTreeStats utility using the scriptTree_sort example.
         """
         for test in xrange(self.testNo):
             tempDir = getTempDirectory(os.getcwd())
@@ -33,27 +33,22 @@ class StatsTest(JobTreeTest):
             N = 1000
             makeFileToSort(tempFile, lines, maxLineLength)
             # Sort the file
-            command = "%s/sort.py " \
-                      "--jobTree %s " \
-                      "--logLevel=DEBUG " \
-                      "--fileToSort=%s " \
-                      "--N %s --stats " \
-                      "--jobTime 0.5 " \
-                      "--retryCount 99" % (os.path.join(workflowRootPath(), "test/sort"), jobTreeDir, tempFile, N)
-            system(command)
-            #Now get the stats
-            system("%s "
-                   "--jobTree %s "
-                   "--outputFile %s" % (self.getScriptPath('jobTreeStats'), jobTreeDir, outputFile))
-            #Cleanup
+            rootPath = os.path.join(workflowRootPath(), "test/sort")
+            system("{rootPath}/sort.py "
+                   "--jobTree {jobTreeDir} "
+                   "--logLevel=DEBUG "
+                   "--fileToSort={tempFile} "
+                   "--N {N} --stats "
+                   "--jobTime 0.5 "
+                   "--retryCount 99".format(**locals()))
+            # Now get the stats
+            jobTreeStats = self.getScriptPath('jobTreeStats')
+            system("{jobTreeStats} "
+                   "--jobTree {jobTreeDir} "
+                   "--outputFile {outputFile}".format(**locals()))
+            # Cleanup
             system("rm -rf %s" % tempDir)
 
 
-def main():
-    parseSuiteTestOptions()
-    sys.argv = sys.argv[:1]
-    unittest.main()
-
-
 if __name__ == '__main__':
-    main()
+    unittest.main()
