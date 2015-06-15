@@ -108,7 +108,8 @@ class JobBatcher:
                      (jobStoreID, str(jobBatchSystemID), cpu, memory))
 
     def issueJobs(self, jobs):
-        """Add a list of jobs
+        """Add a list of jobs, each represented as a tuple of 
+        (jobStoreID, memory, cpu).
         """
         for jobStoreID, memory, cpu in jobs:
             self.issueJob(jobStoreID, memory, cpu)
@@ -152,7 +153,7 @@ class JobBatcher:
                 self.processFinishedJob(jobBatchSystemID, 1)
     
     #Following functions handle error cases for when jobs have gone awry with the batch system.
-
+            
     def reissueOverLongJobs(self):
         """Check each issued job - if it is running for longer than desirable 
         issue a kill instruction.
@@ -167,16 +168,16 @@ class JobBatcher:
             maxJobDuration = idealJobTime * 10
         jobsToKill = []
         # FIXME: Don't understand the comment below
-        if maxJobDuration < 10000000:  # We won't both doing anything is the rescue
-            # time is more than 16 weeks.
+        if maxJobDuration < 10000000: #We won't both doing anything is the rescue 
+            #time is more than 16 weeks.
             runningJobs = self.batchSystem.getRunningJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it" %
                                 (str(self.getJob(jobBatchSystemID)),
-                                 str(runningJobs[jobBatchSystemID]),
-                                 str(maxJobDuration)))
+                                       str(runningJobs[jobBatchSystemID]),
+                                       str(maxJobDuration)))
                     jobsToKill.append(jobBatchSystemID)
             self.killJobs(jobsToKill)
     
@@ -205,7 +206,7 @@ class JobBatcher:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
             timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
             logger.warn("Job store ID %s with batch system id %s is missing for the %i time" %
-                        (jobStoreID, str(jobBatchSystemID), timesMissing))
+                            (jobStoreID, str(jobBatchSystemID), timesMissing))
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
@@ -239,7 +240,7 @@ class JobBatcher:
         else:  #The job is done
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
-                            "job %s seems to have finished and been removed" % jobStoreID)
+                                "job %s seems to have finished and been removed" % jobStoreID)
             self._updateParentStatus(jobStoreID)
             
     def _updateParentStatus(self, jobStoreID):
@@ -293,78 +294,92 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
     worker.start()
 
     try:
-        timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
-        totalFailedJobs = 0
-        logger.info("Starting the main loop")
-        while True:
-            if len(jobTreeState.updatedJobs) > 0:
-                logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % \
-                             (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
+    timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
+    totalFailedJobs = 0
+    logger.info("Starting the main loop")
+    while True:
+        if len(jobTreeState.updatedJobs) > 0:
+            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % \
+                         (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
 
-                for job in jobTreeState.updatedJobs:
-                    if len(job.children) > 0:
-                        logger.debug("Job: %s has %i children to schedule" % \
-                                     (job.jobStoreID, len(job.children)))
-                        children = job.children
-                        job.children = []
-                        for childJobStoreID, memory, cpu in children:
-                            jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
-                        assert job not in jobTreeState.childCounts
-                        jobTreeState.childCounts[job] = len(children)
-                        jobBatcher.issueJobs(children)
+            for job in jobTreeState.updatedJobs:
+                #Any scheduled children must be run first before the next follow on
+                if len(job.children) > 0:
+                    logger.debug("Job: %s has %i children to schedule" % \
+                                 (job.jobStoreID, len(job.children)))
+                    children = job.children
+                    job.children = []
+                    for childJobStoreID, memory, cpu in children:
+                        jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
+                    assert job not in jobTreeState.childCounts
+                    jobTreeState.childCounts[job] = len(children)
+                    jobBatcher.issueJobs(children)
+                else:
+                    assert len(job.followOnCommands) > 0
+                    if job.remainingRetryCount > 0:
+                        memory, cpu, predecessorCount = job.followOnCommands[-1][1:4]
+                        if job in jobTreeState.predecessorCounts:
+                            assert jobTreeState.predecessorCounts[job] > 0
+                            jobTreeState.predecessorCounts[job] -= 1
+                            if jobTreeState.predecessorCounts[job] > 0:
+                                #We must checkpoint the job here as we have no way of capturing this info 
+                                
+                                continue #The job has more predecessors that must be counted 
+                                #as complete before it can be run
+                            else:
+                                jobTreeState.predecessorCounts.pop(job)
+                        elif predecessorCount > 1:
+                            jobTreeState.predecessorCounts[job] = predecessorCount-1
+                            continue
+                        logger.debug("Job: %s has a new command that we can now issue" % job.jobStoreID)
+                        jobBatcher.issueJob(job.jobStoreID, memory, cpu)
                     else:
-                        assert len(job.followOnCommands) > 0
-                        if job.remainingRetryCount > 0:
-                            logger.debug("Job: %s has a new command that we can now issue" % job.jobStoreID)
-                            memory, cpu = job.followOnCommands[-1][1:3]
-                            jobBatcher.issueJob(job.jobStoreID, memory, cpu)
-                        else:
-                            totalFailedJobs += 1
+                        totalFailedJobs += 1
                             logger.warn("Job: %s is completely failed" % job.jobStoreID)
 
-                jobTreeState.updatedJobs = set() #We've considered them all, so reset
+            jobTreeState.updatedJobs = set() #We've considered them all, so reset
 
-            if jobBatcher.getNumberOfJobsIssued() == 0:
-                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
-                break
+        if jobBatcher.getNumberOfJobsIssued() == 0:
+            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
+            break
 
-            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
-            if updatedJob != None:
-                jobBatchSystemID, result = updatedJob
-                if jobBatcher.hasJob(jobBatchSystemID):
-                    if result == 0:
-                        logger.debug("Batch system is reporting that the job with "
-                                     "batch system ID: %s and job store ID: %s ended successfully" %
-                                     (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
-                    else:
+        updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+        if updatedJob != None:
+            jobBatchSystemID, result = updatedJob
+            if jobBatcher.hasJob(jobBatchSystemID):
+                if result == 0:
+                    logger.debug("Batch system is reporting that the job with "
+                                 "batch system ID: %s and job store ID: %s ended successfully" %
+                                 (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
+                else:
                         logger.warn("Batch system is reporting that the job with "
                                     "batch system ID: %s and job store ID: %s failed with exit value %i" %
-                        			(jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
-                    jobBatcher.processFinishedJob(jobBatchSystemID, result)
-                else:
+                    (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
+                jobBatcher.processFinishedJob(jobBatchSystemID, result)
+            else:
                     logger.warn("A result seems to already have been processed "
                                 "for job with batch system ID: %i" % jobBatchSystemID)
-            else:
-                if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only
-                    #rescue jobs every N seconds, and when we have apparently exhausted the current job supply
-                    jobBatcher.reissueOverLongJobs()
-                    logger.info("Reissued any over long jobs")
+        else:
+            if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only 
+                #rescue jobs every N seconds, and when we have apparently exhausted the current job supply
+                jobBatcher.reissueOverLongJobs()
+                logger.info("Reissued any over long jobs")
 
-                    hasNoMissingJobs = jobBatcher.reissueMissingJobs()
-                    if hasNoMissingJobs:
-                        timeSinceJobsLastRescued = time.time()
-                    else:
-                        timeSinceJobsLastRescued += 60 #This means we'll try again
-                        #in a minute, providing things are quiet
-                    logger.info("Rescued any (long) missing jobs")
+                hasNoMissingJobs = jobBatcher.reissueMissingJobs()
+                if hasNoMissingJobs:
+                    timeSinceJobsLastRescued = time.time()
+                else:
+                    timeSinceJobsLastRescued += 60 #This means we'll try again 
+                    #in a minute, providing things are quiet
+                logger.info("Rescued any (long) missing jobs")
 
-        logger.info("Finished the main loop")
+    logger.info("Finished the main loop")
 
-        startTime = time.time()
-        logger.info("Waiting for stats collator process to finish")
+    startTime = time.time()
+    logger.info("Waiting for stats collator process to finish")
     finally:
-        stop.put(True)
-        worker.join()
+    stop.put(True)
+    worker.join()
 
 
     logger.info("Stats finished collating in %s seconds" % (time.time() - startTime))

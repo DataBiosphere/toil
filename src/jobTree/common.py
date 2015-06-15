@@ -199,8 +199,8 @@ def verifyJobTreeOptions(options):
     required = ['logLevel', 'batchSystem', 'jobTree']
     for r in required:
         if r not in vars(options):
-            raise RuntimeError("Error, there is a missing option (%s) from the jobTree Stack, "
-                               "did you remember to call Stack.addJobTreeOptions()?" % r)
+            raise RuntimeError("Error, there is a missing option (%s), "
+                               "did you remember to call Target.addJobTreeOptions()?" % r)
     if options.jobTree is None:
         raise RuntimeError("Specify --jobTree")
 

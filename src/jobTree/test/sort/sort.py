@@ -7,9 +7,7 @@ import os
 import random
 
 from jobTree.target import Target
-from jobTree.stack import Stack
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
-
 
 success_ratio = 0.5
 logToMaster = False
@@ -87,7 +85,7 @@ def cleanup(target, tempOutputFileStoreID, outputFile):
 
 def main():
     parser = OptionParser()
-    Stack.addJobTreeOptions(parser)
+    Target.addJobTreeOptions(parser)
     
     parser.add_option("--fileToSort", dest="fileToSort",
                       help="The file you wish to sort")
@@ -112,7 +110,7 @@ def main():
         raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
-    i = Stack(Target.wrapTargetFn(setup, options.fileToSort, int(options.N))).startJobTree(options)
+    i = Target(Target.wrapTargetFn(setup, options.fileToSort, int(options.N))).startJobTree(options)
     
     #if i:
     #    raise RuntimeError("The jobtree contained %i failed jobs" % i)

@@ -11,7 +11,6 @@ from optparse import OptionParser
 
 from jobTree.lib.bioio import parseSuiteTestOptions
 from jobTree.lib.bioio import system
-from jobTree.stack import Stack
 from jobTree.common import setupJobTree
 from jobTree.test import JobTreeTest
 
@@ -22,7 +21,7 @@ class JobTest(JobTreeTest):
         super( JobTest, self ).setUp( )
         self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
-        Stack.addJobTreeOptions(parser)
+        Target.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
         self.contextManager = setupJobTree(options)

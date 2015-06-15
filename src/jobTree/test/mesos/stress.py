@@ -2,8 +2,6 @@ import sys
 from optparse import OptionParser
 
 from jobTree.target import Target
-from jobTree.stack import Stack
-
 
 def touchFile( name, i='' ):
     with open( 'hello_world_{}_{}.txt'.format( name, i ), 'w' ) as f:
@@ -19,7 +17,6 @@ class LongTestTarget(Target):
             self.addChild(HelloWorldTarget(i))
         self.setFollowOn(LongTestFollowOn())
 
-
 class LongTestFollowOn(Target):
 
     def __init__(self):
@@ -27,7 +24,6 @@ class LongTestFollowOn(Target):
 
     def run(self):
         touchFile( 'parentFollowOn' )
-
 
 class HelloWorldTarget(Target):
 
@@ -40,7 +36,6 @@ class HelloWorldTarget(Target):
         touchFile( 'child', self.i )
         self.setFollowOn(HelloWorldFollowOn(self.i))
 
-
 class HelloWorldFollowOn(Target):
 
     def __init__(self,i):
@@ -52,17 +47,17 @@ class HelloWorldFollowOn(Target):
 
 def main(numTargets, useBadExecutor=False):
     args = list( sys.argv )
-    args .append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
-    args .append("--retryCount=3")
-    args .append("--logDebug")
+    args.append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
+    args.append("--retryCount=3")
+    args.append("--logDebug")
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
-    Stack.addJobTreeOptions(parser)
+    Target.addJobTreeOptions(parser)
     options, args = parser.parse_args( args )
 
-    # Setup the job stack and launch jobTree job
-    i = Stack( LongTestTarget( numTargets ) ).startJobTree( options )
+    # Launch first jobTree Target
+    i = LongTestTarget( numTargets ).startJobTree( options )
 
 if __name__=="__main__":
     main(5, useBadExecutor=False)
