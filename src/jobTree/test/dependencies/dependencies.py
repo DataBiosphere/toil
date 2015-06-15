@@ -20,7 +20,6 @@ import os
 import time
 import math
 from jobTree.lib.bioio import system
-from jobTree.stack import Stack
 
 from jobTree.target import Target
 
@@ -219,7 +218,7 @@ def checkLog(options):
     
 def main():
     parser = OptionParser()
-    Stack.addJobTreeOptions(parser)
+    Target.addJobTreeOptions(parser)
     parser.add_option("--sleepTime", dest="sleepTime", type="int",
                      help="sleep [default=5] seconds", default=5)
     parser.add_option("--tree", dest="tree",
@@ -244,7 +243,7 @@ def main():
         tree = combTree(options.size)
     
     baseTarget = FirstJob(tree, "Anc00", options.sleepTime, startTime, int(options.cpusPerJob))
-    Stack(baseTarget).startJobTree(options)
+    baseTarget.startJobTree(options)
     
     if options.logFile is not None:
         checkLog(options)

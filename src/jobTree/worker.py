@@ -46,8 +46,7 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
 
-
-def loadStack(command,jobStore):
+def loadTarget(command, jobStore):
     commandTokens = command.split()
     assert commandTokens[0] == "scriptTree"
     moduleDirPath = commandTokens[2]
@@ -229,7 +228,7 @@ def main():
         #The next job
         ##########################################
         
-        command, memoryAvailable, cpuAvailable, depth = job.followOnCommands[-1]
+        command, memoryAvailable, cpuAvailable, predecessorNumber = job.followOnCommands[-1]
         defaultMemory = int(config.attrib["default_memory"])
         defaultCpu = int(config.attrib["default_cpu"])
         assert len(job.children) == 0
@@ -260,12 +259,12 @@ def main():
                     #Run the target
                     ##########################################
 
-                    messages = loadStack(command,jobStore).execute(job=job, stats=stats,
+                    messages = loadTarget(command,jobStore)._execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
                                     defaultMemory=defaultMemory, 
-                                    defaultCpu=defaultCpu, depth=depth)
+                                    defaultCpu=defaultCpu)
             
                 else: #Is another command
                     system(command)
@@ -280,12 +279,13 @@ def main():
             
             if len(job.children) == 1: #If job has a single child, 
                 #just make it a follow on
-                job.followOnCommands.append(job.children.pop() + (depth + 1,))
+                job.followOnCommands.append(job.children.pop())
             
             childCommands = job.children #This is a hack until we stop 
             #overloading the use of this array
             job.children = []
-            jobStore.addChildren(job=job, childCommands=childCommands)
+            jobStore.addChildren(job=job, childCommands=childCommands) #This also writes
+            #the jobs state to disk
             
             ##########################################
             #Establish if we can run another job
@@ -307,7 +307,7 @@ def main():
                 break
             
             #Get the next job and see if we have enough cpu and memory to run it..
-            command, memory, cpu, depth = job.followOnCommands[-1]
+            command, memory, cpu, predecessorNumber = job.followOnCommands[-1]
             
             if memory > memoryAvailable:
                 # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
@@ -318,6 +318,10 @@ def main():
                 # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
                 # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
                 logger.info("We need more cpus for the next job, so finishing")
+                break
+            
+            if predecessorNumber > 1:
+                logger.info("The job has multiple predecessors, we must return to the master.")
                 break
             
             logger.info("Starting the next job")

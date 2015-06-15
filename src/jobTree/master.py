@@ -38,7 +38,6 @@ from jobTree import Process, Queue
 from jobTree.lib.bioio import getTotalCpuTime, logStream
 from jobTree.common import workflowRootPath
 
-
 logger = logging.getLogger( __name__ )
 
 #####
@@ -111,7 +110,8 @@ class JobBatcher:
                      (jobStoreID, str(jobBatchSystemID), cpu, memory))
 
     def issueJobs(self, jobs):
-        """Add a list of jobs
+        """Add a list of jobs, each represented as a tuple of 
+        (jobStoreID, memory, cpu).
         """
         for jobStoreID, memory, cpu in jobs:
             self.issueJob(jobStoreID, memory, cpu)
@@ -305,6 +305,7 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                          (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
 
             for job in jobTreeState.updatedJobs:
+                #Any scheduled children must be run first before the next follow on
                 if len(job.children) > 0:
                     logger.debug("Job: %s has %i children to schedule" % \
                                  (job.jobStoreID, len(job.children)))
@@ -318,8 +319,21 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                 else:
                     assert len(job.followOnCommands) > 0
                     if job.remainingRetryCount > 0:
+                        memory, cpu, predecessorCount = job.followOnCommands[-1][1:4]
+                        if job in jobTreeState.predecessorCounts:
+                            assert jobTreeState.predecessorCounts[job] > 0
+                            jobTreeState.predecessorCounts[job] -= 1
+                            if jobTreeState.predecessorCounts[job] > 0:
+                                #We must checkpoint the job here as we have no way of capturing this info 
+                                
+                                continue #The job has more predecessors that must be counted 
+                                #as complete before it can be run
+                            else:
+                                jobTreeState.predecessorCounts.pop(job)
+                        elif predecessorCount > 1:
+                            jobTreeState.predecessorCounts[job] = predecessorCount-1
+                            continue
                         logger.debug("Job: %s has a new command that we can now issue" % job.jobStoreID)
-                        memory, cpu = job.followOnCommands[-1][1:3]
                         jobBatcher.issueJob(job.jobStoreID, memory, cpu)
                     else:
                         totalFailedJobs += 1

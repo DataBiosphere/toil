@@ -3,12 +3,10 @@ from contextlib import contextmanager
 import re
 import xml.etree.cElementTree as ET
 
-
 class JobTreeState( object ):
     """
     Represents the state of the jobTree. This is returned by jobStore.loadJobTreeState()
     """
-
     def __init__( self ):
         # TODO: document this field
         self.started = False
@@ -21,7 +19,9 @@ class JobTreeState( object ):
         self.updatedJobs = set( )
         # Jobs that have no children or follow-on commands
         self.shellJobs = set( )
-
+        # Hash of jobs to numbers of predecessors when the initial number of 
+        # predecessors is greater than 1.
+        self.predecessorCounts = { }
 
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
@@ -40,7 +40,6 @@ class AbstractJobStore( object ):
     """ 
     Represents the physical storage for the jobs and associated files in a jobTree.
     """
-
     __metaclass__ = ABCMeta
 
     def __init__( self, config=None ):
