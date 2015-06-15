@@ -11,7 +11,7 @@ from jobTree.lib.bioio import TempFileTree
 from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
 from jobTree.test import JobTreeTest
 
-
+@unittest.skip
 class DependenciesTest(JobTreeTest):
     """
     Tests jobTree with the single machine batch system.
@@ -72,10 +72,6 @@ class DependenciesTest(JobTreeTest):
         if gridEngineIsInstalled():
             self.dependenciesTest(batchSystem="gridengine")
 
-def main():
-    parseSuiteTestOptions()
-    sys.argv = sys.argv[:1]
-    unittest.main()
 
 if __name__ == '__main__':
-    main()
+    unittest.main()

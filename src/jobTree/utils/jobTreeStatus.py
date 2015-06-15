@@ -22,14 +22,16 @@
 
 """Reports the state of your given job tree.
 """
+import logging
 
 import sys
 
-from jobTree.lib.bioio import logger
 from jobTree.lib.bioio import logStream
 from jobTree.lib.bioio import getBasicOptionParser
 from jobTree.lib.bioio import parseBasicOptions
 from jobTree.common import loadJobStore
+
+logger = logging.getLogger( __name__ )
 
 def main():
     """Reports the state of the job tree.
@@ -94,7 +96,7 @@ def main():
         for job in failedJobs:
             if job.logJobStoreFileID is not None:
                 with job.getLogFileHandle(jobStore) as logFileHandle:
-                    logStream(logFileHandle, job.jobStoreID, logger.critical)
+                    logStream(logFileHandle, job.jobStoreID, logger.warn)
             else:
                 print "Log file for job %s is not present" % job.jobStoreID 
         if len(failedJobs) == 0:

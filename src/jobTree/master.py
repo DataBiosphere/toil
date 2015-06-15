@@ -57,7 +57,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
         def statsAndLoggingCallBackFn(fileHandle2):
             node = ET.parse(fileHandle2).getroot()
             for message in node.find("messages").findall("message"):
-                logger.critical("Got message from job at time: %s : %s" % \
+                logger.warn("Got message from job at time: %s : %s" % \
                                     (time.strftime("%m-%d-%Y %H:%M:%S"), message.text))
             ET.ElementTree(node).write(fileHandle)
         #The main loop
@@ -155,7 +155,7 @@ class JobBatcher:
                 self.processFinishedJob(jobBatchSystemID, 1)
     
     #Following functions handle error cases for when jobs have gone awry with the batch system.
-            
+
     def reissueOverLongJobs(self):
         """Check each issued job - if it is running for longer than desirable 
         issue a kill instruction.
@@ -169,16 +169,17 @@ class JobBatcher:
                         "because of limitations in jobTree ")
             maxJobDuration = idealJobTime * 10
         jobsToKill = []
-        if maxJobDuration < 10000000: #We won't both doing anything is the rescue 
-            #time is more than 16 weeks.
+        # FIXME: Don't understand the comment below
+        if maxJobDuration < 10000000:  # We won't both doing anything is the rescue
+            # time is more than 16 weeks.
             runningJobs = self.batchSystem.getRunningJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
-                    logger.critical("The job: %s has been running for: %s seconds, more than the "
-                                    "max job duration: %s, we'll kill it"
-                                    % (str(self.getJob(jobBatchSystemID)),
-                                       str(runningJobs[jobBatchSystemID]),
-                                       str(maxJobDuration)))
+                    logger.warn("The job: %s has been running for: %s seconds, more than the "
+                                "max job duration: %s, we'll kill it" %
+                                (str(self.getJob(jobBatchSystemID)),
+                                 str(runningJobs[jobBatchSystemID]),
+                                 str(maxJobDuration)))
                     jobsToKill.append(jobBatchSystemID)
             self.killJobs(jobsToKill)
     
@@ -194,8 +195,7 @@ class JobBatcher:
         missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
-            logger.critical("Batch system id: %s is no longer missing" % \
-                            str(jobBatchSystemID))
+            logger.warn("Batch system id: %s is no longer missing" % str(jobBatchSystemID))
         assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have 
         #no unexpected jobs running
         jobsToKill = []
@@ -207,8 +207,8 @@ class JobBatcher:
             else:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
             timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
-            logger.critical("Job store ID %s with batch system id %s is missing for the %i time" % \
-                            (jobStoreID, str(jobBatchSystemID), timesMissing))
+            logger.warn("Job store ID %s with batch system id %s is missing for the %i time" %
+                        (jobStoreID, str(jobBatchSystemID), timesMissing))
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
@@ -223,13 +223,13 @@ class JobBatcher:
         if self.jobStore.exists(jobStoreID):
             job = self.jobStore.load(jobStoreID)
             if job.logJobStoreFileID is not None:
-                logger.critical("The job seems to have left a log file, indicating failure: %s", jobStoreID)
+                logger.warn("The job seems to have left a log file, indicating failure: %s", jobStoreID)
                 with job.getLogFileHandle( self.jobStore ) as logFileStream:
-                    logStream( logFileStream, jobStoreID, logger.critical )
+                    logStream( logFileStream, jobStoreID, logger.warn )
             assert job not in self.jobTreeState.updatedJobs
             if resultStatus != 0:
                 if job.logJobStoreFileID is None:
-                    logger.critical("No log file is present, despite job failing: %s", jobStoreID)
+                    logger.warn("No log file is present, despite job failing: %s", jobStoreID)
                 job.setupJobAfterFailure(self.config)
             if len(job.followOnCommands) > 0 or len(job.children) > 0:
                 self.jobTreeState.updatedJobs.add(job) #Now we know the 
@@ -241,8 +241,8 @@ class JobBatcher:
                 self._updateParentStatus(jobStoreID)
         else:  #The job is done
             if resultStatus != 0:
-                logger.critical("Despite the batch system claiming failure the "
-                                "job %s seems to have finished and been removed" % jobStoreID)
+                logger.warn("Despite the batch system claiming failure the "
+                            "job %s seems to have finished and been removed" % jobStoreID)
             self._updateParentStatus(jobStoreID)
             
     def _updateParentStatus(self, jobStoreID):
@@ -337,7 +337,7 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                         jobBatcher.issueJob(job.jobStoreID, memory, cpu)
                     else:
                         totalFailedJobs += 1
-                        logger.critical("Job: %s is completely failed" % job.jobStoreID)
+                        logger.warn("Job: %s is completely failed" % job.jobStoreID)
 
             jobTreeState.updatedJobs = set() #We've considered them all, so reset
 
@@ -354,13 +354,13 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
                                  "batch system ID: %s and job store ID: %s ended successfully" %
                                  (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
                 else:
-                    logger.critical("Batch system is reporting that the job with "
-                                    "batch system ID: %s and job store ID: %s failed with exit value %i" %
-                    (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
+                    logger.warn("Batch system is reporting that the job with "
+                                "batch system ID: %s and job store ID: %s failed with exit value %i" %
+                                (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
                 jobBatcher.processFinishedJob(jobBatchSystemID, result)
             else:
-                logger.critical("A result seems to already have been processed "
-                                "for job with batch system ID: %i" % jobBatchSystemID)
+                logger.warn("A result seems to already have been processed "
+                            "for job with batch system ID: %i" % jobBatchSystemID)
         else:
             if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only 
                 #rescue jobs every N seconds, and when we have apparently exhausted the current job supply

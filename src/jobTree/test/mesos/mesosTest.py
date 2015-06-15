@@ -5,6 +5,7 @@ import subprocess
 import threading
 from time import sleep
 
+from jobTree.lib.bioio import getLogLevelString
 from jobTree.test.mesos.stress import main as stressMain
 from jobTree.test import JobTreeTest
 
@@ -74,7 +75,11 @@ class MesosTest( JobTreeTest ):
 
     def test_hello_world( self ):
         dir = os.path.dirname( os.path.abspath( __file__ ) )
-        subprocess.check_call("python {}/helloWorld.py --batchSystem=mesos --logLevel=DEBUG".format(dir), shell=True)
+        subprocess.check_call( "python {dir}/helloWorld.py "
+                               "--batchSystem=mesos "
+                               "--logLevel={logLevel}".format( dir=dir,
+                                                               logLevel=getLogLevelString( ) ),
+                               shell=True )
         self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
     def __do_test_stress( self, useBadExecutor, numTargets ):

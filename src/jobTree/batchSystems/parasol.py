@@ -54,11 +54,14 @@ def popenParasolCommand(command, runUntilSuccessful=True):
         exitValue = process.wait()
         if exitValue == 0:
             return 0, output.split("\n")
-        logger.critical("The following parasol command failed (exit value %s): %s" % (exitValue, command))
+        message = "The following parasol command failed (exit value %s): %s" % (exitValue, command)
         if not runUntilSuccessful:
+            logger.error(message)
             return exitValue, None
+        else:
+            logger.warn(message)
         time.sleep(10)
-        logger.critical("Waited for a few seconds, will try again")
+        logger.warn("Waited for a few seconds, will try again")
 
 def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
     """We use the parasol results to update the status of jobs, adding them
@@ -98,7 +101,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         if maxMemory != sys.maxint:
-            logger.critical("A max memory has been specified for the parasol batch system class of %i, but currently this batchsystem interface does not support such limiting" % maxMemory)
+            logger.warn("A max memory has been specified for the parasol batch system class of %i, but currently "
+                        "this batchsystem interface does not support such limiting" % maxMemory)
         #Keep the name of the results file for the pstat2 command..
         self.parasolCommand = config.attrib["parasol_command"]
         self.parasolResultsFile = getParasolResultsFileName(config.attrib["job_store"])
@@ -111,11 +115,11 @@ class ParasolBatchSystem(AbstractBatchSystem):
         logger.info("Removed any old jobs from the queue")
         #Reset the job queue and results
         exitValue = popenParasolCommand("%s -results=%s clear sick" % (self.parasolCommand, self.parasolResultsFile), False)[0]
-        if exitValue != None:
-            logger.critical("Could not clear sick status of the parasol batch %s" % self.parasolResultsFile)
+        if exitValue is not None:
+            logger.warn("Could not clear sick status of the parasol batch %s" % self.parasolResultsFile)
         exitValue = popenParasolCommand("%s -results=%s flushResults" % (self.parasolCommand, self.parasolResultsFile), False)[0]
-        if exitValue != None:
-            logger.critical("Could not flush the parasol batch %s" % self.parasolResultsFile)
+        if exitValue is not None:
+            logger.warn("Could not flush the parasol batch %s" % self.parasolResultsFile)
         open(self.parasolResultsFile, 'w').close()
         logger.info("Reset the results queue")
         #Stuff to allow max cpus to be work
@@ -177,7 +181,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 return
             time.sleep(5)
-            logger.critical("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
+            logger.warn("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
     
     def getIssuedJobIDs(self):
         """Gets the list of jobs issued to parasol.

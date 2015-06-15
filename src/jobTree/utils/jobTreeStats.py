@@ -22,15 +22,16 @@
 
 """ Reports the state of your given job tree.
 """
+import logging
 import sys
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
 
-from jobTree.lib.bioio import logger
 from jobTree.lib.bioio import getBasicOptionParser
 from jobTree.lib.bioio import parseBasicOptions
 from jobTree.common import loadJobStore
 
+logger = logging.getLogger( __name__ )
 
 class JTTag(object):
     """ Convenience object that stores xml attributes as object attributes.

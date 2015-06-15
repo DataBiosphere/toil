@@ -283,23 +283,23 @@ class FileJobStore(AbstractJobStore):
     
     def _processAnyUpdatingFile(self, jobFile):
         if os.path.isfile(jobFile + ".updating"):
-            logger.critical("There was an .updating file for job: %s" % jobFile)
+            logger.warn("There was an .updating file for job: %s" % jobFile)
             if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
-                logger.critical("There was a .new file for the job: %s" % jobFile)
+                logger.warn("There was a .new file for the job: %s" % jobFile)
                 os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
             for f in FileJobStore._listChildDirs(os.path.split(jobFile)[0]):
-                logger.critical("Removing broken child %s\n" % f)
+                logger.warn("Removing broken child %s\n" % f)
                 system("rm -rf %s" % f)
             assert os.path.isfile(jobFile)
             os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
-            logger.critical("We've reverted to the original job file: %s" % jobFile)
+            logger.warn("We've reverted to the original job file: %s" % jobFile)
             return True
         return False
     
     def _processAnyNewFile(self, jobFile):
         # The job was not properly updated before crashing
         if os.path.isfile(jobFile + ".new"):
-            logger.critical("There was a .new file for the job and no .updating file %s" % jobFile)
+            logger.warn("There was a .new file for the job and no .updating file %s" % jobFile)
             if os.path.isfile(jobFile):
                 os.remove(jobFile)
             os.rename(jobFile + ".new", jobFile)

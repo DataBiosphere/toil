@@ -36,8 +36,6 @@ log = logging.getLogger( __name__ )
 # FIXME: enforce SimpleDB limits early
 
 
-
-
 class AWSJobStore( AbstractJobStore ):
     """
     A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
@@ -55,7 +53,7 @@ class AWSJobStore( AbstractJobStore ):
     """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadJobTreeState."""
 
-    def loadJobsInStore(self):
+    def loadJobsInStore( self ):
         raise NotImplementedError
 
     @classmethod
@@ -103,18 +101,18 @@ class AWSJobStore( AbstractJobStore ):
 
     def _addChild( self, job, child ):
         if len( child.followOnCommands ) > 0:
-            job.children.append( ( child.jobStoreID, ) + child.followOnCommands[ 0 ][ 1:-1 ] )
+            job.children.append( (child.jobStoreID,) + child.followOnCommands[ 0 ][ 1:-1 ] )
 
     def load( self, jobStoreID ):
         # TODO: check if mentioning individual attributes is faster than using *
         for attempt in retry_sdb( ):
             with attempt:
-                result = self.jobs.select(
+                result = list( self.jobs.select(
                     query="select * from `{domain}` "
                           "where parentJobStoreID = '{jobStoreID}' "
                           "or itemName() = '{jobStoreID}'".format( domain=self.jobs.name,
                                                                    jobStoreID=jobStoreID ),
-                    consistent_read=True )
+                    consistent_read=True ) )
         job = None
         children = [ ]
         for item in result:
@@ -147,7 +145,7 @@ class AWSJobStore( AbstractJobStore ):
                                    jobStoreID=self._newJobID( ),
                                    logJobStoreFileID=None,
                                    *childCommand )
-            job.children.append( ( child.jobStoreID, ) + childCommand[ 1: ] )
+            job.children.append( (child.jobStoreID,) + childCommand[ 1: ] )
             items[ child.jobStoreID ] = child.toItem( job.jobStoreID )
         # Persist parent and children
         # TODO: There might be no children, should we still persist the parent?
@@ -165,7 +163,7 @@ class AWSJobStore( AbstractJobStore ):
             with attempt:
                 items = list( self.versions.select(
                     query="select * from `%s` "
-                          "where jobStoreID='%s'" % ( self.versions.name, job.jobStoreID ),
+                          "where jobStoreID='%s'" % (self.versions.name, job.jobStoreID),
                     consistent_read=True ) )
         if items:
             log.debug( "Deleting %d file(s) associated with job %s", len( items ), job.jobStoreID )
@@ -180,14 +178,14 @@ class AWSJobStore( AbstractJobStore ):
         jobs = { }
         for attempt in retry_sdb( ):
             with attempt:
-                items = self.jobs.select( query='select * from `%s`' % self.jobs.name,
-                                          consistent_read=True )
+                items = list( self.jobs.select( query='select * from `%s`' % self.jobs.name,
+                                                consistent_read=True ) )
         for item in items:
             parentJobStoreID = item.get( 'parentJobStoreID', None )
             job = AWSJob.fromItem( item )
             if self.resetJobInLoadState:
-                job.remainingRetryCount = self._defaultTryCount()
-            jobs[ job.jobStoreID ] = ( job, parentJobStoreID )
+                job.remainingRetryCount = self._defaultTryCount( )
+            jobs[ job.jobStoreID ] = (job, parentJobStoreID)
         state = JobTreeState( )
         if jobs:
             state.started = True
@@ -231,7 +229,7 @@ class AWSJobStore( AbstractJobStore ):
     @contextmanager
     def writeFileStream( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
-        with self._uploadStream( jobStoreFileID ) as ( writable, key ):
+        with self._uploadStream( jobStoreFileID ) as (writable, key):
             yield writable, jobStoreFileID
         firstVersion = key.version_id
         assert firstVersion is not None
@@ -244,7 +242,7 @@ class AWSJobStore( AbstractJobStore ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID ) as ( writable, key ):
+        with self._uploadStream( jobStoreFileID ) as (writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str( self.sharedFileJobID ) if oldVersion is None else None
@@ -267,7 +265,7 @@ class AWSJobStore( AbstractJobStore ):
     @contextmanager
     def updateFileStream( self, jobStoreFileID ):
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID ) as ( writable, key ):
+        with self._uploadStream( jobStoreFileID ) as (writable, key):
             yield writable
         newVersion = key.version_id
         self._registerFile( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
@@ -342,7 +340,7 @@ class AWSJobStore( AbstractJobStore ):
                               "characters." % namePrefix )
         if '--' in namePrefix:
             raise ValueError( "Invalid name prefix '%s'. Name prefixes may not contain "
-                              "%s." % ( namePrefix, cls.nameSeparator ) )
+                              "%s." % (namePrefix, cls.nameSeparator) )
 
         return region, namePrefix
 
@@ -588,18 +586,18 @@ class AWSJobStore( AbstractJobStore ):
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
 
     def deleteJobStore( self ):
-        for bucket in ( self.files, self.stats ):
+        for bucket in (self.files, self.stats):
             if bucket is not None:
                 for upload in bucket.list_multipart_uploads( ):
                     upload.cancel_upload( )
-                if self.__get_bucket_versioning( bucket ) in ( True, None ):
+                if self.__get_bucket_versioning( bucket ) in (True, None):
                     for key in list( bucket.list_versions( ) ):
                         bucket.delete_key( key.name, version_id=key.version_id )
                 else:
                     for key in list( bucket.list( ) ):
                         key.delete( )
                 bucket.delete( )
-        for domain in ( self.versions, self.jobs ):
+        for domain in (self.versions, self.jobs):
             if domain is not None:
                 domain.delete( )
 
@@ -619,13 +617,15 @@ def fromNoneable( v ):
     assert v != ""
     return '' if v is None else v
 
-sort_prefix_length=3
+
+sort_prefix_length = 3
+
 
 def toList( vs ):
     if isinstance( vs, basestring ):
         return [ vs ] if vs else [ ]
     else:
-        return [ v[sort_prefix_length:] for v in sorted( vs ) ]
+        return [ v[ sort_prefix_length: ] for v in sorted( vs ) ]
 
 
 def fromList( vs ):
@@ -634,9 +634,9 @@ def fromList( vs ):
     elif len( vs ) == 1:
         return vs[ 0 ]
     else:
-        assert len(vs) <= 256
+        assert len( vs ) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
-        return [ str(i).zfill(sort_prefix_length) + v for i,v in enumerate( vs ) ]
+        return [ str( i ).zfill( sort_prefix_length ) + v for i, v in enumerate( vs ) ]
 
 
 def passThrough( v ): return v
@@ -649,7 +649,7 @@ class AWSJob( Job ):
     """
     A Job that can be converted to and from a SimpleDB Item
     """
-    fromItemTransform = defaultdict( default_factory=lambda: passThrough,
+    fromItemTransform = defaultdict( lambda: passThrough,
                                      messages=toList,
                                      followOnCommands=lambda v: map( literal_eval, toList( v ) ),
                                      remainingRetryCount=int,
@@ -687,14 +687,13 @@ class AWSJob( Job ):
         item = ((k, self.toItemTransform[ k ]( v )) for k, v in item.iteritems( ))
         return { k: v for k, v in item if v is not None }
 
+# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
+# FIXME: ... between that code and this is the name of the exception.
 
 a_short_time = 5
 
 a_long_time = 60 * 60
 
-
-# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
-# FIXME: ... between that code and this is the name of the exception.
 
 def no_such_domain( e ):
     return e.error_code.endswith( 'NoSuchDomain' )
@@ -780,11 +779,15 @@ def retry_sdb( retry_after=a_short_time,
             try:
                 yield
             except SDBResponseError as e:
-                if time.time( ) + retry_after < expiration and retry_while( e ):
-                    log.info(
-                        '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
-                    time.sleep( retry_after )
+                if time.time( ) + retry_after < expiration:
+                    if retry_while( e ):
+                        log.info( '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
+                        time.sleep( retry_after )
+                    else:
+                        log.info( 'Exception failed predicate, giving up.' )
+                        raise
                 else:
+                    log.info( 'Retry timeout expired, giving up.' )
                     raise
             else:
                 go.pop( )

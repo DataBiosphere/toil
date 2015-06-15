@@ -39,9 +39,13 @@ from jobTree.batchSystems.lsf import LSFBatchSystem
 
 logger = logging.getLogger( __name__ )
 
+# FIXME: unused
+
 def runJobTreeStats(jobTree, outputFile):
     system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
     logger.info("Ran the job-tree stats command apparently okay")
+
+# FIXME: unused
 
 def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
     command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
@@ -289,7 +293,6 @@ def loadJobStore( jobStoreString, config=None ):
         from jobTree.jobStores.fileJobStore import FileJobStore
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
-        logging.getLogger('boto').setLevel(logging.INFO)
         from jobTree.jobStores.awsJobStore import AWSJobStore
         return AWSJobStore.create( jobStoreArgs, config=config )
     else:
