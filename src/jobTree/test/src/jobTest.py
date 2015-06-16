@@ -25,13 +25,15 @@ class JobTest(JobTreeTest):
         Stack.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
+        self.contextManager = setupJobTree(options)
+        config, batchSystem, jobStore, jobTreeState = self.contextManager.__enter__()
         self.jobStore = jobStore
         
     def tearDown(self):
-        super( JobTest, self ).tearDown( )
+        self.contextManager.__exit__(None, None, None)
         system("rm -rf %s" % self.testJobTree)
-    
+        super( JobTest, self ).tearDown( )
+
     def testJobStoreLoadWriteAndDelete(self):        
         command = "by your command"
         memory = 2^32
