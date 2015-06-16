@@ -76,8 +76,9 @@ class hidden:
 
         def testIssueJob(self):
             test_path = os.path.join(self.tempDir, 'test.txt')
-            jobCommand = 'touch {}'.format(test_path)
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
+            # sleep 1 coupled to command as 'touch' was too fast for wait_for_jobs to catch
+            jobCommand = 'touch {}; sleep 1'.format(test_path)
+            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
@@ -95,20 +96,25 @@ class hidden:
             self.assertEqual({0, 1}, set(self.batchSystem.getIssuedJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=numCoresPerJob)
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=numCoresPerJob)
-            self.wait_for_jobs()
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
+            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1)
+            self.wait_for_jobs(numJobs=2)
+            # Assert that jobs were correctly labeled by JobID
             self.assertEqual({0, 1}, set(self.batchSystem.getRunningJobIDs().keys()))
+            # Assert that the length of the job was recorded
+            self.assertTrue(len([t for t in self.batchSystem.getRunningJobIDs().values() if t > 0]) == 2)
+            self.batchSystem.killJobs([0, 1])
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
+            jobID = self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1)
             self.wait_for_jobs()
-            self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
-            self.batchSystem.killJobs([0])
+            # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
+            self.batchSystem.killJobs([jobID])
             self.assertEqual({}, self.batchSystem.getRunningJobIDs())
-            # Make sure that killJob doesn't hang on unknown job IDs
+            # Make sure that killJob doesn't hang / raise KeyError on unknown job IDs
             self.batchSystem.killJobs([0])
+
 
         def testGetUpdatedJob(self):
             delay = 1
@@ -116,7 +122,7 @@ class hidden:
             for i in range(numJobs):
                 self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob)
             jobs = set((i, 0) for i in range(numJobs))
-            self.wait_for_jobs(wait_for_completion=True)
+            self.wait_for_jobs(numJobs=numJobs, wait_for_completion=True)
             for i in range(numJobs):
                 jobs.remove(self.batchSystem.getUpdatedJob(delay * 2))
             self.assertFalse(jobs)
@@ -139,20 +145,19 @@ class hidden:
             config.attrib["default_cpu"] = str(1)
             config.attrib["max_cpus"] = str(1)
             config.attrib["max_memory"] = str(1)
-            config.attrib["max_threads"] = str(1)
+            config.attrib["scale"] = str(1)
             return config
 
-        def wait_for_jobs(self, wait_for_completion=False):
+        def wait_for_jobs(self, numJobs=1, wait_for_completion=False):
             while not self.batchSystem.getIssuedJobIDs():
                 pass
-            while not self.batchSystem.getRunningJobIDs():
+            while not len(self.batchSystem.getRunningJobIDs().keys()) == numJobs:
                 time.sleep(0.1)
             if wait_for_completion:
                 while self.batchSystem.getRunningJobIDs():
                     time.sleep(0.1)
-                    # pass does not work here, which is why I'm using time.sleep(0.1):
-                    # for jobID,data in self.runningJobMap.iteritems():
-                    # RuntimeError: dictionary changed size during iteration
+                    # pass updates too quickly (~24e6 iter/sec), which is why I'm using time.sleep(0.1):
+
 
         @classmethod
         def tearDownClass(cls):
@@ -220,28 +225,6 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
                     '--resources=cpus(*):%i' % numCores]
 
 
-# FIXME: the single machine backend does not support crucial methods necessary for this test
-
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20)
-
-    def testGetIssuedJobIDs(self):
-        # TODO: Fix SingleMachineBatchSystem to support this call
-        pass
-
-    def testGetRunningJobIDs(self):
-        # TODO: Fix SingleMachineBatchSystem to support this call
-        pass
-
-    def testGetUpdatedJob(self):
-        # TODO: Fix SingleMachineBatchSystem to support this call
-        pass
-
-    def testIssueJob(self):
-        # TODO: Fix SingleMachineBatchSystem to support this call
-        pass
-
-    def testKillJobs(self):
-        # TODO: Fix SingleMachineBatchSystem to support this call
-        pass
+        return SingleMachineBatchSystem(config=self.config, maxCpus=numCores, maxMemory=50)
