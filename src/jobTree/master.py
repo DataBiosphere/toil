@@ -292,80 +292,83 @@ def mainLoop(config, batchSystem, jobStore, jobTreeState):
     #statsFile, jobStore, stop
     worker = Process(target=statsAndLoggingAggregatorProcess,
                      args=(jobStore, stop))
-    worker.daemon = True
     worker.start()
 
-    timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
-    totalFailedJobs = 0
-    logger.info("Starting the main loop")
-    while True:
-        if len(jobTreeState.updatedJobs) > 0:
-            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % \
-                         (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
+    try:
+        timeSinceJobsLastRescued = time.time() #Sets up the timing of the job rescuing method
+        totalFailedJobs = 0
+        logger.info("Starting the main loop")
+        while True:
+            if len(jobTreeState.updatedJobs) > 0:
+                logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued" % \
+                             (len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued()))
 
-            for job in jobTreeState.updatedJobs:
-                if len(job.children) > 0:
-                    logger.debug("Job: %s has %i children to schedule" % \
-                                 (job.jobStoreID, len(job.children)))
-                    children = job.children
-                    job.children = []
-                    for childJobStoreID, memory, cpu in children:
-                        jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
-                    assert job not in jobTreeState.childCounts
-                    jobTreeState.childCounts[job] = len(children)
-                    jobBatcher.issueJobs(children)
-                else:
-                    assert len(job.followOnCommands) > 0
-                    if job.remainingRetryCount > 0:
-                        logger.debug("Job: %s has a new command that we can now issue" % job.jobStoreID)
-                        memory, cpu = job.followOnCommands[-1][1:3]
-                        jobBatcher.issueJob(job.jobStoreID, memory, cpu)
+                for job in jobTreeState.updatedJobs:
+                    if len(job.children) > 0:
+                        logger.debug("Job: %s has %i children to schedule" % \
+                                     (job.jobStoreID, len(job.children)))
+                        children = job.children
+                        job.children = []
+                        for childJobStoreID, memory, cpu in children:
+                            jobTreeState.childJobStoreIdToParentJob[childJobStoreID] = job
+                        assert job not in jobTreeState.childCounts
+                        jobTreeState.childCounts[job] = len(children)
+                        jobBatcher.issueJobs(children)
                     else:
-                        totalFailedJobs += 1
-                        logger.warn("Job: %s is completely failed" % job.jobStoreID)
+                        assert len(job.followOnCommands) > 0
+                        if job.remainingRetryCount > 0:
+                            logger.debug("Job: %s has a new command that we can now issue" % job.jobStoreID)
+                            memory, cpu = job.followOnCommands[-1][1:3]
+                            jobBatcher.issueJob(job.jobStoreID, memory, cpu)
+                        else:
+                            totalFailedJobs += 1
+                            logger.warn("Job: %s is completely failed" % job.jobStoreID)
 
-            jobTreeState.updatedJobs = set() #We've considered them all, so reset
+                jobTreeState.updatedJobs = set() #We've considered them all, so reset
 
-        if jobBatcher.getNumberOfJobsIssued() == 0:
-            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
-            break
+            if jobBatcher.getNumberOfJobsIssued() == 0:
+                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting." % totalFailedJobs)
+                break
 
-        updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
-        if updatedJob != None:
-            jobBatchSystemID, result = updatedJob
-            if jobBatcher.hasJob(jobBatchSystemID):
-                if result == 0:
-                    logger.debug("Batch system is reporting that the job with "
-                                 "batch system ID: %s and job store ID: %s ended successfully" %
-                                 (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
+            updatedJob = batchSystem.getUpdatedJob(10) #Asks the batch system what jobs have been completed.
+            if updatedJob != None:
+                jobBatchSystemID, result = updatedJob
+                if jobBatcher.hasJob(jobBatchSystemID):
+                    if result == 0:
+                        logger.debug("Batch system is reporting that the job with "
+                                     "batch system ID: %s and job store ID: %s ended successfully" %
+                                     (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID)))
+                    else:
+                        logger.warn("Batch system is reporting that the job with "
+                                    "batch system ID: %s and job store ID: %s failed with exit value %i" %
+                        			(jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
+                    jobBatcher.processFinishedJob(jobBatchSystemID, result)
                 else:
-                    logger.warn("Batch system is reporting that the job with "
-                                "batch system ID: %s and job store ID: %s failed with exit value %i" %
-                                (jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result))
-                jobBatcher.processFinishedJob(jobBatchSystemID, result)
+                    logger.warn("A result seems to already have been processed "
+                                "for job with batch system ID: %i" % jobBatchSystemID)
             else:
-                logger.warn("A result seems to already have been processed "
-                            "for job with batch system ID: %i" % jobBatchSystemID)
-        else:
-            if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only 
-                #rescue jobs every N seconds, and when we have apparently exhausted the current job supply
-                jobBatcher.reissueOverLongJobs()
-                logger.info("Reissued any over long jobs")
+                if time.time() - timeSinceJobsLastRescued >= rescueJobsFrequency: #We only
+                    #rescue jobs every N seconds, and when we have apparently exhausted the current job supply
+                    jobBatcher.reissueOverLongJobs()
+                    logger.info("Reissued any over long jobs")
 
-                hasNoMissingJobs = jobBatcher.reissueMissingJobs()
-                if hasNoMissingJobs:
-                    timeSinceJobsLastRescued = time.time()
-                else:
-                    timeSinceJobsLastRescued += 60 #This means we'll try again 
-                    #in a minute, providing things are quiet
-                logger.info("Rescued any (long) missing jobs")
+                    hasNoMissingJobs = jobBatcher.reissueMissingJobs()
+                    if hasNoMissingJobs:
+                        timeSinceJobsLastRescued = time.time()
+                    else:
+                        timeSinceJobsLastRescued += 60 #This means we'll try again
+                        #in a minute, providing things are quiet
+                    logger.info("Rescued any (long) missing jobs")
 
-    logger.info("Finished the main loop")
+        logger.info("Finished the main loop")
 
-    startTime = time.time()
-    logger.info("Waiting for stats collator process to finish")
-    stop.put(True)
-    worker.join()
+        startTime = time.time()
+        logger.info("Waiting for stats collator process to finish")
+    finally:
+        stop.put(True)
+        worker.join()
+
+
     logger.info("Stats finished collating in %s seconds" % (time.time() - startTime))
 
     return totalFailedJobs #Returns number of failed jobs
