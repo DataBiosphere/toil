@@ -95,9 +95,9 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf/mesos/badmesos'. default=%s" % defaultStr))
-    addOptionFn("--maxThreads", dest="maxThreads", default=4,
-                      help=("The maximum number of threads (technically processes at this point) to use when running in single "
-                            "machine mode. Increasing this will allow more jobs to run concurrently when running on a single machine. default=%s" % defaultStr))
+    addOptionFn("--scale", dest="scale", default=1,
+                      help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
+                            "Used in singleMachine batch system. default=%s" % defaultStr))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
                       help="The command to run the parasol program default=%s" % defaultStr)
 
@@ -202,7 +202,7 @@ def createConfig(options):
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
     config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_threads"] = str(int(options.maxThreads))
+    config.attrib["scale"] = str(float(options.scale))
     if options.bigBatchSystem != None:
         config.attrib["big_batch_system"] = options.bigBatchSystem
         config.attrib["big_memory_threshold"] = str(int(options.bigMemoryThreshold))
