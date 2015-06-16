@@ -158,6 +158,8 @@ class hidden:
                     time.sleep(0.1)
                     # pass updates too quickly (~24e6 iter/sec), which is why I'm using time.sleep(0.1):
 
+        def tearDown(self):
+            self.batchSystem.shutdown()
 
         @classmethod
         def tearDownClass(cls):
@@ -189,7 +191,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
         self.slave.join()
         self.master.popen.kill()
         self.master.join()
-        self.batchSystem.shutDown()
+        self.batchSystem.shutdown()
 
     class MesosThread(threading.Thread):
         __metaclass__ = ABCMeta
