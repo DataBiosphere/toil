@@ -20,6 +20,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+from contextlib import contextmanager
 import logging
 import os
 from subprocess import CalledProcessError
@@ -306,14 +307,18 @@ def serialiseEnvironment(jobStore):
         cPickle.dump(os.environ, fileHandle)
     logger.info("Written the environment for the jobs to the environment file")
 
+@contextmanager
 def setupJobTree(options):
     """Creates the data-structures needed for running a jobTree.
     """
     verifyJobTreeOptions(options)
     config = createConfig(options)
     batchSystem = loadBatchSystem(config)
-    addBatchSystemConfigOptions(config, batchSystem, options)
-    jobStore = loadJobStore(config.attrib["job_store"], config=config)
-    jobTreeState = jobStore.loadJobTreeState()
-    serialiseEnvironment(jobStore)
-    return config, batchSystem, jobStore, jobTreeState
+    try:
+        addBatchSystemConfigOptions(config, batchSystem, options)
+        jobStore = loadJobStore(config.attrib["job_store"], config=config)
+        jobTreeState = jobStore.loadJobTreeState()
+        serialiseEnvironment(jobStore)
+        yield (config, batchSystem, jobStore, jobTreeState)
+    finally:
+        batchSystem.shutdown()
