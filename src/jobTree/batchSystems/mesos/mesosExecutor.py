@@ -18,15 +18,18 @@
 
 import os
 import sys
+import hashlib
 import threading
 import pickle
 import logging
 import subprocess
-if False:
-    import psutil
+import urllib2
+
+import psutil
 
 import mesos.interface
 from mesos.interface import mesos_pb2
+from time import sleep
 import mesos.native
 
 log = logging.getLogger( __name__ )
@@ -48,10 +51,10 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :return:
         """
         log.debug("Registered with framework")
-        if False:
-            statThread = threading.Thread(target=self._sendStats, args=driver)
-            statThread.setDaemon(True)
-            statThread.start()
+
+        statThread = threading.Thread(target=self._sendStats, args=[driver])
+        statThread.setDaemon(True)
+        statThread.start()
 
     def reregistered(self, driver, slaveInfo):
         """
@@ -89,7 +92,9 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         while True:
             cpuUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s", cpuUsage, ramUsage)
+            driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s" % (cpuUsage, ramUsage))
+            log.info("sent stats message")
+            sleep(30)
 
     def _callCommand(self, command, taskID):
         log.debug("Invoking command: {}".format(command))
