@@ -60,8 +60,8 @@ def main():
     ##########################################  
         
     setLoggingFromOptions(options)
-    config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
-    return mainLoop(config, batchSystem, jobStore)
+    with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
+        return mainLoop(config, batchSystem, jobStore)
     
 def _test():
     import doctest      

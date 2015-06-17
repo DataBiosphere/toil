@@ -588,8 +588,7 @@ def processData(config, stats, options):
          "job_time":config.attrib["job_time"],
          "default_memory":config.attrib["default_memory"],
          "default_cpu":config.attrib["default_cpu"],
-         "max_cpus":config.attrib["max_cpus"],
-         "max_threads":config.attrib["max_threads"] })
+         "max_cpus":config.attrib["max_cpus"]})
 
     # Add worker info
     workers = stats.findall("worker")

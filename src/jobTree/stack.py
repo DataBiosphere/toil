@@ -77,33 +77,33 @@ class Stack(object):
         and Stack.addJobTreeOptions).
         """
         setLoggingFromOptions(options)
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
-        if not jobTreeState.started: #We setup the first job.
-            memory = self.getMemory()
-            cpu = self.getCpu()
-            if memory == None or memory == sys.maxint:
-                memory = float(config.attrib["default_memory"])
-            if cpu == None or cpu == sys.maxint:
-                cpu = float(config.attrib["default_cpu"])
-            #Make job, set the command to None initially
-            logger.info("Adding the first job")
-            job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
-            #This calls gives valid jobStoreFileIDs to each promised value
-            self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
-            #Now set the command properly (this is a hack)
-            job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
-            #Now write
-            jobStore.store(job)
-            jobTreeState = jobStore.loadJobTreeState() #This reloads the state
-        else:
-            logger.info("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
-        return mainLoop(config, batchSystem, jobStore, jobTreeState)
+        with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
+            if not jobTreeState.started: #We setup the first job.
+                memory = self.getMemory()
+                cpu = self.getCpu()
+                if memory == None or memory == sys.maxint:
+                    memory = float(config.attrib["default_memory"])
+                if cpu == None or cpu == sys.maxint:
+                    cpu = float(config.attrib["default_cpu"])
+                #Make job, set the command to None initially
+                logger.info("Adding the first job")
+                job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
+                #This calls gives valid jobStoreFileIDs to each promised value
+                self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
+                #Now set the command properly (this is a hack)
+                job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
+                #Now write
+                jobStore.store(job)
+                jobTreeState = jobStore.loadJobTreeState() #This reloads the state
+            else:
+                logger.info("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
+            return mainLoop(config, batchSystem, jobStore, jobTreeState)
     
     def cleanup(self, options):
         """Removes the jobStore backing the jobTree.
         """
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
-        jobStore.deleteJobStore()
+        with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
+            jobStore.deleteJobStore()
 
 #####
 #The remainder of the class is private to the user

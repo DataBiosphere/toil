@@ -85,6 +85,12 @@ class AbstractBatchSystem:
         else it returns None.
         """
         raise NotImplementedError('Abstract method: getUpdatedJob')
+
+    def shutdown(self):
+        """Called at the completion of a jobTree invocation.
+        Should cleanly terminate all worker threads.
+        """
+        raise NotImplementedError('Abstract Method: shutdown')
     
     def getRescueJobFrequency(self):
         """Gets the period of time to wait (floating point, in seconds) between checking for 
