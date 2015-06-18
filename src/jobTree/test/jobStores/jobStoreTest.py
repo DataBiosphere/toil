@@ -3,6 +3,7 @@ from abc import abstractmethod, ABCMeta
 import hashlib
 import logging
 import os
+import urllib2
 import tempfile
 from threading import Thread
 import uuid
@@ -17,6 +18,23 @@ from jobTree.test import JobTreeTest
 logger = logging.getLogger( __name__ )
 
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
+
+def urlIsValid(url):
+    def httpUrl(url):
+        try:
+            exists = False
+            f = urllib2.urlopen(urllib2.Request(url))
+            exists = True
+        except:
+            pass
+        return exists
+
+    prefix, path = url.split(':',1)
+    if prefix == 'file':
+        return os.path.exists(path)
+    else:
+        return httpUrl(url)
+
 
 class hidden:
     """
@@ -187,6 +205,10 @@ class hidden:
             with master.readSharedFileStream( "foo" ) as f:
                 self.assertEquals( "bar", f.read( ) )
 
+            #FIXME: TEST GETURL HERE.
+            sharedUrl = master.getSharedPublicUrl("foo")
+            self.assertTrue(urlIsValid(sharedUrl))
+
             # Test per-job files: Create empty file on master, ...
             #
             fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
@@ -194,8 +216,14 @@ class hidden:
             with worker.updateFileStream( fileOne ) as f:
                 f.write( "one" )
             # ... read the file as a stream on the master, ....
+
+            # test regular file urls
+            regUrl = master.getPublicUrl(fileOne)
+            self.assertTrue(urlIsValid(regUrl))
+
             with master.readFileStream( fileOne ) as f:
                 self.assertEquals( f.read( ), "one" )
+
             # ... and copy it to a temporary physical file on the master.
             fh, path = tempfile.mkstemp( )
             try:
@@ -215,6 +243,8 @@ class hidden:
                 master.updateFile( fileOne, path )
                 with worker.readFileStream( fileOne ) as f:
                     self.assertEquals( f.read( ), "two" )
+
+
             finally:
                 os.unlink( path )
             # Create a third file to test the last remaining method.
