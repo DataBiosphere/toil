@@ -91,8 +91,9 @@ class AbstractBatchSystem:
         Should cleanly terminate all worker threads.
         """
         raise NotImplementedError('Abstract Method: shutdown')
-    
-    def getRescueJobFrequency(self):
+
+    @classmethod
+    def getRescueJobFrequency(cls):
         """Gets the period of time to wait (floating point, in seconds) between checking for 
         missing/overlong jobs.
         """

@@ -175,7 +175,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         return self.reconciliationPeriod
 
-    def getRescueJobFrequency(self):
+    @classmethod
+    def getRescueJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. We allow this every 10 minutes..
         """

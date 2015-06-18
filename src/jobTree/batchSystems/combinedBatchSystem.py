@@ -84,6 +84,8 @@ class CombinedBatchSystem(AbstractBatchSystem):
             if remaining <= 0:
                 return None
             time.sleep(0.01)
-    
+
+    # FIXME: This should be a static method
+
     def getRescueJobFrequency(self):
         return min(self.batchSystem1.getRescueJobFrequency(), self.batchSystem2.getRescueJobFrequency())

@@ -271,7 +271,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.outputQueue.task_done()
         return (jobID, exitValue)
 
-    def getRescueJobFrequency(self):
+    @classmethod
+    def getRescueJobFrequency(cls):
         """
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """

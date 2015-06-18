@@ -221,7 +221,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
             self.outputQueue2.task_done()
         return jobID
     
-    def getRescueJobFrequency(self):
+    @classmethod
+    def getRescueJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. 
         """

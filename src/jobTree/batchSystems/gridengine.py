@@ -272,8 +272,9 @@ class GridengineBatchSystem(AbstractBatchSystem):
         """We give parasol a second to catch its breath (in seconds)
         """
         return 0.0
-    
-    def getRescueJobFrequency(self):
+
+    @classmethod
+    def getRescueJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. We allow this every 10 minutes..
         """
