@@ -86,17 +86,19 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         # A condition object used to guard it (a semphore would force us to acquire each unit of memory individually)
         self.memoryCondition = Condition()
         logger.info('Setting up the thread pool with %i workers, '
-                    'given a minimum CPU fraction of %i '
+                    'given a minimum CPU fraction of %f '
                     'and a maximum CPU value of %i.', self.numWorkers, self.minCpu, maxCpus)
         self.workerFn = self.badWorker if badWorker else self.worker
         for i in xrange(self.numWorkers):
-            worker = Thread(target=self.workerFn)
+            worker = Thread(target=self.workerFn, args=(self.inputQueue,))
             self.workerThreads.append(worker)
             worker.start()
 
-    def worker(self):
+    # The input queue is passed as an argument because the corresponding attribute is reset to None in shutdown()
+
+    def worker(self,inputQueue):
         while True:
-            args = self.inputQueue.get()
+            args = inputQueue.get()
             if args is None:
                 logger.debug('Sentinel received, exiting worker thread.')
                 return
