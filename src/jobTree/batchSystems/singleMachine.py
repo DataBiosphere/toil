@@ -106,9 +106,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 logger.debug('Acquiring %i bytes of memory from pool of %i.', jobMem, self.memoryPool)
                 self.memoryCondition.acquire()
                 while jobMem > self.memoryPool:
-                    logger.critical('Waiting for memory condition to change.')
+                    logger.debug('Waiting for memory condition to change.')
                     self.memoryCondition.wait()
-                    logger.critical('Memory condition changed.')
+                    logger.debug('Memory condition changed.')
                 self.memoryPool -= jobMem
                 self.memoryCondition.release()
 
@@ -116,11 +116,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     logger.debug('Attempting to acquire %i threads for %i cpus submitted', numThreads, jobCpu)
                     numThreadsAcquired = 0
                     # Acquire first thread blockingly
-                    logger.critical('Acquiring semaphore blockingly.')
+                    logger.debug('Acquiring semaphore blockingly.')
                     self.cpuSemaphore.acquire(blocking=True)
                     try:
                         numThreadsAcquired += 1
-                        logger.critical('Semaphore acquired.')
+                        logger.debug('Semaphore acquired.')
                         while numThreadsAcquired < numThreads:
                             # Optimistically and non-blockingly acquire remaining threads. For every failed attempt
                             # to acquire a thread, atomically increment the overflow instead of the semaphore such
@@ -269,7 +269,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.jobs.pop(jobID)
         logger.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
         self.outputQueue.task_done()
-        return (jobID, exitValue)
+        return jobID, exitValue
 
     def getRescueJobFrequency(self):
         """
