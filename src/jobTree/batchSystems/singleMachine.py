@@ -86,7 +86,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         # A condition object used to guard it (a semphore would force us to acquire each unit of memory individually)
         self.memoryCondition = Condition()
         logger.info('Setting up the thread pool with %i workers, '
-                    'given a minimum CPU fraction of %i '
+                    'given a minimum CPU fraction of %f '
                     'and a maximum CPU value of %i.', self.numWorkers, self.minCpu, maxCpus)
         self.workerFn = self.badWorker if badWorker else self.worker
         for i in xrange(self.numWorkers):
