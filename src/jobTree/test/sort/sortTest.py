@@ -12,7 +12,7 @@ from jobTree.lib.bioio import TestStatus, getLogLevelString
 from jobTree.lib.bioio import system
 from jobTree.lib.bioio import getTempDirectory
 from jobTree.lib.bioio import getTempFile
-from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
+from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, jobTreePackageDirPath
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from jobTree.test import JobTreeTest
 
@@ -140,7 +140,7 @@ class SortTest(JobTreeTest):
             l.sort()
             fileHandle.close()
             # Sort the file
-            rootPath = os.path.join(workflowRootPath(), "test/sort")
+            rootPath = os.path.join(jobTreePackageDirPath(), "test", "sort")
             logLevel = getLogLevelString()
             while True:
                 system("{rootPath}/sort.py "

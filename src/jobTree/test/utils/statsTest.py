@@ -6,7 +6,7 @@ from jobTree.lib.bioio import system
 from jobTree.lib.bioio import getTempDirectory
 from jobTree.lib.bioio import getTempFile
 from jobTree.test.sort.sortTest import makeFileToSort
-from jobTree.common import workflowRootPath
+from jobTree.common import jobTreePackageDirPath
 from jobTree.test import JobTreeTest
 
 
@@ -33,7 +33,7 @@ class StatsTest(JobTreeTest):
             N = 1000
             makeFileToSort(tempFile, lines, maxLineLength)
             # Sort the file
-            rootPath = os.path.join(workflowRootPath(), "test/sort")
+            rootPath = os.path.join(jobTreePackageDirPath(), "test", "sort")
             system("{rootPath}/sort.py "
                    "--jobTree {jobTreeDir} "
                    "--logLevel=DEBUG "

@@ -76,9 +76,12 @@ def nextOpenDescriptor():
     return descriptor
     
 def main():
-    sys.path.append(sys.argv[1])
-    sys.argv.remove(sys.argv[1])
-    
+    # This is assuming that worker.py is at a path ending in "/jobTree/worker.py".
+    sourcePath = os.path.dirname(os.path.dirname(__file__))
+    if sourcePath not in sys.path:
+        # FIXME: prepending to sys.path should fix #103
+        sys.path.append(sourcePath)
+
     #Now we can import all the stuff..
     from jobTree.lib.bioio import setLogLevel
     from jobTree.lib.bioio import getTotalCpuTime

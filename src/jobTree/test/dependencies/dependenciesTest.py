@@ -8,7 +8,7 @@ import sys
 from jobTree.lib.bioio import system
 from jobTree.lib.bioio import parseSuiteTestOptions
 from jobTree.lib.bioio import TempFileTree
-from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, workflowRootPath
+from jobTree.common import parasolIsInstalled, gridEngineIsInstalled, jobTreePackageDirPath
 from jobTree.test import JobTreeTest
 
 @unittest.skip
@@ -44,7 +44,7 @@ class DependenciesTest(JobTreeTest):
                           "--cpusPerJob=%s " \
                           "--sleepTime %s " \
                           "%s" % \
-            (os.path.join(workflowRootPath(), "test", "dependencies"), self.jobTreeDir, logName, 
+            (os.path.join(jobTreePackageDirPath(), "test", "dependencies"), self.jobTreeDir, logName,
              batchSystem, tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime, furtherOptionsString)
             system(commandLine)
         

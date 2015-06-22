@@ -36,7 +36,7 @@ import xml.etree.cElementTree as ET
 
 from jobTree import Process, Queue
 from jobTree.lib.bioio import getTotalCpuTime, logStream
-from jobTree.common import workflowRootPath
+from jobTree.common import jobTreePackageDirPath
 
 logger = logging.getLogger( __name__ )
 
@@ -93,16 +93,14 @@ class JobBatcher:
         self.jobBatchSystemIDToJobStoreIDHash = {}
         self.batchSystem = batchSystem
         self.jobsIssued = 0
-        self.workerPath = os.path.join(workflowRootPath(), "worker.py")
-        self.rootPath = os.path.split(workflowRootPath())[0]
+        self.workerPath = os.path.join(jobTreePackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
     def issueJob(self, jobStoreID, memory, cpu):
         """Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        jobCommand = "%s -E %s %s %s %s" % (sys.executable, self.workerPath,
-                                            self.rootPath, self.jobStoreString, jobStoreID)
+        jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
         jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "

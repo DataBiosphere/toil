@@ -75,13 +75,16 @@ def parasolIsInstalled():
 # Little functions to specify the location of files in the jobTree dir
 ####
 
-def workflowRootPath():
-    """Function for finding external location.
+def jobTreePackageDirPath():
+    """
+    Returns the absolute path of the directory that corresponds to the top-level jobTree package. The return value is
+    guaranteed to end in '/jobTree'.
     """
     import jobTree.target
 
-    i = absSymPath(jobTree.target.__file__)
-    return os.path.dirname(i)
+    result = os.path.dirname(absSymPath(jobTree.target.__file__))
+    assert result.endswith('/jobTree')
+    return result
 
 
 def _addOptions(addGroupFn, defaultStr):

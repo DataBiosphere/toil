@@ -4,7 +4,7 @@ import shlex
 import unittest
 import sys
 
-from jobTree.common import workflowRootPath
+from jobTree.common import jobTreePackageDirPath
 from jobTree.lib.bioio import getBasicOptionParser, parseSuiteTestOptions
 
 log = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class JobTreeTest(unittest.TestCase):
     orig_sys_argv = None
 
     def getScriptPath(self, script_name):
-        return os.path.join(workflowRootPath(), 'utils', script_name + '.py')
+        return os.path.join(jobTreePackageDirPath(), 'utils', script_name + '.py')
 
     @classmethod
     def setUpClass(cls):

@@ -49,14 +49,14 @@ class MultiTarget:
         sys.exit(ret)
 
     def makeRunnable(self, tempDir):
-        from jobTree.common import workflowRootPath
+        from jobTree.common import jobTreePackageDirPath
 
         pickleFile = tempDir.getTempFile(".pickle")
         fileHandle = open(pickleFile, 'w')
         cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         fileHandle.close() 
-        multijobexec = os.path.join(workflowRootPath(), "bin", "multijob")
-        jtPath = os.path.split(workflowRootPath())[0]
+        multijobexec = os.path.join(jobTreePackageDirPath(), "bin", "multijob")
+        jtPath = os.path.split(jobTreePackageDirPath())[0]
         return "%s %s %s" % (multijobexec, pickleFile, jtPath)
 
 
