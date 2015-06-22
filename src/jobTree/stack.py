@@ -47,7 +47,7 @@ class Stack(object):
     """
     def __init__(self, target):
         """
-        :type target: Target
+        :type target: jobTree.target.Target
         """
         self.target = target
         self.verifyTargetAttributesExist(target)
