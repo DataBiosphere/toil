@@ -49,7 +49,7 @@ def truncateFile(fileNameString, tooBig=50000):
 
 def loadStack(command,jobStore):
     commandTokens = command.split()
-    jobStoreFileIdOfPickledTarget = commandTokens[1]
+    jobStoreFileIdOfPickledStack = commandTokens[1]
     userModuleDirPath = commandTokens[2]
     qualifiedTargetClassName=commandTokens[3]
     assert commandTokens[0] == "scriptTree"
@@ -61,7 +61,7 @@ def loadStack(command,jobStore):
     targetModule = importlib.import_module(moduleName)
     thisModule = sys.modules[__name__]
     thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
-    return loadPickleFile(jobStoreFileIdOfPickledTarget, jobStore)
+    return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
         
 def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.

@@ -106,9 +106,10 @@ class Stack(object):
         with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
             jobStore.deleteJobStore()
 
-#####
-#The remainder of the class is private to the user
-####
+    ####
+    # The remainder of the class is private to the user
+    ####
+
     @staticmethod
     def _setFileIDsForPromisedValues(target, jobStore, jobStoreID):
         """
@@ -120,19 +121,19 @@ class Stack(object):
         #promised value because we don't necessarily have access to the jobStore when 
         #the PromisedTargetReturnValue instances are created.
         for PromisedTargetReturnValue in target._rvs.values():
-            if PromisedTargetReturnValue.jobStoreFileID == None:
+            if PromisedTargetReturnValue.jobStoreFileID is None:
                 PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
         #Now recursively do the same for the children and follow ons.
         for childTarget in target.getChildren():
             Stack._setFileIDsForPromisedValues(childTarget, jobStore, jobStoreID)
-        if target.getFollowOn() != None:
+        if target.getFollowOn() is not None:
             Stack._setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
         
     def makeRunnable(self, jobStore, jobStoreID):
-        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileIdOfPickledTarget ):
+        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileIdOfPickledStack ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        qualifiedTargetClassName = self.target.userModule.name + '.' + self.__class__.__name__
-        return "scriptTree %s %s %s" % (jobStoreFileIdOfPickledTarget,
+        qualifiedTargetClassName = self.target.userModule.name + '.' + self.target.__class__.__name__
+        return "scriptTree %s %s %s" % (jobStoreFileIdOfPickledStack,
                                         self.target.userModule.dirPath,
                                         qualifiedTargetClassName)
     
