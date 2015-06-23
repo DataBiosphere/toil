@@ -34,9 +34,15 @@ except ImportError:
 
 class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'extension'))):
     """
-    A decomposed path to a Python module as a namedtuple of three elements, the 1st element (dirPath) being the path
-    to the directory containing the given module, the 2nd element (moduleName) being the name of the module and the
-    3rd element (extension) being the the file extension.
+    A decomposed path to a Python module as a namedtuple of three elements, where
+
+    - the 1st element (dirPath) is the path to the directory that should be added to sys.path before importing the
+    given module,
+
+    - the 2nd element (moduleName) is the fully qualified name  of the module with leading package names separated
+    by dot and
+
+    - the 3rd element (extension) is the the file extension.
     """
 
     @classmethod
@@ -44,8 +50,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
         """
         Return and instance of this class representing the module of the given name. If the given module name is
         "__main__", then that is translated to the actual file name of the top-level script without .py or .pyc
-        extensions. The caller can then add the first element of the returned tuple to sys.path and load the module
-        from there.
+        extensions.
         """
         module = sys.modules[name]
         moduleFilePath = os.path.abspath(module.__file__)
