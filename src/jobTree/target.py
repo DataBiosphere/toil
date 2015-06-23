@@ -26,7 +26,6 @@ import importlib
 
 from jobTree.lib.bioio import getTempFile
 
-
 try:
     import cPickle 
 except ImportError:
@@ -39,30 +38,37 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     to the directory containing the given module, the 2nd element (moduleName) being the name of the module and the
     3rd element (extension) being the the file extension.
     """
-    @staticmethod
-    def create( moduleName ):
+
+    @classmethod
+    def create(cls,name):
         """
         Return and instance of this class representing the module of the given name. If the given module name is
         "__main__", then that is translated to the actual file name of the top-level script without .py or .pyc
         extensions. The caller can then add the first element of the returned tuple to sys.path and load the module
         from there.
         """
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        moduleExtension = None
-        for extension in ('.py', '.pyc'):
-            if moduleName.endswith(extension):
-                moduleExtension = extension
-                moduleName = moduleName[:-len(extension)]
-        if moduleExtension is None:
-            raise RuntimeError( "Can only handle modules loaded from .py or .pyc files, but not '%s'" % moduleName)
-        return ModuleDescriptor( moduleDirPath, moduleName, moduleExtension )
+        module = sys.modules[name]
+        moduleFilePath = os.path.abspath(module.__file__)
+        dirPath = moduleFilePath.split(os.path.sep)
+        extension = None
+        for s in ('.py', '.pyc'):
+            if dirPath[-1].endswith(s):
+                extension = s
+                dirPath[-1] = dirPath[-1][:-len(s)]
+        if extension is None:
+            raise RuntimeError("Can only handle modules loaded from .py or .pyc files, but not '%s'" % name)
+        if name == '__main__':
+            name = dirPath.pop()
+        else:
+            for package in reversed(name.split('.')):
+                assert dirPath.pop() == package
+        return cls(os.path.sep.join(dirPath), name, extension)
 
     def getPath(self):
         """
         Returns the path to the module rerpesented by this descriptor.
         """
         return os.path.join(self.dirPath, self.name + self.extension)
-
 
 class Target(object):
     """
