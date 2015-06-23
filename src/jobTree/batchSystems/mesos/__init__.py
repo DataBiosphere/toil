@@ -195,16 +195,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             executor.executor_id.value = "jobTreeExecutor"
         executor.name = "Test Executor (Python)"
         executor.source = "python_test"
-
-        cpus = executor.resources.add()
-        cpus.name = "cpus"
-        cpus.type = mesos_pb2.Value.SCALAR
-        cpus.scalar.value = 0.1
-
-        mem = executor.resources.add()
-        mem.name = "mem"
-        mem.type = mesos_pb2.Value.SCALAR
-        mem.scalar.value = 32
         return executor
 
     @staticmethod
