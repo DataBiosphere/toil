@@ -19,7 +19,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-
+from collections import namedtuple
 import sys
 import os
 import importlib
@@ -31,6 +31,38 @@ try:
     import cPickle 
 except ImportError:
     import pickle as cPickle
+
+
+class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'extension'))):
+    """
+    A decomposed path to a Python module as a namedtuple of three elements, the 1st element (dirPath) being the path
+    to the directory containing the given module, the 2nd element (moduleName) being the name of the module and the
+    3rd element (extension) being the the file extension.
+    """
+    @staticmethod
+    def create( moduleName ):
+        """
+        Return and instance of this class representing the module of the given name. If the given module name is
+        "__main__", then that is translated to the actual file name of the top-level script without .py or .pyc
+        extensions. The caller can then add the first element of the returned tuple to sys.path and load the module
+        from there.
+        """
+        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
+        moduleExtension = None
+        for extension in ('.py', '.pyc'):
+            if moduleName.endswith(extension):
+                moduleExtension = extension
+                moduleName = moduleName[:-len(extension)]
+        if moduleExtension is None:
+            raise RuntimeError( "Can only handle modules loaded from .py or .pyc files, but not '%s'" % moduleName)
+        return ModuleDescriptor( moduleDirPath, moduleName, moduleExtension )
+
+    def getPath(self):
+        """
+        Returns the path to the module rerpesented by this descriptor.
+        """
+        return os.path.join(self.dirPath, self.name + self.extension)
+
 
 class Target(object):
     """
@@ -45,8 +77,7 @@ class Target(object):
         self.__childCommands = []
         self.__memory = memory
         self.__cpu = cpu
-        self.userModuleDirPath, userModuleName = self._resolveUserModule(self.__module__)
-        self.qualifiedTargetClassName = userModuleName + '.' + self.__class__.__name__
+        self.userModule = ModuleDescriptor.create(self.__module__)
         self.loggingMessages = []
         self._rvs = {}
 
@@ -262,30 +293,14 @@ class Target(object):
         """
         self.loggingMessages.append(str(string))
 
-####
-#Private functions
-#### 
-    @staticmethod
-    def _resolveUserModule( moduleName ):
-        """
-        Returns a tuple of two elements, the first element being the path to the directory containing the given
-        module and the second element being the name of the module. If the given module name is "__main__",
-        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
-        caller can then add the first element of the returned tuple to sys.path and load the module from there.
-        See also worker.loadStack().
-        """
-        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        if moduleName.endswith('.py'):
-            moduleName = moduleName[:-3]
-        elif moduleName.endswith('.pyc'):
-            moduleName = moduleName[:-4]
-        else:
-            raise RuntimeError(
-                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                moduleName)
-        return moduleDirPath, moduleName
-    
+    ####
+    # Protected functions
+    ####
+
+    def _getUserScript(self):
+        return self.userModule.getPath()
+
+
     def _switchOutPromisedTargetReturnValues(self):
         """
         Replaces each PromisedTargetReturnValue instance that is a class 
@@ -347,20 +362,24 @@ class FunctionWrappingTarget(Target):
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Target.__init__(self, memory=memory, cpu=cpu)
-        self.userFunctionModuleDirPath, self.userFunctionModuleName = self._resolveUserModule(userFunction.__module__)
+        self.userFunctionModule = ModuleDescriptor.create(userFunction.__module__)
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
         
     def _getUserFunction( self ):
-        if self.userFunctionModuleDirPath not in sys.path:
+        if self.userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
-            sys.path.append( self.userFunctionModuleDirPath )
-        return getattr( importlib.import_module( self.userFunctionModuleName ), self.userFunctionName )
+            sys.path.append( self.userFunctionModule.dirPath )
+        return getattr( importlib.import_module( self.userFunctionModule.name ), self.userFunctionName )
 
     def run(self):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
+
+    def _getUserScript(self):
+        return self.userFunctionModule.getPath()
+
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
