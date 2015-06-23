@@ -359,6 +359,7 @@ class FunctionWrappingTarget(Target):
     *args and **kwargs are used as the arguments to the function.
     """
     def __init__(self, userFunction, *args, **kwargs):
+        # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Target.__init__(self, memory=memory, cpu=cpu)
