@@ -316,21 +316,37 @@ class Target(object):
         
         This function is called just before the run method.
         """
+
+        # FIXME: why is the substitution only done one level deep? IOW, what about, say, a dict of lists
+
+        # FIXME: This replaces subclasses of list, tuple and dict with the instances of the respective base ...
+        # FIXME: ... class. For a potential fix, see my quick fix for tuples.
+
+        # FIXME: This unnecessarily touches attributes that don't have a promise. It touches attributes of the ...
+        # FIXME: ... target base classes which provably have no PromisedTargetReturnValues in them
+
         #Iterate on the class attributes of the Target instance.
         for attr, value in self.__dict__.iteritems():
-            #If the variable is a PromisedTargetReturnValue replace with the 
-            #actual stored return value of the PromisedTargetReturnValue
-            #else if the variable is a list, tuple or set or dict replace any 
-            #PromisedTargetReturnValue instances within
-            #the container with the stored return value.
-            f = lambda : map(lambda x : x.loadValue(self.jobStore) if 
+            # If the variable is a PromisedTargetReturnValue replace with the
+            # actual stored return value of the PromisedTargetReturnValue
+            # else if the variable is a list, tuple or set or dict replace any
+            # PromisedTargetReturnValue instances within
+            # the container with the stored return value.
+
+            # FIXME: This lambda might become more readable if "value" wasn't closed over but passed in.
+
+            # FIXME: I find lambdas awkward. A simple nested def should suffice
+
+            f = lambda : map(lambda x : x.loadValue(self.jobStore) if
                         isinstance(x, PromisedTargetReturnValue) else x, value)
             if isinstance(value, PromisedTargetReturnValue):
                 self.__dict__[attr] = value.loadValue(self.jobStore)
             elif isinstance(value, list):
                 self.__dict__[attr] = f()
-            elif isinstance(value, tuple):
+            elif value.__class__ == tuple:
                 self.__dict__[attr] = tuple(f())
+            elif isinstance(value, tuple):
+                self.__dict__[attr] = value.__class__(*f())
             elif isinstance(value, set):
                 self.__dict__[attr] = set(f())
             elif isinstance(value, dict):
@@ -373,7 +389,7 @@ class FunctionWrappingTarget(Target):
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
-        
+
     def _getUserFunction( self ):
         if self.userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
