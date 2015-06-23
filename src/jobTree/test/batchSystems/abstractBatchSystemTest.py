@@ -26,15 +26,9 @@ numCores = 2
 #
 numJobs = 2
 
-# How many cores the Mesos batch system allocates for its executor.
-#
-# TODO: This is an implementation detail of the Mesos batch system and shouldn't pollute testing of other batch systems
-#
-numCoresForMesosExecutor = 0.1
-
 # How much CPU to allocate for a particular job
 #
-numCoresPerJob = (numCores - numCoresForMesosExecutor) / numJobs
+numCoresPerJob = (numCores) / numJobs
 
 
 class hidden:
