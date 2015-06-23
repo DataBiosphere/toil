@@ -46,7 +46,7 @@ class Target(object):
         self.__memory = memory
         self.__cpu = cpu
         self.dirName, moduleName = self._resolveMainModule(self.__module__)
-        self.importStrings = {moduleName + '.' + self.__class__.__name__}
+        self.qualifiedClassName = moduleName + '.' + self.__class__.__name__
         self.loggingMessages = []
         self._rvs = {}
 

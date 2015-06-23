@@ -73,7 +73,8 @@ class Stack(object):
         addOptions(parser)
 
     def startJobTree(self, options):
-        """Runs jobtree using the given options (see Stack.getDefaultOptions
+        """
+        Runs jobtree using the given options (see Stack.getDefaultOptions
         and Stack.addJobTreeOptions).
         """
         setLoggingFromOptions(options)
@@ -81,20 +82,20 @@ class Stack(object):
             if not jobTreeState.started: #We setup the first job.
                 memory = self.getMemory()
                 cpu = self.getCpu()
-                if memory == None or memory == sys.maxint:
+                if memory is None or memory == sys.maxint:
                     memory = float(config.attrib["default_memory"])
-                if cpu == None or cpu == sys.maxint:
+                if cpu is None or cpu == sys.maxint:
                     cpu = float(config.attrib["default_cpu"])
-                #Make job, set the command to None initially
+                # Make job, set the command to None initially
                 logger.info("Adding the first job")
                 job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
-                #This calls gives valid jobStoreFileIDs to each promised value
+                # This calls gives valid jobStoreFileIDs to each promised value
                 self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
-                #Now set the command properly (this is a hack)
+                # Now set the command properly (this is a hack)
                 job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
-                #Now write
+                # Now write
                 jobStore.store(job)
-                jobTreeState = jobStore.loadJobTreeState() #This reloads the state
+                jobTreeState = jobStore.loadJobTreeState() # This reloads the state
             else:
                 logger.info("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
             return mainLoop(config, batchSystem, jobStore, jobTreeState)
@@ -130,10 +131,7 @@ class Stack(object):
     def makeRunnable(self, jobStore, jobStoreID):
         with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-
-        i = set( self.target.importStrings )
-        classNames = " ".join(i)
-        return "scriptTree %s %s %s" % (fileStoreID, self.target.dirName, classNames)
+        return "scriptTree %s %s %s" % (fileStoreID, self.target.dirName, self.target.qualifiedClassName)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()
