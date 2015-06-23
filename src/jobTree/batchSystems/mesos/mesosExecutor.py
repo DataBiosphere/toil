@@ -24,7 +24,7 @@ import pickle
 import logging
 import subprocess
 import urllib2
-
+import traceback
 import psutil
 
 import mesos.interface
@@ -50,7 +50,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param slaveInfo:
         :return:
         """
-        log.debug("Registered with framework")
+        log.info("Registered with framework")
 
         statThread = threading.Thread(target=self._sendStats, args=[driver])
         statThread.setDaemon(True)
@@ -63,7 +63,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param slaveInfo:
         :return:
         """
-        log.debug("Re-Registered")
+        log.info("Re-Registered")
 
     def disconnected(self, driver):
         """
@@ -71,7 +71,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param driver:
         :return:
         """
-        print "disconnected from slave"
+        log.critical( "disconnected from slave")
 
     def killTask(self, driver, taskId):
         if taskId in runningTasks:
@@ -85,15 +85,14 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :param message:
         :return:
         """
-        log.warn(message)
-        driver.sendFrameworkMessage(message)
+        log.critical("FATAL ERROR: "+message)
 
     def _sendStats(self, driver):
         while True:
             cpuUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
             driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s" % (cpuUsage, ramUsage))
-            log.info("sent stats message")
+            log.debug("sent stats message")
             sleep(30)
 
     def _callCommand(self, command, taskID):
@@ -111,29 +110,32 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         :return:
         """
         def _run_task():
-            log.debug("Running task %s" % task.task_id.value)
-            self._sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
+            try:
+                log.debug("Running task %s" % task.task_id.value)
+                self._sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
 
-            jobTreeJob = pickle.loads( task.data )
-            os.chdir( jobTreeJob.cwd )
-
-            result = self._callCommand(jobTreeJob.command,task.task_id.value)
-
-            if result == 0:
-                self._sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
-            elif result == -9:
-                self._sendUpdate(driver, task, mesos_pb2.TASK_KILLED)
-            else:
-                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
+                jobTreeJob = pickle.loads( task.data )
+                os.chdir( jobTreeJob.cwd )
+                result = self._callCommand(jobTreeJob.command,task.task_id.value)
+                if result == 0:
+                    self._sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
+                elif result == -9:
+                    self._sendUpdate(driver, task, mesos_pb2.TASK_KILLED)
+                else:
+                    self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
+            except:
+                exc_type, exc_value, exc_trace = sys.exc_info()
+                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED, message=str(traceback.format_exception(exc_type, exc_value, exc_trace)))
 
         # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
         thread = threading.Thread(target=_run_task)
         thread.start()
 
-    def _sendUpdate(self, driver, task, TASK_STATE):
+    def _sendUpdate(self, driver, task, TASK_STATE, message=''):
         log.debug("Sending status update...")
         update = mesos_pb2.TaskStatus()
         update.task_id.value = task.task_id.value
+        update.message=message
         update.state = TASK_STATE
         driver.sendStatusUpdate(update)
         log.debug("Sent status update")
