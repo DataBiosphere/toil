@@ -129,9 +129,11 @@ class Stack(object):
             Stack._setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
         
     def makeRunnable(self, jobStore, jobStoreID):
-        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
+        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileIdOfPickledTarget ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        return "scriptTree %s %s %s" % (fileStoreID, self.target.dirName, self.target.qualifiedClassName)
+        return "scriptTree %s %s %s" % (jobStoreFileIdOfPickledTarget,
+                                        self.target.userModuleDirPath,
+                                        self.target.qualifiedTargetClassName)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()

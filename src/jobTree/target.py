@@ -45,8 +45,8 @@ class Target(object):
         self.__childCommands = []
         self.__memory = memory
         self.__cpu = cpu
-        self.dirName, moduleName = self._resolveMainModule(self.__module__)
-        self.qualifiedClassName = moduleName + '.' + self.__class__.__name__
+        self.userModuleDirPath, userModuleName = self._resolveUserModule(self.__module__)
+        self.qualifiedTargetClassName = userModuleName + '.' + self.__class__.__name__
         self.loggingMessages = []
         self._rvs = {}
 
@@ -266,7 +266,7 @@ class Target(object):
 #Private functions
 #### 
     @staticmethod
-    def _resolveMainModule( moduleName ):
+    def _resolveUserModule( moduleName ):
         """
         Returns a tuple of two elements, the first element being the path to the directory containing the given
         module and the second element being the name of the module. If the given module name is "__main__",
@@ -343,24 +343,24 @@ class FunctionWrappingTarget(Target):
     Function can not be nested function or class function, currently.
     *args and **kwargs are used as the arguments to the function.
     """
-    def __init__(self, fn, *args, **kwargs):
+    def __init__(self, userFunction, *args, **kwargs):
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Target.__init__(self, memory=memory, cpu=cpu)
-        self.fnModuleDirPath, self.fnModuleName = self._resolveMainModule(fn.__module__)
-        self.fnName = str(fn.__name__)
+        self.userFunctionModuleDirPath, self.userFunctionModuleName = self._resolveUserModule(userFunction.__module__)
+        self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
         
-    def _getFunc( self ):
-        if self.fnModuleDirPath not in sys.path:
-            sys.path.append( self.fnModuleDirPath )
-        return getattr( importlib.import_module( self.fnModuleName ), self.fnName )
+    def _getUserFunction( self ):
+        if self.userFunctionModuleDirPath not in sys.path:
+            # FIXME: prepending to sys.path will probably fix #103
+            sys.path.append( self.userFunctionModuleDirPath )
+        return getattr( importlib.import_module( self.userFunctionModuleName ), self.userFunctionName )
 
     def run(self):
-        func = self._getFunc( )
-        #Now run the wrapped function
-        return func(*self._args, **self._kwargs)
+        userFunction = self._getUserFunction( )
+        return userFunction(*self._args, **self._kwargs)
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
@@ -369,8 +369,8 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     to the wrapping target.
     """
     def run(self):
-        func = self._getFunc( )
-        return func(*((self,) + tuple(self._args)), **self._kwargs)
+        userFunction = self._getUserFunction( )
+        return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
 
 class PromisedTargetReturnValue():
     """

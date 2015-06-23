@@ -49,18 +49,19 @@ def truncateFile(fileNameString, tooBig=50000):
 
 def loadStack(command,jobStore):
     commandTokens = command.split()
+    jobStoreFileIdOfPickledTarget = commandTokens[1]
+    userModuleDirPath = commandTokens[2]
+    qualifiedTargetClassName=commandTokens[3]
     assert commandTokens[0] == "scriptTree"
-    moduleDirPath = commandTokens[2]
-    if moduleDirPath not in sys.path:
-        sys.path.append(moduleDirPath)
-    for targetClassName in commandTokens[3:]:
-        l = targetClassName.split(".")
-        moduleName = ".".join(l[:-1])
-        targetClassName = l[-1]
-        targetModule = importlib.import_module(moduleName)
-        thisModule = sys.modules[__name__]
-        thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
-    return loadPickleFile(commandTokens[1], jobStore)
+    if userModuleDirPath not in sys.path:
+        sys.path.append(userModuleDirPath)
+    modulePath = qualifiedTargetClassName.split(".")
+    moduleName = ".".join(modulePath[:-1])
+    targetClassName = modulePath[-1]
+    targetModule = importlib.import_module(moduleName)
+    thisModule = sys.modules[__name__]
+    thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
+    return loadPickleFile(jobStoreFileIdOfPickledTarget, jobStore)
         
 def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
@@ -257,18 +258,14 @@ def main():
             ##########################################
         
             if command != "": #Not a stub
-                if command[:11] == "scriptTree ":
-                    ##########################################
-                    #Run the target
-                    ##########################################
-
-                    messages = loadStack(command,jobStore).execute(job=job, stats=stats,
+                if command.startswith("scriptTree "):
+                    stack = loadStack(command, jobStore)
+                    messages = stack.execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
                                     defaultMemory=defaultMemory, 
                                     defaultCpu=defaultCpu, depth=depth)
-            
                 else: #Is another command
                     system(command)
                     messages = []
