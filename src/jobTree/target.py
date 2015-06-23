@@ -46,13 +46,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     """
 
     @classmethod
-    def create(cls,name):
+    def create(cls,moduleName):
         """
         Return and instance of this class representing the module of the given name. If the given module name is
         "__main__", then that is translated to the actual file name of the top-level script without .py or .pyc
         extensions.
         """
-        module = sys.modules[name]
+        module = sys.modules[moduleName]
         moduleFilePath = os.path.abspath(module.__file__)
         dirPath = moduleFilePath.split(os.path.sep)
         extension = None
@@ -61,19 +61,20 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
                 extension = s
                 dirPath[-1] = dirPath[-1][:-len(s)]
         if extension is None:
-            raise RuntimeError("Can only handle modules loaded from .py or .pyc files, but not '%s'" % name)
-        if name == '__main__':
-            name = dirPath.pop()
+            raise RuntimeError("Can only handle modules loaded from .py or .pyc files, but not '%s'" % moduleName)
+        if moduleName == '__main__':
+            moduleName = dirPath.pop()
         else:
-            for package in reversed(name.split('.')):
-                assert dirPath.pop() == package
-        return cls(os.path.sep.join(dirPath), name, extension)
+            for package in reversed(moduleName.split('.')):
+                dirPathTail = dirPath.pop()
+                assert dirPathTail == package
+        return cls(dirPath=os.path.sep.join(dirPath), name=moduleName, extension=extension)
 
     def getPath(self):
         """
-        Returns the path to the module rerpesented by this descriptor.
+        Returns the path to the file containing the module represented by this descriptor.
         """
-        return os.path.join(self.dirPath, self.name + self.extension)
+        return os.path.join(self.dirPath, self.name.replace('.',os.path.sep) + self.extension)
 
 class Target(object):
     """
