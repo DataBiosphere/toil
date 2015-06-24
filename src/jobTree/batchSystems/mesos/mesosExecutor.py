@@ -66,6 +66,11 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         if taskId in runningTasks:
             os.kill(runningTasks[taskId], 9)
 
+    def shutdown(self, driver):
+        log.critical("Shutting Down Executor...")
+        for taskId, pid in runningTasks.items():
+            self.killTask(driver, taskId)
+        log.critical("Executor Shut Down")
 
     def error(self, driver, message):
         """
@@ -108,7 +113,10 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
                     self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
             except:
                 exc_type, exc_value, exc_trace = sys.exc_info()
-                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED, message=str(traceback.format_exception(exc_type, exc_value, exc_trace)))
+                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED,
+                                 message=str(traceback.format_exception_only(exc_type, exc_value)))
+
+            del runningTasks[task.task_id.value]
 
         # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
         thread = threading.Thread(target=_run_task)
@@ -134,7 +142,9 @@ def main( executorClass ):
     logging.basicConfig( level=logging.DEBUG )
     log.debug( "Starting executor" )
     driver = mesos.native.MesosExecutorDriver( executorClass( ) )
-    sys.exit( 0 if driver.run( ) == mesos_pb2.DRIVER_STOPPED else 1 )
+    exit_value = 0 if driver.run( ) == mesos_pb2.DRIVER_STOPPED else 1
+    assert len(runningTasks) == 0
+    sys.exit(exit_value)
 
 
 if __name__ == "__main__":
