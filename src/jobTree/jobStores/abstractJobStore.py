@@ -273,7 +273,7 @@ class AbstractJobStore( object ):
     def readSharedFileStream( self, sharedFileName ):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
-        by the given ID.
+        by the given name.
         """
         raise NotImplementedError( )
 

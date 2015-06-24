@@ -20,7 +20,9 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+from collections import namedtuple
 from contextlib import contextmanager
+import hashlib
 import logging
 import os
 from subprocess import CalledProcessError
@@ -245,7 +247,6 @@ def loadBatchSystemClass(config, key="batch_system"):
 
     :param config: the current configuration
     :param key: the name of the configuration attribute that holds the configured batch system name
-    :rtype: (type,dict)
     """
     batchSystemName = config.attrib[key]
     kwargs = dict(config=config,
@@ -297,12 +298,12 @@ def createBatchSystem(config, batchSystemClass, kwargs):
     """
     batchSystem = batchSystemClass(**kwargs)
     if "big_batch_system" in config.attrib:
-        bigBatchSystemClass, args, kwargs = loadBatchSystemClass(config, key="big_batch_system")
+        bigBatchSystemClass, kwargs = loadBatchSystemClass(config, key="big_batch_system")
         bigMemoryThreshold = int(config.attrib["big_memory_threshold"])
         bigCpuThreshold = int(config.attrib["big_cpu_threshold"])
         kwargs['maxCpus'] = int(config.attrib["big_max_cpus"])
         kwargs['maxMemory'] = int(config.attrib["big_max_memory"])
-        bigBatchSystem = bigBatchSystemClass(*args, **kwargs)
+        bigBatchSystem = bigBatchSystemClass(**kwargs)
         # noinspection PyUnusedLocal
         def batchSystemChoiceFn(command, memory, cpu):
             return memory <= bigMemoryThreshold and cpu <= bigCpuThreshold
@@ -331,7 +332,7 @@ def loadJobStore(jobStoreString, config=None):
 
     :param jobStoreString: see exception message below
     :param config: see AbstractJobStore.__init__
-    :return: a concrete subclass of AbstractJobStore
+    :return: an instance of a concrete subclass of AbstractJobStore
     :rtype : jobStores.abstractJobStore.AbstractJobStore
     """
     if jobStoreString[0] in '/.':
@@ -367,16 +368,46 @@ def serialiseEnvironment(jobStore):
     logger.info("Written the environment for the jobs to the environment file")
 
 
+class HotDeployedResource(namedtuple('HotDeployedResource', ('name', 'url', 'md5'))):
+    """
+    Represents a file that will be deployed to each node before the targets in the actual user script are invoked.
+    Each instance is a tuple with three string elements: name, url and md5. The name element represents a logical
+    name for the resource. It has to be unique within the given job store. The url element is a file: or http: URL
+    from which the resource's contents can be obtained. The md5 element is the expected MD5 checksum of that content,
+    in hexdigest form. The MD5 allows for checksumming and caching of hot-deployed resources.
+    """
+
+    @classmethod
+    def create(cls, jobStore, path, name=None):
+        """
+        Creates and returns a hot-deployed resource with the contents of the file at the given path, using the given
+        name for the resource or the basename of the given file if absent.
+        """
+        md5 = hashlib.md5()
+        if name is None:
+            name = os.path.basename(path)
+        with open(path) as src:
+            with jobStore.writeSharedFileStream(name) as dst:
+                userScript = src.read()
+                md5.update(userScript)
+                dst.write(userScript)
+        url = jobStore.getSharedPublicUrl(name)
+        return cls(name=name, url=url, md5=md5.hexdigest())
+
+
 @contextmanager
-def setupJobTree(options):
-    """Creates the data-structures needed for running a jobTree.
+def setupJobTree(options, userScriptPath=None):
+    """
+    Creates the data-structures needed for running a jobTree.
     """
     verifyJobTreeOptions(options)
     config = createConfig(options)
     batchSystemClass, kwargs = loadBatchSystemClass(config)
     addBatchSystemConfigOptions(config, batchSystemClass, options)
     jobStore = loadJobStore(config.attrib["job_store"], config=config)
-    # TODO: add userScript URL to kwargs here
+    if userScriptPath is not None and batchSystemClass.supportsHotDeployment():
+        kwargs['userScript'] = HotDeployedResource.create(jobStore, userScriptPath)
+        # TODO: jobTree distribution
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:
         jobTreeState = jobStore.loadJobTreeState()

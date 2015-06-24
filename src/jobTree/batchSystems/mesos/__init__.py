@@ -9,28 +9,42 @@ import logging
 
 from mesos.interface.mesos_pb2 import TaskID
 from mesos.interface import mesos_pb2
+
 from mesos.native import MesosSchedulerDriver
 import mesos
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos import mesosExecutor, badExecutor
 
+log = logging.getLogger(__name__)
 
-log = logging.getLogger( __name__ )
+TaskData = namedtuple('TaskData', (
+    # Time when the task was started
+    'startTime',
+    # Mesos' ID of the slave where task is being run
+    'slaveID',
+    # Mesos' ID of the executor running the task
+    'executorID'))
 
-class TaskData(namedtuple("TaskData", ["startTime", "slaveID", "executorID"])):
-    pass
+ResourceRequirement = namedtuple('ResourceRequirement', (
+    # Number of bytes (!) needed for a task
+    'memory',
+    # Number of CPU cores needed for a task
+    'cpu'))
 
-class ResourceRequirement(namedtuple("ResourceRequirement", ["memory", "cpu"])):
-    pass
-
-class JobTreeJob:
-    # describes basic job tree job, with various resource requirements.
-    def __init__(self, jobID, cpu, memory, command, cwd):
-        self.resources = ResourceRequirement(memory=memory, cpu=cpu)
-        self.jobID = jobID
-        self.command = command
-        self.cwd = cwd
+JobTreeJob = namedtuple('JobTreeJob', (
+    # A job ID specific to this batch system implementation
+    'jobID',
+    # A ResourceRequirement tuple describing the resources needed by this job
+    'resources',
+    # The command to be run on the worker node
+    'command',
+    # FIXME: still needed ???
+    'cwd',
+    # The hot-deployed resource containing the user script
+    'userScript',
+    # The hot-deployed resource containing the jobTree source tarball
+    'jobTreeDistribution'))
 
 
 class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
@@ -38,19 +52,27 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     Class describes the mesos scheduler framework which acts as the mesos batch system for jobtree
     First methods are jobtree callbacks, then framework methods in rough chronological order of call.
     """
-    def __init__(self, config, maxCpus, maxMemory, badExecutor=False):
+
+    @staticmethod
+    def supportsHotDeployment():
+        return True
+
+    def __init__(self, config, maxCpus, maxMemory, badExecutor=False, userScript=None, jobTreeDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
         Thread.__init__(self)
+        # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
+        # passed along in every Mesos task. See jobTree.common.HotDeployedResource for details.
+        self.userScript = userScript
+        self.jobTreeDistribution = jobTreeDistribution
 
-        # written to when mesos kills tasks, as directed by jobtree
+        # Written to when mesos kills tasks, as directed by jobtree
         self.killedSet = set()
 
-        # dictionary of queues, which jobTree assigns jobs to. Each queue represents a job type,
+        # Dictionary of queues, which jobTree assigns jobs to. Each queue represents a job type,
         # defined by resource usage
-        # FIXME: Are dictionaries thread safe?
         self.jobQueueList = defaultdict(list)
 
-        # ip of mesos master. specified in MesosBatchSystem, currently loopback
+        # IP of mesos master. specified in MesosBatchSystem, currently loopback
         self.masterIP = "127.0.0.1:5050"
 
         # queue of jobs to kill, by jobID.
@@ -62,13 +84,15 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # Queue of jobs whose status has been updated, according to mesos. Req'd by jobTree
         self.updatedJobsQueue = Queue()
 
-        # checks environment variables to determine wether to use implicit/explicit Acknowledgments
+        # Checks environment variables to determine wether to use implicit/explicit Acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
 
-        # reference to our schedulerDriver, to be instantiated in run()
+        # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
         self.driver = None
 
-        # returns mesos executor object, which is merged into mesos tasks as they are built
+        # FIXME: This comment makes no sense to me
+
+        # Returns mesos executor object, which is merged into mesos tasks as they are built
         if badExecutor:
             self.executor = self.buildExecutor(bad=True)
         else:
@@ -83,18 +107,22 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.start()
 
     def issueJob(self, command, memory, cpu):
-        """Issues the following command returning a unique jobID. Command
-        is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cpu is the number of cpus needed for
-        the job and error-file is the path of the file to place any std-err/std-out in.
+        """
+        Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
+        the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
+        is the path of the file to place any std-err/std-out in.
         """
         # puts job into job_type_queue to be run by mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cpu)
         jobID = self.nextJobID
         self.nextJobID += 1
 
-        # TODO: this is convoluted, construct ResourceSummary here and pass to JobTreeJob constructor
-        job = JobTreeJob(jobID=jobID, cpu=cpu, memory=memory, command=command, cwd=os.getcwd())
+        job = JobTreeJob(jobID=jobID,
+                         resources=ResourceRequirement(memory=memory, cpu=cpu),
+                         command=command,
+                         cwd=os.getcwd(),
+                         userScript=self.userScript,
+                         jobTreeDistribution=self.jobTreeDistribution)
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
@@ -125,41 +153,41 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
         while localSet:
             log.debug("in while loop")
-            intersection=localSet.intersection(self.killedSet)
-            localSet-=intersection
-            self.killedSet-=intersection
+            intersection = localSet.intersection(self.killedSet)
+            localSet -= intersection
+            self.killedSet -= intersection
             if not intersection:
                 log.debug("sleeping in the while")
                 time.sleep(1)
 
     def getIssuedJobIDs(self):
-        """A list of jobs (as jobIDs) currently issued (may be running, or maybe
-        just waiting).
+        """
+        A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
         # TODO: Ensure jobList holds jobs that have been "launched" from mesos
         jobList = []
         for k, queue in self.jobQueueList.iteritems():
             for item in queue:
                 jobList.append(item.jobID)
-        for k,v in self.runningJobMap.iteritems():
+        for k, v in self.runningJobMap.iteritems():
             jobList.append(k)
 
         return jobList
 
     def getRunningJobIDs(self):
-        """Gets a map of jobs (as jobIDs) currently running (not just waiting)
-        and a how long they have been running for (in seconds).
         """
-        currentTime= dict()
-        for jobID,data in self.runningJobMap.iteritems():
-            currentTime[jobID] = time.time()-data.startTime
+        Gets a map of jobs (as jobIDs) currently running (not just waiting) and a how long they have been running for
+        (in seconds).
+        """
+        currentTime = dict()
+        for jobID, data in self.runningJobMap.iteritems():
+            currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
     def getUpdatedJob(self, maxWait):
-        """Gets a job that has updated its status,
-        according to the job manager. Max wait gives the number of seconds to pause
-        waiting for a result. If a result is available returns (jobID, exitValue)
-        else it returns None.
+        """
+        Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
+        pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
         """
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
         if i == None:
@@ -170,45 +198,43 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         return i
 
     def getWaitDuration(self):
-        """Gets the period of time to wait (floating point, in seconds) between checking for
-        missing/overlong jobs.
+        """
+        Gets the period of time to wait (floating point, in seconds) between checking for missing/overlong jobs.
         """
         return self.reconciliationPeriod
 
     @classmethod
     def getRescueJobFrequency(cls):
-        """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
         """
-        return 1800 #Half an hour
+        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2, making it expensive. We
+        allow this every 10 minutes..
+        """
+        return 1800  # Half an hour
 
     def buildExecutor(self, bad):
         """
-        build executor here to avoid cluttering constructor
-        :return:
+        Creates and returns an ExecutorInfo instance representing either the regular or the "bad" test executor.
         """
+
+        # FIXME: This isn't going to work since jobTree might be installed in a different location on the slaves.
+        # FIXME: ... setup.py should install the executor as an entry point which will place it on PATH
+
+        def scriptPath(executorModule):
+            path = executorModule.__file__
+            if path.endswith('.pyc'):
+                path = path[:-1]
+            return path
+
         executor = mesos_pb2.ExecutorInfo()
         if bad:
-            executor.command.value = self.executorScriptPath(executorFile=badExecutor)
+            executor.command.value = scriptPath(badExecutor)
             executor.executor_id.value = "badExecutor"
         else:
-            executor.command.value = self.executorScriptPath(executorFile=mesosExecutor)
+            executor.command.value = scriptPath(mesosExecutor)
             executor.executor_id.value = "jobTreeExecutor"
         executor.name = "Test Executor (Python)"
         executor.source = "python_test"
         return executor
-
-    @staticmethod
-    def executorScriptPath(executorFile):
-        """
-        gets path to executor that will run on slaves. Originally was hardcoded, this
-        method is more flexible. Return path to .py files only
-        :return:
-        """
-        path = executorFile.__file__
-        if path.endswith('.pyc'):
-            path = path[:-1]
-        return path
 
     def getImplicit(self):
         """
@@ -228,27 +254,27 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         :return:
         """
         framework = mesos_pb2.FrameworkInfo()
-        framework.user = "" # Have Mesos fill in the current user.
+        framework.user = ""  # Have Mesos fill in the current user.
         framework.name = "JobTree Framework (Python)"
 
         # TODO(vinod): Make checkpointing the default when it is default
         # on the slave.
         if os.getenv("MESOS_CHECKPOINT"):
-            log.debug( "Enabling checkpoint for the framework")
+            log.debug("Enabling checkpoint for the framework")
             framework.checkpoint = True
 
         if os.getenv("MESOS_AUTHENTICATE"):
 
             # TODO: let's delete this branch and replace it with raising a NotImplementedError
 
-            log.debug( "Enabling authentication for the framework")
+            log.debug("Enabling authentication for the framework")
 
             if not os.getenv("DEFAULT_PRINCIPAL"):
-                log.error( "Expecting authentication principal in the environment")
+                log.error("Expecting authentication principal in the environment")
                 sys.exit(1)
 
             if not os.getenv("DEFAULT_SECRET"):
-                log.error( "Expecting authentication secret in the environment")
+                log.error("Expecting authentication secret in the environment")
                 sys.exit(1)
 
             credential = mesos_pb2.Credential()
@@ -314,16 +340,18 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         task = self._createTask(jt_job, offer)
         return task
 
-    def _deleteByJobID(self, jobID,):
+    def _deleteByJobID(self, jobID, ):
         for key, jobType in self.jobQueueList.iteritems():
             for job in jobType:
                 if jobID == job.jobID:
                     jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
-        self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(), slaveID=offer.slave_id,
+        self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
+                                                               slaveID=offer.slave_id,
                                                                executorID=task.executor.executor_id)
-        # remove the element from the list FIXME: not efficient, I'm sure.
+        # remove the element from the list
+        # FIXME: not efficient, I'm sure.
         self._deleteByJobID(int(task.task_id.value))
 
     def resourceOffers(self, driver, offers):
@@ -332,7 +360,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         job_types = self._sortJobsByResourceReq()
 
-        if len(job_types)==0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
+        if len(job_types) == 0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
             log.debug("Declining offers")
             # If there are no jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
@@ -343,16 +371,16 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             tasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCpus, offerMem = self._determineOfferResources(offer)
-            log.debug( "Received offer %s with cpus: %s and mem: %s" \
-                  % (offer.id.value, offerCpus, offerMem))
+            log.debug("Received offer %s with cpus: %s and mem: %s" \
+                      % (offer.id.value, offerCpus, offerMem))
             remainingCpus = offerCpus
             remainingMem = offerMem
 
             for job_type in job_types:
-                nextToLaunchIndex=0
+                nextToLaunchIndex = 0
                 # Because we are not removing from the list until outside of the while loop, we must decrement the
                 # number of jobs left to run ourselves to avoid infinite loop.
-                while (len(self.jobQueueList[job_type])-nextToLaunchIndex > 0) and \
+                while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
                                 remainingCpus >= job_type.cpu and \
                                 remainingMem >= self.__bytesToMB(job_type.memory):  # job tree specifies mem in bytes.
 
@@ -360,17 +388,18 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
                     if int(task.task_id.value) not in self.runningJobMap:
                         # check to make sure task isn't already running (possibly in very unlikely edge case)
                         tasks.append(task)
-                        log.debug( "Preparing to launch mesos task %s using offer %s..." % (task.task_id.value, offer.id.value))
+                        log.debug("Preparing to launch mesos task %s using offer %s..." % (
+                        task.task_id.value, offer.id.value))
                         remainingCpus -= job_type.cpu
                         remainingMem -= self.__bytesToMB(job_type.memory)
-                    nextToLaunchIndex+=1
+                    nextToLaunchIndex += 1
 
             # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
             driver.launchTasks(offer.id, tasks)
 
             for task in tasks:
                 self._updateStateToRunning(offer, task)
-                log.debug( "...launching mesos task %s" % task.task_id.value)
+                log.debug("...launching mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
                 log.warn("Offer not large enough to run any tasks")
@@ -398,7 +427,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         mem = task.resources.add()
         mem.name = "mem"
         mem.type = mesos_pb2.Value.SCALAR
-        mem.scalar.value = jt_job.resources.memory/1000000
+        mem.scalar.value = jt_job.resources.memory / 1000000
         return task
 
     def __updateState(self, intID, exitStatus):
@@ -413,11 +442,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         callback (or the process exits) another status update will be delivered (note, however, that this is currently
         not true if the slave sending the status update is lost/fails during that time).
         """
-        log.debug( "Task %s is in a state %s" % \
-            (update.task_id.value, mesos_pb2.TaskState.Name(update.state)))
+        log.debug("Task %s is in a state %s" % \
+                  (update.task_id.value, mesos_pb2.TaskState.Name(update.state)))
 
-        intID=int(update.task_id.value) # jobTree keeps jobIds as ints
-        stringID=update.task_id.value # mesos keeps jobIds as strings
+        intID = int(update.task_id.value)  # jobTree keeps jobIds as ints
+        stringID = update.task_id.value  # mesos keeps jobIds as strings
 
         try:
             self.killSet.remove(intID)
@@ -430,11 +459,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             self.__updateState(intID, 0)
 
         if update.state == mesos_pb2.TASK_LOST or \
-           update.state == mesos_pb2.TASK_FAILED or \
-           update.state == mesos_pb2.TASK_KILLED or \
-           update.state == mesos_pb2.TASK_ERROR:
-            log.warning( "Task %s is in unexpected state %s with message '%s'" \
-                % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
+                        update.state == mesos_pb2.TASK_FAILED or \
+                        update.state == mesos_pb2.TASK_KILLED or \
+                        update.state == mesos_pb2.TASK_ERROR:
+            log.warning("Task %s is in unexpected state %s with message '%s'" \
+                        % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
             self.__updateState(intID, 1)
 
         # Explicitly acknowledge the update if implicit acknowledgements
@@ -457,8 +486,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         # FIXME: we need additional reconciliation. What about the tasks the master knows about but haven't updated?
         now = time.time()
-        if now > self.lastReconciliation+self.reconciliationPeriod:
-            self.lastReconciliation=now
+        if now > self.lastReconciliation + self.reconciliationPeriod:
+            self.lastReconciliation = now
             driver.reconcileTasks(list(self.runningJobMap.keys()))
 
     def reregistered(self, driver, masterInfo):
@@ -478,4 +507,4 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         """
         used when converting job tree reqs to mesos reqs
         """
-        return mem/1024/1024
+        return mem / 1024 / 1024

@@ -18,12 +18,10 @@
 
 import os
 import sys
-import hashlib
 import threading
 import pickle
 import logging
 import subprocess
-import urllib2
 import traceback
 import psutil
 
@@ -37,18 +35,14 @@ lock = threading.Lock()
 runningTasks={}
 
 class JobTreeMesosExecutor(mesos.interface.Executor):
-    """Part of mesos framework, runs on mesos slave. A jobTree job is passed to it via the task.data field,
-     and launched via call(jobTree.command). Uses the ExecutorDriver to communicate.
+    """
+    Part of mesos framework, runs on mesos slave. A jobTree job is passed to it via the task.data field, and launched
+    via call(jobTree.command). Uses the ExecutorDriver to communicate.
     """
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
-        :param driver:
-        :param executorInfo:
-        :param frameworkInfo:
-        :param slaveInfo:
-        :return:
         """
         log.info("Registered with framework")
 
@@ -59,17 +53,12 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
     def reregistered(self, driver, slaveInfo):
         """
         Invoked when the executor re-registers with a restarted slave.
-        :param driver:
-        :param slaveInfo:
-        :return:
         """
         log.info("Re-Registered")
 
     def disconnected(self, driver):
         """
         Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being restarted due to an upgrade).
-        :param driver:
-        :return:
         """
         log.critical( "disconnected from slave")
 
@@ -81,9 +70,6 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
     def error(self, driver, message):
         """
         Invoked when a fatal error has occurred with the executor and/or executor driver.
-        :param driver:
-        :param message:
-        :return:
         """
         log.critical("FATAL ERROR: "+message)
 
@@ -105,9 +91,6 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
     def launchTask(self, driver, task):
         """
         Invoked by SchedulerDriver when a task has been launched on this executor
-        :param driver:
-        :param task:
-        :return:
         """
         def _run_task():
             try:
@@ -143,9 +126,6 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
     def frameworkMessage(self, driver, message):
         """
         Invoked when a framework message has arrived for this executor.
-        :param driver:
-        :param message:
-        :return:
         """
         log.debug("Received message from framework: {}".format(message))
 

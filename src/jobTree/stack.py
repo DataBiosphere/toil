@@ -78,7 +78,7 @@ class Stack(object):
         and Stack.addJobTreeOptions).
         """
         setLoggingFromOptions(options)
-        with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
+        with setupJobTree(options,self.target.getUserScript()) as (config, batchSystem, jobStore, jobTreeState):
             if not jobTreeState.started: #We setup the first job.
                 memory = self.getMemory()
                 cpu = self.getCpu()
@@ -101,7 +101,8 @@ class Stack(object):
             return mainLoop(config, batchSystem, jobStore, jobTreeState)
     
     def cleanup(self, options):
-        """Removes the jobStore backing the jobTree.
+        """
+        Removes the jobStore backing the jobTree.
         """
         with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
             jobStore.deleteJobStore()

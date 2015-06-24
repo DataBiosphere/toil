@@ -305,13 +305,12 @@ class Target(object):
         """
         self.loggingMessages.append(str(string))
 
+    def getUserScript(self):
+        return self.userModule.getPath()
+
     ####
     # Protected functions
     ####
-
-    def _getUserScript(self):
-        return self.userModule.getPath()
-
 
     def _switchOutPromisedTargetReturnValues(self):
         """
@@ -406,7 +405,7 @@ class FunctionWrappingTarget(Target):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
 
-    def _getUserScript(self):
+    def getUserScript(self):
         return self.userFunctionModule.getPath()
 
 
