@@ -271,15 +271,13 @@ def loadBatchSystemClass(config, key="batch_system"):
         batchSystemClass = LSFBatchSystem
         logger.info('Using the lsf batch system')
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
-        from jobTree.batchSystems.mesos import MesosBatchSystem
-
+        from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
         logger.info('Using the mesos batch system')
     elif batchSystemName == 'badmesos' or batchSystemName == 'badMesos':
-        from jobTree.batchSystems.mesos import MesosBatchSystem
-
+        from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs['badExecutor'] = True
+        kwargs['useBadExecutor'] = True
         logger.info('Using the mesos batch system')
     else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)

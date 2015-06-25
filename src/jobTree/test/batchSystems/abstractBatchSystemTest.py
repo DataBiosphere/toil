@@ -10,7 +10,7 @@ import time
 import multiprocessing
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from jobTree.batchSystems.mesos import MesosBatchSystem
+from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from jobTree.test import JobTreeTest

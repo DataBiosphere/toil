@@ -18,18 +18,18 @@
 import itertools
 import logging
 
-from jobTree.batchSystems.mesos.mesosExecutor import JobTreeMesosExecutor, main
+from jobTree.batchSystems.mesos.executor import MesosExecutor, main
 
 
 log = logging.getLogger( __name__ )
 
-class BadExecutor(JobTreeMesosExecutor):
+class BadMesosExecutor(MesosExecutor):
 
     i = itertools.count()
 
     def _callCommand(self, command, taskID):
         if self.i.next() % 2 == 0:
-            result = super(BadExecutor, self)._callCommand(command,taskID)
+            result = super(BadMesosExecutor, self)._callCommand(command,taskID)
             if result != 0:
                 log.debug("Command {} actually failed with {}".format(command,result))
             return result
@@ -38,4 +38,4 @@ class BadExecutor(JobTreeMesosExecutor):
             return 1
 
 if __name__ == "__main__":
-    main( BadExecutor )
+    main( BadMesosExecutor )

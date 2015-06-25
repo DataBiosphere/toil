@@ -23,22 +23,26 @@ import pickle
 import logging
 import subprocess
 import traceback
-import psutil
+from time import sleep
 
+import psutil
 import mesos.interface
 from mesos.interface import mesos_pb2
-from time import sleep
 import mesos.native
 
-log = logging.getLogger( __name__ )
-lock = threading.Lock()
-runningTasks={}
+log = logging.getLogger(__name__)
 
-class JobTreeMesosExecutor(mesos.interface.Executor):
+
+class MesosExecutor(mesos.interface.Executor):
     """
     Part of mesos framework, runs on mesos slave. A jobTree job is passed to it via the task.data field, and launched
     via call(jobTree.command). Uses the ExecutorDriver to communicate.
     """
+
+    def __init__(self):
+        super(MesosExecutor, self).__init__()
+        self.popenLock = threading.Lock()
+        self.runningTasks = {}
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
@@ -60,15 +64,15 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         """
         Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being restarted due to an upgrade).
         """
-        log.critical( "disconnected from slave")
+        log.critical("disconnected from slave")
 
     def killTask(self, driver, taskId):
-        if taskId in runningTasks:
-            os.kill(runningTasks[taskId], 9)
+        if taskId in self.runningTasks:
+            os.kill(self.runningTasks[taskId], 9)
 
     def shutdown(self, driver):
         log.critical("Shutting Down Executor...")
-        for taskId, pid in runningTasks.items():
+        for taskId, pid in self.runningTasks.items():
             self.killTask(driver, taskId)
         log.critical("Executor Shut Down")
 
@@ -76,7 +80,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         """
         Invoked when a fatal error has occurred with the executor and/or executor driver.
         """
-        log.critical("FATAL ERROR: "+message)
+        log.critical("FATAL ERROR: " + message)
 
     def _sendStats(self, driver):
         while True:
@@ -88,23 +92,24 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
 
     def _callCommand(self, command, taskID):
         log.debug("Invoking command: {}".format(command))
-        with lock:
-            popen = subprocess.Popen(command,shell=True)
-            runningTasks[taskID]=popen.pid
+        with self.popenLock:
+            popen = subprocess.Popen(command, shell=True)
+            self.runningTasks[taskID] = popen.pid
         return popen.wait()
 
     def launchTask(self, driver, task):
         """
         Invoked by SchedulerDriver when a task has been launched on this executor
         """
+
         def _run_task():
             try:
                 log.debug("Running task %s" % task.task_id.value)
                 self._sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
 
-                jobTreeJob = pickle.loads( task.data )
-                os.chdir( jobTreeJob.cwd )
-                result = self._callCommand(jobTreeJob.command,task.task_id.value)
+                jobTreeJob = pickle.loads(task.data)
+                os.chdir(jobTreeJob.cwd)
+                result = self._callCommand(jobTreeJob.command, task.task_id.value)
                 if result == 0:
                     self._sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
                 elif result == -9:
@@ -116,7 +121,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
                 self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED,
                                  message=str(traceback.format_exception_only(exc_type, exc_value)))
 
-            del runningTasks[task.task_id.value]
+            del self.runningTasks[task.task_id.value]
 
         # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
         thread = threading.Thread(target=_run_task)
@@ -126,7 +131,7 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         log.debug("Sending status update...")
         update = mesos_pb2.TaskStatus()
         update.task_id.value = task.task_id.value
-        update.message=message
+        update.message = message
         update.state = TASK_STATE
         driver.sendStatusUpdate(update)
         log.debug("Sent status update")
@@ -138,14 +143,15 @@ class JobTreeMesosExecutor(mesos.interface.Executor):
         log.debug("Received message from framework: {}".format(message))
 
 
-def main( executorClass ):
-    logging.basicConfig( level=logging.DEBUG )
-    log.debug( "Starting executor" )
-    driver = mesos.native.MesosExecutorDriver( executorClass( ) )
-    exit_value = 0 if driver.run( ) == mesos_pb2.DRIVER_STOPPED else 1
-    assert len(runningTasks) == 0
+def main(executorClass):
+    logging.basicConfig(level=logging.DEBUG)
+    log.debug("Starting executor")
+    executor = executorClass()
+    driver = mesos.native.MesosExecutorDriver(executor)
+    exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
+    assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
 
 
 if __name__ == "__main__":
-    main( JobTreeMesosExecutor )
+    main(MesosExecutor)
