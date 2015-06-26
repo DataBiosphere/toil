@@ -3,26 +3,6 @@ from contextlib import contextmanager
 import re
 import xml.etree.cElementTree as ET
 
-class JobTreeState( object ):
-    """
-    Represents the state of the jobTree. This is returned by jobStore.loadJobTreeState()
-    """
-    def __init__( self ):
-        # TODO: document this field
-        self.started = False
-        # This is a hash of jobStoreIDs to the parent jobs.
-        self.childJobStoreIdToParentJob = { }
-        # Hash of parent jobs to counts of numbers of children. There are no entries for jobs
-        # without children in this map. IOW, there is no entry in the map whose value is 0.
-        self.childCounts = { }
-        # Jobs that have no children but one or more follow-on commands
-        self.updatedJobs = set( )
-        # Jobs that have no children or follow-on commands
-        self.shellJobs = set( )
-        # Hash of jobs to numbers of predecessors when the initial number of 
-        # predecessors is greater than 1.
-        self.predecessorCounts = { }
-
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
         super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
@@ -59,10 +39,32 @@ class AbstractJobStore( object ):
             with self.writeSharedFileStream( "config.xml" ) as fileHandle:
                 ET.ElementTree( config ).write( fileHandle )
             self.__config = config
+        #Call cleans up any cruft in the jobStore
+        self._clean()
 
     @property
     def config( self ):
         return self.__config
+    
+    @abstractmethod
+    def started( self ):
+        """
+        Returns True if the jobStore contains existing jobs (i.e. if 
+        create has already been called), else False.
+        """
+        raise NotImplentedError( )
+    
+    def loadRootJob( self ):
+        """
+        Returns the job created by the first call of the create method.
+        """
+        raise NotImplementedError( )
+    
+    def jobs(self):
+        """
+        Returns iterator on the jobs in the store.
+        """
+        raise NotImplentedError( )
 
     #
     # The following methods deal with creating/loading/updating/writing/checking for the
@@ -70,10 +72,11 @@ class AbstractJobStore( object ):
     #
 
     @abstractmethod
-    def createFirstJob( self, command, memory, cpu ):
+    def create( self, command, memory, cpu, updateID ):
         """
-        Creates and returns the root job of the jobTree from which all others must be created.
-        This will only be called once, at the very beginning of the jobTree creation.
+        Creates a job.
+        
+        Command, memory, cpu and updateID are all arguments to the job.
 
         :rtype : job.Job
         """
@@ -100,19 +103,9 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def store( self, job ):
+    def update( self, job ):
         """
         Persists the job in this store atomically.
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    def addChildren( self, job, childCommands ):
-        """
-        Creates a set of child jobs for the given job using the list of child commands and
-        persists the job along with the new children atomically to this store. Each child command
-        is represented as a tuple of ( command, memory and cpu ). The given job must be persisted
-        even if the given list of children is empty.
         """
         raise NotImplementedError( )
 
@@ -124,15 +117,6 @@ class AbstractJobStore( object ):
 
         This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
         will succeed silently.
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    def loadJobTreeState( self ):
-        """
-        Returns a jobTreeState object based on the state of the store.
-
-        :rtype : JobTreeState
         """
         raise NotImplementedError( )
     
@@ -286,3 +270,53 @@ class AbstractJobStore( object ):
     @classmethod
     def _validateSharedFileName( cls, sharedFileName ):
         return bool( cls.sharedFileNameRegex.match( sharedFileName ) )
+    
+    ##Cleanup functions
+    
+    def _clean(self):
+        """
+        Function to cleanup the state of a jobStore after a restart.
+        Fixes jobs that might have been partially updated. Is called by constructor.
+        """
+        if self.started():
+            #Collate any jobs that were in the process of being created/deleted
+            jobsToDelete = set()
+            for job in self.jobs():
+                 for updateID in job.jobsToDelete:
+                     jobsToDelete.add(updateID)
+                
+            #Delete the jobs that should be delete
+            if len(jobsToDelete) > 0:
+                for job in self.jobs():
+                    if job.updateID in jobsToDelete:
+                        self.delete(job.jobStoreID)
+            
+            #Cleanup the state of each job
+            for job in self.jobs():
+                changed = False #Flag to indicate if we need to update the job
+                #on disk
+                
+                if len(job.jobsToDelete) != 0:
+                    job.jobsToDelete = set()
+                    changed = True
+                    
+                #While jobs at the end of the stack are already deleted remove
+                #those jobs from the stack (this cleans up the case that the job
+                #had successors to run, but had not been updated to reflect this)
+                while len(job.stack) > 0:
+                    jobs = [ jobStoreID for jobStoreID in job.stack[-1] if self.exists(jobStoreID) ]
+                    if len(jobs) > 0:
+                        if len(jobs) < len(job.stack[-1]):
+                            job.stack[-1] = jobs
+                            changed = True
+                        break
+                    job.stack.pop()
+                              
+                #This cleans the old log file which may 
+                #have been left if the job is being retried after a job failure. 
+                if job.logJobStoreFileID != None:
+                    job.clearLogFile(self) 
+                    changed = True
+                
+                if changed: #Update, but only if a change has occurred
+                    self.update(job)

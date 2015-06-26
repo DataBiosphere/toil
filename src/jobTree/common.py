@@ -1,6 +1,3 @@
-"""Wrapper functions for running the various programs in the jobTree package.
-"""
-
 #Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -36,23 +33,11 @@ from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.combinedBatchSystem import CombinedBatchSystem
 from jobTree.batchSystems.lsf import LSFBatchSystem
 
-
 logger = logging.getLogger( __name__ )
 
-# FIXME: unused
-
-def runJobTreeStats(jobTree, outputFile):
-    system("jobTreeStats --jobTree %s --outputFile %s" % (jobTree, outputFile))
-    logger.info("Ran the job-tree stats command apparently okay")
-
-# FIXME: unused
-
-def runJobTreeStatusAndFailIfNotComplete(jobTreeDir):
-    command = "jobTreeStatus --jobTree %s --failIfNotComplete --verbose" % jobTreeDir
-    system(command)
-
 def gridEngineIsInstalled():
-    """Returns True if grid-engine is installed, else False.
+    """
+    Returns True if grid-engine is installed, else False.
     """
     try:
         return system("qstat -help") == 0
@@ -60,7 +45,8 @@ def gridEngineIsInstalled():
         return False
 
 def parasolIsInstalled():
-    """Returns True if parasol is installed, else False.
+    """
+    Returns True if parasol is installed, else False.
     """
     try:
         return system("parasol status") == 0
@@ -72,7 +58,8 @@ def parasolIsInstalled():
 ####
 
 def workflowRootPath():
-    """Function for finding external location.
+    """
+    Function for finding external location.
     """
     import jobTree.target
     i = absSymPath(jobTree.target.__file__)
@@ -155,6 +142,9 @@ def _addOptions(addGroupFn, defaultStr):
                             "kilobytes, default=%s" % defaultStr))
 
 def addOptions(parser):
+    """
+    Adds jobTree options to a parser object, either optparse or argparse.
+    """
     # Wrapper function that allows jobTree to be used with both the optparse and 
     # argparse option parsing modules
     addLoggingOptions(parser) # This adds the logging stuff.
@@ -174,7 +164,8 @@ def addOptions(parser):
                            "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
 
 def verifyJobTreeOptions(options):
-    """ verifyJobTreeOptions() returns None if all necessary values
+    """ 
+    verifyJobTreeOptions() returns None if all necessary values
     are present in options, otherwise it raises an error.
     It can also serve to validate the values of the options.
     """
@@ -187,6 +178,11 @@ def verifyJobTreeOptions(options):
         raise RuntimeError("Specify --jobTree")
 
 def createConfig(options):
+    """
+    Creates a config object from the options object.
+    
+    TODO: Make the config object a proper class
+    """
     logger.info("Starting to create the job tree setup for the first time")
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
@@ -214,7 +210,8 @@ def createConfig(options):
     return config
 
 def loadBatchSystem(config):
-    """Load the batch system.
+    """
+    Load the batch system.
     """
     def batchSystemConstructionFn(batchSystemString, maxCpus, maxMemory):
         batchSystem = None
@@ -261,7 +258,8 @@ def loadBatchSystem(config):
     return batchSystem
 
 def addBatchSystemConfigOptions(config, batchSystem, options):
-    """Adds configurations options to the config derived from the decision about the batch system.
+    """
+    Adds configurations options to the config derived from the decision about the batch system.
     """
     #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(batchSystem.getRescueJobFrequency()))
@@ -299,7 +297,8 @@ def loadJobStore( jobStoreString, config=None ):
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 
 def serialiseEnvironment(jobStore):
-    """Puts the environment in a globally accessible pickle file.
+    """
+    Puts the environment in a globally accessible pickle file.
     """
     #Dump out the environment of this process in the environment pickle file.
     with jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
@@ -307,13 +306,13 @@ def serialiseEnvironment(jobStore):
     logger.info("Written the environment for the jobs to the environment file")
 
 def setupJobTree(options):
-    """Creates the data-structures needed for running a jobTree.
+    """
+    Creates the data-structures needed for running a jobTree.
     """
     verifyJobTreeOptions(options)
     config = createConfig(options)
     batchSystem = loadBatchSystem(config)
     addBatchSystemConfigOptions(config, batchSystem, options)
     jobStore = loadJobStore(config.attrib["job_store"], config=config)
-    jobTreeState = jobStore.loadJobTreeState()
     serialiseEnvironment(jobStore)
-    return config, batchSystem, jobStore, jobTreeState
+    return config, batchSystem, jobStore

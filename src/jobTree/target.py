@@ -26,6 +26,7 @@ import importlib
 import time
 from optparse import OptionParser
 import xml.etree.cElementTree as ET
+from abc import ABCMeta, abstractmethod
 
 try:
     import cPickle 
@@ -35,136 +36,121 @@ except ImportError:
 import logging
 logger = logging.getLogger( __name__ )
 
-from jobTree.lib.bioio import getTempFile
-
-from jobTree.lib.bioio import setLoggingFromOptions
-from jobTree.lib.bioio import system
-from jobTree.lib.bioio import getTotalCpuTimeAndMemoryUsage
-from jobTree.lib.bioio import getTotalCpuTime
-
+from jobTree.lib.bioio import (setLoggingFromOptions, system, 
+                               getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from jobTree.common import setupJobTree, addOptions
-from jobTree.master import mainLoop
+from jobTree.master import mainLoop, JobTreeState
 
 class Target(object):
     """
-    Represents a unit of work jobTree.
+    Represents a unit of work in jobTree. Targets are composed into graphs
+    which make up a workflow. 
+    
+    This public functions of this class and its  nested classes are the API 
+    to jobTree. 
     """
+    
+    __metaclass__ = ABCMeta
+    
     def __init__(self, memory=sys.maxint, cpu=sys.maxint):
         """
         This method must be called by any overiding constructor.
+        
+        Memory is the maximum number of bytes of memory the target will 
+        require to run. Cpu is the number of cores required. 
         """
-        self.__followOn = None
+        self.memory = memory
+        self.cpu = cpu
+        #Private class variables
+        
+        #See Target.addChild
         self.__children = []
-        self.__childCommands = []
-        self.__memory = memory
-        self.__cpu = cpu
+        #See Target.addFollowOn
+        self.__followOns = []
+        #A follow-on or child of a target A, is a "successor" of A, if B
+        #is a successor of A, then A is a predecessor of B. 
+        self.__predecessors = set()
+        #Variables used for serialisation
         self.__dirName, moduleName = self._resolveMainModule(self.__module__)
         self.__importStrings = {moduleName + '.' + self.__class__.__name__}
-        self.__loggingMessages = []
+        #See Target.rv()
         self.__rvs = {}
-        
-        #A target A is a "predecessor" of another target B if B is a child or follow 
-        #on of A.
-        
-        #A target A is a "logical follow-on" of a target B if A is a follow on of B, 
-        #or A is on a directed path to a target C that also has a directed path of 
-        #follow on edges to B.
-        
-        #Each target can have multiple parent targets and be the follow-on of another
-        #target, providing that the graph remain a DAG, and no parent is also 
-        #a logical follow-on of its child.
-        
-        #On the master, as each parent job is scheduled its list of children and any
-        #follow-on is loaded, 
-        #each is a pair represented as a job and its number of predecessors.
-        #We maintain a hash of jobs to predecessors to be finished.
-        #If a job has just one predecessor it is run immediately. 
-        #If a job has multiple predecessors we look in the hash, if it is already
-        #there then we deduct one from the number of predecessors to run. If the number
-        #is zero, we remove it from the hash and run it, else we take no further 
-        #action as we must wait for its remaining predecessors to be logged as 
-        #finished.
-        #If the child/follow-on job is not yet in the hash, we add it, with -1 
-        #the number of predecessors.
-        
-        #These combined make the predecessors
-        self.__followOnFrom = None #The target which this target follows on from
-        self.__parents = set()
-
-    def run(self):
+    
+    @abstractmethod  
+    def run(self, fileStore):
         """
         Do user stuff here, including creating any follow on jobs.
         
-        The return values can be passed to other targets
+        The fileStore argument is an instance of Target.FileStore, and can
+        be used to create temporary files which can be shared between targets.
+        
+        The return values of the function can be passed to other targets
         by means of the rv() function. 
-        If the return value is a tuple, rv(1) would refer to the second
-        member of the tuple. If the return value is not a tuple then rV(0) would
+        
+        If the return value is a tuple, rv(i) would refer to the ith (indexed from 0)
+        member of the tuple. If the return value is not a tuple then rV(0) or rV() would
         refer to the return value of the function. 
         
-        We disallow return values to be PromisedTargetReturnValue instances (generated
-        by the Target.rv() function - see below). 
-        A check is made when deserialisaing the values PromisedTargetReturnValue instances 
-        that will result in a runtime error if you attempt to do this.
-        Allowing PromisedTargetReturnValue instances to be returned does not work, because
-        the mechanism to pass the promise uses a fileStoreID that will be deleted once
-        the current job and its follow ons have been completed. This is similar to
+        Note: We disallow return values to be PromisedTargetReturnValue instances 
+        (generated by the Target.rv() function - see below). 
+        A check is made that will result in a runtime error if you attempt to do this.
+        Allowing PromisedTargetReturnValue instances to be returned does not work because
+        the mechanism to pass the promise uses a jobStoreFileID that will be deleted once
+        the current job and its successors have been completed. This is similar to
         scope rules in a language like C, where returning a reference to memory allocated
         on the stack within a function will produce an undefined reference. 
-        Disallowing this also avoids nested promises (PromisedTargetReturnValue instances that contain
-        other PromisedTargetReturnValue). 
+        Disallowing this also avoids nested promises (PromisedTargetReturnValue 
+        instances that contain other PromisedTargetReturnValue). 
         """
-        pass
+        raise NotImplementedError()
     
-    def setFollowOn(self, followOnTarget):
-        """
-        Set the follow on target, returns the followOnTarget.
-        """
-        assert self.__followOn == None
-        self.__followOn = followOnTarget 
-        followOnTarget._setFollowOnFrom(self)
-        return followOnTarget
-        
     def addChild(self, childTarget):
         """
         Adds the child target to be run as child of this target. Returns childTarget.
+        Child targets are run after the Target.run method has completed.
         """
         self.__children.append(childTarget)
-        childTarget._addParent(self)
+        childTarget.__addPredecessor(self)
         return childTarget
+    
+    def addFollowOn(self, followOnTarget):
+        """
+        Adds a follow-on target, follow-on targets will be run
+        after the child targets have been run. Returns followOnTarget.
+        """
+        self.__followOns.append(followOnTarget)
+        followOnTarget.__addPredecessor(self)
+        return followOnTarget
         
     ##Convenience functions for creating targets
-
-    def setFollowOnFn(self, fn, *args, **kwargs):
-        """
-        Sets a follow on fn. See FunctionWrappingTarget. Returns new follow-on Target.
-        """
-        return self.setFollowOn(FunctionWrappingTarget(fn, *args, **kwargs))
-
-    def setFollowOnTargetFn(self, fn, *args, **kwargs):
-        """
-        Sets a follow on target fn. See TargetFunctionWrappingTarget. 
-        Returns new follow-on Target.
-        """
-        return self.setFollowOn(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
     def addChildFn(self, fn, *args, **kwargs):
         """
-        Adds a child fn. See FunctionWrappingTarget. Returns new child Target.
+        Adds a child fn. See FunctionWrappingTarget. 
+        Returns the new child Target.
         """
         return self.addChild(FunctionWrappingTarget(fn, *args, **kwargs))
 
     def addChildTargetFn(self, fn, *args, **kwargs):
         """
         Adds a child target fn. See TargetFunctionWrappingTarget. 
-        Returns new child Target.
+        Returns the new child Target.
         """
         return self.addChild(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
-    def addChildCommand(self, childCommand):
+    def addFollowOnFn(self, fn, *args, **kwargs):
         """
-        A command to be run as child of the job tree.
+        Adds a follow-on fn. See FunctionWrappingTarget. 
+        Returns the new follow-on Target.
         """
-        return self.__childCommands.append(str(childCommand))
+        return self.addFollowOn(FunctionWrappingTarget(fn, *args, **kwargs))
+
+    def addFollowOnTargetFn(self, fn, *args, **kwargs):
+        """
+        Add a follow-on target fn. See TargetFunctionWrappingTarget. 
+        Returns the new follow-on Target.
+        """
+        return self.addFollowOn(TargetFunctionWrappingTarget(fn, *args, **kwargs)) 
     
     @staticmethod
     def wrapTargetFn(fn, *args, **kwargs):
@@ -184,80 +170,20 @@ class Target(object):
         """
         return FunctionWrappingTarget(fn, *args, **kwargs)
     
-    ##The following functions are used for creating/writing/updating/reading/deleting global files.
-    ##
-    
-    def writeGlobalFile(self, localFileName):
-        """
-        Takes a file (as a path) and uploads it to to the global file store, returns
-        an ID that can be used to retrieve the file. 
-        """
-        return self.jobStore.writeFile(self.job.jobStoreID, localFileName)
-    
-    def updateGlobalFile(self, fileStoreID, localFileName):
-        """
-        Replaces the existing version of a file in the global file store, keyed by the fileStoreID. 
-        Throws an exception if the file does not exist.
-        """
-        self.jobStore.updateFile(fileStoreID, localFileName)
-    
-    def readGlobalFile(self, fileStoreID, localFilePath=None):
-        """
-        Returns a path to a local copy of the file keyed by fileStoreID. The version
-        will be consistent with the last copy of the file written/updated to the global
-        file store. If localFilePath is not None, the returned file path will be localFilePath.
-        """
-        if localFilePath is None:
-            localFilePath = getTempFile(rootDir=self.getLocalTempDir())
-        self.jobStore.readFile(fileStoreID, localFilePath)
-        return localFilePath
-    
-    def deleteGlobalFile(self, fileStoreID):
-        """
-        Deletes a global file with the given fileStoreID. Returns true if file exists, else false.
-        """
-        return self.jobStore.deleteFile(fileStoreID)
-    
-    def writeGlobalFileStream(self):
-        """
-        Similar to writeGlobalFile, but returns a context manager yielding a tuple of 1) a file
-        handle which can be written to and 2) the ID of the resulting file in the job store. The
-        yielded file handle does not need to and should not be closed explicitly.
-        """
-        return self.jobStore.writeFileStream(self.job.jobStoreID)
-    
-    def updateGlobalFileStream(self, fileStoreID):
-        """
-        Similar to updateGlobalFile, but returns a context manager yielding a file handle which
-        can be written to. The yielded file handle does not need to and should not be closed
-        explicitly.
-        """
-        return self.jobStore.updateFileStream(fileStoreID)
-    
-    def getEmptyFileStoreID(self):
-        """
-        Returns the ID of a new, empty file.
-        """
-        return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
-    
-    def readGlobalFileStream(self, fileStoreID):
-        """
-        Similar to readGlobalFile, but returns a context manager yielding a file handle which can
-        be read from. The yielded file handle does not need to and should not be closed explicitly.
-        """
-        return self.jobStore.readFileStream(fileStoreID)
-    
-    ##The following function is used for passing return values between target run functions
+    ####################################################
+    #The following function is used for passing return values between 
+    #target run functions
+    ####################################################
     
     def rv(self, argIndex):
         """
         Gets a PromisedTargetReturnValue, representing the argIndex return 
-        value of the run function.
+        value of the run function (see run method for description).
         This PromisedTargetReturnValue, if a class attribute of a Target instance, 
-        call it T, will be replaced
-        by the actual return value just before the run function of T is called. 
-        rv therefore allows the output from one Target to be wired as input to another 
-        Target before either is actually run.  
+        call it T, will be replaced by the actual return value just before the 
+        run function of T is called. The function rv therefore allows the output 
+        from one Target to be wired as input to another Target before either 
+        is actually run.  
         """
         #Check if the return value has already been promised and if it has
         #return it
@@ -266,120 +192,293 @@ class Target(object):
         #Create, store, return new PromisedTargetReturnValue
         self.__rvs[argIndex] = PromisedTargetReturnValue()
         return self.__rvs[argIndex]
-       
-    ##Functions interrogating attributes of the target
     
-    def getLocalTempDir(self):
-        """Get the local temporary directory.
-        """
-        return self.localTempDir
-
-    def getCpu(self, defaultCpu=sys.maxint):
-        """Returns the number of cpus requested by the job.
-        """
-        return defaultCpu if self.__cpu == sys.maxint else self.__cpu
+    ####################################################
+    #The following nested classes are used for
+    #creating job trees (Target.Runner) and 
+    #managing temporary files (Target.FileStore)
+    ####################################################
     
-    def getMemory(self, defaultMemory=sys.maxint):
-        """Returns the number of bytes of memory that were requested by the job.
+    class Runner(object):
         """
-        return defaultMemory if self.__memory == sys.maxint else self.__memory
+        Used to setup and run a graph of targets.
+        """
     
-    def getFollowOn(self):
-        """Get the follow on target.
-        """
-        return self.__followOn
-     
-    def getChildren(self):
-        """Get the child targets.
-        """
-        return self.__children[:]
+        @staticmethod
+        def getDefaultOptions():
+            """
+            Returns an optparse.Values object of the 
+            options used by a jobTree. 
+            """
+            parser = OptionParser()
+            Target.Runner.addJobTreeOptions(parser)
+            options, args = parser.parse_args(args=[])
+            assert len(args) == 0
+            return options
+            
+        @staticmethod
+        def addJobTreeOptions(parser):
+            """
+            Adds the default jobTree options to an optparse or argparse
+            parser object.
+            """
+            addOptions(parser)
     
-    def getChildCommands(self):
-        """Gets the child commands, as a list of tuples of strings and floats, representing the run times.
-        """
-        return self.__childCommands[:]
-    
-    def logToMaster(self, string):
-        """Send a logging message to the master. Will only reported if logging is set to INFO level in the master.
-        """
-        self.__loggingMessages.append(str(string))
+        @staticmethod
+        def startJobTree(self, target, options):
+            """
+            Runs the jobtree using the given options (see Target.Runner.getDefaultOptions
+            and Target.Runner.addJobTreeOptions) starting with this target.
+            """
+            setLoggingFromOptions(options)
+            config, batchSystem, jobStore = setupJobTree(options)
+            if not jobStore.started(): #No jobs have yet been run
+                #Setup the first job.
+                job = target._serialiseFirstTarget(jobStore)
+                #Build the jobTreeState object containing just the first job
+                jobTreeState = JobTreeState(jobStore, job)
+            else:
+                #Load the existing state of the jobTree
+                jobTreeState = loadJobTreeState(jobStore, jobStore.loadRootJob())
+                logger.critical("Jobtree is being reloaded from previous run")   
+            return mainLoop(config, batchSystem, jobStore, jobTreeState)
         
-    #Functions used for setting up and running a jobTree
-    
-    @staticmethod
-    def getDefaultOptions():
+        @staticmethod
+        def cleanup(options):
+            """
+            Removes the jobStore backing the jobTree.
+            """
+            config, batchSystem, jobStore = setupJobTree(options)
+            jobStore.deleteJobStore()
+            
+    class FileStore:
         """
-        Returns am optparse.Values object name (string) : value
-        options used by job-tree. See the help string 
-        of jobTree to see these options.
+        Class used to manage temporary files and log messages, 
+        passed as argument to the Target.run method.
         """
-        parser = OptionParser()
-        Target.addJobTreeOptions(parser)
-        options, args = parser.parse_args(args=[])
-        assert len(args) == 0
-        return options
         
-    @staticmethod
-    def addJobTreeOptions(parser):
-        """Adds the default job-tree options to an optparse
-        parser object.
-        """
-        addOptions(parser)
+        def __init__(self, jobStore, job, localTempDir):
+            """
+            This constructor should not be called by the user, 
+            FileStore instances are only provided as arguments 
+            to the run function.
+            """
+            self.jobStore = jobStore
+            self.job = job
+            self.localTempDir = localTempDir
+            self.loggingMessages = []
+        
+        def writeGlobalFile(self, localFileName):
+            """
+            Takes a file (as a path) and uploads it to to the global file store, returns
+            an ID that can be used to retrieve the file. 
+            """
+            return self.jobStore.writeFile(self.jobStoreID, localFileName)
+        
+        def updateGlobalFile(self, fileStoreID, localFileName):
+            """
+            Replaces the existing version of a file in the global file store, 
+            keyed by the fileStoreID. 
+            Throws an exception if the file does not exist.
+            """
+            self.jobStore.updateFile(fileStoreID, localFileName)
+        
+        def readGlobalFile(self, fileStoreID, localFilePath=None):
+            """
+            Returns a path to a local copy of the file keyed by fileStoreID. 
+            The version will be consistent with the last copy of the file 
+            written/updated to the global file store. If localFilePath is not None, 
+            the returned file path will be localFilePath.
+            """
+            if localFilePath is None:
+                localFilePath = getTempFile(rootDir=self.getLocalTempDir())
+            self.jobStore.readFile(fileStoreID, localFilePath)
+            return localFilePath
+        
+        def deleteGlobalFile(self, fileStoreID):
+            """
+            Deletes a global file with the given fileStoreID. Returns true if 
+            file exists, else false.
+            """
+            return self.jobStore.deleteFile(fileStoreID)
+        
+        def writeGlobalFileStream(self):
+            """
+            Similar to writeGlobalFile, but returns a context manager yielding a 
+            tuple of 1) a file handle which can be written to and 2) the ID of 
+            the resulting file in the job store. The yielded file handle does 
+            not need to and should not be closed explicitly.
+            """
+            return self.jobStore.writeFileStream(self.jobStoreID)
+        
+        def updateGlobalFileStream(self, fileStoreID):
+            """
+            Similar to updateGlobalFile, but returns a context manager yielding 
+            a file handle which can be written to. The yielded file handle does 
+            not need to and should not be closed explicitly.
+            """
+            return self.jobStore.updateFileStream(fileStoreID)
+        
+        def getEmptyFileStoreID(self):
+            """
+            Returns the ID of a new, empty file.
+            """
+            return self.jobStore.getEmptyFileStoreID(self.jobStoreID)
+        
+        def readGlobalFileStream(self, fileStoreID):
+            """
+            Similar to readGlobalFile, but returns a context manager yielding a 
+            file handle which can be read from. The yielded file handle does not 
+            need to and should not be closed explicitly.
+            """
+            return self.jobStore.readFileStream(fileStoreID)
+           
+        def getLocalTempDir(self):
+            """
+            Get the local temporary directory.
+            """
+            return self.localTempDir
+        
+        def logToMaster(self, string):
+            """
+            Send a logging message to the master. Will only ne reported if logging 
+            is set to INFO level (or lower) in the master.
+            """
+            self.loggingMessages.append(str(string))
 
-    def startJobTree(self, options):
-        """Runs jobtree using the given options (see Target.getDefaultOptions
-        and Target.addJobTreeOptions).
-        """
-        setLoggingFromOptions(options)
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
-        if not jobTreeState.started: #We setup the first job.
-            memory = self.getMemory(defaultMemory=float(config.attrib["default_memory"]))
-            cpu = self.getCpu(defaultCpu=float(config.attrib["default_cpu"]))
-            #Make job, set the command to None initially
-            logger.info("Adding the first job")
-            job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
-            #This calls gives valid jobStoreFileIDs to each promised value
-            self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
-            #Now set the command properly (this is a hack)
-            job.followOnCommands[-1] = (self._makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
-            #Now write
-            jobStore.store(job)
-            jobTreeState = jobStore.loadJobTreeState() #This reloads the state
-        else:
-            logger.critical("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
-        return mainLoop(config, batchSystem, jobStore, jobTreeState)
+    ####################################################
+    #Private functions
+    ####################################################
     
-    def cleanup(self, options):
-        """Removes the jobStore backing the jobTree.
+    def _addPredecessor(self, predecessorTarget):
         """
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
-        jobStore.deleteJobStore()
+        Adds a predecessor target to the set of predecessor targets.
+        """
+        if predecessorTarget in self.__predecessors:
+            raise RuntimeError("The given target is already a predecessor of this target")
+        self.__predecessors.add(predecessorTarget)
 
-####
-#Private functions
-#### 
-
-    @staticmethod
-    def _resolveMainModule( moduleName ):
-        """
-        Returns a tuple of two elements, the first element being the path to the directory containing the given
-        module and the second element being the name of the module. If the given module name is "__main__",
-        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
-        caller can then add the first element of the returned tuple to sys.path and load the module from there.
-        See also worker.loadTarget().
-        """
-        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        if moduleName.endswith('.py'):
-            moduleName = moduleName[:-3]
-        elif moduleName.endswith('.pyc'):
-            moduleName = moduleName[:-4]
-        else:
-            raise RuntimeError(
-                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                moduleName)
-        return moduleDirPath, moduleName
+    ####################################################
+    #The following functions are used to serialise
+    #a target graph to the jobStore
+    ####################################################
     
+    def _getHashOfTargetsToUUIDs(self, targetsToUUIDs):
+        """
+        Creates a map of the targets in the graph to randomly selected UUIDs.
+        Excludes the root target.
+        """
+        #Call recursively
+        for successor in self.__children + self.__followOn:
+            successor._getHashOfTargetsToUUIDs2(targetsToUUIDs)
+        
+    def _getHashOfTargetsToUUIDs2(self, targetsToUUIDs):
+        if self not in targetsToUUIDs:
+            targetsToUUIDs[self] = uuid.uuid1() 
+            self._getHashOfTargetsToUUIDs(targetsToUUIDs)
+           
+    def _createEmptyJobForTarget(self, jobStore, updateID=None, command=None):
+        """
+        Create an empty job for the target.
+        """
+        return jobStore.createJob(command=command, 
+                                  memory=(self.memory if self.memory != sys.maxint 
+                                          else float(config.attrib["default_memory"])),
+                                  cpu=(self.cpu if self.cpu != sys.maxint
+                                       else float(config.attrib["default_cpu"])),
+                                  updateID=updateID)  
+        
+    def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor):
+        """
+        Creates a job for each target in the target graph, recursively.
+        """
+        if self not in targetsToJobs:
+            #The job for the target
+            job = self._createEmptyJobForTarget(jobStore, targetsToUUIDs[self])
+            
+            #Add followOns/children to be run after the current target.
+            for successors in (self.__followOns, self.__children):
+                job.stack.append(map(lambda successor:
+                    successor._makeJobWrappers(jobStore, targetsToUUIDs, 
+                                               targetsToJobs, self), successors))
+            
+            #This is the number of predecessors of the target
+            assert predecessor in self.__predecessors
+            job.predecessorNumber = len(self.__predecessors)
+            
+            #Pickle the target so that its run method can be run at a later time.
+            #Drop out the children/followOns/predecessors - which are all recored
+            #within the jobStore and do not need to be stored within the target
+            self.__children = []
+            self.__followOns = []
+            self.__predecessors = set()
+            #The pickled target is "run" as the command of the job, see worker
+            #for the mechanism which unpickles the target and executes the Target.run
+            #method.
+            fileStoreID = jobStore.getEmptyFileStoreID(job.jobStoreID)
+            with jobStore.writeFileStream(job.jobStoreID) as ( fileHandle, fileStoreID ):
+                cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            job.command = "scriptTree %s %s %s" % (fileStoreID, self.__dirName, 
+                                                   " ".join(set( self.__importStrings )))
+            
+            #Update the status of the job on disk
+            jobStore.update(job)
+        else:
+            #Lookup the already created job
+            job = targetsToJobs[self]
+            assert job.predecessorNumber > 1
+        
+        #The return is a tuple stored within the job.stack of the jobs to run.
+        #The tuple is jobStoreID, memory, cpu, predecessorID
+        #The predecessorID is used to establish which predecessors have been
+        #completed before running the given Target - it is just a unique ID
+        #per predecessor 
+        return (job.jobStoreID, job.memory, job.cpu, 
+                None if job.predecessorNumber <= 1 else targetsToUUIDs[predecessor])
+    
+    def _serialiseTargetGraph(self, job, jobStore):
+        """
+        Serialises the graph of targets rooted at this target, 
+        storing them in the jobStore.
+        Assumes the root target is already in the jobStore.
+        """
+        #Create jobIDs as UUIDs
+        targetsToUUIDs = self._getHashOfTargetsToUUIDs({})
+        #Set the jobs to delete
+        job.jobsToDelete = set(targetsToUUIDs.values())
+        #Update the job on disk. The jobs to delete is a record of what to
+        #remove if the update goes wrong
+        jobStore.update(job)
+        #Create the jobs for followOns/children
+        targetsToJobs = { self:job }
+        for successors in (self.__followOns, self.__children):
+            job.stack.append(map(lambda successor:
+                successor._makeJobWrappers(jobStore, targetsToUUIDs, 
+                                           {}, self), successors))
+        #Remove the jobs to delete list and remove the old command finishing the update
+        self.job.jobsToDelete = []
+        self.job.command = None
+        jobStore.update(job)
+        
+    def _serialiseFirstTarget(self, jobStore):
+        """
+        Serialises the root target. Returns the wrapping job.
+        """
+        #Pickles the target within a shared file in the jobStore called 
+        #"firstTarget"
+        sharedTargetFile = "firstTarget"
+        with jobStore.writeSharedFileStream(sharedTargetFile) as fileHandle:
+            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+        #Return the first job
+        return self._serialiseTarget(jobStore, firstTargetJobStoreFileID,
+            command="scriptTree %s %s %s" % (sharedTargetFile, self.__dirName, 
+                    " ".join(set( self.__importStrings ))))
+
+    ####################################################
+    #Functions to pass Target.run return values to the 
+    #input arguments of other Target instances
+    ####################################################
+   
     def _switchOutPromisedTargetReturnValues(self):
         """
         Replaces each PromisedTargetReturnValue instance that is a class 
@@ -409,36 +508,6 @@ class Target(object):
             elif isinstance(value, dict):
                 self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(self.jobStore) if 
                         isinstance(x, PromisedTargetReturnValue) else value[x]), value))
-    
-    def _setFileVariables(self, jobStore, job, localTempDir):
-        """
-        Sets the jobStore, job and localTemptDir for the target, each
-        of which is used for computation.
-        """
-        self.jobStore = jobStore
-        self.job = job
-        self.localTempDir = localTempDir
-        
-    def _unsetFileVariables(self):
-        """
-        Unsets the file variables, so that they don't get pickled.
-        """
-        self.jobStore = None
-        self.job = None
-        self.localTempDir = None
-    
-    def _addParent(self, parentTarget):
-        """
-        Adds a parent target to the set of parent targets.
-        """
-        if parentTarget in self.__parents:
-            raise RuntimeError("The given target is already a parent of this target")
-        self._parent.add(parentTarget)
-        
-    def _setFollowOnFrom(self, followOnFrom):
-        if self.__followOnFrom != None:
-            raise RuntimeError("This target already has a follow on set")
-        self.__followOnFrom = followOnFrom
       
     def _setFileIDsForPromisedValues(self, jobStore, jobStoreID):
         """
@@ -457,100 +526,6 @@ class Target(object):
             childTarget._setFileIDsForPromisedValues(jobStore, jobStoreID)
         if self.getFollowOn() != None:
             self.getFollowOn()._setFileIDsForPromisedValues(jobStore, jobStoreID)
-        
-    def _makeRunnable(self, jobStore, jobStoreID):
-        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
-            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-
-        i = set( self.__importStrings )
-        classNames = " ".join(i)
-        return "scriptTree %s %s %s" % (fileStoreID, self.__dirName, classNames)
-    
-    def _verifyTargetAttributesExist(self):
-        """ _verifyTargetAttributesExist() checks to make sure that the Target
-        instance has been properly instantiated. Returns None if instance is OK,
-        raises an error otherwise.
-        """
-        attributes = vars(self)
-        required = ['_Target__followOn', '_Target__children', '_Target__childCommands',
-                '_Target__memory', '_Target__cpu']
-        for r in required:
-            if r not in attributes:
-                raise RuntimeError("Error, there is a missing attribute, %s, "
-                                    "from a Target sub instance %s, "
-                                    "did you remember to call Target.__init__(self) in the %s "
-                                    "__init__ method?" % ( r, self.__class__.__name__,
-                                                           self.__class__.__name__))
-        
-    def _execute(self, job, stats, localTempDir, jobStore, 
-                memoryAvailable, cpuAvailable,
-                defaultMemory, defaultCpu):
-        """This is the core method for running the target within a worker.
-        """ 
-        if stats != None:
-            startTime = time.time()
-            startClock = getTotalCpuTime()
-        
-        baseDir = os.getcwd()
-        
-        #Debug check that we have the right amount of CPU and memory for the job in hand
-        targetMemory = self.getMemory()
-        if targetMemory != sys.maxint:
-            assert targetMemory <= memoryAvailable
-        targetCpu = self.getCpu()
-        if targetCpu != sys.maxint:
-            assert targetCpu <= cpuAvailable
-        #Set the jobStore for the target, used for file access
-        self._setFileVariables(jobStore, job, localTempDir)
-        #Switch out any promised return value instances with the actual values
-        self._switchOutPromisedTargetReturnValues()
-        #Run the target, first cleanup then run.
-        returnValues = self.run()
-        #Set the promised value jobStoreFileIDs
-        self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
-        #Store the return values for any promised return value
-        self._setReturnValuesForPromises(self.target, returnValues, jobStore)
-        #Now unset the job store to prevent it being serialised
-        self._unsetFileVariables()
-        #Change dir back to cwd dir, if changed by target (this is a safety issue)
-        if os.getcwd() != baseDir:
-            os.chdir(baseDir)
-        #Cleanup after the target
-        system("rm -rf %s/*" % localTempDir)
-        #Handle the follow on
-        followOn = self.getFollowOn()
-        if followOn is not None: 
-            job.followOnCommands.append((followOn._makeRunnable(jobStore, job.jobStoreID),
-                                         followOn.getMemory(defaultMemory),
-                                         followOn.getCpu(defaultCpu),
-                                         len(followOn.__parents) + 1))
-        #Now add the children to the newChildren target
-        newChildren = self.getChildren()
-        newChildren.reverse()
-        assert len(job.children) == 0
-        while len(newChildren) > 0:
-            child = newChildren.pop()
-            job.children.append((child._makeRunnable(jobStore, job.jobStoreID),
-                                 child.getMemory(defaultMemory),
-                                 child.getCpu(defaultCpu),
-                                 len(child.__parents) + \
-                                 (0 if child.__followOnFrom == None else 1)))
-        
-        #Now build jobs for each child command
-        for childCommand in self.getChildCommands():
-            job.children.append((childCommand, defaultMemory, defaultCpu))
-        
-        #Finish up the stats
-        if stats != None:
-            stats = ET.SubElement(stats, "target")
-            stats.attrib["time"] = str(time.time() - startTime)
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            stats.attrib["clock"] = str(totalCpuTime - startClock)
-            stats.attrib["class"] = ".".join((self.__class__.__name__,))
-            stats.attrib["memory"] = str(totalMemoryUsage)
-        
-        #Return any logToMaster logging messages
-        return self.__loggingMessages
     
     @staticmethod
     def _setReturnValuesForPromises(target, returnValues, jobStore):
@@ -567,6 +542,99 @@ class Target(object):
                                 " that is out of range: %s" % (i, returnValues))
                 argToStore = returnValues
             target.__rvs[i]._storeValue(argToStore, jobStore)
+    
+    ####################################################
+    #Functions to establish that the target graph
+    #does not contain any cycles of dependencies. 
+    ####################################################
+            
+    def _checkTargetGraphAcylic(self):
+        """
+        Raises a RuntimeError exception if the target graph contains any cycles
+        of child/followOn dependencies.
+        """
+        pass
+        
+    ####################################################
+    #Function which worker calls to ultimately invoke
+    #a targets Target.run method, and then handle created
+    #children/followOn targets
+    ####################################################
+       
+    def _execute(self, job, stats, localTempDir, jobStore, 
+                memoryAvailable, cpuAvailable,
+                defaultMemory, defaultCpu):
+        """This is the core method for running the target within a worker.
+        """ 
+        if stats != None:
+            startTime = time.time()
+            startClock = getTotalCpuTime()
+        
+        baseDir = os.getcwd()
+        
+        #Debug check that we have the right amount of CPU and memory for the job in hand
+        if self.memory != sys.maxint:
+            assert self.memory <= memoryAvailable
+        if self.cpu != sys.maxint:
+            assert self.cpu <= cpuAvailable
+        #Switch out any promised return value instances with the actual values
+        self._switchOutPromisedTargetReturnValues()
+        #Run the target, first cleanup then run.
+        fileStore = Target.FileStore(jobStore, job, localTempDir)
+        returnValues = self.run(fileStore)
+        #Check if the target graph has created
+        #any cycles of dependencies 
+        self._checkTargetGraphAcylic()
+        #Set the promised value jobStoreFileIDs
+        self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
+        #Store the return values for any promised return value
+        self._setReturnValuesForPromises(self.target, returnValues, jobStore)
+        #Turn the graph into a graph of jobs in the jobStore
+        self._serialiseTargetGraph(jobStore)
+        #Change dir back to cwd dir, if changed by target (this is a safety issue)
+        if os.getcwd() != baseDir:
+            os.chdir(baseDir)
+        #Cleanup after the target
+        system("rm -rf %s/*" % localTempDir)
+        #Finish up the stats
+        if stats != None:
+            stats = ET.SubElement(stats, "target")
+            stats.attrib["time"] = str(time.time() - startTime)
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            stats.attrib["clock"] = str(totalCpuTime - startClock)
+            stats.attrib["class"] = ".".join((self.__class__.__name__,))
+            stats.attrib["memory"] = str(totalMemoryUsage)
+        #Return any logToMaster logging messages
+        return fileStore.loggingMessages
+    
+    ####################################################
+    #Method used to resolve the module in which an inherited target instances
+    #class is defined
+    ####################################################
+    
+    @staticmethod
+    def _resolveMainModule( moduleName ):
+        """
+        Returns a tuple of two elements, the first element being the path 
+        to the directory containing the given
+        module and the second element being the name of the module. 
+        If the given module name is "__main__",
+        then that is translated to the actual file name of the top-level 
+        script without .py or .pyc extensions. The
+        caller can then add the first element of the returned tuple to 
+        sys.path and load the module from there. See also worker.loadTarget().
+        """
+        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
+        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
+        if moduleName.endswith('.py'):
+            moduleName = moduleName[:-3]
+        elif moduleName.endswith('.pyc'):
+            moduleName = moduleName[:-4]
+        else:
+            raise RuntimeError(
+                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
+                moduleName)
+        return moduleDirPath, moduleName
 
 class FunctionWrappingTarget(Target):
     """
@@ -623,9 +691,6 @@ class PromisedTargetReturnValue():
     def loadValue(self, jobStore):
         """
         Unpickles the promised value and returns it. 
-        
-        If it encounters a chain of promises it will traverse the chain until
-        if finds the intended value.
         """
         assert self.jobStoreFileID != None 
         with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:

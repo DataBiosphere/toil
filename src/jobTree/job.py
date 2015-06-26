@@ -4,55 +4,85 @@ logger = logging.getLogger( __name__ )
 
 class Job( object ):
     """
-    A class encapsulating state about a jobTree job including its child commands and follow-on commands.
-
-    Note that a parent Job instance does not store its children as instances of the Job class but
-    uses 3-tuples of the form (jobStoreId, memory, cpu) instead.
+    A class encapsulating the state of a jobTree job.
     """
-
-    @classmethod
-    def create( cls, command, memory, cpu, tryCount, jobStoreID, logJobStoreFileID ):
-        return cls(
-            remainingRetryCount=tryCount,
-            jobStoreID=jobStoreID,
-            followOnCommands=[ (command, memory, cpu, 0) ],
-            logJobStoreFileID=logJobStoreFileID )
-
-    def __init__( self, remainingRetryCount, jobStoreID,
-                  children=None, followOnCommands=None, logJobStoreFileID=None ):
+    def __init__( self, remainingRetryCount, jobStoreID, updateID,
+                  command, memory, cpu):
+        #The number of times the job should be retried if it fails
+        #This number is reduced by retries until it is zero
+        #and then no further retries are made
         self.remainingRetryCount = remainingRetryCount
+        
+        #The jobStoreID of the job. JobStore.load(jobStoreID) will return 
+        #the job
         self.jobStoreID = jobStoreID
-        # TODO: Consider using a set for children
-        self.children = children or [ ]
-        self.followOnCommands = followOnCommands or [ ]
+        
+        #The command to be executed and its memory and cpu requirements.
+        self.command = command
+        self.memory = memory #Max number of bytes used by the job
+        self.cpu = cpu #Number of cores to be used by the job
+        
+        #These two variables are used in creating a graph of jobs.
+        #The updateID is a unique identifier.
+        #The jobsToDelete is a set of updateIDs for jobs being created.
+        #During the creation of a root job and its successors, first the 
+        #root job is created with the list of jobsToDelete including all 
+        #the successors (referenced by updateIDs). Next the successor jobs are created.
+        #Finally the jobsToDelete variable in the root job is set to an empty
+        #set and updated. It is easy to verify that as single job 
+        #creations/updates are atomic, if failure 
+        #occurs at any stage up to the completion of the final update 
+        #we can revert to the state immediately before the creation
+        #of the graph of jobs. 
+        self.updateID = updateID
+        self.jobsToDelete = set()
+        
+        #The list of successor jobs to run. Successor jobs are stored
+        #as 4-tuples of the form (jobStoreId, memory, cpu, predecessorCount).
+        #Successor jobs are run in reverse order from the stack.
+        self.stack = []
+        
+        #The number of predecessor jobs of a given job.
+        #A predecessor is a job which references this job in its stack.
+        self.predecessorNumber = 0
+        #The IDs of predecessors that have finished. 
+        #When len(predecessorsFinished) == predecessorNumber then the
+        #job can be run.
+        self.predecessorsFinished = set()
+        
+        #A jobStoreFileID of the log file for a job. 
+        #This will be none unless the job failed and the logging
+        #has been captured to be reported on the master.
         self.logJobStoreFileID = logJobStoreFileID
 
     def setupJobAfterFailure(self, config):
-        if len(self.followOnCommands) > 0:
-            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-            logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s" %
-                        (self.jobStoreID, self.remainingRetryCount))
-            # Set the default memory to be at least as large as the default, in
-            # case this was a malloc failure (we do this because of the combined
-            # batch system)
-            self.followOnCommands[-1] = (
-                                            self.followOnCommands[-1][0],
-                                            max(self.followOnCommands[-1][1], float(config.attrib["default_memory"]))
-                                        ) + self.followOnCommands[-1][2:]
-            logger.warn("We have set the default memory of the failed job to %s bytes" %
-                        self.followOnCommands[-1][1])
-        else:
-            logger.warn("The job %s has no follow on jobs to reset" % self.jobStoreID)
+        """
+        Reduce the remainingRetryCount if greater than zero and set the memory
+        to be at least as big as the default memory (in case of exhaustion of memory,
+        which is common).
+        """
+        self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
+        logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s" %
+                    (self.jobStoreID, self.remainingRetryCount))
+        # Set the default memory to be at least as large as the default, in
+        # case this was a malloc failure (we do this because of the combined
+        # batch system)
+        if self.memory < float(config.attrib["default_memory"]):
+            self.memory = float(config.attrib["default_memory"])
+            logger.warn("We have increaed the default memory of the failed job to %s bytes" %
+                        self.memory)
 
     def clearLogFile( self, jobStore ):
-        """Clears the log file, if it is set.
+        """
+        Clears the log file, if it is set.
         """
         if self.logJobStoreFileID is not None:
             jobStore.deleteFile( self.logJobStoreFileID )
             self.logJobStoreFileID = None
 
     def setLogFile( self, logFile, jobStore ):
-        """Sets the log file in the file store. 
+        """
+        Sets the log file in the file store. 
         """
         if self.logJobStoreFileID is not None:  # File already exists
             jobStore.updateFile( self.logJobStoreFileID, logFile )
@@ -68,24 +98,6 @@ class Job( object ):
 
     # Serialization support methods
 
-    def toList( self ):
-        """
-        Deprecated. Use toDict() instead.
-        """
-        return [
-            self.remainingRetryCount,
-            self.jobStoreID,
-            self.children,
-            self.followOnCommands,
-            self.logJobStoreFileID ]
-
-    @classmethod
-    def fromList( cls, l ):
-        """
-        Deprecated. Use fromDict() instead.
-        """
-        return cls( *l )
-
     def toDict( self ):
         return self.__dict__.copy( )
 
@@ -98,21 +110,6 @@ class Job( object ):
         :rtype: Job
         """
         return self.__class__( **self.__dict__ )
-
-    def __hash__( self ):
-        return hash( self.jobStoreID )
-
-    def __eq__( self, other ):
-        return (
-            isinstance( other, self.__class__ )
-            and self.remainingRetryCount == other.remainingRetryCount
-            and self.jobStoreID == other.jobStoreID
-            and set( self.children ) == set( other.children )
-            and self.followOnCommands == other.followOnCommands
-            and self.logJobStoreFileID == other.logJobStoreFileID )
-
-    def __ne__( self, other ):
-        return not self.__eq__( other )
 
     def __repr__( self ):
         return '%s( **%r )' % ( self.__class__.__name__, self.__dict__ )
