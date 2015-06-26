@@ -19,7 +19,7 @@ logger = logging.getLogger( __name__ )
 
 
 class FileJobStore(AbstractJobStore):
-    """Represents the jobTree on using a network file system. For doc-strings
+    """Represents the jobTree using a network file system. For doc-strings
     of functions see AbstractJobStore.
     """
 
@@ -31,10 +31,39 @@ class FileJobStore(AbstractJobStore):
         super( FileJobStore, self ).__init__( config=config )
         self._setupStatsDirs(create=config is not None)
     
-    def createFirstJob(self, command, memory, cpu):
-        if not os.path.exists(self._getJobFileDirName()):
-            os.mkdir(self._getJobFileDirName())
-        return self._makeJob(command, memory, cpu, self._getJobFileDirName())
+    def started( self ):
+        """
+        Returns True if the jobStore contains existing jobs (i.e. if 
+        create has already been called), else False.
+        """
+        raise NotImplentedError( )
+    
+    def loadRootJob( self ):
+        """
+        Returns the job created by the first call of the create method.
+        """
+        raise NotImplementedError( )
+    
+    def jobs(self):
+        """
+        Returns iterator on the jobs in the store.
+        """
+        raise NotImplentedError( )
+    
+    def create(self, command, memory, cpu, updateID):
+        if followOnFrom != None:
+            jobDir = getTempDir(rootDir=followOnFrom)
+        elif predecessors != None and len(predecessors) > 0:
+            jobDir = getTempDir(rootDir=list(predecessors)[0])
+        else:
+            jobDir = self._getJobFileDirName()
+            if not os.path.exists(jobDir):
+                os.mkdir(jobDir)      
+        # Sub directory to put temporary files associated with the job in
+        makeSubDir(os.path.join(jobDir, "g"))
+        return Job(tryCount=self._defaultTryCount( ), jobStoreID=jobDir, 
+                   command=command, memory=memory, cpu=cpu,
+                   followOnFrom=followOnFrom, predecessors=predecessors)
     
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
@@ -68,20 +97,8 @@ class FileJobStore(AbstractJobStore):
             job.setupJobAfterFailure(self.config)
         return job   
     
-    def store(self, job):
+    def update(self, job):
         self._write(job, ".new")
-        os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
-
-    def addChildren(self, job, childCommands):
-        updatingFile = self._getJobFileName(job.jobStoreID) + ".updating"
-        open(updatingFile, 'w').close()
-        for ((command, memory, cpu), tempDir) in zip(childCommands, \
-                    self._createTempDirectories(job.jobStoreID, len(childCommands))):
-            childJob = self._makeJob(command, memory, cpu, tempDir)
-            self.store(childJob)
-            job.children.append((childJob.jobStoreID, memory, cpu))
-        self._write(job, ".new")
-        os.remove(updatingFile)
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, job):
@@ -115,16 +132,6 @@ class FileJobStore(AbstractJobStore):
             except os.error: #In case stuff went wrong, but as this is not critical we let it slide
                 # FIXME: should still log a warning-level message
                 break
-            
-    ##TO BE DELETED
-    def loadJobTreeState(self):
-        jobTreeState = JobTreeState()
-        if not os.path.exists(self._getJobFileDirName()):
-            return jobTreeState
-        jobTreeState.started = True
-        self._loadJobTreeState(self._getJobFileDirName(), jobTreeState)
-        return jobTreeState
-    ##END TO BE DELETED
     
     def loadJobsInStore(self):
         if not os.path.exists(self._getJobFileDirName()): #Case dir does not yet exist
@@ -244,51 +251,11 @@ class FileJobStore(AbstractJobStore):
     #Private methods
     ####
 
-    def _makeJob(self, command, memory, cpu, jobDir):
-        # Sub directory to put temporary files associated with the job in
-        makeSubDir(os.path.join(jobDir, "g"))
-        return Job.create(command=command, memory=memory, cpu=cpu,
-                          tryCount=self._defaultTryCount( ), jobStoreID=jobDir, logJobStoreFileID=None)
-    
     def _getJobFileDirName(self):
         return os.path.join(self.jobStoreDir, "jobs")
     
     def _getJobFileName(self, jobStoreID):
         return os.path.join(jobStoreID, "job")
-        
-    ##START TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED    
-    def _loadJobTreeState2(self, jobTreeJobsRoot, jobTreeState):
-        #Read job
-        job = self.load(jobTreeJobsRoot)
-        # FIXME: This is not a good place to do this. Firstly, this behaviour is not documented
-        # FIXME: ... in the abstract superclass. Secondly, this is behavior shared by all
-        # FIXME: ... implementations so it would be nice if it were factored out, either in the
-        # FIXME: ... caller or in the superclass.
-        # Reset the job
-        job.children = []
-        job.remainingRetryCount = self._defaultTryCount( )
-        #Get children
-        childJobs = reduce(lambda x,y:x+y, map(lambda childDir : 
-            self._loadJobTreeState(childDir, jobTreeState), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
-        if len(childJobs) > 0:
-            jobTreeState.childCounts[job] = len(childJobs)
-            for childJob in childJobs:
-                jobTreeState.childJobStoreIdToParentJob[childJob.jobStoreID] = job
-        elif len(job.followOnCommands) > 0:
-            jobTreeState.updatedJobs.add(job)
-        else: #Job is stub with nothing left to do, so ignore
-            jobTreeState.shellJobs.add(job)
-            return []
-        return [ job ]
-    
-    def _loadJobTreeState(self, jobTreeJobsRoot, jobTreeState):
-        jobFile = self._getJobFileName(jobTreeJobsRoot)
-        if os.path.exists(jobFile):
-            return self._loadJobTreeState2(jobTreeJobsRoot, jobTreeState)
-        return reduce(lambda x,y:x+y, map(lambda childDir : \
-            self._loadJobTreeState2(childDir, jobTreeState), \
-            FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
-    ##END TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED
     
     def _processAnyUpdatingFile(self, jobFile):
         if os.path.isfile(jobFile + ".updating"):
