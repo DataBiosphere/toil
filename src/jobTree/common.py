@@ -109,6 +109,8 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--scale", dest="scale", default=1,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
                       "Used in singleMachine batch system. default=%s" % defaultStr))
+    addOptionFn("--masterIP", dest="masterIP", default='127.0.0.1:5050',
+                help=("The master node's ip and port number. Used in mesos batch system. default=%s" % defaultStr))
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
                 help="The command to run the parasol program default=%s" % defaultStr)
 
@@ -209,6 +211,7 @@ def createConfig(options):
     logger.info("Starting to create the job tree setup for the first time")
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
+    config.attrib["master_ip"] = options.masterIP
     config.attrib["job_store"] = options.jobTree
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
@@ -273,10 +276,12 @@ def loadBatchSystemClass(config, key="batch_system"):
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
+        kwargs["masterIP"]=config.attrib["master_ip"]
         logger.info('Using the mesos batch system')
     elif batchSystemName == 'badmesos' or batchSystemName == 'badMesos':
         from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
+        kwargs["masterIP"]=config.attrib["master_ip"]
         kwargs['useBadExecutor'] = True
         logger.info('Using the mesos batch system')
     else:

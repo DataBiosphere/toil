@@ -36,7 +36,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCpus, maxMemory, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
+    def __init__(self, config, maxCpus, maxMemory, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
         Thread.__init__(self)
         # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
@@ -52,7 +52,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.jobQueueList = defaultdict(list)
 
         # IP of mesos master. specified in MesosBatchSystem, currently loopback
-        self.masterIP = "127.0.0.1:5050"
+        self.masterIP = masterIP
 
         # queue of jobs to kill, by jobID.
         self.killSet = set()
