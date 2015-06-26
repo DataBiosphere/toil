@@ -226,12 +226,21 @@ class hidden:
             worker.deleteFile( fileOne )
 
             # Test stats and logging
+            testRead = []
+            files=master.readStatsAndLogging(testRead.append)
+            assert files==0
+
             master.writeStatsAndLogging("abc")
 
-            testRead = list()
             files=master.readStatsAndLogging(testRead.append)
             assert len(testRead)==1
             assert files==1
+            files=master.readStatsAndLogging(testRead.append)
+            assert files==0
+            master.writeStatsAndLogging("abc")
+            master.writeStatsAndLogging("abc")
+            files=master.readStatsAndLogging(testRead.append)
+            assert files==2
             # Delete parent and its associated files
             #
             master.delete( jobOnMaster )
