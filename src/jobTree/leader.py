@@ -21,7 +21,7 @@
 #THE SOFTWARE.
 
 """
-The master script (of the master/worker pair) for running jobs.
+The leader script (of the leader/worker pair) for running jobs.
 """
 import logging
 import os
@@ -317,10 +317,16 @@ class JobTreeState( object ):
                     #but we add back a predecessor link
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
 
-def mainLoop(config, batchSystem, jobStore, jobTreeState):
+def mainLoop(config, batchSystem, jobStore):
     """
     This is the main loop from which jobs are issued and processed.
     """
+
+    ##########################################
+    #Get a snap shot of the current state of the jobs in the jobStore
+    ##########################################
+
+    jobTreeState = JobTreeState(jobStore)
 
     ##########################################
     #Load the jobBatcher class - used to track jobs submitted to the batch-system

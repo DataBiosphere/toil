@@ -52,7 +52,7 @@ class Job( object ):
         
         #A jobStoreFileID of the log file for a job. 
         #This will be none unless the job failed and the logging
-        #has been captured to be reported on the master.
+        #has been captured to be reported on the leader.
         self.logJobStoreFileID = logJobStoreFileID
 
     def setupJobAfterFailure(self, config):

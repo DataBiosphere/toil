@@ -231,7 +231,7 @@ def main():
                     break
                 #However, if they are gone then we can remove them from the stack.
                 #This is the only way to flush successors that have previously been run
-                #, as jobs are, as far as possible, read only in the master.
+                #, as jobs are, as far as possible, read only in the leader.
                 job.stack.pop()
                 
                 
@@ -313,7 +313,7 @@ def main():
                 logger.info("We need more cpus for the next job, so finishing")
                 break
             if predecessorID != None: 
-                logger.info("The job has multiple predecessors, we must return to the master.")
+                logger.info("The job has multiple predecessors, we must return to the leader.")
                 break
             
             ##########################################

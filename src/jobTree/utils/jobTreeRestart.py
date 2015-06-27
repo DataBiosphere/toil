@@ -56,12 +56,12 @@ def main():
         options.jobTree = args[0]
         
     ##########################################
-    #Now run the job tree construction/master
+    #Now run the job tree construction/leader
     ##########################################  
         
     setLoggingFromOptions(options)
-    with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
-        return mainLoop(config, batchSystem, jobStore)
+    with setupJobTree(options) as (config, batchSystem, jobStore):
+    	return mainLoop(config, batchSystem, jobStore)
     
 def _test():
     import doctest      
