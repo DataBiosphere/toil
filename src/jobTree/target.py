@@ -64,17 +64,17 @@ class Target(object):
         #Private class variables
         
         #See Target.addChild
-        self.__children = []
+        self._children = []
         #See Target.addFollowOn
-        self.__followOns = []
+        self._followOns = []
         #A follow-on or child of a target A, is a "successor" of A, if B
         #is a successor of A, then A is a predecessor of B. 
-        self.__predecessors = set()
+        self._predecessors = set()
         #Variables used for serialisation
-        self.__dirName, moduleName = self._resolveMainModule(self.__module__)
-        self.__importStrings = {moduleName + '.' + self.__class__.__name__}
+        self._dirName, moduleName = self._resolveMainModule(self.__module__)
+        self._importStrings = {moduleName + '.' + self.__class__.__name__}
         #See Target.rv()
-        self.__rvs = {}
+        self._rvs = {}
     
     @abstractmethod  
     def run(self, fileStore):
@@ -112,7 +112,7 @@ class Target(object):
         See Target.checkTargetGraphAcylic for formal definition of allowed forms of
         target graph.
         """
-        self.__children.append(childTarget)
+        self._children.append(childTarget)
         childTarget.__addPredecessor(self)
         return childTarget
     
@@ -125,7 +125,7 @@ class Target(object):
         See Target.checkTargetGraphAcylic for formal definition of allowed forms of
         target graph.
         """
-        self.__followOns.append(followOnTarget)
+        self._followOns.append(followOnTarget)
         followOnTarget.__addPredecessor(self)
         return followOnTarget
         
@@ -194,11 +194,11 @@ class Target(object):
         """
         #Check if the return value has already been promised and if it has
         #return it
-        if argIndex in self.__rvs:
-            return self.__rvs[argIndex]
+        if argIndex in self._rvs:
+            return self._rvs[argIndex]
         #Create, store, return new PromisedTargetReturnValue
-        self.__rvs[argIndex] = PromisedTargetReturnValue()
-        return self.__rvs[argIndex]
+        self._rvs[argIndex] = PromisedTargetReturnValue()
+        return self._rvs[argIndex]
     
     ####################################################
     #Cycle checking
@@ -209,36 +209,20 @@ class Target(object):
         Raises a RuntimeError exception if the target graph rooted at this target 
         contains any cycles of child/followOn dependencies in the augmented target graph
         (see below). Such cycles are not allowed in valid target graphs.
+        Is run during execution.
         
         A follow-on edge (A, B) between two targets A and B is equivalent 
         to adding a child edge from each child of A and its successors to B. We
         call such an edge an "implied" edge. The augmented target graph is a 
         target graph including all the implied edges. 
 
-        The algorithm is O(N^2), where N is the number of targets in the graph. 
-        Is O(N) for graph with no follow-ons. Could almost certainly be improved!
-        
-        This function is run to check for cycles after each run method.
+        For a target (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for 
+        a graph with no follow-ons. The former follow on case could be improved!
         """
-        #Get nodes in target graph
-        nodes = set()
-        self._dfs(node)
-        
-        ##For each follow-on edge calculate the extra implied edges
-        #Map of targets to lists of targets connected by an implied follow-on edge 
-        extraEdges = dict(map(lambda n : (n, []), nodes))
-        for target in nodes:
-            if len(target.__followOns) > 0:
-                #Get set of targets connected by a directed path to target, starting
-                #with a child edge
-                reacheable = set()
-                for child in target.__children:
-                    child._dfs(reacheable)
-                #Now add extra edges
-                for descendant in reacheable:
-                    extraEdges[descendant] += target.__followOns[:]
+        #Get augmented edges
+        extraEdges = self._getAugmentedEdges(self)
             
-        #Now check for directed cycles
+        #Check for directed cycles in the augmented graph
         self._checkTargetGraphAcylicDFS(self, stack, visited, extraEdges)
     
     ####################################################
@@ -396,9 +380,9 @@ class Target(object):
         """
         Adds a predecessor target to the set of predecessor targets.
         """
-        if predecessorTarget in self.__predecessors:
+        if predecessorTarget in self._predecessors:
             raise RuntimeError("The given target is already a predecessor of this target")
-        self.__predecessors.add(predecessorTarget)
+        self._predecessors.add(predecessorTarget)
 
     ####################################################
     #The following functions are used to serialise
@@ -411,7 +395,7 @@ class Target(object):
         Excludes the root target.
         """
         #Call recursively
-        for successor in self.__children + self.__followOn:
+        for successor in self._children + self.__followOn:
             successor._getHashOfTargetsToUUIDs2(targetsToUUIDs)
         
     def _getHashOfTargetsToUUIDs2(self, targetsToUUIDs):
@@ -439,29 +423,29 @@ class Target(object):
             job = self._createEmptyJobForTarget(jobStore, targetsToUUIDs[self])
             
             #Add followOns/children to be run after the current target.
-            for successors in (self.__followOns, self.__children):
+            for successors in (self._followOns, self._children):
                 job.stack.append(map(lambda successor:
                     successor._makeJobWrappers(jobStore, targetsToUUIDs, 
                                                targetsToJobs, self), successors))
             
             #This is the number of predecessors of the target
-            assert predecessor in self.__predecessors
-            job.predecessorNumber = len(self.__predecessors)
+            assert predecessor in self._predecessors
+            job.predecessorNumber = len(self._predecessors)
             
             #Pickle the target so that its run method can be run at a later time.
             #Drop out the children/followOns/predecessors - which are all recored
             #within the jobStore and do not need to be stored within the target
-            self.__children = []
-            self.__followOns = []
-            self.__predecessors = set()
+            self._children = []
+            self._followOns = []
+            self._predecessors = set()
             #The pickled target is "run" as the command of the job, see worker
             #for the mechanism which unpickles the target and executes the Target.run
             #method.
             fileStoreID = jobStore.getEmptyFileStoreID(job.jobStoreID)
             with jobStore.writeFileStream(job.jobStoreID) as ( fileHandle, fileStoreID ):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-            job.command = "scriptTree %s %s %s" % (fileStoreID, self.__dirName, 
-                                                   " ".join(set( self.__importStrings )))
+            job.command = "scriptTree %s %s %s" % (fileStoreID, self._dirName, 
+                                                   " ".join(set( self._importStrings )))
             
             #Update the status of the job on disk
             jobStore.update(job)
@@ -493,7 +477,7 @@ class Target(object):
         jobStore.update(job)
         #Create the jobs for followOns/children
         targetsToJobs = { self:job }
-        for successors in (self.__followOns, self.__children):
+        for successors in (self._followOns, self._children):
             job.stack.append(map(lambda successor:
                 successor._makeJobWrappers(jobStore, targetsToUUIDs, 
                                            {}, self), successors))
@@ -513,8 +497,8 @@ class Target(object):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         #Return the first job
         return self._serialiseTarget(jobStore, firstTargetJobStoreFileID,
-            command="scriptTree %s %s %s" % (sharedTargetFile, self.__dirName, 
-                    " ".join(set( self.__importStrings ))))
+            command="scriptTree %s %s %s" % (sharedTargetFile, self._dirName, 
+                    " ".join(set( self._importStrings ))))
 
     ####################################################
     #Functions to pass Target.run return values to the 
@@ -560,7 +544,7 @@ class Target(object):
         #do this here, rather than within the original constructor of the
         #promised value because we don't necessarily have access to the jobStore when 
         #the PromisedTargetReturnValue instances are created.
-        for PromisedTargetReturnValue in self.__rvs.values():
+        for PromisedTargetReturnValue in self._rvs.values():
             if PromisedTargetReturnValue.jobStoreFileID == None:
                 PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
         #Now recursively do the same for the children and follow ons.
@@ -575,7 +559,7 @@ class Target(object):
         Sets the values for promises using the return values from the target's
         run function.
         """
-        for i in target.__rvs.keys():
+        for i in target._rvs.keys():
             if isinstance(returnValues, tuple):
                 argToStore = returnValues[i]
             else:
@@ -583,7 +567,7 @@ class Target(object):
                     raise RuntimeError("Referencing return value index (%s)"
                                 " that is out of range: %s" % (i, returnValues))
                 argToStore = returnValues
-            target.__rvs[i]._storeValue(argToStore, jobStore)
+            target._rvs[i]._storeValue(argToStore, jobStore)
     
     ####################################################
     #Functions associated with Target.checkTargetGraphAcyclic to establish 
@@ -596,7 +580,7 @@ class Target(object):
         """
         if self not in visited:
             visited.add(self) 
-            for successor in self.__children + self.__followOns:
+            for successor in self._children + self._followOns:
                 self._dfs(visited)
         
     def _checkTargetGraphAcylicDFS(self, stack, visited, extraEdges):
@@ -606,11 +590,65 @@ class Target(object):
         if self not in visited:
             visited.add(self) 
             stack.add(self)
-            for successor in self.__children + self.__followOns + extraEdges[self]:
+            for successor in self._children + self._followOns + extraEdges[self]:
                 self._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
             stack.pop(self)
         if self in stack:
             raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
+        
+    def _getAugmentedEdges(self):
+        """
+        Gets the set of augmented edges. See Target.checkTargetGraphAcylic
+        """
+        #Get nodes in target graph
+        nodes = set()
+        self._dfs(node)
+        
+        ##For each follow-on edge calculate the extra implied edges
+        #Map of targets to lists of targets connected by an implied follow-on edge 
+        extraEdges = dict(map(lambda n : (n, []), nodes))
+        for target in nodes:
+            if len(target._followOns) > 0:
+                #Get set of targets connected by a directed path to target, starting
+                #with a child edge
+                reacheable = set()
+                for child in target._children:
+                    child._dfs(reacheable)
+                #Now add extra edges
+                for descendant in reacheable:
+                    extraEdges[descendant] += target._followOns[:]
+        return extraEdges
+    
+    def _removeRedudantEdges(self):
+        """
+        Removes unnecessary edges from the target graph. 
+        TODO: Use transitive reduction algorithm to remove all such edges.
+        
+        Currently for the target graph (V, E) we remove any edges in E that are also
+        in the set of augmented edges. Such edges in E are redundant, and create
+        a deadlock in the method used for scheduling targets/jobs.
+        TODO: Naive algorithm could be improved
+        """
+        nodes = set()
+        self._dfs(node)
+        extraEdges = dict(map(lambda n : (n, []), nodes))
+        for target in nodes:
+            if len(target._followOns) > 0:
+                for child in target._children:
+                    child._removeRedundantEdges2(target._followOns, set())
+    
+    def _removeRedundantEdges2(self, augmentedEdges, visited):
+        """
+        Does a DFS, for each node removing edges in its set of children
+        or follow-ons that are in the set of augmentedEdges
+        """
+        if self not in visited:
+            visited.add(self)
+            self._children = [ i for i in self._children if i not in augmentedEdges ]
+            self._followOns = [ i for i in self._followOns if i not in augmentedEdges ]
+            for successor in self._children + self._followOns:
+                assert successor not in augmentedEdges
+                successor._removeRedundantEdges2(augmentedEdges, visited)  
     
     ####################################################
     #Function which worker calls to ultimately invoke
@@ -642,6 +680,8 @@ class Target(object):
         #Check if the target graph has created
         #any cycles of dependencies 
         self.checkTargetGraphAcylic()
+        #Remove redundant edges
+        self._removeRedudantEdges()
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
         #Store the return values for any promised return value
