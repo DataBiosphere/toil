@@ -26,7 +26,7 @@
 import sys
 from optparse import OptionParser
 
-from jobTree.master import mainLoop
+from jobTree.leader import mainLoop
 from jobTree.common import addOptions, setupJobTree
 from jobTree.lib.bioio import setLoggingFromOptions
 
@@ -56,11 +56,11 @@ def main():
         options.jobTree = args[0]
         
     ##########################################
-    #Now run the job tree construction/master
+    #Now run the job tree construction/leader
     ##########################################  
         
     setLoggingFromOptions(options)
-    config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
+    config, batchSystem, jobStore = setupJobTree(options)
     return mainLoop(config, batchSystem, jobStore)
     
 def _test():

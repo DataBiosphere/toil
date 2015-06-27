@@ -39,7 +39,7 @@ logger = logging.getLogger( __name__ )
 from jobTree.lib.bioio import (setLoggingFromOptions, system, 
                                getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from jobTree.common import setupJobTree, addOptions
-from jobTree.master import mainLoop, JobTreeState
+from jobTree.leader import mainLoop, JobTreeState
 
 class Target(object):
     """
@@ -108,6 +108,9 @@ class Target(object):
         """
         Adds the child target to be run as child of this target. Returns childTarget.
         Child targets are run after the Target.run method has completed.
+        
+        See Target.checkTargetGraphAcylic for formal definition of allowed forms of
+        target graph.
         """
         self.__children.append(childTarget)
         childTarget.__addPredecessor(self)
@@ -116,7 +119,11 @@ class Target(object):
     def addFollowOn(self, followOnTarget):
         """
         Adds a follow-on target, follow-on targets will be run
-        after the child targets have been run. Returns followOnTarget.
+        after the child targets and their successors have been run. 
+        Returns followOnTarget.
+        
+        See Target.checkTargetGraphAcylic for formal definition of allowed forms of
+        target graph.
         """
         self.__followOns.append(followOnTarget)
         followOnTarget.__addPredecessor(self)
@@ -194,6 +201,47 @@ class Target(object):
         return self.__rvs[argIndex]
     
     ####################################################
+    #Cycle checking
+    ####################################################
+    
+    def checkTargetGraphAcylic(self):
+        """ 
+        Raises a RuntimeError exception if the target graph rooted at this target 
+        contains any cycles of child/followOn dependencies in the augmented target graph
+        (see below). Such cycles are not allowed in valid target graphs.
+        
+        A follow-on edge (A, B) between two targets A and B is equivalent 
+        to adding a child edge from each child of A and its successors to B. We
+        call such an edge an "implied" edge. The augmented target graph is a 
+        target graph including all the implied edges. 
+
+        The algorithm is O(N^2), where N is the number of targets in the graph. 
+        Is O(N) for graph with no follow-ons. Could almost certainly be improved!
+        
+        This function is run to check for cycles after each run method.
+        """
+        #Get nodes in target graph
+        nodes = set()
+        self._dfs(node)
+        
+        ##For each follow-on edge calculate the extra implied edges
+        #Map of targets to lists of targets connected by an implied follow-on edge 
+        extraEdges = dict(map(lambda n : (n, []), nodes))
+        for target in nodes:
+            if len(target.__followOns) > 0:
+                #Get set of targets connected by a directed path to target, starting
+                #with a child edge
+                reacheable = set()
+                for child in target.__children:
+                    child._dfs(reacheable)
+                #Now add extra edges
+                for descendant in reacheable:
+                    extraEdges[descendant] += target.__followOns[:]
+            
+        #Now check for directed cycles
+        self._checkTargetGraphAcylicDFS(self, stack, visited, extraEdges)
+    
+    ####################################################
     #The following nested classes are used for
     #creating job trees (Target.Runner) and 
     #managing temporary files (Target.FileStore)
@@ -234,14 +282,8 @@ class Target(object):
             config, batchSystem, jobStore = setupJobTree(options)
             if not jobStore.started(): #No jobs have yet been run
                 #Setup the first job.
-                job = target._serialiseFirstTarget(jobStore)
-                #Build the jobTreeState object containing just the first job
-                jobTreeState = JobTreeState(jobStore, job)
-            else:
-                #Load the existing state of the jobTree
-                jobTreeState = loadJobTreeState(jobStore, jobStore.loadRootJob())
-                logger.critical("Jobtree is being reloaded from previous run")   
-            return mainLoop(config, batchSystem, jobStore, jobTreeState)
+                target._serialiseFirstTarget(jobStore)
+            return mainLoop(config, batchSystem, jobStore)
         
         @staticmethod
         def cleanup(options):
@@ -341,8 +383,8 @@ class Target(object):
         
         def logToMaster(self, string):
             """
-            Send a logging message to the master. Will only ne reported if logging 
-            is set to INFO level (or lower) in the master.
+            Send a logging message to the leader. Will only ne reported if logging 
+            is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
 
@@ -544,17 +586,32 @@ class Target(object):
             target.__rvs[i]._storeValue(argToStore, jobStore)
     
     ####################################################
-    #Functions to establish that the target graph
-    #does not contain any cycles of dependencies. 
+    #Functions associated with Target.checkTargetGraphAcyclic to establish 
+    #that the target graph does not contain any cycles of dependencies. 
     ####################################################
-            
-    def _checkTargetGraphAcylic(self):
-        """
-        Raises a RuntimeError exception if the target graph contains any cycles
-        of child/followOn dependencies.
-        """
-        pass
         
+    def _dfs(self, visited):
+        """Adds all targets reacheable on a directed path from current node to the
+        set visited.
+        """
+        if self not in visited:
+            visited.add(self) 
+            for successor in self.__children + self.__followOns:
+                self._dfs(visited)
+        
+    def _checkTargetGraphAcylicDFS(self, stack, visited, extraEdges):
+        """
+        To DFS traversal to detect cycles in augmented target graph.
+        """
+        if self not in visited:
+            visited.add(self) 
+            stack.add(self)
+            for successor in self.__children + self.__followOns + extraEdges[self]:
+                self._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
+            stack.pop(self)
+        if self in stack:
+            raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
+    
     ####################################################
     #Function which worker calls to ultimately invoke
     #a targets Target.run method, and then handle created
@@ -584,7 +641,7 @@ class Target(object):
         returnValues = self.run(fileStore)
         #Check if the target graph has created
         #any cycles of dependencies 
-        self._checkTargetGraphAcylic()
+        self.checkTargetGraphAcylic()
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
         #Store the return values for any promised return value
