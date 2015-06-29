@@ -26,11 +26,11 @@ class AbstractJobStore( object ):
         """
         FIXME: describe purpose and post-condition
 
-        :param config: If config is not None then a new physical store will be created and the
+        :param config: If config is not None then the
         given configuration object will be written to the shared file "config.xml" which can
-        later be retrieved using the readSharedFileStream. If config is None, the physical store
-        is assumed to already exist and the configuration object is read the shared file
-        "config.xml" in that .
+        later be retrieved using the readSharedFileStream. If this file already exists
+        it will be overwritten. If config is None, 
+        the shared file "config.xml" is assumed to exist and is retrieved. 
         """
         if config is None:
             with self.readSharedFileStream( "config.xml" ) as fileHandle:
@@ -47,6 +47,13 @@ class AbstractJobStore( object ):
         return self.__config
     
     @abstractmethod
+    def deleteJobStore( self ):
+        """
+        Removes the jobStore from the disk/store. Careful!
+        """
+        raise NotImplementedError( )
+    
+    @abstractmethod
     def started( self ):
         """
         Returns True if the jobStore contains existing jobs (i.e. if 
@@ -54,29 +61,17 @@ class AbstractJobStore( object ):
         """
         raise NotImplentedError( )
     
-    def loadRootJob( self ):
-        """
-        Returns the job created by the first call of the create method.
-        """
-        raise NotImplementedError( )
-    
-    def jobs(self):
-        """
-        Returns iterator on the jobs in the store.
-        """
-        raise NotImplentedError( )
-
-    #
-    # The following methods deal with creating/loading/updating/writing/checking for the
-    # existence of jobs
-    #
+    ##########################################
+    #The following methods deal with creating/loading/updating/writing/checking for the
+    #existence of jobs
+    ##########################################  
 
     @abstractmethod
     def create( self, command, memory, cpu, updateID ):
         """
         Creates a job.
         
-        Command, memory, cpu and updateID are all arguments to the job.
+        Command, memory, cpu and updateID are all arguments to the job's constructor.
 
         :rtype : job.Job
         """
@@ -101,6 +96,17 @@ class AbstractJobStore( object ):
         :raises: NoSuchJobException if there is no job with the given jobStoreID
         """
         raise NotImplementedError( )
+    
+    def loadRootJob( self ):
+        """
+        Returns the job created by the first call of the create method.
+        
+        :rtype : job.Job
+
+        :raises: NoSuchJobException if there is no root job (i.e. create has not
+        yet been called)
+        """
+        raise NotImplementedError( )
 
     @abstractmethod
     def update( self, job ):
@@ -120,14 +126,19 @@ class AbstractJobStore( object ):
         """
         raise NotImplementedError( )
     
-    @abstractmethod
-    def loadJobsInStore(self):
+    def jobs(self):
         """
-        Returns a list of all the jobs in the jobStore.
+        Returns iterator on the jobs in the store.
+        
+        :rtype : iterator
         """
-        raise NotImplementedError( )
+        raise NotImplentedError( )
 
-    ##The following provide an way of creating/reading/writing/updating files associated with a given job.
+
+    ##########################################
+    #The following provide an way of creating/reading/writing/updating files 
+    #associated with a given job.
+    ##########################################  
 
     @abstractmethod
     def writeFile( self, jobStoreID, localFilePath ):
@@ -203,10 +214,11 @@ class AbstractJobStore( object ):
         read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
-
-    #
-    # The following methods deal with shared files, i.e. files not associated with specific jobs.
-    #
+    
+    ##########################################
+    #The following methods deal with shared files, i.e. files not associated 
+    #with specific jobs.
+    ##########################################  
 
     sharedFileNameRegex = re.compile( r'^[a-zA-Z0-9._-]+$' )
 
@@ -252,13 +264,6 @@ class AbstractJobStore( object ):
         Returns the number of stat/logging strings processed. 
         Stats/logging files are only read once and are removed from the 
         file store after being written to the given file handle.
-        """
-        raise NotImplementedError( )
-    
-    @abstractmethod
-    def deleteJobStore( self ):
-        """
-        Removes the jobStore from the disk/store. Careful!
         """
         raise NotImplementedError( )
 

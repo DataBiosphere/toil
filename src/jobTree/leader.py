@@ -285,7 +285,7 @@ class JobTreeState( object ):
     Represents a snapshot of the jobs in the jobStore.
     """
     def __init__( self, jobStore ):
-        # This is a hash of jobs, reference by jobStoreID, to their predecessor jobs.
+        # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
         self.successorJobStoreIDToPredecessorJobs = { }
         # Hash of jobs to counts of numbers of successors issued. 
         # There are no entries for jobs
