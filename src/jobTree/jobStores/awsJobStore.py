@@ -327,7 +327,7 @@ class AWSJobStore( AbstractJobStore ):
 
     def writeStatsAndLogging( self, statsAndLoggingString ):
         jobStoreFileId = self._newFileID()
-        with self._uploadStream(jobStoreFileId, self.stats) as (writeable, key):
+        with self._uploadStream(jobStoreFileId, self.stats, multipart=False) as (writeable, key):
             writeable.write(statsAndLoggingString)
         firstVersion=key.version_id
         self._registerFile(jobStoreFileId,bucketName='stats',newVersion=firstVersion)
@@ -486,7 +486,7 @@ class AWSJobStore( AbstractJobStore ):
         return version
 
     @contextmanager
-    def _uploadStream( self, jobStoreFileID, bucketObj):
+    def _uploadStream( self, jobStoreFileID, bucketObj, multipart=True):
         key = bucketObj.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
@@ -516,7 +516,18 @@ class AWSJobStore( AbstractJobStore ):
                     except:
                         log.exception( 'Exception in reader thread' )
 
-                thread = Thread( target=reader )
+                def simpleReader( ):
+                    log.debug("Using single part upload")
+                    try:
+                        buf = readable.read()
+                        upload = key.set_contents_from_file(fp=StringIO(buf)) #hopefully this sets key.version_id
+                    except:
+                        log.exception("Exception in simple reader thread")
+
+                if multipart==False:
+                    thread = Thread( target=simpleReader )
+                else:
+                    thread = Thread( target=reader )
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
