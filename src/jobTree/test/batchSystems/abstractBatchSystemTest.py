@@ -174,7 +174,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
         while self.master.popen is None or self.slave.popen is None:
             log.info("Waiting for master and slave processes")
             time.sleep(.1)
-        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20)
+        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, masterIP="127.0.0.1:5050")
 
     def setUp(self):
         super(MesosBatchSystemTest, self).setUp()
