@@ -16,7 +16,7 @@ class StaticTest(JobTreeTest):
         
         A - F
         \-------
-        B -> D   \ 
+        B -> D \ 
          \       \
           ------- C -> E
           
@@ -42,11 +42,11 @@ class StaticTest(JobTreeTest):
         A.setFollowOn(F)
         
         #Create the runner for the workflow.
-        options = Target.getDefaultOptions()
+        options = Target.Runner.getDefaultOptions()
         options.logLevel = "INFO"
         #Run the workflow, the return value being the number of failed jobs
-        self.assertEquals(A.startJobTree(options), 0)
-        Target.cleanup(options) #This removes the jobStore
+        self.assertEquals(Target.Runner.startJobTree(A, options), 0)
+        Target.Runner.cleanup(options) #This removes the jobStore
         
         #Check output
         self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
