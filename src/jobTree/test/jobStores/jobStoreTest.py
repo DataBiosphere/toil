@@ -147,8 +147,8 @@ class hidden:
                 self.assertEquals( worker.load( childJob.jobStoreID ), childJob )    
 
             # Test job iterator
-            self.equals(set(childJobs + [ jobOnMaster ]), set(worker.jobs()))
-            self.equals(set(childJobs + [ jobOnMaster ]), set(master.jobs()))
+            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(worker.jobs()))
+            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(master.jobs()))
 
             # Test job deletions
             #
@@ -363,7 +363,6 @@ class hidden:
 class FileJobStoreTest( hidden.AbstractJobStoreTest ):
     def createJobStore( self, config=None ):
         return FileJobStore( self.namePrefix, config )
-
 
 class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
     testRegion = "us-west-2"

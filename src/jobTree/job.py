@@ -6,21 +6,22 @@ class Job( object ):
     """
     A class encapsulating the state of a jobTree job.
     """
-    def __init__( self, remainingRetryCount, jobStoreID, updateID,
-                  command, memory, cpu):
-        #The number of times the job should be retried if it fails
-        #This number is reduced by retries until it is zero
-        #and then no further retries are made
-        self.remainingRetryCount = remainingRetryCount
+    def __init__( self, command, memory, cpu, 
+                  jobStoreID, remainingRetryCount, 
+                  updateID, predecessorNumber):
+        #The command to be executed and its memory and cpu requirements.
+        self.command = command
+        self.memory = memory #Max number of bytes used by the job
+        self.cpu = cpu #Number of cores to be used by the job
         
         #The jobStoreID of the job. JobStore.load(jobStoreID) will return 
         #the job
         self.jobStoreID = jobStoreID
         
-        #The command to be executed and its memory and cpu requirements.
-        self.command = command
-        self.memory = memory #Max number of bytes used by the job
-        self.cpu = cpu #Number of cores to be used by the job
+        #The number of times the job should be retried if it fails
+        #This number is reduced by retries until it is zero
+        #and then no further retries are made
+        self.remainingRetryCount = remainingRetryCount
         
         #These two variables are used in creating a graph of jobs.
         #The updateID is a unique identifier.
@@ -37,23 +38,23 @@ class Job( object ):
         self.updateID = updateID
         self.jobsToDelete = set()
         
-        #The list of successor jobs to run. Successor jobs are stored
-        #as 4-tuples of the form (jobStoreId, memory, cpu, predecessorCount).
-        #Successor jobs are run in reverse order from the stack.
-        self.stack = []
-        
         #The number of predecessor jobs of a given job.
         #A predecessor is a job which references this job in its stack.
-        self.predecessorNumber = 0
+        self.predecessorNumber = predecessorNumber
         #The IDs of predecessors that have finished. 
         #When len(predecessorsFinished) == predecessorNumber then the
         #job can be run.
         self.predecessorsFinished = set()
         
+        #The list of successor jobs to run. Successor jobs are stored
+        #as 4-tuples of the form (jobStoreId, memory, cpu, predecessorNumber).
+        #Successor jobs are run in reverse order from the stack.
+        self.stack = []
+        
         #A jobStoreFileID of the log file for a job. 
         #This will be none unless the job failed and the logging
         #has been captured to be reported on the leader.
-        self.logJobStoreFileID = logJobStoreFileID
+        self.logJobStoreFileID = None
 
     def setupJobAfterFailure(self, config):
         """
@@ -110,6 +111,24 @@ class Job( object ):
         :rtype: Job
         """
         return self.__class__( **self.__dict__ )
+    
+    def __hash__( self ):
+        return hash( self.jobStoreID )
+
+    def __eq__( self, other ):
+        return (
+            isinstance( other, self.__class__ )
+            and self.remainingRetryCount == other.remainingRetryCount
+            and self.jobStoreID == other.jobStoreID
+            and self.updateID == other.updateID
+            and self.jobsToDelete == other.jobsToDelete
+            and self.stack == other.stack
+            and self.predecessorNumber == other.predecessorNumber
+            and self.predecessorsFinished == other.predecessorsFinished
+            and self.logJobStoreFileID == other.logJobStoreFileID )
+
+    def __ne__( self, other ):
+        return not self.__eq__( other )
 
     def __repr__( self ):
         return '%s( **%r )' % ( self.__class__.__name__, self.__dict__ )

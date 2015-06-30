@@ -10,7 +10,8 @@ clean :
 
 # Override on the command line to run a particular test, e.g. tests=jobTree.test.src.jobTest.JobTest
 #tests=discover -s src -p "*Test.py"
-tests=jobTree.test.staticDeclaration.staticTest
+tests=jobTree.test.src.jobTest.JobTest jobTree.test.jobStores.jobStoreTest.FileJobStoreTest
+#jobTree.test.staticDeclaration.staticTest
 testLength=SHORT
 testLogLevel=INFO
 test :

@@ -51,9 +51,10 @@ class FileJobStore(AbstractJobStore):
         # Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
-        job = Job(tryCount=self._defaultTryCount( ), jobStoreID=relativeJobDir, 
-                   command=command, memory=memory, cpu=cpu, updateID=updateID,
-                   predecessorNumber=predecessorNumber)
+        job = Job(command=command, memory=memory, cpu=cpu, 
+                  jobStoreID=relativeJobDir, tryCount=self._defaultTryCount( ), 
+                  updateID=updateID,
+                  predecessorNumber=predecessorNumber)
         #Write job file to disk
         self.update(job)
         return job
