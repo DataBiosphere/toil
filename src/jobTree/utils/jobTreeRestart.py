@@ -61,7 +61,10 @@ def main():
         
     setLoggingFromOptions(options)
     config, batchSystem, jobStore = setupJobTree(options)
-    return mainLoop(config, batchSystem, jobStore)
+    if "rootJob" not in config.attrib:
+        print "There is no root job in the jobTree from which to start, exiting"
+        sys.exit(0)
+    return mainLoop(config, batchSystem, jobStore, jobStore.load(config.attrib["rootJob"]))
     
 def _test():
     import doctest      
