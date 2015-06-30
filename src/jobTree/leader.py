@@ -256,11 +256,11 @@ class JobBatcher:
         Update status of a predecessor for finished successor job.
         """
         if jobStoreID not in self.jobTreeState.successorJobStoreIDToPredecessorJob:
-            #
+            #We have reach the root job
             assert len(self.jobTreeState.updatedJobs) == 0
             assert len(self.jobTreeState.successorJobStoreIDToPredecessorJob) == 0
             assert len(self.jobTreeState.successorCounts) == 0
-            break
+            return
         for predecessorJob in self.jobTreeState.successorJobStoreIDToPredecessorJob.pop(jobStoreID):
             self.jobTreeState.successorCounts[predecessorJob] -= 1
             assert self.jobTreeState.successorCounts[predecessorJob] >= 0

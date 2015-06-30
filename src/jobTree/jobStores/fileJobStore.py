@@ -10,7 +10,7 @@ import os
 import errno
 import tempfile
 from jobTree.lib.bioio import system, absSymPath
-from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
+from jobTree.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
 from jobTree.job import Job
 
@@ -41,7 +41,8 @@ class FileJobStore(AbstractJobStore):
     #existence of jobs
     ########################################## 
     
-    def create(self, command, memory, cpu, updateID):
+    def create(self, command, memory, cpu, updateID=None,
+               predecessorNumber=0):
         #The absolute path to the job directory and the path relative to the
         #self.jobStoreDir directory, the latter serving as the jobStoreID.  
         #Gets a valid temporary directory in which to create a job.    
@@ -51,7 +52,8 @@ class FileJobStore(AbstractJobStore):
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
         job = Job(tryCount=self._defaultTryCount( ), jobStoreID=relativeJobDir, 
-                   command=command, memory=memory, cpu=cpu, updateID=updateID)
+                   command=command, memory=memory, cpu=cpu, updateID=updateID,
+                   predecessorNumber=predecessorNumber)
         #Write job file to disk
         self.update(job)
         return job
@@ -97,10 +99,11 @@ class FileJobStore(AbstractJobStore):
             pickler.dump(job.toList(), fileHandle)
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
-    def delete(self, job):
+    def delete(self, jobStoreID):
         #The jobStoreID is the relative path to the directory containing the job,
         #removing this directory deletes the job.
-        system("rm -rf %s" % self._getAbsPath(job.jobStoreID))
+        if self.exists(jobStoreID):
+            system("rm -rf %s" % self._getAbsPath(jobStoreID))
  
     def jobs(self):
         #Walk through list of temporary directories searching for jobs

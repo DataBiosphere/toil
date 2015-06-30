@@ -59,11 +59,13 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def create( self, command, memory, cpu, updateID ):
+    def create( self, command, memory, cpu, updateID=None,
+                predecessorNumber=0 ):
         """
         Creates a job.
         
-        Command, memory, cpu and updateID are all arguments to the job's constructor.
+        Command, memory, cpu, updateID, predecessorNumber 
+        are all arguments to the job's constructor.
 
         :rtype : job.Job
         """
@@ -121,7 +123,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def delete( self, job ):
+    def delete( self, jobStoreID ):
         """
         Removes from store atomically, can not then subsequently call load(), write(), update(),
         etc. with the job.
