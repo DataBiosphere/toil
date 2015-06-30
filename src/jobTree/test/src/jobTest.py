@@ -24,68 +24,44 @@ class JobTest(JobTreeTest):
         Target.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
-        config, batchSystem, jobStore, jobTreeState = setupJobTree(options)
+        config, batchSystem, jobStore = setupJobTree(options)
         self.jobStore = jobStore
         
     def tearDown(self):
         super( JobTest, self ).tearDown( )
         system("rm -rf %s" % self.testJobTree)
     
-    def testJobStoreLoadWriteAndDelete(self):        
+    def testJob(self):        
         command = "by your command"
         memory = 2^32
         cpu = 1
+        predecessorCount = 0
+        updateID = 1000
         tryCount = int(self.jobStore.config.attrib["try_count"])
         
         for i in xrange(10):
             startTime = time.time()
             for j in xrange(100):
-                j = self.jobStore.createFirstJob(command, memory, cpu)
+                j = self.jobStore.createFirstJob(command, memory, cpu, updateID, predecessorCount)
                 self.assertEquals(j.remainingRetryCount, tryCount)
-                self.assertEquals(j.children, [])
-                self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.jobStore.store(j)
-                jobStoreID = j.jobStoreID
-                j = self.jobStore.load(j.jobStoreID)
-                self.assertEquals(j.remainingRetryCount, tryCount)
-                self.assertEquals(j.jobStoreID, jobStoreID)
-                self.assertEquals(j.children, [])
-                self.assertEquals(j.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertTrue(self.jobStore.exists(j.jobStoreID))
+                self.assertEquals(j.command, command)
+                self.assertEquals(j.memory, memory)
+                self.assertEquals(j.cpu, cpu)
+                self.assertEquals(j.predecessorCount, predecessorCount)
+                self.assertEquals(j.stack, [])
+                self.assertEquals(j.predecessorsFinished, set())
+                #Test the storage of attributes
+                j.predecessorsFinished = set(("1", "2"))
+                j.stack = [ "foo", "bar" ]
+                #Update status in store
+                self.jobStore.update(j)
+                j2 = self.jobStore.load(j.jobStoreID)
+                self.assertEquals(j, j2)
                 self.jobStore.delete(j)
                 self.assertTrue(not self.jobStore.exists(j.jobStoreID))
             print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
             #Would be good to extend this trivial test
-        
-    def testJobUpdate(self):
-        command = "by your command"
-        memory = 2^32
-        cpu = 1
-        tryCount = int(self.jobStore.config.attrib["try_count"])
-        
-        for i in xrange(40):
-            startTime = time.time()
-            j = self.jobStore.createFirstJob(command, memory, cpu)
-            childNumber = random.choice(range(20))
-            children = map(lambda i : (command, memory, cpu), xrange(childNumber))
-            self.jobStore.addChildren(j, children)
-            jobStoreID = j.jobStoreID
-            j = self.jobStore.load(j.jobStoreID)
-            self.assertEquals(len(j.children), childNumber)
-            for childJobStoreID, memory, cpu in j.children:
-                cJ = self.jobStore.load(childJobStoreID)
-                self.assertEquals(cJ.remainingRetryCount, tryCount)
-                #self.assertEquals(cJ.jobDir, os.path.split(cJ)[0])
-                self.assertEquals(cJ.children, [])
-                self.assertEquals(cJ.followOnCommands, [ (command, memory, cpu, 0)])
-                self.assertTrue(self.jobStore.exists(cJ.jobStoreID))
-                self.jobStore.delete(cJ)
-                self.assertTrue(not self.jobStore.exists(cJ.jobStoreID))
-            self.assertTrue(self.jobStore.exists(j.jobStoreID))
-            self.jobStore.delete(j)
-            self.assertTrue(not self.jobStore.exists(j.jobStoreID))
-            print "It took %f seconds to update jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
-            
+
 
 if __name__ == '__main__':
     unittest.main()
