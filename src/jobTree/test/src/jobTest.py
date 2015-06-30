@@ -3,65 +3,49 @@
 """
 
 import unittest
-import os
-import time
-import sys
-import random
-from optparse import OptionParser
-
-from jobTree.lib.bioio import parseSuiteTestOptions
-from jobTree.lib.bioio import system
-from jobTree.common import setupJobTree
 from jobTree.test import JobTreeTest
-
+from jobTree.job import Job
 
 class JobTest(JobTreeTest):
-
-    def setUp(self):
-        super( JobTest, self ).setUp( )
-        self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
-        parser = OptionParser()
-        Target.addJobTreeOptions(parser)
-        options, args = parser.parse_args()
-        options.jobTree = self.testJobTree
-        config, batchSystem, jobStore = setupJobTree(options)
-        self.jobStore = jobStore
-        
-    def tearDown(self):
-        super( JobTest, self ).tearDown( )
-        system("rm -rf %s" % self.testJobTree)
     
-    def testJob(self):        
+    def testJob(self):       
+        """
+        Tests functions of a job.
+        """ 
+    
         command = "by your command"
         memory = 2^32
         cpu = 1
-        predecessorCount = 0
+        jobStoreID = 100
+        remainingRetryCount = 5
+        predecessorNumber = 0
         updateID = 1000
-        tryCount = int(self.jobStore.config.attrib["try_count"])
         
-        for i in xrange(10):
-            startTime = time.time()
-            for j in xrange(100):
-                j = self.jobStore.createFirstJob(command, memory, cpu, updateID, predecessorCount)
-                self.assertEquals(j.remainingRetryCount, tryCount)
-                self.assertEquals(j.command, command)
-                self.assertEquals(j.memory, memory)
-                self.assertEquals(j.cpu, cpu)
-                self.assertEquals(j.predecessorCount, predecessorCount)
-                self.assertEquals(j.stack, [])
-                self.assertEquals(j.predecessorsFinished, set())
-                #Test the storage of attributes
-                j.predecessorsFinished = set(("1", "2"))
-                j.stack = [ "foo", "bar" ]
-                #Update status in store
-                self.jobStore.update(j)
-                j2 = self.jobStore.load(j.jobStoreID)
-                self.assertEquals(j, j2)
-                self.jobStore.delete(j)
-                self.assertTrue(not self.jobStore.exists(j.jobStoreID))
-            print "It took %f seconds to load/unload jobs" % (time.time() - startTime) #We've just used it for benchmarking, so far 
-            #Would be good to extend this trivial test
-
+        j = Job(command, memory, cpu, jobStoreID, remainingRetryCount, 
+                  updateID, predecessorNumber)
+        
+        #Check attributes
+        #
+        self.assertEquals(j.command, command)
+        self.assertEquals(j.memory, memory)
+        self.assertEquals(j.cpu, cpu)
+        self.assertEquals(j.jobStoreID, jobStoreID)
+        self.assertEquals(j.remainingRetryCount, remainingRetryCount)
+        self.assertEquals(j.predecessorNumber, predecessorNumber)
+        self.assertEquals(j.updateID, updateID)
+        self.assertEquals(j.stack, [])
+        self.assertEquals(j.predecessorsFinished, set())
+        self.assertEquals(j.logJobStoreFileID, None)
+        
+        #Check equals function
+        j2 = Job(command, memory, cpu, jobStoreID, remainingRetryCount, 
+                  updateID, predecessorNumber)
+        self.assertEquals(j, j2)
+        #Change an attribute and check not equal
+        j.predecessorsFinished = set(("1", "2"))
+        self.assertNotEquals(j, j2)
+        
+        ###TODO test other functionality
 
 if __name__ == '__main__':
     unittest.main()
