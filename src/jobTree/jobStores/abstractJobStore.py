@@ -53,14 +53,6 @@ class AbstractJobStore( object ):
         """
         raise NotImplementedError( )
     
-    @abstractmethod
-    def started( self ):
-        """
-        Returns True if the jobStore contains existing jobs (i.e. if 
-        create has already been called), else False.
-        """
-        raise NotImplentedError( )
-    
     ##########################################
     #The following methods deal with creating/loading/updating/writing/checking for the
     #existence of jobs
@@ -120,17 +112,6 @@ class AbstractJobStore( object ):
         :raises: NoSuchJobException if there is no job with the given jobStoreID
         """
         raise NotImplementedError( )
-    
-    def loadRootJob( self ):
-        """
-        Returns the job created by the first call of the create method.
-        
-        :rtype : job.Job
-
-        :raises: NoSuchJobException if there is no root job (i.e. create has not
-        yet been called)
-        """
-        raise NotImplementedError( )
 
     @abstractmethod
     def update( self, job ):
@@ -157,7 +138,6 @@ class AbstractJobStore( object ):
         :rtype : iterator
         """
         raise NotImplentedError( )
-
 
     ##########################################
     #The following provide an way of creating/reading/writing/updating files 

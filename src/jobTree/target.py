@@ -265,10 +265,12 @@ class Target(object):
             """
             setLoggingFromOptions(options)
             config, batchSystem, jobStore = setupJobTree(options)
-            if not jobStore.started(): #No jobs have yet been run
+            if "rootJob" not in config.attrib["rootJob"]: #No jobs have yet been run
                 #Setup the first job.
-                target._serialiseFirstTarget(jobStore)
-            return mainLoop(config, batchSystem, jobStore)
+                rootJob = target._serialiseFirstTarget(jobStore)
+            else:
+                rootJob = jobStore.load(config.attrib["rootJob"])
+            return mainLoop(config, batchSystem, jobStore, rootJob)
         
         @staticmethod
         def cleanup(options):
@@ -450,7 +452,6 @@ class Target(object):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             job.command = "scriptTree %s %s %s" % (fileStoreID, self._dirName, 
                                                    " ".join(set( self._importStrings )))
-            
             #Update the status of the job on disk
             jobStore.update(job)
         else:
@@ -497,12 +498,18 @@ class Target(object):
         #Pickles the target within a shared file in the jobStore called 
         #"firstTarget"
         sharedTargetFile = "firstTarget"
-        with jobStore.writeSharedFileStream(sharedTargetFile) as fileHandle:
-            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        #Return the first job
-        return self._serialiseTarget(jobStore, firstTargetJobStoreFileID,
+        jobStore.writeSharedFileStream(sharedTargetFile).\
+        cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+        #Make the first job
+        job = self._createEmptyJobForTarget(jobStore,
             command="scriptTree %s %s %s" % (sharedTargetFile, self._dirName, 
                     " ".join(set( self._importStrings ))))
+        #Set the config rootJob attrib
+        assert "rootJob" not in config.attrib
+        config.attrib["rootJob"] = job.jobStoreID
+        ET.ElementTree( config ).write( jobStore.writeSharedFileStream("config.xml") )
+        #Return the first job
+        return job
 
     ####################################################
     #Functions to pass Target.run return values to the 

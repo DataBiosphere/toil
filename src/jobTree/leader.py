@@ -282,7 +282,7 @@ class JobTreeState( object ):
     """
     Represents a snapshot of the jobs in the jobStore.
     """
-    def __init__( self, jobStore ):
+    def __init__( self, jobStore, rootJob ):
         # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
         self.successorJobStoreIDToPredecessorJobs = { }
         # Hash of jobs to counts of numbers of successors issued. 
@@ -292,7 +292,7 @@ class JobTreeState( object ):
         # Jobs that are ready to be processed
         self.updatedJobs = set( )
         ##Algorithm to build this information
-        self._buildJobTreeState(jobStore.loadRootJob(), jobStore)
+        self._buildJobTreeState(rootJob, jobStore)
 
     def _buildJobTreeState(self, job, jobStore):
         """
@@ -317,7 +317,7 @@ class JobTreeState( object ):
                     #but we add back a predecessor link
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
 
-def mainLoop(config, batchSystem, jobStore):
+def mainLoop(config, batchSystem, jobStore, rootJob):
     """
     This is the main loop from which jobs are issued and processed.
     """
@@ -326,7 +326,7 @@ def mainLoop(config, batchSystem, jobStore):
     #Get a snap shot of the current state of the jobs in the jobStore
     ##########################################
 
-    jobTreeState = JobTreeState(jobStore)
+    jobTreeState = JobTreeState(jobStore, rootJob)
 
     ##########################################
     #Load the jobBatcher class - used to track jobs submitted to the batch-system
