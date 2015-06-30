@@ -77,8 +77,6 @@ class AWSJobStore( AbstractJobStore ):
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
-        setattr(self, 'files', self.files)
-        setattr(self, 'stats', self.stats)
         super( AWSJobStore, self ).__init__( config=config )
 
     def createFirstJob( self, command, memory, cpu ):
@@ -450,10 +448,8 @@ class AWSJobStore( AbstractJobStore ):
                 item = self.versions.get_attributes( item_name=jobStoreFileID,
                                                      attribute_name=['version','bucketName'],
                                                      consistent_read=True )
-        bucketName = item.get('bucketName',None)
-        if bucketName: # getattr will throw a TypeError if it recieves None as a key, even with a default.
-            return (item.get( 'version', None ), getattr(self, bucketName,None))
-        return (item.get( 'version', None ), None)
+        bucketName = item.get('bucketName', None)
+        return (None,None) if bucketName is None else ( item.get('version', None), getattr(self, bucketName))
 
     _s3_part_size = 50 * 1024 * 1024
 
