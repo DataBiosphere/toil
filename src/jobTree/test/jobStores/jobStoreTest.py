@@ -228,19 +228,19 @@ class hidden:
             # Test stats and logging
             testRead = []
             files=master.readStatsAndLogging(testRead.append)
-            assert files==0
+            self.assertTrue(files==0)
 
             master.writeStatsAndLogging("abc")
 
             files=master.readStatsAndLogging(testRead.append)
             assert len(testRead)==1
-            assert files==1
+            self.assertTrue(files==1)
             files=master.readStatsAndLogging(testRead.append)
-            assert files==0
+            self.assertTrue(files==0)
             master.writeStatsAndLogging("abc")
             master.writeStatsAndLogging("abc")
             files=master.readStatsAndLogging(testRead.append)
-            assert files==2
+            self.assertTrue(files==2)
             # Delete parent and its associated files
             #
             master.delete( jobOnMaster )

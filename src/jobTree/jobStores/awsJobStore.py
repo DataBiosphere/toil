@@ -282,7 +282,7 @@ class AWSJobStore( AbstractJobStore ):
     def readFile( self, jobStoreFileID, localFilePath ):
         version, bucket = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
-        assert bucket == self.files
+        assert bucket is self.files
         log.debug( "Reading version %s of file %s to path '%s'",
                    version, jobStoreFileID, localFilePath )
         self._download( jobStoreFileID, localFilePath, version )
@@ -291,7 +291,7 @@ class AWSJobStore( AbstractJobStore ):
     def readFileStream( self, jobStoreFileID ):
         version, bucket = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
-        assert bucket == self.files
+        assert bucket is self.files
         log.debug( "Reading version %s of file %s", version, jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
             yield readable
@@ -301,9 +301,8 @@ class AWSJobStore( AbstractJobStore ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         version, bucket = self._getFileVersion( jobStoreFileID )
-        assert bucket == self.files
         if version is None: raise NoSuchFileException( jobStoreFileID )
-        assert bucket == self.files
+        assert bucket is self.files
         log.debug( "Read version %s from shared file %s (%s)",
                    version, sharedFileName, jobStoreFileID )
         with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
@@ -520,14 +519,11 @@ class AWSJobStore( AbstractJobStore ):
                     log.debug("Using single part upload")
                     try:
                         buf = readable.read()
-                        upload = key.set_contents_from_file(fp=StringIO(buf)) #hopefully this sets key.version_id
+                        upload = key.set_contents_from_file(fp=StringIO(buf))
                     except:
                         log.exception("Exception in simple reader thread")
 
-                if multipart==False:
-                    thread = Thread( target=simpleReader )
-                else:
-                    thread = Thread( target=reader )
+                thread = Thread( target=reader ) if multipart else Thread(target=simpleReader)
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
@@ -542,8 +538,8 @@ class AWSJobStore( AbstractJobStore ):
         key.get_contents_to_filename( localFilePath, version_id=version )
 
     @contextmanager
-    def _downloadStream( self, jobStoreFileID, version, bucketObj ):
-        key = bucketObj.get_key( jobStoreFileID, validate=False )
+    def _downloadStream( self, jobStoreFileID, version, bucket ):
+        key = bucket.get_key( jobStoreFileID, validate=False )
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
