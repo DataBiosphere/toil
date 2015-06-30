@@ -77,7 +77,8 @@ class AWSJobStore( AbstractJobStore ):
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
-        self.bucketMap = {'files':self.files, 'stats':self.stats}
+        setattr(self, 'files', self.files)
+        setattr(self, 'stats', self.stats)
         super( AWSJobStore, self ).__init__( config=config )
 
     def createFirstJob( self, command, memory, cpu ):
@@ -337,7 +338,7 @@ class AWSJobStore( AbstractJobStore ):
             with attempt:
                 items = list( self.versions.select(
                             query="select * from `%s` "
-                                  "where bucket='stats'" % (self.versions.name,),
+                                  "where bucketName='stats'" % (self.versions.name,),
                             consistent_read=True ) )
         for item in items:
             with self._downloadStream(item.name, item['version'], self.stats) as readable:
@@ -447,9 +448,12 @@ class AWSJobStore( AbstractJobStore ):
         for attempt in retry_sdb( ):
             with attempt:
                 item = self.versions.get_attributes( item_name=jobStoreFileID,
-                                                     attribute_name=['version','bucket'],
+                                                     attribute_name=['version','bucketName'],
                                                      consistent_read=True )
-        return (item.get( 'version', None ), self.bucketMap.get(item.get('bucket',None),None))
+        bucketName = item.get('bucketName',None)
+        if bucketName: # getattr will throw a TypeError if it recieves None as a key, even with a default.
+            return (item.get( 'version', None ), getattr(self, bucketName,None))
+        return (item.get( 'version', None ), None)
 
     _s3_part_size = 50 * 1024 * 1024
 
@@ -485,15 +489,15 @@ class AWSJobStore( AbstractJobStore ):
         return version
 
     @contextmanager
-    def _uploadStream( self, jobStoreFileID, bucketObj, multipart=True):
-        key = bucketObj.new_key( key_name=jobStoreFileID )
+    def _uploadStream( self, jobStoreFileID, bucket, multipart=True):
+        key = bucket.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def reader( ):
                     try:
-                        upload = bucketObj.initiate_multipart_upload( key_name=jobStoreFileID )
+                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID )
                         try:
                             for part_num in itertools.count( ):
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -523,7 +527,7 @@ class AWSJobStore( AbstractJobStore ):
                     except:
                         log.exception("Exception in simple reader thread")
 
-                thread = Thread( target=reader ) if multipart else Thread(target=simpleReader)
+                thread = Thread( target=reader if multipart else simpleReader )
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
@@ -577,7 +581,7 @@ class AWSJobStore( AbstractJobStore ):
         # Must pass newVersion if passing oldVersion
         assert oldVersion is None or newVersion is not None
         attributes = { }
-        attributes['bucket']=bucketName
+        attributes['bucketName']=bucketName
         if newVersion is not None:
             attributes[ 'version' ] = newVersion
         if jobStoreID is not None:
@@ -591,7 +595,7 @@ class AWSJobStore( AbstractJobStore ):
                                                          attributes=attributes,
                                                          expected_value=expected )
             if oldVersion is not None:
-                bucket = self.bucketMap[bucketName]
+                bucket = getattr(self, bucketName)
                 bucket.delete_key( jobStoreFileID, version_id=oldVersion )
         except SDBResponseError as e:
             if e.error_code == 'ConditionalCheckFailed':
