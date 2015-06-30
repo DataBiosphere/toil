@@ -37,9 +37,9 @@ class StaticTest(JobTreeTest):
         A.addChild(B)
         A.addChild(C)
         B.addChild(C)
-        B.setFollowOn(D)
-        C.setFollowOn(E)
-        A.setFollowOn(F)
+        B.addFollowOn(D)
+        C.addFollowOn(E)
+        A.addFollowOn(F)
         
         #Create the runner for the workflow.
         options = Target.Runner.getDefaultOptions()

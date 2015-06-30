@@ -113,7 +113,7 @@ class Target(object):
         target graph.
         """
         self._children.append(childTarget)
-        childTarget.__addPredecessor(self)
+        childTarget._addPredecessor(self)
         return childTarget
     
     def addFollowOn(self, followOnTarget):
@@ -126,7 +126,7 @@ class Target(object):
         target graph.
         """
         self._followOns.append(followOnTarget)
-        followOnTarget.__addPredecessor(self)
+        followOnTarget._addPredecessor(self)
         return followOnTarget
         
     ##Convenience functions for creating targets
@@ -257,7 +257,7 @@ class Target(object):
             addOptions(parser)
     
         @staticmethod
-        def startJobTree(self, target, options):
+        def startJobTree(target, options):
             """
             Runs the jobtree using the given options (see Target.Runner.getDefaultOptions
             and Target.Runner.addJobTreeOptions) starting with this target.
@@ -405,7 +405,8 @@ class Target(object):
             targetsToUUIDs[self] = uuid.uuid1() 
             self._getHashOfTargetsToUUIDs(targetsToUUIDs)
            
-    def _createEmptyJobForTarget(self, jobStore, updateID=None, command=None):
+    def _createEmptyJobForTarget(self, jobStore, updateID=None, command=None, 
+                                 predecessorNumber=0):
         """
         Create an empty job for the target.
         """
@@ -414,7 +415,7 @@ class Target(object):
                                           else float(config.attrib["default_memory"])),
                                   cpu=(self.cpu if self.cpu != sys.maxint
                                        else float(config.attrib["default_cpu"])),
-                                  updateID=updateID)  
+                                  updateID=updateID, predecessorNumber=predecessorNumber)  
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor):
         """
@@ -422,17 +423,15 @@ class Target(object):
         """
         if self not in targetsToJobs:
             #The job for the target
-            job = self._createEmptyJobForTarget(jobStore, targetsToUUIDs[self])
+            assert predecessor in self._predecessors
+            job = self._createEmptyJobForTarget(jobStore, targetsToUUIDs[self],
+                                                predecessorNumber=len(self._predecessors))
             
             #Add followOns/children to be run after the current target.
             for successors in (self._followOns, self._children):
                 job.stack.append(map(lambda successor:
                     successor._makeJobWrappers(jobStore, targetsToUUIDs, 
                                                targetsToJobs, self), successors))
-            
-            #This is the number of predecessors of the target
-            assert predecessor in self._predecessors
-            job.predecessorNumber = len(self._predecessors)
             
             #Pickle the target so that its run method can be run at a later time.
             #Drop out the children/followOns/predecessors - which are all recored
