@@ -8,7 +8,9 @@ class Job( object ):
     """
     def __init__( self, command, memory, cpu, 
                   jobStoreID, remainingRetryCount, 
-                  updateID, predecessorNumber): 
+                  updateID, predecessorNumber,
+                  jobsToDelete=None, predecessorsFinished=None, 
+                  stack=None, logJobStoreFileID=None): 
         #The command to be executed and its memory and cpu requirements.
         self.command = command
         self.memory = memory #Max number of bytes used by the job
@@ -36,7 +38,7 @@ class Job( object ):
         #we can revert to the state immediately before the creation
         #of the graph of jobs. 
         self.updateID = updateID
-        self.jobsToDelete = set()
+        self.jobsToDelete = jobsToDelete or []
         
         #The number of predecessor jobs of a given job.
         #A predecessor is a job which references this job in its stack.
@@ -44,17 +46,17 @@ class Job( object ):
         #The IDs of predecessors that have finished. 
         #When len(predecessorsFinished) == predecessorNumber then the
         #job can be run.
-        self.predecessorsFinished = set()
+        self.predecessorsFinished = predecessorNumber or set()
         
         #The list of successor jobs to run. Successor jobs are stored
         #as 4-tuples of the form (jobStoreId, memory, cpu, predecessorNumber).
         #Successor jobs are run in reverse order from the stack.
-        self.stack = []
+        self.stack = stack or []
         
         #A jobStoreFileID of the log file for a job. 
         #This will be none unless the job failed and the logging
         #has been captured to be reported on the leader.
-        self.logJobStoreFileID = None
+        self.logJobStoreFileID = logJobStoreFileID 
 
     def setupJobAfterFailure(self, config):
         """
@@ -132,3 +134,6 @@ class Job( object ):
 
     def __repr__( self ):
         return '%s( **%r )' % ( self.__class__.__name__, self.__dict__ )
+    
+    def __str__(self):
+        return str(self.toDict())
