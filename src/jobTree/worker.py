@@ -262,12 +262,10 @@ def main():
                     #Is a target command
                     messages = loadTarget(job.command,jobStore)._execute(job=job, 
                                     stats=stats, localTempDir=localTempDir, 
-                                    jobStore=jobStore, 
-                                    defaultMemory=int(config.attrib["default_memory"]), 
-                                    defaultCpu=int(config.attrib["default_cpu"]))
+                                    jobStore=jobStore)
     
                 else: #Is another command (running outside of targets may be deprecated)
-                    system(command)
+                    system(job.command)
                     messages = []
             else:
                 #The command may be none, in which case
@@ -300,7 +298,7 @@ def main():
             #If there are 2 or more jobs to run in parallel we quit
             if len(jobs) >= 2:
                 logger.info("No more jobs can run in series by this worker,"
-                            " it's got %i children" % len(tasks)-1)
+                            " it's got %i children", len(jobs)-1)
                 break
             
             #We check the requirements of the job to see if we can run it
@@ -333,8 +331,8 @@ def main():
             #These should all match up
             assert successorJob.memory == memory
             assert successorJob.cpu == cpu
-            assert successorJob.predeccesors == set()
-            assert successorJob.predeccesorNumber == 1
+            assert successorJob.predecessorsFinished == set()
+            assert successorJob.predecessorNumber == 1
             
             #Transplant the command and stack to the current job
             job.command = successorJob.command
@@ -369,7 +367,7 @@ def main():
                 ET.SubElement(m, "message").text = message
             jobStore.writeStatsAndLogging(ET.tostring(l))
         
-        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
     #Trapping where worker goes wrong

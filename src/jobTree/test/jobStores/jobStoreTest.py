@@ -9,11 +9,10 @@ from threading import Thread
 import uuid
 from xml.etree.cElementTree import Element
 
-from jobTree.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException, AbstractJobStore)
+from jobTree.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from jobTree.jobStores.awsJobStore import AWSJobStore
 from jobTree.jobStores.fileJobStore import FileJobStore
 from jobTree.test import JobTreeTest
-
 
 logger = logging.getLogger( __name__ )
 
@@ -88,8 +87,8 @@ class hidden:
             jobOnMaster = master.create( "master1", 12, 34, "foo")
             self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
             self.assertEquals(jobOnMaster.command, "master1")
-            self.assertEquals(jobOnMaster.cpu, 12)
-            self.assertEquals(jobOnMaster.memory, 34)
+            self.assertEquals(jobOnMaster.memory, 12)
+            self.assertEquals(jobOnMaster.cpu, 34) 
             self.assertEquals(jobOnMaster.updateID, "foo")
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
@@ -171,8 +170,8 @@ class hidden:
             
             # Test job iterator now has no jobs
             #
-            self.equals(set(), set(worker.jobs()))
-            self.equals(set(), set(master.jobs()))
+            self.assertEquals(set(), set(worker.jobs()))
+            self.assertEquals(set(), set(master.jobs()))
 
             # Test shared files: Write shared file on master, ...
             #

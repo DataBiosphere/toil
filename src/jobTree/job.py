@@ -8,7 +8,7 @@ class Job( object ):
     """
     def __init__( self, command, memory, cpu, 
                   jobStoreID, remainingRetryCount, 
-                  updateID, predecessorNumber):
+                  updateID, predecessorNumber): 
         #The command to be executed and its memory and cpu requirements.
         self.command = command
         self.memory = memory #Max number of bytes used by the job
@@ -63,14 +63,14 @@ class Job( object ):
         which is common).
         """
         self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-        logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s" %
-                    (self.jobStoreID, self.remainingRetryCount))
+        logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s",
+                    self.jobStoreID, self.remainingRetryCount)
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
         if self.memory < float(config.attrib["default_memory"]):
             self.memory = float(config.attrib["default_memory"])
-            logger.warn("We have increaed the default memory of the failed job to %s bytes" %
+            logger.warn("We have increased the default memory of the failed job to %s bytes",
                         self.memory)
 
     def clearLogFile( self, jobStore ):

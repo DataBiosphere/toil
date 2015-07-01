@@ -26,6 +26,8 @@ import time
 from optparse import OptionParser
 import xml.etree.cElementTree as ET
 from abc import ABCMeta, abstractmethod
+import tempfile
+import uuid
 
 from jobTree.resource import ModuleDescriptor
 from jobTree.lib.bioio import getTempFile
@@ -41,7 +43,7 @@ logger = logging.getLogger( __name__ )
 from jobTree.lib.bioio import (setLoggingFromOptions, system, 
                                getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from jobTree.common import setupJobTree, addOptions
-from jobTree.leader import mainLoop, JobTreeState
+from jobTree.leader import mainLoop
 
 class Target(object):
     """
@@ -221,10 +223,10 @@ class Target(object):
         a graph with no follow-ons. The former follow on case could be improved!
         """
         #Get augmented edges
-        extraEdges = self._getAugmentedEdges(self)
+        extraEdges = self._getAugmentedEdges()
             
         #Check for directed cycles in the augmented graph
-        self._checkTargetGraphAcylicDFS(self, stack, visited, extraEdges)
+        self._checkTargetGraphAcylicDFS([], set(), extraEdges)
     
     ####################################################
     #The following nested classes are used for
@@ -302,7 +304,7 @@ class Target(object):
             Takes a file (as a path) and uploads it to to the global file store, returns
             an ID that can be used to retrieve the file. 
             """
-            return self.jobStore.writeFile(self.jobStoreID, localFileName)
+            return self.jobStore.writeFile(self.job.jobStoreID, localFileName)
         
         def updateGlobalFile(self, fileStoreID, localFileName):
             """
@@ -320,7 +322,7 @@ class Target(object):
             the returned file path will be localFilePath.
             """
             if localFilePath is None:
-                localFilePath = getTempFile(rootDir=self.getLocalTempDir())
+                localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
             self.jobStore.readFile(fileStoreID, localFilePath)
             return localFilePath
         
@@ -338,7 +340,7 @@ class Target(object):
             the resulting file in the job store. The yielded file handle does 
             not need to and should not be closed explicitly.
             """
-            return self.jobStore.writeFileStream(self.jobStoreID)
+            return self.jobStore.writeFileStream(self.job.jobStoreID)
         
         def updateGlobalFileStream(self, fileStoreID):
             """
@@ -352,7 +354,7 @@ class Target(object):
             """
             Returns the ID of a new, empty file.
             """
-            return self.jobStore.getEmptyFileStoreID(self.jobStoreID)
+            return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
         
         def readGlobalFileStream(self, fileStoreID):
             """
@@ -398,7 +400,7 @@ class Target(object):
         Excludes the root target.
         """
         #Call recursively
-        for successor in self._children + self.__followOn:
+        for successor in self._children + self._followOns:
             successor._getHashOfTargetsToUUIDs2(targetsToUUIDs)
         
     def getUserScript(self):
@@ -416,9 +418,9 @@ class Target(object):
         """
         return jobStore.createJob(command=command, 
                                   memory=(self.memory if self.memory != sys.maxint 
-                                          else float(config.attrib["default_memory"])),
+                                          else float(jobStore.config.attrib["default_memory"])),
                                   cpu=(self.cpu if self.cpu != sys.maxint
-                                       else float(config.attrib["default_cpu"])),
+                                       else float(jobStore.config.attrib["default_cpu"])),
                                   updateID=updateID, predecessorNumber=predecessorNumber)  
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor):
@@ -480,14 +482,13 @@ class Target(object):
         #remove if the update goes wrong
         jobStore.update(job)
         #Create the jobs for followOns/children
-        targetsToJobs = { self:job }
         for successors in (self._followOns, self._children):
             job.stack.append(map(lambda successor:
                 successor._makeJobWrappers(jobStore, targetsToUUIDs, 
                                            {}, self), successors))
         #Remove the jobs to delete list and remove the old command finishing the update
-        self.job.jobsToDelete = []
-        self.job.command = None
+        job.jobsToDelete = []
+        job.command = None
         jobStore.update(job)
         
     def _serialiseFirstTarget(self, jobStore):
@@ -497,16 +498,16 @@ class Target(object):
         #Pickles the target within a shared file in the jobStore called 
         #"firstTarget"
         sharedTargetFile = "firstTarget"
-        jobStore.writeSharedFileStream(sharedTargetFile).\
-        cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+        with jobStore.writeSharedFileStream(sharedTargetFile) as f:
+            cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
         #Make the first job
         job = self._createEmptyJobForTarget(jobStore,
             command="scriptTree %s %s %s" % (sharedTargetFile, self._dirName, 
                     " ".join(set( self._importStrings ))))
         #Set the config rootJob attrib
-        assert "rootJob" not in config.attrib
-        config.attrib["rootJob"] = job.jobStoreID
-        ET.ElementTree( config ).write( jobStore.writeSharedFileStream("config.xml") )
+        assert "rootJob" not in jobStore.config.attrib
+        jobStore.config.attrib["rootJob"] = job.jobStoreID
+        ET.ElementTree( jobStore.config ).write( jobStore.writeSharedFileStream("config.xml") )
         #Return the first job
         return job
 
@@ -515,7 +516,7 @@ class Target(object):
     #input arguments of other Target instances
     ####################################################
    
-    def _switchOutPromisedTargetReturnValues(self):
+    def _switchOutPromisedTargetReturnValues(self, jobStore):
         """
         Replaces each PromisedTargetReturnValue instance that is a class 
         attribute of the target with PromisedTargetReturnValue's stored value.
@@ -548,7 +549,7 @@ class Target(object):
             f = lambda : map(lambda x : x.loadValue(self.jobStore) if 
                         isinstance(x, PromisedTargetReturnValue) else x, value)
             if isinstance(value, PromisedTargetReturnValue):
-                self.__dict__[attr] = value.loadValue(self.jobStore)
+                self.__dict__[attr] = value.loadValue(jobStore)
             elif isinstance(value, list):
                 self.__dict__[attr] = f()
             elif value.__class__ == tuple:
@@ -558,7 +559,7 @@ class Target(object):
             elif isinstance(value, set):
                 self.__dict__[attr] = set(f())
             elif isinstance(value, dict):
-                self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(self.jobStore) if 
+                self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(jobStore) if 
                         isinstance(x, PromisedTargetReturnValue) else value[x]), value))
       
     def _setFileIDsForPromisedValues(self, jobStore, jobStoreID):
@@ -574,10 +575,8 @@ class Target(object):
             if PromisedTargetReturnValue.jobStoreFileID == None:
                 PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
         #Now recursively do the same for the children and follow ons.
-        for childTarget in self.getChildren():
-            childTarget._setFileIDsForPromisedValues(jobStore, jobStoreID)
-        if self.getFollowOn() != None:
-            self.getFollowOn()._setFileIDsForPromisedValues(jobStore, jobStoreID)
+        for successorTarget in self._children + self._followOns:
+            successorTarget._setFileIDsForPromisedValues(jobStore, jobStoreID)
     
     @staticmethod
     def _setReturnValuesForPromises(target, returnValues, jobStore):
@@ -607,7 +606,7 @@ class Target(object):
         if self not in visited:
             visited.add(self) 
             for successor in self._children + self._followOns:
-                self._dfs(visited)
+                successor._dfs(visited)
         
     def _checkTargetGraphAcylicDFS(self, stack, visited, extraEdges):
         """
@@ -617,7 +616,7 @@ class Target(object):
             visited.add(self) 
             stack.add(self)
             for successor in self._children + self._followOns + extraEdges[self]:
-                self._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
+                successor._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
             stack.pop(self)
         if self in stack:
             raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
@@ -628,7 +627,7 @@ class Target(object):
         """
         #Get nodes in target graph
         nodes = set()
-        self._dfs(node)
+        self._dfs(nodes)
         
         ##For each follow-on edge calculate the extra implied edges
         #Map of targets to lists of targets connected by an implied follow-on edge 
@@ -655,10 +654,7 @@ class Target(object):
         a deadlock in the method used for scheduling targets/jobs.
         TODO: Naive algorithm could be improved
         """
-        nodes = set()
-        self._dfs(node)
-        extraEdges = dict(map(lambda n : (n, []), nodes))
-        for target in nodes:
+        for target in self._dfs(set()):
             if len(target._followOns) > 0:
                 for child in target._children:
                     child._removeRedundantEdges2(target._followOns, set())
@@ -682,9 +678,7 @@ class Target(object):
     #children/followOn targets
     ####################################################
        
-    def _execute(self, job, stats, localTempDir, jobStore, 
-                memoryAvailable, cpuAvailable,
-                defaultMemory, defaultCpu):
+    def _execute(self, job, stats, localTempDir, jobStore):
         """This is the core method for running the target within a worker.
         """ 
         if stats != None:
@@ -692,14 +686,8 @@ class Target(object):
             startClock = getTotalCpuTime()
         
         baseDir = os.getcwd()
-        
-        #Debug check that we have the right amount of CPU and memory for the job in hand
-        if self.memory != sys.maxint:
-            assert self.memory <= memoryAvailable
-        if self.cpu != sys.maxint:
-            assert self.cpu <= cpuAvailable
         #Switch out any promised return value instances with the actual values
-        self._switchOutPromisedTargetReturnValues()
+        self._switchOutPromisedTargetReturnValues(jobStore)
         #Run the target, first cleanup then run.
         fileStore = Target.FileStore(jobStore, job, localTempDir)
         returnValues = self.run(fileStore)
@@ -711,9 +699,9 @@ class Target(object):
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
         #Store the return values for any promised return value
-        self._setReturnValuesForPromises(self.target, returnValues, jobStore)
+        self._setReturnValuesForPromises(self, returnValues, jobStore)
         #Turn the graph into a graph of jobs in the jobStore
-        self._serialiseTargetGraph(jobStore)
+        self._serialiseTargetGraph(job, jobStore)
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
@@ -783,7 +771,7 @@ class FunctionWrappingTarget(Target):
             sys.path.append(userFunctionModule.dirPath)
         return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
 
-    def run(self):
+    def run(self,fileStore):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
 
@@ -797,7 +785,7 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     A target function is a function which takes as its first argument a reference
     to the wrapping target.
     """
-    def run(self):
+    def run(self,fileStore):
         userFunction = self._getUserFunction()
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
 

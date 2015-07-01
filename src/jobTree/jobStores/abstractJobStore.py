@@ -139,7 +139,7 @@ class AbstractJobStore( object ):
         
         :rtype : iterator
         """
-        raise NotImplentedError( )
+        raise NotImplementedError( )
 
     ##########################################
     #The following provide an way of creating/reading/writing/updating files 
@@ -289,45 +289,44 @@ class AbstractJobStore( object ):
         Function to cleanup the state of a jobStore after a restart.
         Fixes jobs that might have been partially updated. Is called by constructor.
         """
-        if self.started():
-            #Collate any jobs that were in the process of being created/deleted
-            jobsToDelete = set()
-            for job in self.jobs():
-                 for updateID in job.jobsToDelete:
-                     jobsToDelete.add(updateID)
-                
-            #Delete the jobs that should be delete
-            if len(jobsToDelete) > 0:
-                for job in self.jobs():
-                    if job.updateID in jobsToDelete:
-                        self.delete(job.jobStoreID)
+        #Collate any jobs that were in the process of being created/deleted
+        jobsToDelete = set()
+        for job in self.jobs():
+            for updateID in job.jobsToDelete:
+                jobsToDelete.add(updateID)
             
-            #Cleanup the state of each job
+        #Delete the jobs that should be delete
+        if len(jobsToDelete) > 0:
             for job in self.jobs():
-                changed = False #Flag to indicate if we need to update the job
-                #on disk
+                if job.updateID in jobsToDelete:
+                    self.delete(job.jobStoreID)
+        
+        #Cleanup the state of each job
+        for job in self.jobs():
+            changed = False #Flag to indicate if we need to update the job
+            #on disk
+            
+            if len(job.jobsToDelete) != 0:
+                job.jobsToDelete = set()
+                changed = True
                 
-                if len(job.jobsToDelete) != 0:
-                    job.jobsToDelete = set()
-                    changed = True
-                    
-                #While jobs at the end of the stack are already deleted remove
-                #those jobs from the stack (this cleans up the case that the job
-                #had successors to run, but had not been updated to reflect this)
-                while len(job.stack) > 0:
-                    jobs = [ jobStoreID for jobStoreID in job.stack[-1] if self.exists(jobStoreID) ]
-                    if len(jobs) > 0:
-                        if len(jobs) < len(job.stack[-1]):
-                            job.stack[-1] = jobs
-                            changed = True
-                        break
-                    job.stack.pop()
-                              
-                #This cleans the old log file which may 
-                #have been left if the job is being retried after a job failure. 
-                if job.logJobStoreFileID != None:
-                    job.clearLogFile(self) 
-                    changed = True
-                
-                if changed: #Update, but only if a change has occurred
-                    self.update(job)
+            #While jobs at the end of the stack are already deleted remove
+            #those jobs from the stack (this cleans up the case that the job
+            #had successors to run, but had not been updated to reflect this)
+            while len(job.stack) > 0:
+                jobs = [ jobStoreID for jobStoreID in job.stack[-1] if self.exists(jobStoreID) ]
+                if len(jobs) > 0:
+                    if len(jobs) < len(job.stack[-1]):
+                        job.stack[-1] = jobs
+                        changed = True
+                    break
+                job.stack.pop()
+                          
+            #This cleans the old log file which may 
+            #have been left if the job is being retried after a job failure. 
+            if job.logJobStoreFileID != None:
+                job.clearLogFile(self) 
+                changed = True
+            
+            if changed: #Update, but only if a change has occurred
+                self.update(job)
