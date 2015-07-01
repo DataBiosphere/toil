@@ -7,9 +7,8 @@ import marshal as pickler
 import random
 import shutil
 import os
-import errno
 import tempfile
-from jobTree.lib.bioio import system, absSymPath
+from jobTree.lib.bioio import absSymPath
 from jobTree.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
 from jobTree.job import Job
@@ -22,6 +21,7 @@ class FileJobStore(AbstractJobStore):
     """
 
     def __init__(self, jobStoreDir, config=None):
+        #This is root directory in which everything in the store is kept
         self.jobStoreDir = absSymPath(jobStoreDir)
         logger.info("Jobstore directory is: %s", self.jobStoreDir)
         self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
@@ -33,9 +33,9 @@ class FileJobStore(AbstractJobStore):
         self.levels = 2
         super( FileJobStore, self ).__init__( config=config )
         
-    
     def deleteJobStore(self):
-        system("rm -rf %s" % self.jobStoreDir)
+        if os.path.exists(self.jobStoreDir):
+            shutil.rmtree(self.jobStoreDir)
     
     ##########################################
     #The following methods deal with creating/loading/updating/writing/checking for the
@@ -44,16 +44,14 @@ class FileJobStore(AbstractJobStore):
     
     def create(self, command, memory, cpu, updateID=None,
                predecessorNumber=0):
-        #The absolute path to the job directory and the path relative to the
-        #self.jobStoreDir directory, the latter serving as the jobStoreID.  
-        #Gets a valid temporary directory in which to create a job.    
+        #The absolute path to the job directory.    
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
-        relativeJobDir = self._getRelativePath(absJobDir)
-        # Sub directory to put temporary files associated with the job in
+        #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
         job = Job(command=command, memory=memory, cpu=cpu, 
-                  jobStoreID=relativeJobDir, remainingRetryCount=self._defaultTryCount( ), 
+                  jobStoreID=self._getRelativePath(absJobDir), 
+                  remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
                   predecessorNumber=predecessorNumber)
         #Write job file to disk
@@ -74,20 +72,14 @@ class FileJobStore(AbstractJobStore):
 
     def load(self, jobStoreID):
         self._checkJobStoreId(jobStoreID)
+        #Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
-        # Now load a valid version of the job
-        try:
-            with open(jobFile, 'r') as fileHandle:
-                job = Job.fromDict(pickler.load(fileHandle))
-        except IOError as e:
-            if e.errno == errno.ENOENT:
-                raise NoSuchJobException( jobStoreID )
-            else:
-                raise
+        with open(jobFile, 'r') as fileHandle:
+            job = Job.fromDict(pickler.load(fileHandle))
         #The following cleans up any issues resulting from the failure of the 
         #job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
-            logger.warn("There was a .new file for the job: %s", jobFile)
+            logger.warn("There was a .new file for the job: %s", jobStoreID)
             os.remove(os.path.isfile(jobFile + ".new"))
             job.setupJobAfterFailure(self.config)
         return job
@@ -95,24 +87,25 @@ class FileJobStore(AbstractJobStore):
     def update(self, job):
         #The job is serialised to a file suffixed by ".new"
         #The file is then moved to its correct path.
-        #Atomicity guarantees use the fact the underlying file systems "move file"
+        #Atomicity guarantees use the fact the underlying file systems "move"
         #function is atomic. 
         with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
             pickler.dump(job.toDict(), f)
+        #This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, jobStoreID):
         #The jobStoreID is the relative path to the directory containing the job,
         #removing this directory deletes the job.
         if self.exists(jobStoreID):
-            system("rm -rf %s" % self._getAbsPath(jobStoreID))
+            shutil.rmtree(self._getAbsPath(jobStoreID))
  
     def jobs(self):
         #Walk through list of temporary directories searching for jobs
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
                 if i.startswith( 'job' ):
-                    yield self.load(os.path.join(dir, i))
+                    yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
  
     ##########################################
     #Functions that deal with temporary files associated with jobs
@@ -120,8 +113,9 @@ class FileJobStore(AbstractJobStore):
     
     def writeFile(self, jobStoreID, localFilePath):
         self._checkJobStoreId(jobStoreID)
-        absPath = self._getJobTempFile(jobStoreID)
+        fd, absPath = self._getJobTempFile(jobStoreID)
         shutil.copyfile(localFilePath, absPath)
+        os.close(fd)
         return self._getRelativePath(absPath)
 
     def updateFile(self, jobStoreFileID, localFilePath):
@@ -139,9 +133,10 @@ class FileJobStore(AbstractJobStore):
     @contextmanager
     def writeFileStream(self, jobStoreID):
         self._checkJobStoreId(jobStoreID)
-        absPath = self._getJobTempFile(jobStoreID)
+        fd, absPath =  self._getJobTempFile(jobStoreID)
         with open(absPath, 'w') as f:
             yield f, self._getRelativePath(absPath)
+        os.close(fd) #Close the os level file descript
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -218,7 +213,7 @@ class FileJobStore(AbstractJobStore):
         self.tempFilesDir
         
         """
-        return absPath[:len(self.tempFilesDir)+1]
+        return absPath[len(self.tempFilesDir)+1:]
     
     def _getJobFileName(self, jobStoreID):
         """
@@ -229,10 +224,14 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobTempFile(self, jobStoreID):
         """
-        :rtype : string, string is absolute path to a temporary file within
-        the given job's (referenced by jobStoreID's) temporary file directory.
+        :rtype : file-descriptor, string, string is absolute path to a temporary file within
+        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
+        is integer pointing to open operating system file handle. Should be closed using os.close()
+        after writing some material to the file.
         """
-        tempfile.mkstemp(suffix=".tmp", dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+        fD, absPath = tempfile.mkstemp(suffix=".tmp", 
+                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+        return fD, absPath
     
     def _checkJobStoreId(self, jobStoreID):
         """
@@ -262,7 +261,12 @@ class FileJobStore(AbstractJobStore):
         for i in xrange(self.levels):
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             if not os.path.exists(tempDir):
-                os.mkdir(tempDir)
+                try:
+                    os.mkdir(tempDir)
+                except os.error:
+                    if not os.path.exists(tempDir): #In the case that a collision occurs and
+                        #it is created while we wait then we ignore
+                        raise
         return tempDir
      
     def _tempDirectories(self):

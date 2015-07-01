@@ -62,7 +62,7 @@ class AbstractJobStore( object ):
     def create( self, command, memory, cpu, updateID=None,
                 predecessorNumber=0 ):
         """
-        Creates a job.
+        Creates a job, adding it to the store.
         
         Command, memory, cpu, updateID, predecessorNumber 
         are all arguments to the job's constructor.
@@ -315,12 +315,15 @@ class AbstractJobStore( object ):
             #had successors to run, but had not been updated to reflect this)
             while len(job.stack) > 0:
                 jobs = [ jobStoreID for jobStoreID in job.stack[-1] if self.exists(jobStoreID) ]
-                if len(jobs) > 0:
-                    if len(jobs) < len(job.stack[-1]):
+                if len(jobs) < len(job.stack[-1]):
+                    changed = True
+                    if len(jobs) > 0:
                         job.stack[-1] = jobs
-                        changed = True
+                        break
+                    else:
+                        job.stack.pop()
+                else:
                     break
-                job.stack.pop()
                           
             #This cleans the old log file which may 
             #have been left if the job is being retried after a job failure. 
