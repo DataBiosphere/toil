@@ -8,68 +8,28 @@ from time import sleep
 from jobTree.lib.bioio import getLogLevelString
 from jobTree.test.mesos.stress import main as stressMain
 from jobTree.test import JobTreeTest
+from jobTree.batchSystems.mesos.test import MesosTestSupport
 
 lock = threading.Lock()
-class MesosTest( JobTreeTest ):
+numCores = 2
 
-    class MesosMasterThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.popen = None
-
-        def run(self):
-            with lock:
-                self.popen = subprocess.Popen(['mesos-master', '--registry=in_memory', '--ip=127.0.0.1'])
-            self.popen.wait()
-
-
-    class MesosSlaveThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.popen = None
-
-        def run(self):
-            with lock:
-                self.popen = subprocess.Popen(['mesos-slave', '--ip=127.0.0.1', '--master=127.0.0.1:5050'])
-            self.popen.wait()
-
-    master = MesosMasterThread( )
-    slave = MesosSlaveThread( )
+class MesosTest( JobTreeTest, MesosTestSupport ):
 
     @classmethod
     def setUpClass( cls ):
         super( MesosTest, cls ).setUpClass( )
         shutil.rmtree('/tmp/mesos', ignore_errors=True)
-        # FIXME: avoid daemon threads use join
-        cls.master.setDaemon( True )
-        cls.slave.setDaemon( True )
-        cls.master.start( )
-        cls.slave.start( )
-
-    @classmethod
-    def tearDownClass( cls ):
-        super( MesosTest, cls ).tearDownClass( )
-        cls.master.popen.kill( )
-        cls.slave.popen.kill( )
-        # FIXME: join the threads
-
-    @classmethod
-    def killSlave( cls ):
-        pid = cls.slave.popen.pid
-        os.kill( pid, 9 )
-
-    @classmethod
-    def startSlave( cls ):
-        cls.slave.run( )
 
     def setUp( self ):
         # shutil.rmtree("/tmp/mesos/")
+        self._startMesos(numCores)
         self.startDir = os.getcwd( )
         self.tempDir = tempfile.mkdtemp( )
         print "Using %s for files and directories created by this test run" % self.tempDir
         os.chdir( self.tempDir )
 
     def tearDown( self ):
+        self._stopMesos()
         os.chdir( self.startDir )
         shutil.rmtree( self.tempDir )
 
@@ -103,17 +63,3 @@ class MesosTest( JobTreeTest ):
         # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
 
-    # FIXME: Make this work or remove
-
-    if False:
-        def test_resume( self ):
-            mainT = threading.Thread( target=self.__do_test_stress, args=(False, 3) )
-            mainT.start( )
-            sleep(3)
-            # This isn't killing the slave. we need possibly kill -KILL subprocess call with pid.
-            print "killing"
-            MesosTest.killSlave( )
-            print "killed"
-            MesosTest.startSlave( )
-            self.assertTrue( os.path.isfile( "./hello_world_child2.txt" ) )
-            self.assertTrue( os.path.isfile( "./hello_world_follow.txt" ) )

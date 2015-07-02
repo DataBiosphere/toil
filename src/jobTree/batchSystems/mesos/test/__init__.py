@@ -57,7 +57,7 @@ class MesosTestSupport(object):
             return ['mesos-master',
                     '--registry=in_memory',
                     '--ip=127.0.0.1',
-                    '--allocation_interval=100ms']
+                    '--allocation_interval=500ms']
 
     class MesosSlaveThread(MesosThread):
         def mesosCommand(self):
