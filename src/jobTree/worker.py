@@ -218,7 +218,7 @@ def main():
         ##########################################
         
         job = jobStore.load(jobStoreID)
-        logger.info("Parsed job")
+        logger.debug("Parsed job")
         
         ##########################################
         #Cleanup from any earlier invocation of the job
@@ -278,6 +278,7 @@ def main():
                 #The command may be none, in which case
                 #the job is just a shell ready to be deleted
                 assert len(job.stack) == 0
+                messages = []
                 break
             
             ##########################################
@@ -286,7 +287,7 @@ def main():
             
             #Exceeded the amount of time the worker is allowed to run for so quit
             if time.time() - startTime > float(config.attrib["job_time"]):
-                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
+                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
                 break
 
             #No more jobs to run so quit
@@ -299,7 +300,7 @@ def main():
             
             #If there are 2 or more jobs to run in parallel we quit
             if len(jobs) >= 2:
-                logger.info("No more jobs can run in series by this worker,"
+                logger.debug("No more jobs can run in series by this worker,"
                             " it's got %i children", len(jobs)-1)
                 break
             
@@ -307,14 +308,16 @@ def main():
             #within the current worker
             jobStoreID, memory, cpu, predecessorID = jobs[0]
             if memory > job.memory:
-                logger.info("We need more memory for the next job, so finishing")
+                logger.debug("We need more memory for the next job, so finishing")
                 break
             if cpu > job.cpu:
-                logger.info("We need more cpus for the next job, so finishing")
+                logger.debug("We need more cpus for the next job, so finishing")
                 break
             if predecessorID != None: 
-                logger.info("The job has multiple predecessors, we must return to the leader.")
+                logger.debug("The job has multiple predecessors, we must return to the leader.")
                 break
+            
+            break
             
             ##########################################
             #We have a single successor job.
@@ -347,7 +350,7 @@ def main():
             jobStore.update(job)
             jobStore.delete(successorJob.jobStoreID)
             
-            logger.info("Starting the next job")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
