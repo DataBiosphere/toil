@@ -28,7 +28,7 @@ import time
 import math
 from threading import Thread
 from threading import Semaphore, Lock, Condition
-from Queue import Queue
+from Queue import Queue, Empty
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
@@ -264,8 +264,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         Returns a map of the run jobs and the return value of their processes.
         """
-        i = self.outputQueue.get(maxWait)
-        if i == None:
+        try:
+            i = self.outputQueue.get(timeout=maxWait)
+        except Empty:
             return None
         jobID, exitValue = i
         self.jobs.pop(jobID)
