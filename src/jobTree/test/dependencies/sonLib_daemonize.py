@@ -4,6 +4,7 @@
 #
 #Released under the MIT license, see LICENSE.txt
 """
+TODO: This approach needs to be refactored
 launch a command as a daemon. 
 
 mostly copied from (and see for comments & explanation):

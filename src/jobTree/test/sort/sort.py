@@ -10,14 +10,13 @@ from jobTree.target import Target
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 success_ratio = 0.5
-logToMaster = False
 
 def setup(target, inputFile, N):
     """Sets up the sort.
     """
-    tempOutputFileStoreID = target.getEmptyFileStoreID()
+    tempOutputFileStoreID = target.fileStore.getEmptyFileStoreID()
     target.addChildTargetFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
-    target.setFollowOnTargetFn(cleanup, tempOutputFileStoreID, inputFile)
+    target.addFollowOnTargetFn(cleanup, tempOutputFileStoreID, inputFile)
 
 def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
@@ -31,19 +30,18 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     length = fileEnd - fileStart
     assert length >= 0
     if length > N:
-        if logToMaster:
-            target.logToMaster( "Splitting range (%i..%i) of file: %s"
-                                % (fileStart, fileEnd, inputFile) )
+        target.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
+                                      % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         assert midPoint >= fileStart
         assert midPoint+1 < fileEnd
         #We will subdivide the file
-        tempFileStoreID1 = target.getEmptyFileStoreID()
-        tempFileStoreID2 = target.getEmptyFileStoreID()
+        tempFileStoreID1 = target.fileStore.getEmptyFileStoreID()
+        tempFileStoreID2 = target.fileStore.getEmptyFileStoreID()
         #The use of rv here is for testing purposes
         #The rv(0) of the first child target is tempFileStoreID1, 
         #similarly rv(0) of the second child is tempFileStoreID2
-        target.setFollowOnTargetFn(up, 
+        target.addFollowOnTargetFn(up, 
                                    target.addChildTargetFn(down, inputFile, fileStart, 
                                                            midPoint+1, N, tempFileStoreID1).rv(0),
                                    target.addChildTargetFn(down, inputFile, midPoint+1, 
@@ -51,13 +49,12 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
                                    outputFileStoreID)                
     else:
         #We can sort this bit of the file
-        if logToMaster:
-            target.logToMaster( "Sorting range (%i..%i) of file: %s"
-                                % (fileStart, fileEnd, inputFile) )
-        with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+        target.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
+                                      % (fileStart, fileEnd, inputFile) )
+        with target.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
         #Make a local copy and sort the file
-        tempOutputFile = target.readGlobalFile(outputFileStoreID)
+        tempOutputFile = target.fileStore.readGlobalFile(outputFileStoreID)
         sort(tempOutputFile)
         target.updateGlobalFile(outputFileStoreID, tempOutputFile)
     return outputFileStoreID
@@ -67,13 +64,12 @@ def up(target, inputFileID1, inputFileID2, outputFileStoreID):
     """
     if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
-    with target.updateGlobalFileStream(outputFileStoreID) as fileHandle:
-        with target.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
-            with target.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
+    with target.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+        with target.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
+            with target.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
-    if logToMaster:
-        target.logToMaster( "Merging %s and %s to %s"
-                            % (inputFileID1, inputFileID2, outputFileStoreID) )
+    target.fileStore.logToMaster( "Merging %s and %s to %s"
+                                  % (inputFileID1, inputFileID2, outputFileStoreID) )
 
 def cleanup(target, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
@@ -85,7 +81,7 @@ def cleanup(target, tempOutputFileStoreID, outputFile):
 
 def main():
     parser = OptionParser()
-    Target.addJobTreeOptions(parser)
+    Target.Runner.addJobTreeOptions(parser)
     
     parser.add_option("--fileToSort", dest="fileToSort",
                       help="The file you wish to sort")
@@ -110,7 +106,7 @@ def main():
         raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
-    i = Target(Target.wrapTargetFn(setup, options.fileToSort, int(options.N))).startJobTree(options)
+    i = Target.Runner.startJobTree(Target.wrapTargetFn(setup, options.fileToSort, int(options.N)), options)
     
     if i:
         raise RuntimeError("The jobtree contained %i failed jobs" % i)

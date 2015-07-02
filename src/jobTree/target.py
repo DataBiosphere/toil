@@ -264,10 +264,12 @@ class Target(object):
             """
             Runs the jobtree using the given options (see Target.Runner.getDefaultOptions
             and Target.Runner.addJobTreeOptions) starting with this target.
+            
+            Raises an exception if the given jobTree already exists. 
             """
             setLoggingFromOptions(options)
             config, batchSystem, jobStore = setupJobTree(options)
-            jobStore.clean() 
+            jobStore.clean()
             if "rootJob" not in config.attrib: #No jobs have yet been run
                 #Setup the first job.
                 rootJob = target._serialiseFirstTarget(jobStore)
@@ -323,8 +325,11 @@ class Target(object):
             the returned file path will be localFilePath.
             """
             if localFilePath is None:
-                localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
-            self.jobStore.readFile(fileStoreID, localFilePath)
+                fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
+                self.jobStore.readFile(fileStoreID, localFilePath)
+                os.close(fd)
+            else:
+                self.jobStore.readFile(fileStoreID, localFilePath)
             return localFilePath
         
         def deleteGlobalFile(self, fileStoreID):
@@ -796,7 +801,12 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
     Target used to wrap a function.
     A target function is a function which takes as its first argument a reference
-    to the wrapping target.
+    to the wrapping target. 
+    
+    To enable the target function to get access to the Target.FileStore
+    instance (see Target.Run), it is made a variable of the wrapping target, so in the wrapped
+    target function the attribute "fileStore" of the first argument (the target) is
+    an instance of the Target.FileStore class. 
     """
     def run(self, fileStore):
         userFunction = self._getUserFunction()

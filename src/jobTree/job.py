@@ -87,11 +87,10 @@ class Job( object ):
         """
         Sets the log file in the file store. 
         """
-        if self.logJobStoreFileID is not None:  # File already exists
-            jobStore.updateFile( self.logJobStoreFileID, logFile )
-        else:
-            self.logJobStoreFileID = jobStore.writeFile( self.jobStoreID, logFile )
-            assert self.logJobStoreFileID is not None
+        if self.logJobStoreFileID is not None:
+            self.clearLogFile(jobStore)
+        self.logJobStoreFileID = jobStore.writeFile( self.jobStoreID, logFile )
+        assert self.logJobStoreFileID is not None
 
     def getLogFileHandle( self, jobStore ):
         """
