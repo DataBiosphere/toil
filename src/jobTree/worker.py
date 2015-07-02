@@ -35,6 +35,7 @@ import socket
 import logging
 import xml.etree.cElementTree as ET
 import cPickle
+import shutil
 
 logger = logging.getLogger( __name__ )
 
@@ -76,11 +77,11 @@ def loadTarget(command, jobStore):
         thisModule = sys.modules[__name__]
     thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
     return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
-        
-def loadPickleFile(pickleFile,jobStore):
-    """Loads the first object from a pickle file.
-    """
-    with jobStore.readFileStream(pickleFile) as fileHandle:
+    
+    #Now do the unpickling
+    pickleFile = commandTokens[1]
+    with (jobStore.readSharedFileStream(pickleFile) if pickleFile == "firstTarget" 
+          else jobStore.readFileStream(pickleFile)) as fileHandle:
         return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():
@@ -94,7 +95,7 @@ def main():
     ########################################## 
     #Import necessary modules 
     ##########################################
-
+    
     # This is assuming that worker.py is at a path ending in "/jobTree/worker.py".
     sourcePath = os.path.dirname(os.path.dirname(__file__))
     if sourcePath not in sys.path:
@@ -148,7 +149,6 @@ def main():
         
     #Dir to put all the temp files in.
     localWorkerTempDir = getTempDirectory()
-    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
     
     ##########################################
     #Setup the logging
@@ -259,10 +259,16 @@ def main():
             
             if job.command != None: 
                 if job.command[:11] == "scriptTree ":
+                    #Make a temporary file directory for the target
+                    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    
                     #Is a target command
                     messages = loadTarget(job.command,jobStore)._execute(job=job, 
                                     stats=stats, localTempDir=localTempDir, 
                                     jobStore=jobStore)
+                    
+                    #Remove the temporary file directory
+                    shutil.rmtree(localTempDir)
     
                 else: #Is another command (running outside of targets may be deprecated)
                     system(job.command)
@@ -272,12 +278,6 @@ def main():
                 #the job is just a shell ready to be deleted
                 assert len(job.stack) == 0
                 break
-            
-            ##########################################
-            #Cleanup temporary files
-            ##########################################
-            
-            system("rm -rf %s/*" % (localTempDir))
             
             ##########################################
             #Establish if we can run another job within the worker
@@ -294,6 +294,7 @@ def main():
             
             #Get the next set of jobs to run
             jobs = job.stack[-1]
+            assert len(jobs) > 0
             
             #If there are 2 or more jobs to run in parallel we quit
             if len(jobs) >= 2:
@@ -412,16 +413,16 @@ def main():
         truncateFile(tempWorkerLogPath)
         job.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
-        jobStore.store(job)
+        jobStore.update(job)
 
     #Remove the temp dir
-    system("rm -rf %s" % localWorkerTempDir)
+    shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not workerFailed) and job.command == None and len(job.stack) == 0:
         #We can now safely get rid of the job
-        jobStore.delete(job)
-            
+        jobStore.delete(job.jobStoreID)
+       
 if __name__ == '__main__':
     logging.basicConfig()
     main()

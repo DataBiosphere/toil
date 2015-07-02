@@ -105,7 +105,8 @@ class JobBatcher:
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
         jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
-        logger.debug("Issued job with job store ID: %s and job batch system ID: "
+        #debug
+        logger.info("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cpus: %i and memory: %i",
                      jobStoreID, str(jobBatchSystemID), cpu, memory)
 
@@ -172,7 +173,7 @@ class JobBatcher:
         maxJobDuration = float(self.config.attrib["max_job_duration"])
         idealJobTime = float(self.config.attrib["job_time"])
         if maxJobDuration < idealJobTime * 10:
-            logger.info("The max job duration is less than 10 times the ideal the job time, so I'm setting it "
+            logger.warn("The max job duration is less than 10 times the ideal the job time, so I'm setting it "
                         "to the ideal job time, sorry, but I don't want to crash your jobs "
                         "because of limitations in jobTree ")
             maxJobDuration = idealJobTime * 10
@@ -264,7 +265,8 @@ class JobBatcher:
             assert self.jobTreeState.successorCounts[predecessorJob] >= 0
             if self.jobTreeState.successorCounts[predecessorJob] == 0: #Job is done
                 self.jobTreeState.successorCounts.pop(predecessorJob)
-                logger.debug("Job %s has all its successors run successfully", \
+                #debug
+                logger.info("Job %s has all its successors run successfully", \
                              predecessorJob.jobStoreID)
                 assert predecessorJob not in self.jobTreeState.updatedJobs
                 self.jobTreeState.updatedJobs.add(predecessorJob) #Now we know 
@@ -364,7 +366,8 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         ##########################################
         
         if len(jobTreeState.updatedJobs) > 0:
-            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued",
+            #debug
+            logger.info("Built the jobs list, currently have %i jobs to update and %i jobs issued",
                          len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
 
             for job in jobTreeState.updatedJobs:
@@ -379,10 +382,12 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 #There exist successors to run
                 elif len(job.stack) > 0: 
                     assert len(job.stack[-1]) > 0
-                    logger.debug("Job: %s has %i successors to schedule",
+                    #debug
+                    logger.info("Job: %s has %i successors to schedule",
                                  job.jobStoreID, len(job.stack[-1]))
                     #Record the number of successors that must be completed before
                     #the job can be considered again
+                    assert job not in jobTreeState.successorCounts
                     jobTreeState.successorCounts[job] = len(job.stack[-1])
                     #List of successors to schedule 
                     successors = []
@@ -403,12 +408,11 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             jobStore.update(job2)
                             #If the targets predecessors have all not all completed then
                             #ignore the job
-                            assert len(job2.predecessorsFinished) > 1
+                            assert len(job2.predecessorsFinished) >= 1
                             assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                             if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                 continue
                         successors.append((successorJobStoreID, memory, cpu))
-                    assert job not in jobTreeState.successorCounts
                     jobBatcher.issueJobs(successors)
                 
                 #There are no remaining tasks to schedule within the job, but
@@ -449,7 +453,8 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
             jobBatchSystemID, result = updatedJob
             if jobBatcher.hasJob(jobBatchSystemID):
                 if result == 0:
-                    logger.debug("Batch system is reporting that the job with "
+                    #debug
+                    logger.info("Batch system is reporting that the job with "
                                  "batch system ID: %s and job store ID: %s ended successfully",
                                  jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID))
                 else:
