@@ -29,6 +29,7 @@ import psutil
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
+from jobTree.resource import Resource
 
 log = logging.getLogger(__name__)
 
@@ -43,13 +44,15 @@ class MesosExecutor(mesos.interface.Executor):
         super(MesosExecutor, self).__init__()
         self.popenLock = threading.Lock()
         self.runningTasks = {}
+        Resource.prepareSystem()
+        # FIXME: clean up resource root dir
+
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.info("Registered with framework")
-
         statThread = threading.Thread(target=self._sendStats, args=[driver])
         statThread.setDaemon(True)
         statThread.start()
@@ -90,51 +93,55 @@ class MesosExecutor(mesos.interface.Executor):
             log.debug("sent stats message")
             sleep(30)
 
-    def _callCommand(self, command, taskID):
-        log.debug("Invoking command: {}".format(command))
-        with self.popenLock:
-            popen = subprocess.Popen(command, shell=True)
-            self.runningTasks[taskID] = popen.pid
-        return popen.wait()
-
     def launchTask(self, driver, task):
         """
-        Invoked by SchedulerDriver when a task has been launched on this executor
+        Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
 
-        def _run_task():
+        def runTask():
+            log.debug("Running task %s", task.task_id.value)
+            sendUpdate(mesos_pb2.TASK_RUNNING)
+            popen = runJob(pickle.loads(task.data))
+            self.runningTasks[task.task_id.value] = popen.pid
             try:
-                log.debug("Running task %s" % task.task_id.value)
-                self._sendUpdate(driver, task, mesos_pb2.TASK_RUNNING)
-
-                jobTreeJob = pickle.loads(task.data)
-                os.chdir(jobTreeJob.cwd)
-                result = self._callCommand(jobTreeJob.command, task.task_id.value)
-                if result == 0:
-                    self._sendUpdate(driver, task, mesos_pb2.TASK_FINISHED)
-                elif result == -9:
-                    self._sendUpdate(driver, task, mesos_pb2.TASK_KILLED)
+                exitStatus = popen.wait()
+                if 0 == exitStatus:
+                    sendUpdate(mesos_pb2.TASK_FINISHED)
+                elif -9 == exitStatus:
+                    sendUpdate(mesos_pb2.TASK_KILLED)
                 else:
-                    self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED)
+                    sendUpdate(mesos_pb2.TASK_FAILED)
             except:
                 exc_type, exc_value, exc_trace = sys.exc_info()
-                self._sendUpdate(driver, task, mesos_pb2.TASK_FAILED,
-                                 message=str(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(mesos_pb2.TASK_FAILED, message=str(traceback.format_exception_only(exc_type, exc_value)))
+            finally:
+                del self.runningTasks[task.task_id.value]
 
-            del self.runningTasks[task.task_id.value]
+        def runJob(job):
+            """
+            :type job: jobTree.batchSystems.mesos.JobTreeJob
 
-        # TODO: I think there needs to be a thread.join() somewhere for each thread. Come talk to me about this.
-        thread = threading.Thread(target=_run_task)
+            :rtype: subprocess.Popen
+            """
+            # FIXME: remove cwd
+            os.chdir(job.cwd)
+            if job.userScript:
+                job.userScript.register()
+            log.debug("Invoking command: '%s'", job.command)
+            with self.popenLock:
+                return subprocess.Popen(job.command, shell=True)
+
+        def sendUpdate(taskState, message=''):
+            log.debug("Sending status update ...")
+            status = mesos_pb2.TaskStatus()
+            status.task_id.value = task.task_id.value
+            status.message = message
+            status.state = taskState
+            driver.sendStatusUpdate(status)
+            log.debug("Sent status update")
+
+        thread = threading.Thread(target=runTask)
         thread.start()
-
-    def _sendUpdate(self, driver, task, TASK_STATE, message=''):
-        log.debug("Sending status update...")
-        update = mesos_pb2.TaskStatus()
-        update.task_id.value = task.task_id.value
-        update.message = message
-        update.state = TASK_STATE
-        driver.sendStatusUpdate(update)
-        log.debug("Sent status update")
 
     def frameworkMessage(self, driver, message):
         """

@@ -133,10 +133,9 @@ class Stack(object):
     def makeRunnable(self, jobStore, jobStoreID):
         with jobStore.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileIdOfPickledStack ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        qualifiedTargetClassName = self.target.userModule.name + '.' + self.target.__class__.__name__
-        return "scriptTree %s %s %s" % (jobStoreFileIdOfPickledStack,
-                                        self.target.userModule.dirPath,
-                                        qualifiedTargetClassName)
+        userModule = self.target.userModule
+        targetClassName = self.target.__class__.__name__
+        return ' '.join(("scriptTree", jobStoreFileIdOfPickledStack, targetClassName) + userModule)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()

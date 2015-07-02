@@ -21,9 +21,9 @@
 #THE SOFTWARE.
 from collections import namedtuple
 import sys
-import os
 import importlib
 
+from jobTree.resource import ModuleDescriptor
 from jobTree.lib.bioio import getTempFile
 
 try:
@@ -31,50 +31,6 @@ try:
 except ImportError:
     import pickle as cPickle
 
-
-class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'extension'))):
-    """
-    A decomposed path to a Python module as a namedtuple of three elements, where
-
-    - the 1st element (dirPath) is the path to the directory that should be added to sys.path before importing the
-    given module,
-
-    - the 2nd element (moduleName) is the fully qualified name  of the module with leading package names separated
-    by dot and
-
-    - the 3rd element (extension) is the the file extension.
-    """
-
-    @classmethod
-    def create(cls,moduleName):
-        """
-        Return and instance of this class representing the module of the given name. If the given module name is
-        "__main__", then that is translated to the actual file name of the top-level script without .py or .pyc
-        extensions.
-        """
-        module = sys.modules[moduleName]
-        moduleFilePath = os.path.abspath(module.__file__)
-        dirPath = moduleFilePath.split(os.path.sep)
-        extension = None
-        for s in ('.py', '.pyc'):
-            if dirPath[-1].endswith(s):
-                extension = s
-                dirPath[-1] = dirPath[-1][:-len(s)]
-        if extension is None:
-            raise RuntimeError("Can only handle modules loaded from .py or .pyc files, but not '%s'" % moduleName)
-        if moduleName == '__main__':
-            moduleName = dirPath.pop()
-        else:
-            for package in reversed(moduleName.split('.')):
-                dirPathTail = dirPath.pop()
-                assert dirPathTail == package
-        return cls(dirPath=os.path.sep.join(dirPath), name=moduleName, extension=extension)
-
-    def getPath(self):
-        """
-        Returns the path to the file containing the module represented by this descriptor.
-        """
-        return os.path.join(self.dirPath, self.name.replace('.',os.path.sep) + self.extension)
 
 class Target(object):
     """
@@ -89,7 +45,7 @@ class Target(object):
         self.__childCommands = []
         self.__memory = memory
         self.__cpu = cpu
-        self.userModule = ModuleDescriptor.create(self.__module__)
+        self.userModule = ModuleDescriptor.forModule(self.__module__)
         self.loggingMessages = []
         self._rvs = {}
 
@@ -306,7 +262,7 @@ class Target(object):
         self.loggingMessages.append(str(string))
 
     def getUserScript(self):
-        return self.userModule.getPath()
+        return self.userModule
 
     ####
     # Protected functions
@@ -390,23 +346,24 @@ class FunctionWrappingTarget(Target):
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Target.__init__(self, memory=memory, cpu=cpu)
-        self.userFunctionModule = ModuleDescriptor.create(userFunction.__module__)
+        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
         self.userFunctionName = str(userFunction.__name__)
-        self._args=args
-        self._kwargs=kwargs
+        self._args = args
+        self._kwargs = kwargs
 
-    def _getUserFunction( self ):
-        if self.userFunctionModule.dirPath not in sys.path:
+    def _getUserFunction(self):
+        userFunctionModule = self.userFunctionModule.localize()
+        if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
-            sys.path.append( self.userFunctionModule.dirPath )
-        return getattr( importlib.import_module( self.userFunctionModule.name ), self.userFunctionName )
+            sys.path.append(userFunctionModule.dirPath)
+        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
 
     def run(self):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
 
     def getUserScript(self):
-        return self.userFunctionModule.getPath()
+        return self.userFunctionModule
 
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
@@ -416,7 +373,7 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     to the wrapping target.
     """
     def run(self):
-        userFunction = self._getUserFunction( )
+        userFunction = self._getUserFunction()
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
 
 class PromisedTargetReturnValue():

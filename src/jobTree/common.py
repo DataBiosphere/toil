@@ -20,9 +20,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from collections import namedtuple
 from contextlib import contextmanager
-import hashlib
 import logging
 import os
 from subprocess import CalledProcessError
@@ -276,12 +274,12 @@ def loadBatchSystemClass(config, key="batch_system"):
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"]=config.attrib["master_ip"]
+        kwargs["masterIP"] = config.attrib["master_ip"]
         logger.info('Using the mesos batch system')
     elif batchSystemName == 'badmesos' or batchSystemName == 'badMesos':
         from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"]=config.attrib["master_ip"]
+        kwargs["masterIP"] = config.attrib["master_ip"]
         kwargs['useBadExecutor'] = True
         logger.info('Using the mesos batch system')
     else:
@@ -371,45 +369,22 @@ def serialiseEnvironment(jobStore):
     logger.info("Written the environment for the jobs to the environment file")
 
 
-class HotDeployedResource(namedtuple('HotDeployedResource', ('name', 'url', 'md5'))):
-    """
-    Represents a file that will be deployed to each node before the targets in the actual user script are invoked.
-    Each instance is a tuple with three string elements: name, url and md5. The name element represents a logical
-    name for the resource. It has to be unique within the given job store. The url element is a file: or http: URL
-    from which the resource's contents can be obtained. The md5 element is the expected MD5 checksum of that content,
-    in hexdigest form. The MD5 allows for checksumming and caching of hot-deployed resources.
-    """
-
-    @classmethod
-    def create(cls, jobStore, path, name=None):
-        """
-        Creates and returns a hot-deployed resource with the contents of the file at the given path, using the given
-        name for the resource or the basename of the given file if absent.
-        """
-        md5 = hashlib.md5()
-        if name is None:
-            name = os.path.basename(path)
-        with open(path) as src:
-            with jobStore.writeSharedFileStream(name) as dst:
-                userScript = src.read()
-                md5.update(userScript)
-                dst.write(userScript)
-        url = jobStore.getSharedPublicUrl(name)
-        return cls(name=name, url=url, md5=md5.hexdigest())
-
-
 @contextmanager
-def setupJobTree(options, userScriptPath=None):
+def setupJobTree(options, userScript=None):
     """
     Creates the data-structures needed for running a jobTree.
+
+    :type userScript: jobTree.resource.ModuleDescriptor
     """
     verifyJobTreeOptions(options)
     config = createConfig(options)
     batchSystemClass, kwargs = loadBatchSystemClass(config)
     addBatchSystemConfigOptions(config, batchSystemClass, options)
     jobStore = loadJobStore(config.attrib["job_store"], config=config)
-    if userScriptPath is not None and batchSystemClass.supportsHotDeployment():
-        kwargs['userScript'] = HotDeployedResource.create(jobStore, userScriptPath)
+    if (userScript is not None
+        and not userScript.belongsToJobTree
+        and batchSystemClass.supportsHotDeployment()):
+        kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
         # TODO: jobTree distribution
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:

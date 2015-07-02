@@ -23,8 +23,8 @@ JobTreeJob = namedtuple('JobTreeJob', (
     'command',
     # FIXME: still needed ???
     'cwd',
-    # The hot-deployed resource containing the user script
+    # The resource object representing the user script
     'userScript',
-    # The hot-deployed resource containing the jobTree source tarball
+    # The resource object representing the jobTree source tarball
     'jobTreeDistribution'))
 

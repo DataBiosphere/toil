@@ -49,20 +49,21 @@ def truncateFile(fileNameString, tooBig=50000):
 
 def loadStack(command,jobStore):
     commandTokens = command.split()
+    assert "scriptTree" == commandTokens[0]
     jobStoreFileIdOfPickledStack = commandTokens[1]
-    userModuleDirPath = commandTokens[2]
-    qualifiedTargetClassName=commandTokens[3]
-    assert commandTokens[0] == "scriptTree"
-    if userModuleDirPath not in sys.path:
-        sys.path.append(userModuleDirPath)
-    modulePath = qualifiedTargetClassName.split(".")
-    moduleName = ".".join(modulePath[:-1])
-    targetClassName = modulePath[-1]
-    targetModule = importlib.import_module(moduleName)
+    targetClassName = commandTokens[2]
+    # must import lazily because jobTree might not be on sys.path when the top-level of this module is run
+    from jobTree.resource import ModuleDescriptor
+    userModule = ModuleDescriptor(*commandTokens[3:])
+    if not userModule.belongsToJobTree:
+        userModule = userModule.localize()
+    if userModule.dirPath not in sys.path:
+        sys.path.append(userModule.dirPath)
+    userModule = importlib.import_module(userModule.name)
     thisModule = sys.modules[__name__]
-    thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
+    thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
     return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
-        
+
 def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
     """
