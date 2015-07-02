@@ -19,16 +19,22 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-import importlib
 
 import os
 import sys
-import xml.etree.cElementTree as ET
-import cPickle
+
+if __name__ == "__main__":
+    # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
+    # and Python's
+    sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
+
 import traceback
+import importlib
 import time
 import socket
 import logging
+import xml.etree.cElementTree as ET
+import cPickle
 
 logger = logging.getLogger( __name__ )
 
