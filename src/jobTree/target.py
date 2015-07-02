@@ -267,6 +267,7 @@ class Target(object):
             """
             setLoggingFromOptions(options)
             config, batchSystem, jobStore = setupJobTree(options)
+            jobStore.clean() 
             if "rootJob" not in config.attrib: #No jobs have yet been run
                 #Setup the first job.
                 rootJob = target._serialiseFirstTarget(jobStore)

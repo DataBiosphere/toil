@@ -227,7 +227,7 @@ def main():
             while len(job.stack) > 0:
                 jobs = job.stack[-1]
                 #If the jobs still exist they have not been run, so break
-                if jobStore.exists(jobs[0]):
+                if jobStore.exists(jobs[0][0]):
                     break
                 #However, if they are gone then we can remove them from the stack.
                 #This is the only way to flush successors that have previously been run
@@ -354,7 +354,7 @@ def main():
         ##########################################
         #Finish up the stats
         ##########################################
-        
+
         if stats != None:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)

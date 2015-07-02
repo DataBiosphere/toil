@@ -112,8 +112,8 @@ def main():
     #Now we are ready to run
     i = Target(Target.wrapTargetFn(setup, options.fileToSort, int(options.N))).startJobTree(options)
     
-    #if i:
-    #    raise RuntimeError("The jobtree contained %i failed jobs" % i)
+    if i:
+        raise RuntimeError("The jobtree contained %i failed jobs" % i)
 
 if __name__ == '__main__':
     main()
