@@ -9,9 +9,7 @@ clean :
 	echo Nothing to be done.
 
 # Override on the command line to run a particular test, e.g. tests=jobTree.test.src.jobTest.JobTest
-#tests=discover -s src -p "*Test.py"
-#jobTree.test.staticDeclaration.staticTest
-tests=jobTree.test.jobStores.jobStoreTest
+tests=discover -s src -p "*Test.py"
 testLength=SHORT
 testLogLevel=INFO
 test :
