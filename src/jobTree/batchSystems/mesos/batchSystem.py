@@ -250,7 +250,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
     def shutdown(self):
         log.info("Stopping Mesos driver")
-        self.driver.stop()
+        status = self.driver.stop()
+        if status!=mesos_pb2.DRIVER_STOPPED and status!=mesos_pb2.DRIVER_ABORTED:
+            log.info("Stopping Mesos driver failed. Aborting Mesos Driver.")
+            self.driver.abort()
         log.info("Joining Mesos driver")
         self.join()
         log.info("Joined Mesos driver")
