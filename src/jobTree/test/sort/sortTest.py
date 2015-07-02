@@ -1,6 +1,5 @@
-#!/usr/bin/env python
-"""Tests the scriptTree jobTree-script compiler.
-"""
+#!/usr/bin/env python2.7
+
 from subprocess import CalledProcessError
 import unittest
 import os
@@ -8,6 +7,7 @@ import random
 from uuid import uuid4
 import logging
 
+from jobTree.batchSystems.mesos.test import MesosTestSupport
 from jobTree.lib.bioio import TestStatus, getLogLevelString
 from jobTree.lib.bioio import system
 from jobTree.lib.bioio import getTempDirectory
@@ -19,44 +19,49 @@ from jobTree.test import JobTreeTest
 log = logging.getLogger(__name__)
 
 
-class SortTest(JobTreeTest):
+class SortTest(JobTreeTest, MesosTestSupport):
+    """
+    Tests scriptTree/jobTree by sorting a file in parallel.
+    """
+
     def setUp(self):
         super(SortTest, self).setUp()
         self.testNo = TestStatus.getTestSetup(1, 2, 10, 10)
 
     def testScriptTree_SortSimpleOnAWS(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
-        self.scriptTree_SortTest(1,
+        self.scriptTree_SortTest(testNo=1,
                                  batchSystem="singleMachine",
                                  jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                                  lines=100,
                                  N=100)
 
+    def testScriptTree_SortSimpleOnAWSWithMesos(self):
+        self._startMesos()
+        try:
+            self.scriptTree_SortTest(testNo=1,
+                                     batchSystem="mesos",
+                                     jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
+                                     lines=100,
+                                     N=100)
+        finally:
+            self._stopMesos()
+
     def testScriptTree_SortSimple(self):
-        """Tests scriptTree/jobTree by sorting a file in parallel.
-        """
         self.scriptTree_SortTest(self.testNo, "singleMachine")
 
     def testScriptTree_SortGridEngine(self):
-        # Tests scriptTree/jobTree by sorting a file in parallel.
         if gridEngineIsInstalled():
             self.scriptTree_SortTest(self.testNo, "gridengine")
 
     def testScriptTree_Parasol(self):
-        # Tests scriptTree/jobTree by sorting a file in parallel.
         if parasolIsInstalled():
             self.scriptTree_SortTest(self.testNo, "parasol")
 
-    """
-    def testScriptTree_SortAcid(self):
-        #Tests scriptTree/jobTree by sorting a file in parallel.
-        scriptTree_SortTest(self.testNo, "acid_test")
-    """
+    if False:
+        def testScriptTree_SortAcid(self):
+            self.scriptTree_SortTest(self.testNo, "acid_test")
 
-
-
-    # The following functions test the functions in the test!
+    # The following methods test the methods in this test case!
 
     def testSort(self):
         for test in xrange(self.testNo):
@@ -160,7 +165,7 @@ class SortTest(JobTreeTest):
                            "--failIfNotComplete".format(**locals()))
                     break
                 except CalledProcessError:
-                    log.warn('jobTree failed and will be restarted', exc_info=True)
+                    log.warn('jobTree failed and will be restarted. See exception info below:', exc_info=True)
 
             # Now check the file is properly sorted..
             # Now get the sorted file
