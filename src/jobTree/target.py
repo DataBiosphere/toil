@@ -185,7 +185,7 @@ class Target(object):
     #target run functions
     ####################################################
     
-    def rv(self, argIndex):
+    def rv(self, argIndex=0):
         """
         Gets a PromisedTargetReturnValue, representing the argIndex return 
         value of the run function (see run method for description).
@@ -571,7 +571,7 @@ class Target(object):
                 self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(jobStore) if 
                         isinstance(x, PromisedTargetReturnValue) else value[x]), value))
       
-    def _setFileIDsForPromisedValues(self, jobStore, jobStoreID):
+    def _setFileIDsForPromisedValues(self, jobStore, jobStoreID, visited):
         """
         Sets the jobStoreFileID for each PromisedTargetReturnValue in the 
         graph of targets created.
@@ -580,12 +580,14 @@ class Target(object):
         #do this here, rather than within the original constructor of the
         #promised value because we don't necessarily have access to the jobStore when 
         #the PromisedTargetReturnValue instances are created.
-        for PromisedTargetReturnValue in self._rvs.values():
-            if PromisedTargetReturnValue.jobStoreFileID == None:
-                PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
-        #Now recursively do the same for the children and follow ons.
-        for successorTarget in self._children + self._followOns:
-            successorTarget._setFileIDsForPromisedValues(jobStore, jobStoreID)
+        if self not in visited:
+            visited.add(self)
+            for PromisedTargetReturnValue in self._rvs.values():
+                if PromisedTargetReturnValue.jobStoreFileID == None:
+                    PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
+            #Now recursively do the same for the children and follow ons.
+            for successorTarget in self._children + self._followOns:
+                successorTarget._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
     
     @staticmethod
     def _setReturnValuesForPromises(target, returnValues, jobStore):
@@ -709,7 +711,7 @@ class Target(object):
         #Remove redundant edges
         self._removeRedudantEdges()
         #Set the promised value jobStoreFileIDs
-        self._setFileIDsForPromisedValues(jobStore, job.jobStoreID)
+        self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
         self._setReturnValuesForPromises(self, returnValues, jobStore)
         #Turn the graph into a graph of jobs in the jobStore
@@ -821,8 +823,7 @@ class PromisedTargetReturnValue():
         """
         assert self.jobStoreFileID != None 
         with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
-            value = cPickle.load(fileHandle) #If this doesn't work, then it is 
-            #likely the Target that is promising value has not yet been run.
+            value = cPickle.load(fileHandle) #If this doesn't work, then it is likely the Target that is promising value has not yet been run.
             if isinstance(value, PromisedTargetReturnValue):
                 raise RuntimeError("A nested PromisedTargetReturnValue has been found.") #We do not allow the return of PromisedTargetReturnValue instance from the run function
             return value
