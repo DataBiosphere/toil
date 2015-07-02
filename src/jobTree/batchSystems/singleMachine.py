@@ -96,12 +96,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     # The input queue is passed as an argument because the corresponding attribute is reset to None in shutdown()
 
-    def worker(self,inputQueue):
+    def worker(self, inputQueue):
         while True:
             args = inputQueue.get()
             if args is None:
-                logger.debug('Sentinel received, exiting worker thread.')
-                return
+                logger.debug('Received queue sentinel.')
+                break
             jobCommand, jobID, jobCpu, jobMem = args
             try:
                 numThreads = int(jobCpu / self.minCpu)
@@ -144,7 +144,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                             statusCode = popen.wait()
                             if 0 != statusCode:
                                 if statusCode != -9 or not info.kill_intended:
-                                    raise subprocess.CalledProcessError(statusCode, jobCommand)
+                                    logger.error("Got exit code %i (indicating failure) from command '%s'.", statusCode, jobCommand )
                         finally:
                             self.runningJobs.pop(jobID)
                     finally:
@@ -171,6 +171,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 value = self.cpuSemaphore._Semaphore__value
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
+        logger.info('Exiting worker thread normally.')
 
     # FIXME: Remove or fix badWorker to be compliant with new thread management.
 
