@@ -38,7 +38,7 @@ except ImportError:
 import logging
 logger = logging.getLogger( __name__ )
 
-from jobTree.lib.bioio import (setLoggingFromOptions, system, 
+from jobTree.lib.bioio import (setLoggingFromOptions, 
                                getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from jobTree.common import setupJobTree, addOptions
 from jobTree.leader import mainLoop
@@ -266,7 +266,7 @@ class Target(object):
             """
             setLoggingFromOptions(options)
             config, batchSystem, jobStore = setupJobTree(options)
-            if "rootJob" not in config.attrib["rootJob"]: #No jobs have yet been run
+            if "rootJob" not in config.attrib: #No jobs have yet been run
                 #Setup the first job.
                 rootJob = target._serialiseFirstTarget(jobStore)
             else:
@@ -382,7 +382,8 @@ class Target(object):
     
     def _addPredecessor(self, predecessorTarget):
         """
-        Adds a predecessor target to the set of predecessor targets.
+        Adds a predecessor target to the set of predecessor targets. Raises a 
+        RuntimeError is the target is already a predecessor.
         """
         if predecessorTarget in self._predecessors:
             raise RuntimeError("The given target is already a predecessor of this target")
@@ -401,10 +402,11 @@ class Target(object):
         #Call recursively
         for successor in self._children + self._followOns:
             successor._getHashOfTargetsToUUIDs2(targetsToUUIDs)
+        return targetsToUUIDs
         
     def _getHashOfTargetsToUUIDs2(self, targetsToUUIDs):
         if self not in targetsToUUIDs:
-            targetsToUUIDs[self] = uuid.uuid1() 
+            targetsToUUIDs[self] = str(uuid.uuid1())
             self._getHashOfTargetsToUUIDs(targetsToUUIDs)
            
     def _createEmptyJobForTarget(self, jobStore, updateID=None, command=None, 
@@ -412,12 +414,12 @@ class Target(object):
         """
         Create an empty job for the target.
         """
-        return jobStore.createJob(command=command, 
-                                  memory=(self.memory if self.memory != sys.maxint 
-                                          else float(jobStore.config.attrib["default_memory"])),
-                                  cpu=(self.cpu if self.cpu != sys.maxint
-                                       else float(jobStore.config.attrib["default_cpu"])),
-                                  updateID=updateID, predecessorNumber=predecessorNumber)  
+        return jobStore.create(command=command, 
+                               memory=(self.memory if self.memory != sys.maxint 
+                                       else float(jobStore.config.attrib["default_memory"])),
+                               cpu=(self.cpu if self.cpu != sys.maxint
+                                    else float(jobStore.config.attrib["default_cpu"])),
+                               updateID=updateID, predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor):
         """
@@ -428,12 +430,15 @@ class Target(object):
             assert predecessor in self._predecessors
             job = self._createEmptyJobForTarget(jobStore, targetsToUUIDs[self],
                                                 predecessorNumber=len(self._predecessors))
+            targetsToJobs[self] = job
             
             #Add followOns/children to be run after the current target.
             for successors in (self._followOns, self._children):
-                job.stack.append(map(lambda successor:
+                jobs = map(lambda successor:
                     successor._makeJobWrappers(jobStore, targetsToUUIDs, 
-                                               targetsToJobs, self), successors))
+                                               targetsToJobs, self), successors)
+                if len(jobs) > 0:
+                    job.stack.append(jobs)
             
             #Pickle the target so that its run method can be run at a later time.
             #Drop out the children/followOns/predecessors - which are all recored
@@ -462,7 +467,7 @@ class Target(object):
         #completed before running the given Target - it is just a unique ID
         #per predecessor 
         return (job.jobStoreID, job.memory, job.cpu, 
-                None if job.predecessorNumber <= 1 else targetsToUUIDs[predecessor])
+                None if job.predecessorNumber <= 1 else str(uuid.uuid4()))
     
     def _serialiseTargetGraph(self, job, jobStore):
         """
@@ -473,15 +478,18 @@ class Target(object):
         #Create jobIDs as UUIDs
         targetsToUUIDs = self._getHashOfTargetsToUUIDs({})
         #Set the jobs to delete
-        job.jobsToDelete = set(targetsToUUIDs.values())
+        job.jobsToDelete = list(targetsToUUIDs.values())
         #Update the job on disk. The jobs to delete is a record of what to
         #remove if the update goes wrong
         jobStore.update(job)
         #Create the jobs for followOns/children
+        targetsToJobs = {}
         for successors in (self._followOns, self._children):
-            job.stack.append(map(lambda successor:
+            jobs = map(lambda successor:
                 successor._makeJobWrappers(jobStore, targetsToUUIDs, 
-                                           {}, self), successors))
+                                           targetsToJobs, self), successors)
+            if len(jobs) > 0:
+                job.stack.append(jobs)
         #Remove the jobs to delete list and remove the old command finishing the update
         job.jobsToDelete = []
         job.command = None
@@ -503,7 +511,8 @@ class Target(object):
         #Set the config rootJob attrib
         assert "rootJob" not in jobStore.config.attrib
         jobStore.config.attrib["rootJob"] = job.jobStoreID
-        ET.ElementTree( jobStore.config ).write( jobStore.writeSharedFileStream("config.xml") )
+        with jobStore.writeSharedFileStream("config.xml") as f:
+            ET.ElementTree( jobStore.config ).write(f)
         #Return the first job
         return job
 
@@ -528,7 +537,7 @@ class Target(object):
             #else if the variable is a list, tuple or set or dict replace any 
             #PromisedTargetReturnValue instances within
             #the container with the stored return value.
-            f = lambda : map(lambda x : x.loadValue(self.jobStore) if 
+            f = lambda : map(lambda x : x.loadValue(jobStore) if 
                         isinstance(x, PromisedTargetReturnValue) else x, value)
             if isinstance(value, PromisedTargetReturnValue):
                 self.__dict__[attr] = value.loadValue(jobStore)
@@ -581,7 +590,7 @@ class Target(object):
         
     def _dfs(self, visited):
         """Adds all targets reacheable on a directed path from current node to the
-        set visited.
+        set 'visited'.
         """
         if self not in visited:
             visited.add(self) 
@@ -594,10 +603,10 @@ class Target(object):
         """
         if self not in visited:
             visited.add(self) 
-            stack.add(self)
+            stack.append(self)
             for successor in self._children + self._followOns + extraEdges[self]:
                 successor._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
-            stack.pop(self)
+            stack.pop()
         if self in stack:
             raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
         
@@ -634,10 +643,13 @@ class Target(object):
         a deadlock in the method used for scheduling targets/jobs.
         TODO: Naive algorithm could be improved
         """
-        for target in self._dfs(set()):
+        nodes = set()
+        self._dfs(nodes)
+        for target in nodes:
             if len(target._followOns) > 0:
+                visited = set()
                 for child in target._children:
-                    child._removeRedundantEdges2(target._followOns, set())
+                    child._removeRedundantEdges2(set(target._followOns), visited)
     
     def _removeRedundantEdges2(self, augmentedEdges, visited):
         """
@@ -685,8 +697,6 @@ class Target(object):
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
-        #Cleanup after the target
-        system("rm -rf %s/*" % localTempDir)
         #Finish up the stats
         if stats != None:
             stats = ET.SubElement(stats, "target")

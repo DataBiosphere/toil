@@ -290,7 +290,7 @@ class AbstractJobStore( object ):
             #those jobs from the stack (this cleans up the case that the job
             #had successors to run, but had not been updated to reflect this)
             while len(job.stack) > 0:
-                jobs = [ jobStoreID for jobStoreID in job.stack[-1] if self.exists(jobStoreID) ]
+                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
                 if len(jobs) < len(job.stack[-1]):
                     changed = True
                     if len(jobs) > 0:

@@ -46,7 +46,7 @@ class Job( object ):
         #The IDs of predecessors that have finished. 
         #When len(predecessorsFinished) == predecessorNumber then the
         #job can be run.
-        self.predecessorsFinished = predecessorNumber or set()
+        self.predecessorsFinished = predecessorsFinished or set()
         
         #The list of successor jobs to run. Successor jobs are stored
         #as 4-tuples of the form (jobStoreId, memory, cpu, predecessorNumber).
