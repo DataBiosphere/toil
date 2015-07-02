@@ -2,15 +2,14 @@ from abc import ABCMeta, abstractmethod
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
-import threading
 from xml.etree import ElementTree
 import time
 import multiprocessing
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from jobTree.batchSystems.mesos.batchSystem import MesosBatchSystem
+from jobTree.batchSystems.mesos.test import MesosTestSupport
 from jobTree.batchSystems.singleMachine import SingleMachineBatchSystem
 from jobTree.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from jobTree.test import JobTreeTest
@@ -109,7 +108,6 @@ class hidden:
             # Make sure that killJob doesn't hang / raise KeyError on unknown job IDs
             self.batchSystem.killJobs([0])
 
-
         def testGetUpdatedJob(self):
             delay = 1
             jobCommand = 'sleep %i' % delay
@@ -160,65 +158,19 @@ class hidden:
             shutil.rmtree(cls.tempDir)
 
 
-class MesosBatchSystemTest(hidden.AbstractBatchSystemTest):
+class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
     Tests against the Mesos batch system
     """
 
     def createBatchSystem(self):
-        shutil.rmtree('/tmp/mesos', ignore_errors=True)
-        self.master = self.MesosMasterThread()
-        self.master.start()
-        self.slave = self.MesosSlaveThread()
-        self.slave.start()
-        while self.master.popen is None or self.slave.popen is None:
-            log.info("Waiting for master and slave processes")
-            time.sleep(.1)
-        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, masterIP="127.0.0.1:5050")
-
-    def setUp(self):
-        super(MesosBatchSystemTest, self).setUp()
+        self._startMesos(numCores)
+        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, masterIP='127.0.0.1:5050')
 
     def tearDown(self):
         super(MesosBatchSystemTest, self).tearDown()
-        self.slave.popen.kill()
-        self.slave.join()
-        self.master.popen.kill()
-        self.master.join()
+        self._stopMesos()
         self.batchSystem.shutdown()
-
-    class MesosThread(threading.Thread):
-        __metaclass__ = ABCMeta
-
-        # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
-        lock = threading.Lock()
-
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.popen = None
-
-        @abstractmethod
-        def mesosCommand(self):
-            raise NotImplementedError
-
-        def run(self):
-            with self.lock:
-                self.popen = subprocess.Popen(self.mesosCommand())
-            self.popen.wait()
-            log.info('Exiting %s', self.__class__.__name__)
-
-    class MesosMasterThread(MesosThread):
-        def mesosCommand(self):
-            return ['mesos-master', '--registry=in_memory', '--ip=127.0.0.1']
-
-    class MesosSlaveThread(MesosThread):
-        def mesosCommand(self):
-            # NB: The --resources parameter forces this test to use a predictable number of cores, independent of how
-            # many cores the system running the test actually has.
-            return ['mesos-slave',
-                    '--ip=127.0.0.1',
-                    '--master=127.0.0.1:5050',
-                    '--resources=cpus(*):%i' % numCores]
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
