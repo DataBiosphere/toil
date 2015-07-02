@@ -39,8 +39,6 @@ class AbstractJobStore( object ):
             with self.writeSharedFileStream( "config.xml" ) as fileHandle:
                 ET.ElementTree( config ).write( fileHandle )
             self.__config = config
-        #Call cleans up any cruft in the jobStore
-        self._clean()
 
     @property
     def config( self ):
@@ -52,6 +50,61 @@ class AbstractJobStore( object ):
         Removes the jobStore from the disk/store. Careful!
         """
         raise NotImplementedError( )
+    
+    ##Cleanup functions
+    
+    def clean(self):
+        """
+        Function to cleanup the state of a jobStore after a restart.
+        Fixes jobs that might have been partially updated.
+        """
+        #Collate any jobs that were in the process of being created/deleted
+        jobsToDelete = set()
+        for job in self.jobs():
+            for updateID in job.jobsToDelete:
+                jobsToDelete.add(updateID)
+            
+        #Delete the jobs that should be delete
+        if len(jobsToDelete) > 0:
+            for job in self.jobs():
+                if job.updateID in jobsToDelete:
+                    self.delete(job.jobStoreID)
+        
+        #Cleanup the state of each job
+        for job in self.jobs():
+            changed = False #Flag to indicate if we need to update the job
+            #on disk
+            
+            if len(job.jobsToDelete) != 0:
+                job.jobsToDelete = set()
+                changed = True
+                
+            #While jobs at the end of the stack are already deleted remove
+            #those jobs from the stack (this cleans up the case that the job
+            #had successors to run, but had not been updated to reflect this)
+            while len(job.stack) > 0:
+                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
+                if len(jobs) < len(job.stack[-1]):
+                    changed = True
+                    if len(jobs) > 0:
+                        job.stack[-1] = jobs
+                        break
+                    else:
+                        job.stack.pop()
+                else:
+                    break
+                          
+            #This cleans the old log file which may 
+            #have been left if the job is being retried after a job failure. 
+            if job.logJobStoreFileID != None:
+                job.clearLogFile(self) 
+                changed = True
+            
+            if changed: #Update, but only if a change has occurred
+                self.update(job)
+        
+        #Remove any crufty stats/logging files from the previous run
+        self.readStatsAndLogging(lambda x : None)
     
     ##########################################
     #The following methods deal with creating/loading/updating/writing/checking for the
@@ -154,8 +207,9 @@ class AbstractJobStore( object ):
     @abstractmethod
     def deleteFile( self, jobStoreFileID ):
         """
-        Deletes the file with the given ID from this job store. Throws an exception if the file
-        does not exist.
+        Deletes the file with the given ID from this job store.  
+        This operation is idempotent, i.e. deleting a file twice or deleting a non-existent file
+        will succeed silently.
         """
         raise NotImplementedError( )
 
@@ -257,55 +311,3 @@ class AbstractJobStore( object ):
     @classmethod
     def _validateSharedFileName( cls, sharedFileName ):
         return bool( cls.sharedFileNameRegex.match( sharedFileName ) )
-    
-    ##Cleanup functions
-    
-    def _clean(self):
-        """
-        Function to cleanup the state of a jobStore after a restart.
-        Fixes jobs that might have been partially updated. Is called by constructor.
-        """
-        #Collate any jobs that were in the process of being created/deleted
-        jobsToDelete = set()
-        for job in self.jobs():
-            for updateID in job.jobsToDelete:
-                jobsToDelete.add(updateID)
-            
-        #Delete the jobs that should be delete
-        if len(jobsToDelete) > 0:
-            for job in self.jobs():
-                if job.updateID in jobsToDelete:
-                    self.delete(job.jobStoreID)
-        
-        #Cleanup the state of each job
-        for job in self.jobs():
-            changed = False #Flag to indicate if we need to update the job
-            #on disk
-            
-            if len(job.jobsToDelete) != 0:
-                job.jobsToDelete = set()
-                changed = True
-                
-            #While jobs at the end of the stack are already deleted remove
-            #those jobs from the stack (this cleans up the case that the job
-            #had successors to run, but had not been updated to reflect this)
-            while len(job.stack) > 0:
-                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
-                if len(jobs) < len(job.stack[-1]):
-                    changed = True
-                    if len(jobs) > 0:
-                        job.stack[-1] = jobs
-                        break
-                    else:
-                        job.stack.pop()
-                else:
-                    break
-                          
-            #This cleans the old log file which may 
-            #have been left if the job is being retried after a job failure. 
-            if job.logJobStoreFileID != None:
-                job.clearLogFile(self) 
-                changed = True
-            
-            if changed: #Update, but only if a change has occurred
-                self.update(job)

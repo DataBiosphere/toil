@@ -118,7 +118,11 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
     
     def deleteFile(self, jobStoreFileID):
-        self._checkJobStoreFileID(jobStoreFileID)
+        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
+        if not os.path.exists(absPath):
+            return
+        if not os.path.isfile(absPath):
+            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
         os.remove(self._getAbsPath(jobStoreFileID))
     
     @contextmanager
@@ -167,18 +171,19 @@ class FileJobStore(AbstractJobStore):
              
     def writeStatsAndLogging(self, statsAndLoggingString):
         #Temporary files are placed in the set of temporary files/directoies
-        tempStatsFile = tempfile.mkstemp(prefix="stats", dir=self._getTempSharedDir())
-        with open(tempStatsFile + ".new", "w") as f:
+        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
+        with open(tempStatsFile, "w") as f:
             f.write(statsAndLoggingString)
-        os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
-    
+        os.close(fd)
+        os.rename(tempStatsFile, tempStatsFile[:-4]) #This operation is atomic
+        
     def readStatsAndLogging( self, statsAndLoggingCallBackFn):
         numberOfFilesProcessed = 0
         for tempDir in self._tempDirectories():
             for tempFile in os.listdir(tempDir):
                 if tempFile.startswith( 'stats' ):
+                    absTempFile = os.path.join(tempDir, tempFile)
                     if not tempFile.endswith( '.new' ):
-                        absTempFile = os.path.join(dir, tempFile)
                         with open(absTempFile, 'r') as fH:
                             statsAndLoggingCallBackFn(fH)
                         numberOfFilesProcessed += 1
