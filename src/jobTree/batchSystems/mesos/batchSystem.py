@@ -5,7 +5,6 @@ import os
 import time
 import pickle
 from Queue import Queue
-from threading import Thread
 import logging
 import sys
 
@@ -22,7 +21,7 @@ from jobTree.batchSystems.mesos.executor import MesosExecutor
 log = logging.getLogger(__name__)
 
 
-class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
+class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     """
     A jobTree batch system implementation that uses Apache Mesos to distribute jobTree jobs as Mesos tasks over a
     cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This class acts as the
@@ -38,7 +37,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
     def __init__(self, config, maxCpus, maxMemory, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
-        Thread.__init__(self)
         # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
         # passed along in every Mesos task. See jobTree.common.HotDeployedResource for details.
         self.userScript = userScript
@@ -69,9 +67,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
         self.driver = None
 
-        # Overall success, set by run() in driver thread, to be used for sys.exit
-        self.driver_result = None
-
         # FIXME: This comment makes no sense to me
 
         # Returns Mesos executor object, which is merged into Mesos tasks as they are built
@@ -81,8 +76,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
         self.lastReconciliation = time.time()
         self.reconciliationPeriod = 120
 
-        # Start the driver thread
-        self.start()
+        # Start the driver
+        self._startDriver()
 
     def issueJob(self, command, memory, cpu):
         """
@@ -226,7 +221,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
 
         return implicitAcknowledgements
 
-    def run(self):
+    def _startDriver(self):
         """
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
@@ -246,19 +241,16 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler, Thread):
             framework.principal = framework.name
             self.driver = mesos.native.MesosSchedulerDriver(self, framework, self.masterIP,
                                                             self.implicitAcknowledgements)
-        self.driver_result = self.driver.run()
+        assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
 
     def shutdown(self):
         log.info("Stopping Mesos driver")
-        status = self.driver.stop()
-        if status!=mesos_pb2.DRIVER_STOPPED and status!=mesos_pb2.DRIVER_ABORTED:
-            log.info("Stopping Mesos driver failed. Aborting Mesos Driver.")
-            self.driver.abort()
+        self.driver.stop()
         log.info("Joining Mesos driver")
-        self.join()
+        driver_result = self.driver.join()
         log.info("Joined Mesos driver")
-        if self.driver_result != mesos_pb2.DRIVER_STOPPED:
-            raise RuntimeError("Mesos driver failed with %i", self.driver_result)
+        if driver_result != mesos_pb2.DRIVER_STOPPED:
+            raise RuntimeError("Mesos driver failed with %i", driver_result)
 
     def registered(self, driver, frameworkId, masterInfo):
         """
