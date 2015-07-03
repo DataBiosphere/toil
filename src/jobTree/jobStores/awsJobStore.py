@@ -76,7 +76,7 @@ class AWSJobStore( AbstractJobStore ):
         self.jobs = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
-        self.stats = self._getOrCreateBucket( 'stats', create )
+        self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
         super( AWSJobStore, self ).__init__( config=config )
 
     def createFirstJob( self, command, memory, cpu ):
@@ -241,7 +241,7 @@ class AWSJobStore( AbstractJobStore ):
     @contextmanager
     def writeFileStream( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
-        with self._uploadStream( jobStoreFileID ) as (writable, key):
+        with self._uploadStream( jobStoreFileID, self.files ) as (writable, key):
             yield writable, jobStoreFileID
         firstVersion = key.version_id
         assert firstVersion is not None
@@ -254,7 +254,7 @@ class AWSJobStore( AbstractJobStore ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID ) as (writable, key):
+        with self._uploadStream( jobStoreFileID, self.files ) as (writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str( self.sharedFileJobID ) if oldVersion is None else None
@@ -277,7 +277,7 @@ class AWSJobStore( AbstractJobStore ):
     @contextmanager
     def updateFileStream( self, jobStoreFileID ):
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID ) as (writable, key):
+        with self._uploadStream( jobStoreFileID, self.files ) as (writable, key):
             yield writable
         newVersion = key.version_id
         self._registerFile( jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion )
@@ -296,7 +296,7 @@ class AWSJobStore( AbstractJobStore ):
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
         log.debug( "Reading version %s of file %s", version, jobStoreFileID )
-        with self._downloadStream( jobStoreFileID, version ) as readable:
+        with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
             yield readable
 
     @contextmanager
@@ -307,16 +307,17 @@ class AWSJobStore( AbstractJobStore ):
         if version is None: raise NoSuchFileException( jobStoreFileID )
         log.debug( "Read version %s from shared file %s (%s)",
                    version, sharedFileName, jobStoreFileID )
-        with self._downloadStream( jobStoreFileID, version ) as readable:
+        with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
             yield readable
 
     def deleteFile( self, jobStoreFileID ):
-        version = self._getFileVersion( jobStoreFileID )
+        version, bucket = self._getFileVersionAndBucket( jobStoreFileID )
+        if version is None: raise NoSuchFileException( jobStoreFileID )
         for attempt in retry_sdb( ):
             with attempt:
                 self.versions.delete_attributes( jobStoreFileID,
                                                  expected_values=[ 'version', version ] )
-        self.files.delete_key( key_name=jobStoreFileID, version_id=version )
+        bucket.delete_key( key_name=jobStoreFileID, version_id=version )
         log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
 
     def getEmptyFileStoreID( self, jobStoreID ):
@@ -326,10 +327,26 @@ class AWSJobStore( AbstractJobStore ):
         return jobStoreFileID
 
     def writeStatsAndLogging( self, statsAndLoggingString ):
-        raise NotImplementedError( )
+        jobStoreFileId = self._newFileID( )
+        with self._uploadStream( jobStoreFileId, self.stats, multipart=False ) as (writeable, key):
+            writeable.write( statsAndLoggingString )
+        firstVersion = key.version_id
+        self._registerFile( jobStoreFileId, bucketName='stats', newVersion=firstVersion )
 
     def readStatsAndLogging( self, statsCallBackFn ):
-        raise NotImplementedError( )
+        itemsProcessed = 0
+        for attempt in retry_sdb( ):
+            with attempt:
+                items = list( self.versions.select(
+                    query="select * from `%s` "
+                          "where bucketName='stats'" % (self.versions.name,),
+                    consistent_read=True ) )
+        for item in items:
+            with self._downloadStream( item.name, item[ 'version' ], self.stats ) as readable:
+                statsCallBackFn( readable )
+            self.deleteFile( item.name )
+            itemsProcessed += 1
+        return itemsProcessed
 
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double
@@ -341,7 +358,8 @@ class AWSJobStore( AbstractJobStore ):
     @classmethod
     def _parseArgs( cls, jobStoreString ):
         region, namePrefix = jobStoreString.split( ':' )
-        # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html, reserve 10 characters for separator and suffixes
+        # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html,
+        # reserve 10 characters for separator and suffixes
         if not cls.bucketNameRe.match( namePrefix ):
             raise ValueError( "Invalid name prefix '%s'. Name prefixes must contain only digits, "
                               "hyphens or lower-case letters and must not start or end in a "
@@ -386,7 +404,7 @@ class AWSJobStore( AbstractJobStore ):
         assert 3 <= len( bucket_name ) <= 63
         try:
             bucket = self.s3.get_bucket( bucket_name, validate=True )
-            assert versioning is self.__get_bucket_versioning( bucket )
+            assert versioning is self.__getBucketVersioning( bucket )
             return bucket
         except S3ResponseError as e:
             if e.error_code == 'NoSuchBucket' and create:
@@ -425,16 +443,30 @@ class AWSJobStore( AbstractJobStore ):
         else:
             return str( uuid.uuid5( self.sharedFileJobID, sharedFileName ) )
 
-    def _getFileVersion( self, jobStoreFileID ):
+    def _getFileVersionAndBucket( self, jobStoreFileID ):
         """
-        :rtype: str
+        :rtype: tuple(str version, AWS bucket)
         """
         for attempt in retry_sdb( ):
             with attempt:
                 item = self.versions.get_attributes( item_name=jobStoreFileID,
-                                                     attribute_name='version',
+                                                     attribute_name=[ 'version', 'bucketName' ],
                                                      consistent_read=True )
-        return item.get( 'version', None )
+        bucketName = item.get( 'bucketName', None )
+        if bucketName is None:
+            return None, None
+        else:
+            return item.get( 'version', None ), getattr( self, bucketName )
+
+    def _getFileVersion( self, jobStoreFileID, expectedBucket=None ):
+        version, bucket = self._getFileVersionAndBucket( jobStoreFileID )
+        if bucket is None:
+            assert version is None
+        else:
+            if expectedBucket is None:
+                expectedBucket = self.files
+            assert bucket is expectedBucket
+        return version
 
     _s3_part_size = 50 * 1024 * 1024
 
@@ -470,15 +502,15 @@ class AWSJobStore( AbstractJobStore ):
         return version
 
     @contextmanager
-    def _uploadStream( self, jobStoreFileID ):
-        key = self.files.new_key( key_name=jobStoreFileID )
+    def _uploadStream( self, jobStoreFileID, bucket, multipart=True ):
+        key = bucket.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def reader( ):
                     try:
-                        upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
+                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID )
                         try:
                             for part_num in itertools.count( ):
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -500,7 +532,15 @@ class AWSJobStore( AbstractJobStore ):
                     except:
                         log.exception( 'Exception in reader thread' )
 
-                thread = Thread( target=reader )
+                def simpleReader( ):
+                    log.debug( "Using single part upload" )
+                    try:
+                        buf = StringIO( readable.read( ) )
+                        assert key.set_contents_from_file( fp=buf ) == buf.len
+                    except:
+                        log.exception( "Exception in simple reader thread" )
+
+                thread = Thread( target=reader if multipart else simpleReader )
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
@@ -515,8 +555,8 @@ class AWSJobStore( AbstractJobStore ):
         key.get_contents_to_filename( localFilePath, version_id=version )
 
     @contextmanager
-    def _downloadStream( self, jobStoreFileID, version ):
-        key = self.files.get_key( jobStoreFileID, validate=False )
+    def _downloadStream( self, jobStoreFileID, version, bucket ):
+        key = bucket.get_key( jobStoreFileID, validate=False )
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
@@ -534,11 +574,13 @@ class AWSJobStore( AbstractJobStore ):
                 thread.join( )
 
     def _registerFile( self, jobStoreFileID,
-                       jobStoreID=None, newVersion=None, oldVersion=None ):
+                       bucketName='files', jobStoreID=None, newVersion=None, oldVersion=None ):
         """
-        Register a a file in the store. Register a
+        Register a a file in the store
 
         :param jobStoreFileID: the file's ID, mandatory
+
+        :param bucketName: the name of the S3 bucket the file was placed in
 
         :param jobStoreID: the ID of the job owning the file, only allowed for first version of
                            file or when file is registered without content
@@ -553,7 +595,7 @@ class AWSJobStore( AbstractJobStore ):
         assert jobStoreID is not None or newVersion is not None
         # Must pass newVersion if passing oldVersion
         assert oldVersion is None or newVersion is not None
-        attributes = { }
+        attributes = dict( bucketName=bucketName )
         if newVersion is not None:
             attributes[ 'version' ] = newVersion
         if jobStoreID is not None:
@@ -567,7 +609,8 @@ class AWSJobStore( AbstractJobStore ):
                                                          attributes=attributes,
                                                          expected_value=expected )
             if oldVersion is not None:
-                self.files.delete_key( jobStoreFileID, version_id=oldVersion )
+                bucket = getattr( self, bucketName )
+                bucket.delete_key( jobStoreFileID, version_id=oldVersion )
         except SDBResponseError as e:
             if e.error_code == 'ConditionalCheckFailed':
                 raise ConcurrentFileModificationException( jobStoreFileID )
@@ -581,7 +624,7 @@ class AWSJobStore( AbstractJobStore ):
 
     versionings = dict( Enabled=True, Disabled=False, Suspended=None )
 
-    def __get_bucket_versioning( self, bucket ):
+    def __getBucketVersioning( self, bucket ):
         """
         A valueable lesson in how to feck up a simple tri-state boolean.
 
@@ -602,7 +645,7 @@ class AWSJobStore( AbstractJobStore ):
             if bucket is not None:
                 for upload in bucket.list_multipart_uploads( ):
                     upload.cancel_upload( )
-                if self.__get_bucket_versioning( bucket ) in (True, None):
+                if self.__getBucketVersioning( bucket ) in (True, None):
                     for key in list( bucket.list_versions( ) ):
                         bucket.delete_key( key.name, version_id=key.version_id )
                 else:
@@ -793,7 +836,7 @@ def retry_sdb( retry_after=a_short_time,
             except SDBResponseError as e:
                 if time.time( ) + retry_after < expiration:
                     if retry_while( e ):
-                        log.info( '... got %s, trying again in %is ...' % ( e.error_code, retry_after ) )
+                        log.info( '... got %s, trying again in %is ...', e.error_code, retry_after )
                         time.sleep( retry_after )
                     else:
                         log.info( 'Exception failed predicate, giving up.' )

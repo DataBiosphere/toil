@@ -255,6 +255,22 @@ class hidden:
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             worker.deleteFile( fileOne )
 
+            # Test stats and logging
+            testRead = []
+            files=master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files==0)
+
+            master.writeStatsAndLogging("abc")
+
+            files=master.readStatsAndLogging(testRead.append)
+            assert len(testRead)==1
+            self.assertTrue(files==1)
+            files=master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files==0)
+            master.writeStatsAndLogging("abc")
+            master.writeStatsAndLogging("abc")
+            files=master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files==2)
             # Delete parent and its associated files
             #
             master.delete( jobOnMaster )
