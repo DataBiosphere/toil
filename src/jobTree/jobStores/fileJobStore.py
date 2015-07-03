@@ -3,7 +3,7 @@ import logging
 import marshal as pickler
 #import cPickle as pickler
 #import pickle as pickler
-#import json as pickler    
+#import json as pickler
 import socket
 import random
 import shutil
@@ -38,7 +38,16 @@ class FileJobStore(AbstractJobStore):
     
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
-    
+
+    def getPublicUrl( self,  jobStoreFileID):
+        if os.path.exists(jobStoreFileID):
+            return 'file:'+jobStoreFileID
+        else:
+            raise NoSuchFileException(jobStoreFileID)
+
+    def getSharedPublicUrl( self,  FileName):
+        return self.getPublicUrl(jobStoreFileID=self.jobStoreDir +'/'+FileName)
+
     def load(self, jobStoreID):
         jobFile = self._getJobFileName(jobStoreID)
         # The following clean up any issues resulting from the failure of the job during writing

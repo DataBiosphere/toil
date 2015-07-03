@@ -98,6 +98,18 @@ class AWSJobStore( AbstractJobStore ):
                 return bool( self.jobs.get_attributes( item_name=jobStoreID,
                                                        attribute_name=[ ],
                                                        consistent_read=True ) )
+    def getPublicUrl( self,  jobStoreFileID):
+        """
+        For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
+        http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
+        Create url, check if valid, return.
+        """
+        key = self.files.get_key( key_name=jobStoreFileID)
+        return key.generate_url(expires_in=3600) # one hour
+
+    def getSharedPublicUrl(self, FileName):
+        jobStoreFileID = self._newFileID( FileName )
+        return self.getPublicUrl(jobStoreFileID)
 
     def _addChild( self, job, child ):
         if len( child.followOnCommands ) > 0:

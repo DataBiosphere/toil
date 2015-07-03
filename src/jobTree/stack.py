@@ -47,7 +47,7 @@ class Stack(object):
     """
     def __init__(self, target):
         """
-        :type target: Target
+        :type target: jobTree.target.Target
         """
         self.target = target
         self.verifyTargetAttributesExist(target)
@@ -73,41 +73,44 @@ class Stack(object):
         addOptions(parser)
 
     def startJobTree(self, options):
-        """Runs jobtree using the given options (see Stack.getDefaultOptions
+        """
+        Runs jobtree using the given options (see Stack.getDefaultOptions
         and Stack.addJobTreeOptions).
         """
         setLoggingFromOptions(options)
-        with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
+        with setupJobTree(options,self.target.getUserScript()) as (config, batchSystem, jobStore, jobTreeState):
             if not jobTreeState.started: #We setup the first job.
                 memory = self.getMemory()
                 cpu = self.getCpu()
-                if memory == None or memory == sys.maxint:
+                if memory is None or memory == sys.maxint:
                     memory = float(config.attrib["default_memory"])
-                if cpu == None or cpu == sys.maxint:
+                if cpu is None or cpu == sys.maxint:
                     cpu = float(config.attrib["default_cpu"])
-                #Make job, set the command to None initially
+                # Make job, set the command to None initially
                 logger.info("Adding the first job")
                 job = jobStore.createFirstJob(command=None, memory=memory, cpu=cpu)
-                #This calls gives valid jobStoreFileIDs to each promised value
+                # This calls gives valid jobStoreFileIDs to each promised value
                 self._setFileIDsForPromisedValues(self.target, jobStore, job.jobStoreID)
-                #Now set the command properly (this is a hack)
+                # Now set the command properly (this is a hack)
                 job.followOnCommands[-1] = (self.makeRunnable(jobStore, job.jobStoreID), memory, cpu, 0)
-                #Now write
+                # Now write
                 jobStore.store(job)
-                jobTreeState = jobStore.loadJobTreeState() #This reloads the state
+                jobTreeState = jobStore.loadJobTreeState() # This reloads the state
             else:
                 logger.info("Jobtree is being reloaded from previous run with %s jobs to start" % len(jobTreeState.updatedJobs))
             return mainLoop(config, batchSystem, jobStore, jobTreeState)
     
     def cleanup(self, options):
-        """Removes the jobStore backing the jobTree.
+        """
+        Removes the jobStore backing the jobTree.
         """
         with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
             jobStore.deleteJobStore()
 
-#####
-#The remainder of the class is private to the user
-####
+    ####
+    # The remainder of the class is private to the user
+    ####
+
     @staticmethod
     def _setFileIDsForPromisedValues(target, jobStore, jobStoreID):
         """
@@ -119,21 +122,20 @@ class Stack(object):
         #promised value because we don't necessarily have access to the jobStore when 
         #the PromisedTargetReturnValue instances are created.
         for PromisedTargetReturnValue in target._rvs.values():
-            if PromisedTargetReturnValue.jobStoreFileID == None:
+            if PromisedTargetReturnValue.jobStoreFileID is None:
                 PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
         #Now recursively do the same for the children and follow ons.
         for childTarget in target.getChildren():
             Stack._setFileIDsForPromisedValues(childTarget, jobStore, jobStoreID)
-        if target.getFollowOn() != None:
+        if target.getFollowOn() is not None:
             Stack._setFileIDsForPromisedValues(target.getFollowOn(), jobStore, jobStoreID)
         
     def makeRunnable(self, jobStore, jobStoreID):
-        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, fileStoreID ):
+        with jobStore.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileIdOfPickledStack ):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-
-        i = set( self.target.importStrings )
-        classNames = " ".join(i)
-        return "scriptTree %s %s %s" % (fileStoreID, self.target.dirName, classNames)
+        userModule = self.target.userModule
+        targetClassName = self.target.__class__.__name__
+        return ' '.join(("scriptTree", jobStoreFileIdOfPickledStack, targetClassName) + userModule)
     
     def getMemory(self, defaultMemory=sys.maxint):
         memory = self.target.getMemory()

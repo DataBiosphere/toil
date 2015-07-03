@@ -19,18 +19,18 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-
+from collections import namedtuple
 import sys
-import os
 import importlib
 
+from jobTree.resource import ModuleDescriptor
 from jobTree.lib.bioio import getTempFile
-
 
 try:
     import cPickle 
 except ImportError:
     import pickle as cPickle
+
 
 class Target(object):
     """
@@ -45,8 +45,7 @@ class Target(object):
         self.__childCommands = []
         self.__memory = memory
         self.__cpu = cpu
-        self.dirName, moduleName = self._resolveMainModule(self.__module__)
-        self.importStrings = {moduleName + '.' + self.__class__.__name__}
+        self.userModule = ModuleDescriptor.forModule(self.__module__)
         self.loggingMessages = []
         self._rvs = {}
 
@@ -262,30 +261,13 @@ class Target(object):
         """
         self.loggingMessages.append(str(string))
 
-####
-#Private functions
-#### 
-    @staticmethod
-    def _resolveMainModule( moduleName ):
-        """
-        Returns a tuple of two elements, the first element being the path to the directory containing the given
-        module and the second element being the name of the module. If the given module name is "__main__",
-        then that is translated to the actual file name of the top-level script without .py or .pyc extensions. The
-        caller can then add the first element of the returned tuple to sys.path and load the module from there.
-        See also worker.loadStack().
-        """
-        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        if moduleName.endswith('.py'):
-            moduleName = moduleName[:-3]
-        elif moduleName.endswith('.pyc'):
-            moduleName = moduleName[:-4]
-        else:
-            raise RuntimeError(
-                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                moduleName)
-        return moduleDirPath, moduleName
-    
+    def getUserScript(self):
+        return self.userModule
+
+    ####
+    # Protected functions
+    ####
+
     def _switchOutPromisedTargetReturnValues(self):
         """
         Replaces each PromisedTargetReturnValue instance that is a class 
@@ -295,21 +277,37 @@ class Target(object):
         
         This function is called just before the run method.
         """
+
+        # FIXME: why is the substitution only done one level deep? IOW, what about, say, a dict of lists
+
+        # FIXME: This replaces subclasses of list, tuple and dict with the instances of the respective base ...
+        # FIXME: ... class. For a potential fix, see my quick fix for tuples.
+
+        # FIXME: This unnecessarily touches attributes that don't have a promise. It touches attributes of the ...
+        # FIXME: ... target base classes which provably have no PromisedTargetReturnValues in them
+
         #Iterate on the class attributes of the Target instance.
         for attr, value in self.__dict__.iteritems():
-            #If the variable is a PromisedTargetReturnValue replace with the 
-            #actual stored return value of the PromisedTargetReturnValue
-            #else if the variable is a list, tuple or set or dict replace any 
-            #PromisedTargetReturnValue instances within
-            #the container with the stored return value.
-            f = lambda : map(lambda x : x.loadValue(self.jobStore) if 
+            # If the variable is a PromisedTargetReturnValue replace with the
+            # actual stored return value of the PromisedTargetReturnValue
+            # else if the variable is a list, tuple or set or dict replace any
+            # PromisedTargetReturnValue instances within
+            # the container with the stored return value.
+
+            # FIXME: This lambda might become more readable if "value" wasn't closed over but passed in.
+
+            # FIXME: I find lambdas awkward. A simple nested def should suffice
+
+            f = lambda : map(lambda x : x.loadValue(self.jobStore) if
                         isinstance(x, PromisedTargetReturnValue) else x, value)
             if isinstance(value, PromisedTargetReturnValue):
                 self.__dict__[attr] = value.loadValue(self.jobStore)
             elif isinstance(value, list):
                 self.__dict__[attr] = f()
-            elif isinstance(value, tuple):
+            elif value.__class__ == tuple:
                 self.__dict__[attr] = tuple(f())
+            elif isinstance(value, tuple):
+                self.__dict__[attr] = value.__class__(*f())
             elif isinstance(value, set):
                 self.__dict__[attr] = set(f())
             elif isinstance(value, dict):
@@ -343,24 +341,30 @@ class FunctionWrappingTarget(Target):
     Function can not be nested function or class function, currently.
     *args and **kwargs are used as the arguments to the function.
     """
-    def __init__(self, fn, *args, **kwargs):
+    def __init__(self, userFunction, *args, **kwargs):
+        # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Target.__init__(self, memory=memory, cpu=cpu)
-        self.fnModuleDirPath, self.fnModuleName = self._resolveMainModule(fn.__module__)
-        self.fnName = str(fn.__name__)
-        self._args=args
-        self._kwargs=kwargs
-        
-    def _getFunc( self ):
-        if self.fnModuleDirPath not in sys.path:
-            sys.path.append( self.fnModuleDirPath )
-        return getattr( importlib.import_module( self.fnModuleName ), self.fnName )
+        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
+        self.userFunctionName = str(userFunction.__name__)
+        self._args = args
+        self._kwargs = kwargs
+
+    def _getUserFunction(self):
+        userFunctionModule = self.userFunctionModule.localize()
+        if userFunctionModule.dirPath not in sys.path:
+            # FIXME: prepending to sys.path will probably fix #103
+            sys.path.append(userFunctionModule.dirPath)
+        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
 
     def run(self):
-        func = self._getFunc( )
-        #Now run the wrapped function
-        return func(*self._args, **self._kwargs)
+        userFunction = self._getUserFunction( )
+        return userFunction(*self._args, **self._kwargs)
+
+    def getUserScript(self):
+        return self.userFunctionModule
+
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
@@ -369,8 +373,8 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     to the wrapping target.
     """
     def run(self):
-        func = self._getFunc( )
-        return func(*((self,) + tuple(self._args)), **self._kwargs)
+        userFunction = self._getUserFunction()
+        return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
 
 class PromisedTargetReturnValue():
     """

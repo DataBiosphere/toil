@@ -29,6 +29,17 @@ class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the jobTree.
     """
+
+    @staticmethod
+    def supportsHotDeployment():
+        """
+        Whether this batch system supports hot deployment of the user script and jobTree itself. If it does,
+        the __init__ method will have to accept two optional parameters in addition to the declared ones: userScript
+        and jobTreeDistribution. Both will be instances of jobTree.common.HotDeployedResource that represent the user
+        script and a source tarball (sdist) of jobTree respectively.
+        """
+        return False
+
     def __init__(self, config, maxCpus, maxMemory): 
         """This method must be called.
         The config object is setup by the jobTreeSetup script and
@@ -91,8 +102,9 @@ class AbstractBatchSystem:
         Should cleanly terminate all worker threads.
         """
         raise NotImplementedError('Abstract Method: shutdown')
-    
-    def getRescueJobFrequency(self):
+
+    @classmethod
+    def getRescueJobFrequency(cls):
         """Gets the period of time to wait (floating point, in seconds) between checking for 
         missing/overlong jobs.
         """

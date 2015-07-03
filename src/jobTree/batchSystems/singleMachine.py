@@ -28,7 +28,7 @@ import time
 import math
 from threading import Thread
 from threading import Semaphore, Lock, Condition
-from Queue import Queue
+from Queue import Queue, Empty
 
 from jobTree.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
@@ -96,12 +96,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     # The input queue is passed as an argument because the corresponding attribute is reset to None in shutdown()
 
-    def worker(self,inputQueue):
+    def worker(self, inputQueue):
         while True:
             args = inputQueue.get()
             if args is None:
-                logger.debug('Sentinel received, exiting worker thread.')
-                return
+                logger.debug('Received queue sentinel.')
+                break
             jobCommand, jobID, jobCpu, jobMem = args
             try:
                 numThreads = int(jobCpu / self.minCpu)
@@ -144,7 +144,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                             statusCode = popen.wait()
                             if 0 != statusCode:
                                 if statusCode != -9 or not info.kill_intended:
-                                    raise subprocess.CalledProcessError(statusCode, jobCommand)
+                                    logger.error("Got exit code %i (indicating failure) from command '%s'.", statusCode, jobCommand )
                         finally:
                             self.runningJobs.pop(jobID)
                     finally:
@@ -171,6 +171,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 value = self.cpuSemaphore._Semaphore__value
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
+        logger.info('Exiting worker thread normally.')
 
     # FIXME: Remove or fix badWorker to be compliant with new thread management.
 
@@ -264,8 +265,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         Returns a map of the run jobs and the return value of their processes.
         """
-        i = self.outputQueue.get(maxWait)
-        if i == None:
+        try:
+            i = self.outputQueue.get(timeout=maxWait)
+        except Empty:
             return None
         jobID, exitValue = i
         self.jobs.pop(jobID)
@@ -273,7 +275,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.outputQueue.task_done()
         return jobID, exitValue
 
-    def getRescueJobFrequency(self):
+    @classmethod
+    def getRescueJobFrequency(cls):
         """
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """

@@ -19,16 +19,22 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-import importlib
 
 import os
 import sys
-import xml.etree.cElementTree as ET
-import cPickle
+
+if __name__ == "__main__":
+    # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
+    # and Python's
+    sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
+
 import traceback
+import importlib
 import time
 import socket
 import logging
+import xml.etree.cElementTree as ET
+import cPickle
 
 logger = logging.getLogger( __name__ )
 
@@ -49,19 +55,21 @@ def truncateFile(fileNameString, tooBig=50000):
 
 def loadStack(command,jobStore):
     commandTokens = command.split()
-    assert commandTokens[0] == "scriptTree"
-    moduleDirPath = commandTokens[2]
-    if moduleDirPath not in sys.path:
-        sys.path.append(moduleDirPath)
-    for targetClassName in commandTokens[3:]:
-        l = targetClassName.split(".")
-        moduleName = ".".join(l[:-1])
-        targetClassName = l[-1]
-        targetModule = importlib.import_module(moduleName)
-        thisModule = sys.modules[__name__]
-        thisModule.__dict__[targetClassName] = targetModule.__dict__[targetClassName]
-    return loadPickleFile(commandTokens[1], jobStore)
-        
+    assert "scriptTree" == commandTokens[0]
+    jobStoreFileIdOfPickledStack = commandTokens[1]
+    targetClassName = commandTokens[2]
+    # must import lazily because jobTree might not be on sys.path when the top-level of this module is run
+    from jobTree.resource import ModuleDescriptor
+    userModule = ModuleDescriptor(*commandTokens[3:])
+    if not userModule.belongsToJobTree:
+        userModule = userModule.localize()
+    if userModule.dirPath not in sys.path:
+        sys.path.append(userModule.dirPath)
+    userModule = importlib.import_module(userModule.name)
+    thisModule = sys.modules[__name__]
+    thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
+    return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
+
 def loadPickleFile(pickleFile,jobStore):
     """Loads the first object from a pickle file.
     """
@@ -76,9 +84,12 @@ def nextOpenDescriptor():
     return descriptor
     
 def main():
-    sys.path.append(sys.argv[1])
-    sys.argv.remove(sys.argv[1])
-    
+    # This is assuming that worker.py is at a path ending in "/jobTree/worker.py".
+    sourcePath = os.path.dirname(os.path.dirname(__file__))
+    if sourcePath not in sys.path:
+        # FIXME: prepending to sys.path should fix #103
+        sys.path.append(sourcePath)
+
     #Now we can import all the stuff..
     from jobTree.lib.bioio import setLogLevel
     from jobTree.lib.bioio import getTotalCpuTime
@@ -254,18 +265,14 @@ def main():
             ##########################################
         
             if command != "": #Not a stub
-                if command[:11] == "scriptTree ":
-                    ##########################################
-                    #Run the target
-                    ##########################################
-
-                    messages = loadStack(command,jobStore).execute(job=job, stats=stats,
+                if command.startswith("scriptTree "):
+                    stack = loadStack(command, jobStore)
+                    messages = stack.execute(job=job, stats=stats,
                                     localTempDir=localTempDir, jobStore=jobStore, 
                                     memoryAvailable=memoryAvailable, 
                                     cpuAvailable=cpuAvailable, 
                                     defaultMemory=defaultMemory, 
                                     defaultCpu=defaultCpu, depth=depth)
-            
                 else: #Is another command
                     system(command)
                     messages = []
