@@ -37,7 +37,7 @@ from jobTree.lib.bioio import getTotalCpuTimeAndMemoryUsage
 from jobTree.lib.bioio import getTotalCpuTime
 
 from jobTree.common import setupJobTree, addOptions
-from jobTree.master import mainLoop
+from jobTree.leader import mainLoop
 
 logger = logging.getLogger( __name__ )
 

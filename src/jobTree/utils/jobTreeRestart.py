@@ -26,7 +26,7 @@
 import sys
 from optparse import OptionParser
 
-from jobTree.master import mainLoop
+from jobTree.leader import mainLoop
 from jobTree.common import addOptions, setupJobTree
 from jobTree.lib.bioio import setLoggingFromOptions
 
