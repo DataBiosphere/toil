@@ -62,13 +62,19 @@ class FileJobStore(AbstractJobStore):
         return os.path.exists(self._getJobFileName(jobStoreID))
     
     def getPublicUrl( self,  jobStoreFileID):
-        if os.path.exists(jobStoreFileID):
-            return 'file:'+jobStoreFileID
+        self._checkJobStoreFileID(jobStoreFileID)
+        jobStorePath = self._getAbsPath(jobStoreFileID)
+        if os.path.exists(jobStorePath):
+            return 'file:'+jobStorePath
         else:
             raise NoSuchFileException(jobStoreFileID)
 
     def getSharedPublicUrl( self,  FileName):
-        return self.getPublicUrl(jobStoreFileID=self.jobStoreDir +'/'+FileName)
+        jobStorePath = self.jobStoreDir+'/'+FileName
+        if os.path.exists(jobStorePath):
+            return 'file:'+jobStorePath
+        else:
+            raise NoSuchFileException(FileName)
 
     def load(self, jobStoreID):
         self._checkJobStoreId(jobStoreID)
