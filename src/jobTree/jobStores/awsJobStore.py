@@ -53,49 +53,53 @@ class AWSJobStore( AbstractJobStore ):
     """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadJobTreeState."""
 
-    def loadJobsInStore( self ):
-        raise NotImplementedError
+    def jobs( self ):
+        for attempt in retry_sdb( ):
+            with attempt:
+                result = list( self.jobDomain.select(
+                    query="select * from `{domain}` ".format( domain=self.jobDomain.name ),
+                    consistent_read=True ) )
+        jobList = []
+        for jobItem in result:
+            yield AWSJob.fromItem(jobItem)
 
-    @classmethod
-    def create( cls, jobStoreString, config=None ):
-        region, namePrefix = cls._parseArgs( jobStoreString )
-        return cls( region=region, namePrefix=namePrefix, config=config )
+    def create( self, command, memory, cpu, updateID=None,
+                predecessorNumber=0 ):
+        jobStoreID = self._newJobID( )
+        log.debug( "Creating job %s for '%s'",
+                   jobStoreID, '<no command>' if command is None else command )
+        job = AWSJob( jobStoreID=jobStoreID,
+                             command=command, memory=memory, cpu=cpu,
+                             remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
+                             updateID=updateID, predecessorNumber=predecessorNumber)
+        for attempt in retry_sdb( ):
+            with attempt:
+                assert self.jobDomain.put_attributes( item_name=jobStoreID,
+                                                 attributes=job.toItem( ) )
+        return job
 
     def __init__( self, region, namePrefix, config=None ):
         log.debug( "Instantiating %s for region %s and name prefix '%s'",
                    self.__class__, region, namePrefix )
         self.region = region
         self.namePrefix = namePrefix
-        self.jobs = None
+        self.jobDomain = None
         self.versions = None
         self.files = None
         self.stats = None
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
         create = config is not None
-        self.jobs = self._getOrCreateDomain( 'jobs', create )
+        self.jobDomain = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
         super( AWSJobStore, self ).__init__( config=config )
 
-    def createFirstJob( self, command, memory, cpu ):
-        jobStoreID = self._newJobID( )
-        log.debug( "Creating first job %s for '%s'",
-                   jobStoreID, '<no command>' if command is None else command )
-        job = AWSJob.create( jobStoreID=jobStoreID,
-                             command=command, memory=memory, cpu=cpu,
-                             tryCount=self._defaultTryCount( ), logJobStoreFileID=None )
-        for attempt in retry_sdb( ):
-            with attempt:
-                assert self.jobs.put_attributes( item_name=jobStoreID,
-                                                 attributes=job.toItem( ) )
-        return job
-
     def exists( self, jobStoreID ):
         for attempt in retry_sdb( ):
             with attempt:
-                return bool( self.jobs.get_attributes( item_name=jobStoreID,
+                return bool( self.jobDomain.get_attributes( item_name=jobStoreID,
                                                        attribute_name=[ ],
                                                        consistent_read=True ) )
     def getPublicUrl( self,  jobStoreFileID):
@@ -111,124 +115,50 @@ class AWSJobStore( AbstractJobStore ):
         jobStoreFileID = self._newFileID( FileName )
         return self.getPublicUrl(jobStoreFileID)
 
-    def _addChild( self, job, child ):
-        if len( child.followOnCommands ) > 0:
-            job.children.append( (child.jobStoreID,) + child.followOnCommands[ 0 ][ 1:-1 ] )
-
     def load( self, jobStoreID ):
         # TODO: check if mentioning individual attributes is faster than using *
         for attempt in retry_sdb( ):
             with attempt:
-                result = list( self.jobs.select(
+                result = list( self.jobDomain.select(
                     query="select * from `{domain}` "
-                          "where parentJobStoreID = '{jobStoreID}' "
-                          "or itemName() = '{jobStoreID}'".format( domain=self.jobs.name,
+                          "where itemName() = '{jobStoreID}'".format( domain=self.jobDomain.name,
                                                                    jobStoreID=jobStoreID ),
                     consistent_read=True ) )
-        job = None
-        children = [ ]
-        for item in result:
-            if item.name == jobStoreID:
-                job = AWSJob.fromItem( item )
-            else:
-                children.append( item )
+        if len(result)!=1:
+            raise NoSuchJobException(jobStoreID)
+        job = AWSJob.fromItem(result[0])
         if job is None:
             raise NoSuchJobException( jobStoreID )
-        for child in children:
-            self._addChild( job, AWSJob.fromItem( child ) )
-        log.debug( "Loaded job %s with %d children", job.jobStoreID, len( job.children ) )
+        log.debug( "Loaded job %s", jobStoreID )
         return job
 
-    def store( self, job ):
-        log.debug( "Storing job %s", job.jobStoreID )
+    def update( self, job ):
+        log.debug( "Updating job %s", job.jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
-                assert self.jobs.put_attributes( item_name=job.jobStoreID,
+                assert self.jobDomain.put_attributes( item_name=job.jobStoreID,
                                                  attributes=job.toItem( ) )
 
-    def addChildren( self, job, childCommands ):
-        log.debug( "Adding %d children to job %s", len( childCommands ), job.jobStoreID )
-        # The elements of childCommands are tuples (command, memory, cpu). The astute reader will
-        # notice that we are careful to avoid specifically referencing all but the first element
-        # of those tuples as they might change in the future.
-        items = { }
-        for childCommand in childCommands:
-            child = AWSJob.create( tryCount=self._defaultTryCount( ),
-                                   jobStoreID=self._newJobID( ),
-                                   logJobStoreFileID=None,
-                                   *childCommand )
-            job.children.append( (child.jobStoreID,) + childCommand[ 1: ] )
-            items[ child.jobStoreID ] = child.toItem( job.jobStoreID )
-        # Persist parent and children
-        # TODO: There might be no children, should we still persist the parent?
-        items[ job.jobStoreID ] = job.toItem( )
+    def delete( self, jobStoreID ):
+        # remove job and replace with jobStoreId.
+        log.debug( "Deleting job %s", jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
-                self.jobs.batch_put_attributes( items=items )
-
-    def delete( self, job ):
-        log.debug( "Deleting job %s", job.jobStoreID )
-        for attempt in retry_sdb( ):
-            with attempt:
-                self.jobs.delete_attributes( item_name=job.jobStoreID )
+                self.jobDomain.delete_attributes( item_name=jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
                 items = list( self.versions.select(
                     query="select * from `%s` "
-                          "where jobStoreID='%s'" % (self.versions.name, job.jobStoreID),
+                          "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True ) )
         if items:
-            log.debug( "Deleting %d file(s) associated with job %s", len( items ), job.jobStoreID )
+            log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
             for attempt in retry_sdb( ):
                 with attempt:
                     self.versions.batch_delete_attributes( { item.name: None for item in items } )
             for item in items:
                 self.files.delete_key( key_name=item.name,
                                        version_id=item[ 'version' ] )
-
-    def loadJobTreeState( self ):
-        jobs = { }
-        for attempt in retry_sdb( ):
-            with attempt:
-                items = list( self.jobs.select( query='select * from `%s`' % self.jobs.name,
-                                                consistent_read=True ) )
-        for item in items:
-            parentJobStoreID = item.get( 'parentJobStoreID', None )
-            job = AWSJob.fromItem( item )
-            if self.resetJobInLoadState:
-                job.remainingRetryCount = self._defaultTryCount( )
-            jobs[ job.jobStoreID ] = (job, parentJobStoreID)
-        state = JobTreeState( )
-        if jobs:
-            state.started = True
-            state.childCounts = defaultdict( int )
-            try:
-                for job, parentJobStoreID in jobs.itervalues( ):
-                    if parentJobStoreID is not None:
-                        parent = jobs[ parentJobStoreID ][ 0 ]
-                        if not self.resetJobInLoadState:
-                            self._addChild( parent, job )
-                        state.childCounts[ parent ] += 1
-                        state.childJobStoreIdToParentJob[ job.jobStoreID ] = parent
-            finally:
-                state.childCounts.default_factory = None
-            for job, _ in jobs.itervalues( ):
-                if self.resetJobInLoadState:
-                    has_children = job in state.childCounts
-                else:
-                    has_children = len( job.children ) > 0
-                if not has_children:
-                    if job.followOnCommands:
-                        state.updatedJobs.add( job )
-                    else:
-                        state.shellJobs.add( job )
-        log.debug( "Loaded job tree state for %d jobs, "
-                   "%d of which have a parent, "
-                   "%d have children, "
-                   "%d are updated and "
-                   "%d are shells.", len( jobs ), len( state.childJobStoreIdToParentJob ),
-                   len( state.childCounts ), len( state.updatedJobs ), len( state.shellJobs ) )
-        return state
 
     def writeFile( self, jobStoreID, localFilePath ):
         jobStoreFileID = self._newFileID( )
@@ -652,7 +582,7 @@ class AWSJobStore( AbstractJobStore ):
                     for key in list( bucket.list( ) ):
                         key.delete( )
                 bucket.delete( )
-        for domain in (self.versions, self.jobs):
+        for domain in (self.versions, self.jobDomain):
             if domain is not None:
                 domain.delete( )
 
@@ -675,6 +605,19 @@ def fromNoneable( v ):
 
 sort_prefix_length = 3
 
+def toSet( vs ):
+    return set(vs) if vs else set()
+
+
+def fromSet( vs ):
+    if len( vs ) == 0:
+        return ""
+    elif len( vs ) == 1:
+        return vs[ 0 ]
+    else:
+        assert len( vs ) <= 256
+        assert all( isinstance( v, basestring ) and v for v in vs )
+        return [vs]
 
 def toList( vs ):
     if isinstance( vs, basestring ):
@@ -705,8 +648,14 @@ class AWSJob( Job ):
     A Job that can be converted to and from a SimpleDB Item
     """
     fromItemTransform = defaultdict( lambda: passThrough,
-                                     messages=toList,
-                                     followOnCommands=lambda v: map( literal_eval, toList( v ) ),
+                                     predecessorNumber=int,
+                                     memory=int,
+                                     cpu=int,
+                                     updateID=str,
+                                     command=str,
+                                     stack=lambda v:map( literal_eval, toList( v )),
+                                     jobsToDelete=toList,
+                                     predecessorsFinished=toSet,
                                      remainingRetryCount=int,
                                      logJobStoreFileID=toNoneable )
 
@@ -725,12 +674,16 @@ class AWSJob( Job ):
         return cls( jobStoreID=jobStoreID, **item )
 
     toItemTransform = defaultdict( lambda: passThrough,
-                                   messages=fromList,
+                                   command=str,
                                    jobStoreID=skip,
+                                   updateID=str,
                                    children=skip,
+                                   stack=lambda v: fromList( map( repr, v ) ),
                                    logJobStoreFileID=fromNoneable,
-                                   remainingRetryCount=str,
-                                   followOnCommands=lambda v: fromList( map( repr, v ) ) )
+                                   predecessorsFinished=fromSet,
+                                   jobsToDelete=fromList ,
+                                   predecessorNumber=str,
+                                   remainingRetryCount=str)
 
     def toItem( self, parentJobStoreID=None ):
         """

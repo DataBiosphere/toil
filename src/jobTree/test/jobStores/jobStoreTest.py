@@ -362,11 +362,11 @@ class FileJobStoreTest( hidden.AbstractJobStoreTest ):
     def createJobStore( self, config=None ):
         return FileJobStore( self.namePrefix, config )
 
-"""
+
 class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
     testRegion = "us-west-2"
 
     def createJobStore( self, config=None ):
         AWSJobStore._s3_part_size = 5 * 1024 * 1024
-        return AWSJobStore.create( "%s:%s" % (self.testRegion, self.namePrefix), config )
-"""
+        return AWSJobStore(self.testRegion, self.namePrefix , config )
+
