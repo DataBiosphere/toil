@@ -20,6 +20,7 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 from collections import namedtuple
+import os
 import sys
 import importlib
 import time
@@ -268,14 +269,14 @@ class Target(object):
             Raises an exception if the given jobTree already exists. 
             """
             setLoggingFromOptions(options)
-            config, batchSystem, jobStore = setupJobTree(options)
-            jobStore.clean()
-            if "rootJob" not in config.attrib: #No jobs have yet been run
-                #Setup the first job.
-                rootJob = target._serialiseFirstTarget(jobStore)
-            else:
-                rootJob = jobStore.load(config.attrib["rootJob"])
-            return mainLoop(config, batchSystem, jobStore, rootJob)
+            with setupJobTree(options) as (config, batchSystem, jobStore):
+                jobStore.clean()
+                if "rootJob" not in config.attrib: #No jobs have yet been run
+                    # Setup the first job.
+                    rootJob = target._serialiseFirstTarget(jobStore)
+                else:
+                    rootJob = jobStore.load(config.attrib["rootJob"])
+                return mainLoop(config, batchSystem, jobStore, rootJob)
         
         @staticmethod
         def cleanup(options):
@@ -460,10 +461,10 @@ class Target(object):
             #for the mechanism which unpickles the target and executes the Target.run
             #method.
             fileStoreID = jobStore.getEmptyFileStoreID(job.jobStoreID)
-            with jobStore.writeFileStream(job.jobStoreID) as ( fileHandle, fileStoreID ):
+            with jobStore.writeFileStream(job.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-            job.command = "scriptTree %s %s %s" % (fileStoreID, self._dirName, 
-                                                   " ".join(set( self._importStrings )))
+            targetClassName = self.__class__.__name__
+            job.command = ' '.join( ('scriptTree', fileStoreID, targetClassName) + self.userModule)
             #Update the status of the job on disk
             jobStore.update(job)
         else:
@@ -515,9 +516,9 @@ class Target(object):
         with jobStore.writeSharedFileStream(sharedTargetFile) as f:
             cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
         #Make the first job
-        job = self._createEmptyJobForTarget(jobStore,
-            command="scriptTree %s %s %s" % (sharedTargetFile, self._dirName, 
-                    " ".join(set( self._importStrings ))))
+        targetClassName = self.__class__.__name__
+        command = ('scriptTree', sharedTargetFile, targetClassName) + self.userModule
+        job = self._createEmptyJobForTarget(jobStore, command=' '.join( command ))
         #Set the config rootJob attrib
         assert "rootJob" not in jobStore.config.attrib
         jobStore.config.attrib["rootJob"] = job.jobStoreID

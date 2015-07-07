@@ -64,7 +64,7 @@ def loadTarget(command, jobStore):
     """
     commandTokens = command.split()
     assert "scriptTree" == commandTokens[0]
-    jobStoreFileIdOfPickledStack = commandTokens[1]
+    pickleFile = commandTokens[1]
     targetClassName = commandTokens[2]
     # must import lazily because jobTree might not be on sys.path when the top-level of this module is run
     from jobTree.resource import ModuleDescriptor
@@ -74,14 +74,13 @@ def loadTarget(command, jobStore):
     if userModule.dirPath not in sys.path:
         sys.path.append(userModule.dirPath)
     userModule = importlib.import_module(userModule.name)
-        thisModule = sys.modules[__name__]
+    thisModule = sys.modules[__name__]
     thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
-    return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
-    
-    #Now do the unpickling
-    pickleFile = commandTokens[1]
-    with (jobStore.readSharedFileStream(pickleFile) if pickleFile == "firstTarget" 
-          else jobStore.readFileStream(pickleFile)) as fileHandle:
+    if pickleFile == "firstTarget":
+        openFileStream = jobStore.readSharedFileStream( pickleFile )
+    else:
+        openFileStream = jobStore.readFileStream( pickleFile )
+    with openFileStream as fileHandle:
         return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():

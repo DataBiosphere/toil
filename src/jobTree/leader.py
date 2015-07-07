@@ -348,154 +348,154 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     worker.start() 
     try:
 
-    ##########################################
-    #The main loop in which jobs are scheduled/processed
-    ##########################################
-    
-    #Sets up the timing of the job rescuing method
-    timeSinceJobsLastRescued = time.time() 
-    #Number of jobs that can not be completed successful after exhausting retries
-    totalFailedJobs = 0 
-    logger.info("Starting the main loop")
-    while True:
-        
         ##########################################
-        #Process jobs that are ready to be scheduled/have successors to schedule
+        #The main loop in which jobs are scheduled/processed
         ##########################################
-        
-        if len(jobTreeState.updatedJobs) > 0:
-            logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued",
-                         len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
 
-            for job in jobTreeState.updatedJobs:
-                #If the job has a command it must be run before any successors
-                if job.command != None:
-                    if job.remainingRetryCount > 0:
-                        jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu)
+        #Sets up the timing of the job rescuing method
+        timeSinceJobsLastRescued = time.time()
+        #Number of jobs that can not be completed successful after exhausting retries
+        totalFailedJobs = 0
+        logger.info("Starting the main loop")
+        while True:
+
+            ##########################################
+            #Process jobs that are ready to be scheduled/have successors to schedule
+            ##########################################
+
+            if len(jobTreeState.updatedJobs) > 0:
+                logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued",
+                             len(jobTreeState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
+
+                for job in jobTreeState.updatedJobs:
+                    #If the job has a command it must be run before any successors
+                    if job.command != None:
+                        if job.remainingRetryCount > 0:
+                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu)
+                        else:
+                            totalFailedJobs += 1
+                            logger.warn("Job: %s is completely failed", job.jobStoreID)
+
+                    #There exist successors to run
+                    elif len(job.stack) > 0:
+                        assert len(job.stack[-1]) > 0
+                        logger.debug("Job: %s has %i successors to schedule",
+                                     job.jobStoreID, len(job.stack[-1]))
+                        #Record the number of successors that must be completed before
+                        #the job can be considered again
+                        assert job not in jobTreeState.successorCounts
+                        jobTreeState.successorCounts[job] = len(job.stack[-1])
+                        #List of successors to schedule
+                        successors = []
+                        #For each successor schedule if all predecessors have been
+                        #completed
+                        for successorJobStoreID, memory, cpu, predecessorID in job.stack.pop():
+                            #Build map from successor to predecessors.
+                            if successorJobStoreID not in jobTreeState.successorJobStoreIDToPredecessorJobs:
+                                jobTreeState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
+                            jobTreeState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
+                            #Case that the job has multiple predecessors
+                            if predecessorID != None:
+                                #Load the wrapped target
+                                job2 = jobStore.load(successorJobStoreID)
+                                #Remove the predecessor from the list of predecessors
+                                job2.predecessorsFinished.add(predecessorID)
+                                #Checkpoint
+                                jobStore.update(job2)
+                                #If the targets predecessors have all not all completed then
+                                #ignore the job
+                                assert len(job2.predecessorsFinished) >= 1
+                                assert len(job2.predecessorsFinished) <= job2.predecessorNumber
+                                if len(job2.predecessorsFinished) < job2.predecessorNumber:
+                                    continue
+                            successors.append((successorJobStoreID, memory, cpu))
+                        jobBatcher.issueJobs(successors)
+
+                    #There are no remaining tasks to schedule within the job, but
+                    #we schedule it anyway to allow it to be deleted.
+
+                    #TODO: An alternative would be simple delete it here and add it to the
+                    #list of jobs to process, or (better) to create an asynchronous
+                    #process that deletes jobs and then feeds them back into the set
+                    #of jobs to be processed
                     else:
-                        totalFailedJobs += 1
-                        logger.warn("Job: %s is completely failed", job.jobStoreID)
-                
-                #There exist successors to run
-                elif len(job.stack) > 0: 
-                    assert len(job.stack[-1]) > 0
-                    logger.debug("Job: %s has %i successors to schedule",
-                                 job.jobStoreID, len(job.stack[-1]))
-                    #Record the number of successors that must be completed before
-                    #the job can be considered again
-                    assert job not in jobTreeState.successorCounts
-                    jobTreeState.successorCounts[job] = len(job.stack[-1])
-                    #List of successors to schedule 
-                    successors = []
-                    #For each successor schedule if all predecessors have been 
-                    #completed
-                    for successorJobStoreID, memory, cpu, predecessorID in job.stack.pop():
-                        #Build map from successor to predecessors. 
-                        if successorJobStoreID not in jobTreeState.successorJobStoreIDToPredecessorJobs:
-                            jobTreeState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
-                        jobTreeState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
-                        #Case that the job has multiple predecessors
-                        if predecessorID != None:
-                            #Load the wrapped target
-                            job2 = jobStore.load(successorJobStoreID)
-                            #Remove the predecessor from the list of predecessors
-                            job2.predecessorsFinished.add(predecessorID)
-                            #Checkpoint
-                            jobStore.update(job2)
-                            #If the targets predecessors have all not all completed then
-                            #ignore the job
-                            assert len(job2.predecessorsFinished) >= 1
-                            assert len(job2.predecessorsFinished) <= job2.predecessorNumber
-                            if len(job2.predecessorsFinished) < job2.predecessorNumber:
-                                continue
-                        successors.append((successorJobStoreID, memory, cpu))
-                    jobBatcher.issueJobs(successors)
-                
-                #There are no remaining tasks to schedule within the job, but
-                #we schedule it anyway to allow it to be deleted. 
-                
-                #TODO: An alternative would be simple delete it here and add it to the
-                #list of jobs to process, or (better) to create an asynchronous
-                #process that deletes jobs and then feeds them back into the set
-                #of jobs to be processed
-                else: 
-                    if job.remainingRetryCount > 0:
-                        jobBatcher.issueJob(job.jobStoreID, 
-                                            int(config.attrib["default_memory"]), 
-                                            int(config.attrib["default_cpu"]))
-                        logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
+                        if job.remainingRetryCount > 0:
+                            jobBatcher.issueJob(job.jobStoreID,
+                                                int(config.attrib["default_memory"]),
+                                                int(config.attrib["default_cpu"]))
+                            logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
+                        else:
+                            totalFailedJobs += 1
+                            logger.warn("Job: %s is empty but completely failed - something is very wrong", job.jobStoreID)
+
+                jobTreeState.updatedJobs = set() #We've considered them all, so reset
+
+            ##########################################
+            #The exit criterion
+            ##########################################
+
+            if jobBatcher.getNumberOfJobsIssued() == 0:
+                logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting.", totalFailedJobs)
+                break
+
+            ##########################################
+            #Gather any new, updated job from the batch system
+            ##########################################
+
+            #Asks the batch system what jobs have been completed,
+            #give
+            updatedJob = batchSystem.getUpdatedJob(10)
+            if updatedJob != None:
+                jobBatchSystemID, result = updatedJob
+                if jobBatcher.hasJob(jobBatchSystemID):
+                    if result == 0:
+                        logger.debug("Batch system is reporting that the job with "
+                                     "batch system ID: %s and job store ID: %s ended successfully",
+                                     jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID))
                     else:
-                        totalFailedJobs += 1
-                        logger.warn("Job: %s is empty but completely failed - something is very wrong", job.jobStoreID)
-
-            jobTreeState.updatedJobs = set() #We've considered them all, so reset
-        
-        ##########################################
-        #The exit criterion
-        ##########################################
-        
-        if jobBatcher.getNumberOfJobsIssued() == 0:
-            logger.info("Only failed jobs and their dependents (%i total) are remaining, so exiting.", totalFailedJobs)
-            break
-
-        ##########################################
-        #Gather any new, updated job from the batch system
-        ##########################################
-        
-        #Asks the batch system what jobs have been completed,
-        #give
-        updatedJob = batchSystem.getUpdatedJob(10) 
-        if updatedJob != None:
-            jobBatchSystemID, result = updatedJob
-            if jobBatcher.hasJob(jobBatchSystemID):
-                if result == 0:
-                    logger.debug("Batch system is reporting that the job with "
-                                 "batch system ID: %s and job store ID: %s ended successfully",
-                                 jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID))
+                        logger.warn("Batch system is reporting that the job with "
+                                    "batch system ID: %s and job store ID: %s failed with exit value %i",
+                                    jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result)
+                    jobBatcher.processFinishedJob(jobBatchSystemID, result)
                 else:
-                    logger.warn("Batch system is reporting that the job with "
-                                "batch system ID: %s and job store ID: %s failed with exit value %i",
-                                jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result)
-                jobBatcher.processFinishedJob(jobBatchSystemID, result)
+                    logger.warn("A result seems to already have been processed "
+                                "for job with batch system ID: %i", jobBatchSystemID)
             else:
-                logger.warn("A result seems to already have been processed "
-                            "for job with batch system ID: %i", jobBatchSystemID)
-        else:
-            ##########################################
-            #Process jobs that have gone awry
-            ##########################################
-            
-            #In the case that there is nothing happening 
-            #(no updated job to gather for 10 seconds)
-            #check if their are any jobs that have run too long 
-            #(see JobBatcher.reissueOverLongJobs) or which
-            #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
-            if (time.time() - timeSinceJobsLastRescued >= 
-                float(config.attrib["rescue_jobs_frequency"])): #We only 
-                #rescue jobs every N seconds, and when we have 
-                #apparently exhausted the current job supply
-                jobBatcher.reissueOverLongJobs()
-                logger.info("Reissued any over long jobs")
+                ##########################################
+                #Process jobs that have gone awry
+                ##########################################
 
-                hasNoMissingJobs = jobBatcher.reissueMissingJobs()
-                if hasNoMissingJobs:
-                    timeSinceJobsLastRescued = time.time()
-                else:
-                    timeSinceJobsLastRescued += 60 #This means we'll try again 
-                    #in a minute, providing things are quiet
-                logger.info("Rescued any (long) missing jobs")
-    
-    logger.info("Finished the main loop")
-    
-    ##########################################
-    #Finish up the stats/logging aggregation process
-    ##########################################
+                #In the case that there is nothing happening
+                #(no updated job to gather for 10 seconds)
+                #check if their are any jobs that have run too long
+                #(see JobBatcher.reissueOverLongJobs) or which
+                #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
+                if (time.time() - timeSinceJobsLastRescued >=
+                    float(config.attrib["rescue_jobs_frequency"])): #We only
+                    #rescue jobs every N seconds, and when we have
+                    #apparently exhausted the current job supply
+                    jobBatcher.reissueOverLongJobs()
+                    logger.info("Reissued any over long jobs")
 
-    startTime = time.time()
+                    hasNoMissingJobs = jobBatcher.reissueMissingJobs()
+                    if hasNoMissingJobs:
+                        timeSinceJobsLastRescued = time.time()
+                    else:
+                        timeSinceJobsLastRescued += 60 #This means we'll try again
+                        #in a minute, providing things are quiet
+                    logger.info("Rescued any (long) missing jobs")
+
+        logger.info("Finished the main loop")
+
+
     finally:
-    logger.info("Waiting for stats and logging collator process to finish")
-    stopStatsAndLoggingAggregatorProcess.put(True)
-    worker.join()
-    logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
+        ##########################################
+        #Finish up the stats/logging aggregation process
+        ##########################################
+        logger.info("Waiting for stats and logging collator process to finish")
+        startTime = time.time()
+        stopStatsAndLoggingAggregatorProcess.put(True)
+        worker.join()
+        logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
 
     return totalFailedJobs #Returns number of failed jobs

@@ -276,7 +276,7 @@ def loadBatchSystemClass(config, key="batch_system"):
         kwargs["masterIP"] = config.attrib["master_ip"]
         kwargs['useBadExecutor'] = True
         logger.info('Using the mesos batch system')
-        else:
+    else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)
     return batchSystemClass, kwargs
 
@@ -383,8 +383,7 @@ def setupJobTree(options, userScript=None):
         # TODO: jobTree distribution
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:
-        jobTreeState = jobStore.loadJobTreeState()
-    serialiseEnvironment(jobStore)
-        yield (config, batchSystem, jobStore, jobTreeState)
+        serialiseEnvironment(jobStore)
+        yield (config, batchSystem, jobStore)
     finally:
         batchSystem.shutdown()
