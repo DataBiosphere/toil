@@ -3,6 +3,11 @@
 """
 
 import unittest
+import os
+from jobTree.lib.bioio import system
+from optparse import OptionParser
+from jobTree.common import setupJobTree
+from jobTree.target import Target
 from jobTree.test import JobTreeTest
 from jobTree.job import Job
 
@@ -12,7 +17,7 @@ class JobTest(JobTreeTest):
         super( JobTest, self ).setUp( )
         self.testJobTree = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
-        Target.addJobTreeOptions(parser)
+        Target.Runner.addJobTreeOptions(parser)
         options, args = parser.parse_args()
         options.jobTree = self.testJobTree
         self.contextManager = setupJobTree(options)

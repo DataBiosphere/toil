@@ -283,8 +283,8 @@ class Target(object):
             """
             Removes the jobStore backing the jobTree.
             """
-            config, batchSystem, jobStore = setupJobTree(options)
-            jobStore.deleteJobStore()
+            with setupJobTree(options) as (config, batchSystem, jobStore):
+                jobStore.deleteJobStore()
             
     class FileStore:
         """
@@ -809,8 +809,14 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     target function the attribute "fileStore" of the first argument (the target) is
     an instance of the Target.FileStore class. 
     """
+
+    def __init__(self, userFunction, *args, **kwargs):
+        super(TargetFunctionWrappingTarget, self).__init__(userFunction, *args, **kwargs)
+        self.fileStore = None
+
     def run(self, fileStore):
         userFunction = self._getUserFunction()
+        self.fileStore = fileStore
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
 
 class PromisedTargetReturnValue():

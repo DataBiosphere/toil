@@ -11,6 +11,7 @@ import shutil
 import tempfile
 from jobTree.target import Target
 from jobTree.lib.bioio import getLogLevelString
+from jobTree.batchSystems.mesos.test import MesosTestSupport
 from jobTree.common import parasolIsInstalled, gridEngineIsInstalled
 from jobTree.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from jobTree.test import JobTreeTest

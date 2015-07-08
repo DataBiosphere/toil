@@ -52,11 +52,12 @@ if __name__ == '__main__':
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
-    Target.addJobTreeOptions(parser)
+    Target.Runner.addJobTreeOptions(parser)
     options, args = parser.parse_args()
 
     # Create object that contains our FileStoreIDs
 
 
     # Launch first jobTree Target
-    i = Target.wrapTargetFn(hello_world).startJobTree(options)
+    i = Target.wrapTargetFn(hello_world)
+    j = Target.Runner.startJobTree(i, options)

@@ -12,17 +12,17 @@ class LongTestTarget(Target):
         Target.__init__(self,  memory=100000, cpu=0.01)
         self.numTargets = numTargets
 
-    def run(self):
+    def run(self, fileStore):
         for i in range(0,self.numTargets):
             self.addChild(HelloWorldTarget(i))
-        self.setFollowOn(LongTestFollowOn())
+        self.addFollowOn(LongTestFollowOn())
 
 class LongTestFollowOn(Target):
 
     def __init__(self):
         Target.__init__(self,  memory=1000000, cpu=0.01)
 
-    def run(self):
+    def run(self, fileStore):
         touchFile( 'parentFollowOn' )
 
 class HelloWorldTarget(Target):
@@ -32,9 +32,9 @@ class HelloWorldTarget(Target):
         self.i=i
 
 
-    def run(self):
+    def run(self, fileStore):
         touchFile( 'child', self.i )
-        self.setFollowOn(HelloWorldFollowOn(self.i))
+        self.addFollowOn(HelloWorldFollowOn(self.i))
 
 class HelloWorldFollowOn(Target):
 
@@ -42,7 +42,7 @@ class HelloWorldFollowOn(Target):
         Target.__init__(self,  memory=200000, cpu=0.01)
         self.i = i
 
-    def run(self):
+    def run(self, fileStore):
         touchFile( 'followOn', self.i )
 
 def main(numTargets, useBadExecutor=False):
@@ -53,11 +53,12 @@ def main(numTargets, useBadExecutor=False):
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
-    Target.addJobTreeOptions(parser)
+    Target.Runner.addJobTreeOptions(parser)
     options, args = parser.parse_args( args )
 
     # Launch first jobTree Target
-    i = LongTestTarget( numTargets ).startJobTree( options )
+    i = LongTestTarget( numTargets )
+    j = Target.Runner.startJobTree(i,  options )
 
 if __name__=="__main__":
     main(5, useBadExecutor=False)

@@ -56,7 +56,7 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         #Make a local copy and sort the file
         tempOutputFile = target.fileStore.readGlobalFile(outputFileStoreID)
         sort(tempOutputFile)
-        target.updateGlobalFile(outputFileStoreID, tempOutputFile)
+        target.fileStore.updateGlobalFile(outputFileStoreID, tempOutputFile)
     return outputFileStoreID
 
 def up(target, inputFileID1, inputFileID2, outputFileStoreID):
@@ -76,7 +76,7 @@ def cleanup(target, tempOutputFileStoreID, outputFile):
     """
     if random.random() > success_ratio:
         raise RuntimeError() #This is a test error and not a failure of the tests
-    target.readGlobalFile(tempOutputFileStoreID, outputFile)
+    target.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
     #sort(outputFile)
 
 def main():
