@@ -607,23 +607,98 @@ def fromNoneable( v ):
 sort_prefix_length = 3
 
 def toSet( vs ):
-    # FIXME: add doctests
+    """
+    :param vs: list[str] | str
+    :return: set(str) | set()
+
+    Lists returned by simpleDB is not guaranteed to be in their original order, but because we are converting them
+    to sets, the loss of order is not a problem.
+
+    >>> toSet(["x", "y", "z"])
+    set(['y', 'x', 'z'])
+
+    Instead of a set, a single String can also be returned by SimpleDB.
+
+    >>> toSet("x")
+    set(['x'])
+
+    An empty set is serialized as ""
+
+    >>> toSet("")
+    set([])
+
+    """
     return set(vs) if vs else set()
 
 
 def fromSet( vs ):
-    # FIXME: add doctests
+    """
+    :type vs: set(str)
+    :rtype str|list[str]
+
+    Empty set becomes empty string
+
+    >>> fromSet(set())
+    ''
+
+    Singleton set becomes its sole element
+
+    >>> fromSet({'x'})
+    'x'
+
+    Set elements are unordered, so sort_prefixes used in fromList are not needed here.
+
+    >>> fromSet({'x','y'})
+    ['y', 'x']
+
+    Only sets with non-empty strings are allowed
+
+    >>> fromSet(set(['']))
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> fromSet({'x',''})
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> fromSet({'x',1})
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    """
     if len( vs ) == 0:
         return ""
     elif len( vs ) == 1:
-        return vs[ 0 ] # FIXME: [] doesn't work on sets
+        v = vs.pop()
+        assert isinstance( v, basestring ) and v
+        return v
     else:
         assert len( vs ) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
-        return [vs]
+        return list(vs)
 
 def toList( vs ):
-    # FIXME: add doctests
+    """
+    :param vs: list[str] | str
+    :return: list[str] | []
+
+    Lists are not guaranteed to be in their original order, so they are sorted based on a prefixed string.
+
+    >>> toList(["000x", "001y", "002z"])
+    ['x', 'y', 'z']
+
+    Instead of a List of length 1, a single String will be returned by SimpleDB.
+    A single element is can only have 1 order, no need to sort.
+
+    >>> toList("x")
+    ['x']
+
+    An empty list is serialized as ""
+
+    >>> toList("")
+    []
+
+    """
     if isinstance( vs, basestring ):
         return [ vs ] if vs else [ ]
     else:
