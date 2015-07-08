@@ -587,12 +587,13 @@ class AWSJobStore( AbstractJobStore ):
                 domain.delete( )
 
 
-# An attribute value of None becomes 'None' in SimpleDB. To truly represent attribute values of
-# None, we'd have to always call delete_attributes in addition to put_attributes but there is no
-# way to do that atomically. Instead we map None to the empty string and vice versa. The same
-# applies to empty iterables. The empty iterable is a no-op for put_attributes, so we map that to
-# "". This means that we can't serialize [""] or "" because the former would be deserialized as
-# [] and the latter as None.
+# Boto converts all attribute values to strings by default, so an attribute value of None would
+# becomes 'None' in SimpleDB. To truly represent attribute values of None, we'd have to always
+# call delete_attributes in addition to put_attributes but there is no way to do that atomically.
+# Instead we map None to the empty string and vice versa. The same applies to empty iterables.
+# The empty iterable is a no-op for put_attributes, so we map that to '' instead. This means that
+# we can't serialize [''] or '' because the former would be deserialized as [] and the latter as
+# None.
 
 def toNoneable( v ):
     return v if v else None
@@ -606,20 +607,23 @@ def fromNoneable( v ):
 sort_prefix_length = 3
 
 def toSet( vs ):
+    # FIXME: add doctests
     return set(vs) if vs else set()
 
 
 def fromSet( vs ):
+    # FIXME: add doctests
     if len( vs ) == 0:
         return ""
     elif len( vs ) == 1:
-        return vs[ 0 ]
+        return vs[ 0 ] # FIXME: [] doesn't work on sets
     else:
         assert len( vs ) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
         return [vs]
 
 def toList( vs ):
+    # FIXME: add doctests
     if isinstance( vs, basestring ):
         return [ vs ] if vs else [ ]
     else:
@@ -627,10 +631,46 @@ def toList( vs ):
 
 
 def fromList( vs ):
+    """
+    :type vs: list[str]
+    :rtype str|list[str]
+
+    Empty lists becomes empty string
+
+    >>> fromList([])
+    ''
+
+    Singleton list becomes its sole element
+
+    >>> fromList(['x'])
+    'x'
+
+    Lists elements are prefixed with their position because lists don't retain their order in SDB
+
+    >>> fromList(['x','y'])
+    ['000x', '001y']
+
+    Only lists with non-empty strings are allowed
+
+    >>> fromList([''])
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> fromList(['x',''])
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> fromList(['x',1])
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    """
     if len( vs ) == 0:
-        return ""
+        return ''
     elif len( vs ) == 1:
-        return vs[ 0 ]
+        v = vs[ 0 ]
+        assert isinstance( v, basestring ) and v
+        return v
     else:
         assert len( vs ) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
