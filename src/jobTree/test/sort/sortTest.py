@@ -50,7 +50,9 @@ class SortTest(JobTreeTest, MesosTestSupport):
             # Specify options
             options.logLevel = getLogLevelString()
             options.retryCount = 32
-            
+
+            options.batchSystem = batchSystem
+
             #Make the file to sort
             tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
             makeFileToSort(tempSortFile, lines=lines, maxLineLength=maxLineLength)
@@ -82,7 +84,7 @@ class SortTest(JobTreeTest, MesosTestSupport):
     def testScriptTree_SortSimpleOnAWSWithMesos(self):
         self._startMesos()
         try:
-            self.scriptTree_SortTest(testNo=1,
+            self.jobTreeSortTest(testNo=1,
                                      batchSystem="mesos",
                                      jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                                      lines=100,
