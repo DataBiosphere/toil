@@ -157,8 +157,11 @@ class AWSJobStore( AbstractJobStore ):
                 with attempt:
                     self.versions.batch_delete_attributes( { item.name: None for item in items } )
             for item in items:
-                self.files.delete_key( key_name=item.name,
-                                       version_id=item[ 'version' ] )
+                if 'version' in item:
+                    self.files.delete_key( key_name=item.name,
+                                           version_id=item[ 'version' ] )
+                else:
+                    self.files.delete_key( key_name=item.name)
 
     def writeFile( self, jobStoreID, localFilePath ):
         jobStoreFileID = self._newFileID( )
@@ -371,7 +374,7 @@ class AWSJobStore( AbstractJobStore ):
         if sharedFileName is None:
             return str( uuid.uuid4( ) )
         else:
-            return str( uuid.uuid5( self.sharedFileJobID, sharedFileName ) )
+            return str( uuid.uuid5( self.sharedFileJobID, str(sharedFileName) ) )
 
     def _getFileVersionAndBucket( self, jobStoreFileID ):
         """
@@ -764,10 +767,10 @@ class AWSJob( Job ):
     """
     fromItemTransform = defaultdict( lambda: passThrough,
                                      predecessorNumber=int,
-                                     memory=int,
-                                     cpu=int,
+                                     memory=float,
+                                     cpu=float,
                                      updateID=str,
-                                     command=str,
+                                     command=toNoneable,
                                      stack=lambda v:map( literal_eval, toList( v )),
                                      jobsToDelete=toList,
                                      predecessorsFinished=toSet,
@@ -789,7 +792,7 @@ class AWSJob( Job ):
         return cls( jobStoreID=jobStoreID, **item )
 
     toItemTransform = defaultdict( lambda: passThrough,
-                                   command=str,
+                                   command=fromNoneable,
                                    jobStoreID=skip,
                                    updateID=str,
                                    children=skip,

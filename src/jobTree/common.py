@@ -348,8 +348,8 @@ def loadJobStore( jobStoreString, config=None ):
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
         from jobTree.jobStores.awsJobStore import AWSJobStore
-
-        return AWSJobStore.create( jobStoreArgs, config=config )
+        region, namePrefix = jobStoreArgs.split( ':', 1 )
+        return AWSJobStore( region, namePrefix, config=config )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 

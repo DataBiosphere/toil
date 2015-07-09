@@ -76,7 +76,6 @@ class SortTest(JobTreeTest, MesosTestSupport):
     def testJobTreeSortOnAWS(self):
         """Tests scriptTree/jobTree by sorting a file in parallel.
         """
-        return
         self.jobTreeSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                       lines=100, N=100)
 
