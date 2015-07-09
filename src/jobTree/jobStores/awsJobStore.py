@@ -245,13 +245,22 @@ class AWSJobStore( AbstractJobStore ):
 
     def deleteFile( self, jobStoreFileID ):
         version, bucket = self._getFileVersionAndBucket( jobStoreFileID )
-        if version is None: raise NoSuchFileException( jobStoreFileID )
-        for attempt in retry_sdb( ):
-            with attempt:
-                self.versions.delete_attributes( jobStoreFileID,
-                                                 expected_values=[ 'version', version ] )
-        bucket.delete_key( key_name=jobStoreFileID, version_id=version )
-        log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
+        if bucket:
+            for attempt in retry_sdb( ):
+                with attempt:
+                    if version:
+                        self.versions.delete_attributes( jobStoreFileID,
+                                                         expected_values=[ 'version', version ] )
+                    else:
+                        self.versions.delete_attributes( jobStoreFileID)
+
+            bucket.delete_key( key_name=jobStoreFileID, version_id=version )
+            if version:
+                log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
+            else:
+                log.debug( "Deleted unversioned file %s", version, jobStoreFileID )
+        else:
+            log.debug( "File %s does not exist", jobStoreFileID)
 
     def getEmptyFileStoreID( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
