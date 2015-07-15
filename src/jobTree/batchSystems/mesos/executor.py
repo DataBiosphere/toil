@@ -123,8 +123,6 @@ class MesosExecutor(mesos.interface.Executor):
 
             :rtype: subprocess.Popen
             """
-            # FIXME: remove cwd
-            os.chdir(job.cwd)
             if job.userScript:
                 job.userScript.register()
             log.debug("Invoking command: '%s'", job.command)

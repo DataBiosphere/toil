@@ -49,12 +49,6 @@ class MesosTest( JobTreeTest, MesosTestSupport ):
         Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
         """
         stressMain( numTargets, useBadExecutor=useBadExecutor )
-        for i in range( 0, numTargets ):
-            self.assertTrue( os.path.isfile( "./hello_world_child_{}.txt".format( i ) ),
-                             "actual files: {}".format( os.listdir( "." ) ) )
-            self.assertTrue( os.path.isfile( "./hello_world_followOn_{}.txt".format( i ) ),
-                             "actual files: {}".format( os.listdir( "." ) ) )
-            self.assertTrue("hello_world_parentFollowOn_.txt")
 
     def test_stress_good( self ):
         self.__do_test_stress( False, 2 )

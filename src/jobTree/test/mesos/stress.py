@@ -3,9 +3,9 @@ from optparse import OptionParser
 
 from jobTree.target import Target
 
-def touchFile( name, i='' ):
-    with open( 'hello_world_{}_{}.txt'.format( name, i ), 'w' ) as f:
-        f.write( 'This is a triumph' )
+def touchFile( fileStore ):
+    with fileStore.writeGlobalFileStream() as (f, id):
+        f.write( "This is a triumph" )
 
 class LongTestTarget(Target):
     def __init__(self, numTargets):
@@ -23,7 +23,7 @@ class LongTestFollowOn(Target):
         Target.__init__(self,  memory=1000000, cpu=0.01)
 
     def run(self, fileStore):
-        touchFile( 'parentFollowOn' )
+        touchFile( fileStore )
 
 class HelloWorldTarget(Target):
 
@@ -33,7 +33,7 @@ class HelloWorldTarget(Target):
 
 
     def run(self, fileStore):
-        touchFile( 'child', self.i )
+        touchFile( fileStore )
         self.addFollowOn(HelloWorldFollowOn(self.i))
 
 class HelloWorldFollowOn(Target):
@@ -43,13 +43,12 @@ class HelloWorldFollowOn(Target):
         self.i = i
 
     def run(self, fileStore):
-        touchFile( 'followOn', self.i )
+        touchFile( fileStore)
 
 def main(numTargets, useBadExecutor=False):
     args = list( sys.argv )
     args.append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
     args.append("--retryCount=3")
-    args.append("--logDebug")
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
