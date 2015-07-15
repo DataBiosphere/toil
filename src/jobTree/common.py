@@ -204,7 +204,7 @@ def createConfig(options):
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["master_ip"] = options.masterIP
-    config.attrib["job_store"] = os.path.abspath(options.jobTree) if options.jobTree.startswith('.') else options.jobtree
+    config.attrib["job_store"] = os.path.abspath(options.jobTree) if options.jobTree.startswith('.') else options.jobTree
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
