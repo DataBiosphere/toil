@@ -48,7 +48,7 @@ class Target(object):
     Represents a unit of work in jobTree. Targets are composed into graphs
     which make up a workflow. 
     
-    This public functions of this class and its  nested classes are the API 
+    This public functions of this class and its nested classes are the user API 
     to jobTree. 
     """
     
@@ -121,7 +121,7 @@ class Target(object):
     def addFollowOn(self, followOnTarget):
         """
         Adds a follow-on target, follow-on targets will be run
-        after the child targets and their successors have been run. 
+        after the child targets and their descendants have been run. 
         Returns followOnTarget.
         
         See Target.checkTargetGraphAcylic for formal definition of allowed forms of
@@ -211,18 +211,23 @@ class Target(object):
         Raises a RuntimeError exception if the target graph rooted at this target 
         contains any cycles of child/followOn dependencies in the augmented target graph
         (see below). Such cycles are not allowed in valid target graphs.
-        Is run during execution.
+        This function is run during execution.
+        
+        A target B that is on a directed path of child/followOn edges from a 
+        target A in the target graph is a descendant of A, 
+        similarly A is an ancestor of B.
         
         A follow-on edge (A, B) between two targets A and B is equivalent 
-        to adding a child edge from each child of A and its successors to B. We
+        to adding a child edge to B from (1) A, (2) from each child of A, 
+        and (3) from the descendants of each child of A. We
         call such an edge an "implied" edge. The augmented target graph is a 
         target graph including all the implied edges. 
 
         For a target (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for 
         a graph with no follow-ons. The former follow on case could be improved!
         """
-        #Get augmented edges
-        extraEdges = self._getAugmentedEdges()
+        #Get implied edges
+        extraEdges = self._getImpliedEdges()
             
         #Check for directed cycles in the augmented graph
         self._checkTargetGraphAcylicDFS([], set(), extraEdges)
@@ -597,8 +602,8 @@ class Target(object):
     ####################################################
         
     def _dfs(self, visited):
-        """Adds all targets reacheable on a directed path from current node to the
-        set 'visited'.
+        """Adds the target and all targets reachable on a directed path from current 
+        node to the set 'visited'.
         """
         if self not in visited:
             visited.add(self) 
@@ -607,27 +612,28 @@ class Target(object):
         
     def _checkTargetGraphAcylicDFS(self, stack, visited, extraEdges):
         """
-        To DFS traversal to detect cycles in augmented target graph.
+        DFS traversal to detect cycles in augmented target graph.
         """
         if self not in visited:
             visited.add(self) 
             stack.append(self)
             for successor in self._children + self._followOns + extraEdges[self]:
                 successor._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
-            stack.pop()
+            assert stack.pop() == self
         if self in stack:
             raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
         
-    def _getAugmentedEdges(self):
+    def _getImpliedEdges(self):
         """
-        Gets the set of augmented edges. See Target.checkTargetGraphAcylic
+        Gets the set of implied edges. See Target.checkTargetGraphAcylic
         """
         #Get nodes in target graph
         nodes = set()
         self._dfs(nodes)
         
         ##For each follow-on edge calculate the extra implied edges
-        #Map of targets to lists of targets connected by an implied follow-on edge 
+        #Adjacency list of implied edges, i.e. map of targets to lists of targets 
+        #connected by an implied edge 
         extraEdges = dict(map(lambda n : (n, []), nodes))
         for target in nodes:
             if len(target._followOns) > 0:
@@ -639,38 +645,7 @@ class Target(object):
                 #Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += target._followOns[:]
-        return extraEdges
-    
-    def _removeRedudantEdges(self):
-        """
-        Removes unnecessary edges from the target graph. 
-        TODO: Use transitive reduction algorithm to remove all such edges.
-        
-        Currently for the target graph (V, E) we remove any edges in E that are also
-        in the set of augmented edges. Such edges in E are redundant, and create
-        a deadlock in the method used for scheduling targets/jobs.
-        TODO: Naive algorithm could be improved
-        """
-        nodes = set()
-        self._dfs(nodes)
-        for target in nodes:
-            if len(target._followOns) > 0:
-                visited = set()
-                for child in target._children:
-                    child._removeRedundantEdges2(set(target._followOns), visited)
-    
-    def _removeRedundantEdges2(self, augmentedEdges, visited):
-        """
-        Does a DFS, for each node removing edges in its set of children
-        or follow-ons that are in the set of augmentedEdges
-        """
-        if self not in visited:
-            visited.add(self)
-            self._children = [ i for i in self._children if i not in augmentedEdges ]
-            self._followOns = [ i for i in self._followOns if i not in augmentedEdges ]
-            for successor in self._children + self._followOns:
-                assert successor not in augmentedEdges
-                successor._removeRedundantEdges2(augmentedEdges, visited)  
+        return extraEdges 
     
     ####################################################
     #Function which worker calls to ultimately invoke
@@ -694,8 +669,6 @@ class Target(object):
         #Check if the target graph has created
         #any cycles of dependencies 
         self.checkTargetGraphAcylic()
-        #Remove redundant edges
-        self._removeRedudantEdges()
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
