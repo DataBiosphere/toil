@@ -35,12 +35,13 @@ import socket
 import logging
 import xml.etree.cElementTree as ET
 import cPickle
+import shutil
 
 logger = logging.getLogger( __name__ )
 
-
 def truncateFile(fileNameString, tooBig=50000):
-    """Truncates a file that is bigger than tooBig bytes, leaving only the 
+    """
+    Truncates a file that is bigger than tooBig bytes, leaving only the 
     last tooBig bytes in the file.
     """
     if os.path.getsize(fileNameString) > tooBig:
@@ -52,11 +53,18 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
 
-
-def loadStack(command,jobStore):
+def loadTarget(command, jobStore):
+    """
+    Unpickles a target.Target instance by decoding the command.
+    See target.Target._serialiseFirstTarget and target.Target._serialiseFirstTarget
+    target.Target._makeJobWrappers to see how the Target is encoded in the command.
+    Essentially the command is a reference to a jobStoreFileID containing 
+    the pickle file for the target and a list of modules which must be imported 
+    so that the Target can be successfully unpickled. 
+    """
     commandTokens = command.split()
     assert "scriptTree" == commandTokens[0]
-    jobStoreFileIdOfPickledStack = commandTokens[1]
+    pickleFile = commandTokens[1]
     targetClassName = commandTokens[2]
     # must import lazily because jobTree might not be on sys.path when the top-level of this module is run
     from jobTree.resource import ModuleDescriptor
@@ -68,12 +76,11 @@ def loadStack(command,jobStore):
     userModule = importlib.import_module(userModule.name)
     thisModule = sys.modules[__name__]
     thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
-    return loadPickleFile(jobStoreFileIdOfPickledStack, jobStore)
-
-def loadPickleFile(pickleFile,jobStore):
-    """Loads the first object from a pickle file.
-    """
-    with jobStore.readFileStream(pickleFile) as fileHandle:
+    if pickleFile == "firstTarget":
+        openFileStream = jobStore.readSharedFileStream( pickleFile )
+    else:
+        openFileStream = jobStore.readFileStream( pickleFile )
+    with openFileStream as fileHandle:
         return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():
@@ -84,20 +91,23 @@ def nextOpenDescriptor():
     return descriptor
     
 def main():
+    ########################################## 
+    #Import necessary modules 
+    ##########################################
+    
     # This is assuming that worker.py is at a path ending in "/jobTree/worker.py".
     sourcePath = os.path.dirname(os.path.dirname(__file__))
     if sourcePath not in sys.path:
         # FIXME: prepending to sys.path should fix #103
         sys.path.append(sourcePath)
-
-    #Now we can import all the stuff..
+    
+    #Now we can import all the necessary functions
     from jobTree.lib.bioio import setLogLevel
     from jobTree.lib.bioio import getTotalCpuTime
     from jobTree.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from jobTree.lib.bioio import getTempDirectory
     from jobTree.lib.bioio import makeSubDir
     from jobTree.lib.bioio import system
-
     from jobTree.common import loadJobStore
     
     ########################################## 
@@ -138,13 +148,12 @@ def main():
         
     #Dir to put all the temp files in.
     localWorkerTempDir = getTempDirectory()
-    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
     
     ##########################################
     #Setup the logging
     ##########################################
 
-    #Setup the logging. This is mildly tricky because we don't just want to
+    #This is mildly tricky because we don't just want to
     #redirect stdout and stderr for this Python process; we want to redirect it
     #for this process and all children. Consequently, we can't just replace
     #sys.stdout and sys.stderr; we need to mess with the underlying OS-level
@@ -186,152 +195,165 @@ def main():
     #the file descriptor out from under it.
     logger.addHandler(logging.StreamHandler(sys.stderr))
 
-    #Put a message at the top of the log, just to make sure it's working.
-    print "---JOBTREE WORKER OUTPUT LOG---"
-    sys.stdout.flush()
-    
-    #Log the number of open file descriptors so we can tell if we're leaking
-    #them.
-    logger.debug("Next available file descriptor: {}".format(
-        nextOpenDescriptor()))
-    
-    ##########################################
-    #Get job info
-    ##########################################
-    
-    job = jobStore.load(jobStoreID)
-    job.children = []  #This is the only way to flush children, 
-    #as are read only in the master
-    if job.logJobStoreFileID != None:
-        job.clearLogFile(jobStore) #This cleans the old log file
-    jobStore.store(job) #Update status, to avoid reissuing children after
-    #running a follow on below.
-    logger.info("Parsed arguments and set up logging")
-
-     #Try loop for worker logging
-    ##########################################
-    #Setup the stats, if requested
-    ##########################################
-    
-    if config.attrib.has_key("stats"):
-        startTime = time.time()
-        startClock = getTotalCpuTime()
-        stats = ET.Element("worker")
-    else:
-        stats = None
-    
-    ##########################################
-    #The max time 
-    ##########################################
-    
-    maxTime = float(config.attrib["job_time"])
-    assert maxTime > 0.0
-    assert maxTime < sys.maxint
-
     ##########################################
     #Worker log file trapped from here on in
     ##########################################
 
     workerFailed = False
     try:
+
+        #Put a message at the top of the log, just to make sure it's working.
+        print "---JOBTREE WORKER OUTPUT LOG---"
+        sys.stdout.flush()
+        
+        #Log the number of open file descriptors so we can tell if we're leaking
+        #them.
+        logger.debug("Next available file descriptor: {}".format(
+            nextOpenDescriptor()))
+    
+        ##########################################
+        #Load the job
+        ##########################################
+        
+        job = jobStore.load(jobStoreID)
+        logger.debug("Parsed job")
         
         ##########################################
-        #The next job
+        #Cleanup from any earlier invocation of the job
         ##########################################
         
-        command, memoryAvailable, cpuAvailable, depth = job.followOnCommands[-1]
-        defaultMemory = int(config.attrib["default_memory"])
-        defaultCpu = int(config.attrib["default_cpu"])
-        assert len(job.children) == 0
+        if job.command == None:
+            while len(job.stack) > 0:
+                jobs = job.stack[-1]
+                #If the jobs still exist they have not been run, so break
+                if jobStore.exists(jobs[0][0]):
+                    break
+                #However, if they are gone then we can remove them from the stack.
+                #This is the only way to flush successors that have previously been run
+                #, as jobs are, as far as possible, read only in the leader.
+                job.stack.pop()
+                
+                
+        #This cleans the old log file which may 
+        #have been left if the job is being retried after a job failure. 
+        if job.logJobStoreFileID != None:
+            job.clearLogFile(jobStore) 
+    
+        ##########################################
+        #Setup the stats, if requested
+        ##########################################
         
+        if config.attrib.has_key("stats"):
+            startTime = time.time()
+            startClock = getTotalCpuTime()
+            stats = ET.Element("worker")
+        else:
+            stats = None
+
         startTime = time.time() 
         while True:
-            job.followOnCommands.pop()
-                
             ##########################################
-            #Old children, not yet deleted
-            #
-            #These may exist because of the lazy cleanup
-            #we do
+            #Run the job, if there is one
             ##########################################
-        
-            #for childDir in listChildDirs(job.jobStoreID):
-            #    logger.debug("Cleaning up old child %s" % childDir)
-            #    system("rm -rf %s" % childDir)
-            #    jobStore.delete()
-        
-            ##########################################
-            #Run the job
-            ##########################################
-        
-            if command != "": #Not a stub
-                if command.startswith("scriptTree "):
-                    stack = loadStack(command, jobStore)
-                    messages = stack.execute(job=job, stats=stats,
-                                    localTempDir=localTempDir, jobStore=jobStore, 
-                                    memoryAvailable=memoryAvailable, 
-                                    cpuAvailable=cpuAvailable, 
-                                    defaultMemory=defaultMemory, 
-                                    defaultCpu=defaultCpu, depth=depth)
-                else: #Is another command
-                    system(command)
+            
+            if job.command != None: 
+                if job.command[:11] == "scriptTree ":
+                    #Make a temporary file directory for the target
+                    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    
+                    #Is a target command
+                    messages = loadTarget(job.command,jobStore)._execute(job=job, 
+                                    stats=stats, localTempDir=localTempDir, 
+                                    jobStore=jobStore)
+                    
+                    #Remove the temporary file directory
+                    shutil.rmtree(localTempDir)
+    
+                else: #Is another command (running outside of targets may be deprecated)
+                    system(job.command)
                     messages = []
+            else:
+                #The command may be none, in which case
+                #the job is just a shell ready to be deleted
+                assert len(job.stack) == 0
+                messages = []
+                break
             
             ##########################################
-            #Cleanup/reset a successful job/checkpoint
+            #Establish if we can run another job within the worker
             ##########################################
             
-            job.remainingRetryCount = int(config.attrib["try_count"])
-            system("rm -rf %s/*" % (localTempDir))
+            #Exceeded the amount of time the worker is allowed to run for so quit
+            if time.time() - startTime > float(config.attrib["job_time"]):
+                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
+                break
+
+            #No more jobs to run so quit
+            if len(job.stack) == 0:
+                break
             
-            if len(job.children) == 1: #If job has a single child, 
-                #just make it a follow on
-                job.followOnCommands.append(job.children.pop() + (depth + 1,))
+            #Get the next set of jobs to run
+            jobs = job.stack[-1]
+            assert len(jobs) > 0
             
-            childCommands = job.children #This is a hack until we stop 
-            #overloading the use of this array
-            job.children = []
-            jobStore.addChildren(job=job, childCommands=childCommands)
+            #If there are 2 or more jobs to run in parallel we quit
+            if len(jobs) >= 2:
+                logger.debug("No more jobs can run in series by this worker,"
+                            " it's got %i children", len(jobs)-1)
+                break
+            
+            #We check the requirements of the job to see if we can run it
+            #within the current worker
+            jobStoreID, memory, cpu, predecessorID = jobs[0]
+            if memory > job.memory:
+                logger.debug("We need more memory for the next job, so finishing")
+                break
+            if cpu > job.cpu:
+                logger.debug("We need more cpus for the next job, so finishing")
+                break
+            if predecessorID != None: 
+                logger.debug("The job has multiple predecessors, we must return to the leader.")
+                break
+            
+            break
             
             ##########################################
-            #Establish if we can run another job
+            #We have a single successor job.
+            #We load the successor job and transplant its command and stack
+            #into the current job so that it can be run 
+            #as if it were a command that were part of the current job.
+            #We can then delete the successor job in the jobStore, as it is
+            #wholly incorporated into the current job.
             ##########################################
             
-            if time.time() - startTime > maxTime:
-                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
-                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
-                logger.info("We are breaking because the maximum time the job should run for has been exceeded")
-                break
+            #Remove the successor job
+            job.stack.pop()
             
-            #Deal with children
-            if len(job.children) >= 1:  #We are going to have to return to the parent
-                logger.info("No more jobs can run in series by this worker, its got %i children" % len(job.children))
-                break
+            #Load the successor job
+            successorJob = jobStore.load(jobStoreID)
+            #These should all match up
+            assert successorJob.memory == memory
+            assert successorJob.cpu == cpu
+            assert successorJob.predecessorsFinished == set()
+            assert successorJob.predecessorNumber == 1
             
-            if len(job.followOnCommands) == 0:
-                logger.info("No more jobs can run by this worker as we have exhausted the follow ons")
-                break
+            #Transplant the command and stack to the current job
+            job.command = successorJob.command
+            job.stack += successorJob.stack
+            assert job.memory >= successorJob.memory
+            assert job.cpu >= successorJob.cpu
             
-            #Get the next job and see if we have enough cpu and memory to run it..
-            command, memory, cpu, depth = job.followOnCommands[-1]
+            #Checkpoint the job and delete the successorJob
+            jobStore.jobsToDelete = [ successorJob.jobStoreID ]
+            jobStore.update(job)
+            jobStore.delete(successorJob.jobStoreID)
             
-            if memory > memoryAvailable:
-                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
-                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
-                logger.info("We need more memory for the next job, so finishing")
-                break
-            if cpu > cpuAvailable:
-                # FIXME: Shouldn't we raise an exception here so we can see the stack trace in the
-                # FIXME: ... master? Without an exception, the log is swallowed and no one sees it.
-                logger.info("We need more cpus for the next job, so finishing")
-                break
-            
-            logger.info("Starting the next job")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
         ##########################################
-        
+
         if stats != None:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
@@ -348,10 +370,10 @@ def main():
                 ET.SubElement(m, "message").text = message
             jobStore.writeStatsAndLogging(ET.tostring(l))
         
-        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds" % (time.time() - startTime))
+        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
-    #Where worker goes wrong
+    #Trapping where worker goes wrong
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
@@ -393,20 +415,16 @@ def main():
         truncateFile(tempWorkerLogPath)
         job.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
-        jobStore.store(job)
+        jobStore.update(job)
 
     #Remove the temp dir
-    system("rm -rf %s" % localWorkerTempDir)
+    shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and len(job.followOnCommands) == 0 and len(job.children) == 0:
+    if (not workerFailed) and job.command == None and len(job.stack) == 0:
         #We can now safely get rid of the job
-        jobStore.delete(job)
-            
-def _test():
-    import doctest      
-    return doctest.testmod()
-
+        jobStore.delete(job.jobStoreID)
+       
 if __name__ == '__main__':
     logging.basicConfig()
     main()

@@ -2,32 +2,28 @@ import sys
 from optparse import OptionParser
 
 from jobTree.target import Target
-from jobTree.stack import Stack
 
-
-def touchFile( name, i='' ):
-    with open( 'hello_world_{}_{}.txt'.format( name, i ), 'w' ) as f:
-        f.write( 'This is a triumph' )
+def touchFile( fileStore ):
+    with fileStore.writeGlobalFileStream() as (f, id):
+        f.write( "This is a triumph" )
 
 class LongTestTarget(Target):
     def __init__(self, numTargets):
         Target.__init__(self,  memory=100000, cpu=0.01)
         self.numTargets = numTargets
 
-    def run(self):
+    def run(self, fileStore):
         for i in range(0,self.numTargets):
             self.addChild(HelloWorldTarget(i))
-        self.setFollowOn(LongTestFollowOn())
-
+        self.addFollowOn(LongTestFollowOn())
 
 class LongTestFollowOn(Target):
 
     def __init__(self):
         Target.__init__(self,  memory=1000000, cpu=0.01)
 
-    def run(self):
-        touchFile( 'parentFollowOn' )
-
+    def run(self, fileStore):
+        touchFile( fileStore )
 
 class HelloWorldTarget(Target):
 
@@ -36,10 +32,9 @@ class HelloWorldTarget(Target):
         self.i=i
 
 
-    def run(self):
-        touchFile( 'child', self.i )
-        self.setFollowOn(HelloWorldFollowOn(self.i))
-
+    def run(self, fileStore):
+        touchFile( fileStore )
+        self.addFollowOn(HelloWorldFollowOn(self.i))
 
 class HelloWorldFollowOn(Target):
 
@@ -47,22 +42,22 @@ class HelloWorldFollowOn(Target):
         Target.__init__(self,  memory=200000, cpu=0.01)
         self.i = i
 
-    def run(self):
-        touchFile( 'followOn', self.i )
+    def run(self, fileStore):
+        touchFile( fileStore)
 
 def main(numTargets, useBadExecutor=False):
     args = list( sys.argv )
-    args .append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
-    args .append("--retryCount=3")
-    args .append("--logDebug")
+    args.append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
+    args.append("--retryCount=3")
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
-    Stack.addJobTreeOptions(parser)
+    Target.Runner.addJobTreeOptions(parser)
     options, args = parser.parse_args( args )
 
-    # Setup the job stack and launch jobTree job
-    i = Stack( LongTestTarget( numTargets ) ).startJobTree( options )
+    # Launch first jobTree Target
+    i = LongTestTarget( numTargets )
+    j = Target.Runner.startJobTree(i,  options )
 
 if __name__=="__main__":
     main(5, useBadExecutor=False)

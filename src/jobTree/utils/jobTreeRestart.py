@@ -56,12 +56,16 @@ def main():
         options.jobTree = args[0]
         
     ##########################################
-    #Now run the job tree construction/master
+    #Now run the job tree construction/leader
     ##########################################  
         
     setLoggingFromOptions(options)
-    with setupJobTree(options) as (config, batchSystem, jobStore, jobTreeState):
-        return mainLoop(config, batchSystem, jobStore)
+    with setupJobTree(options) as (config, batchSystem, jobStore):
+        jobStore.clean()
+        if "rootJob" not in config.attrib:
+            print "There is no root job in the jobTree from which to start, exiting"
+            sys.exit(0)
+        return mainLoop(config, batchSystem, jobStore, jobStore.load(config.attrib["rootJob"]))
     
 def _test():
     import doctest      

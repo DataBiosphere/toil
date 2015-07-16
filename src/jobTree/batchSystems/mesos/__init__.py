@@ -21,8 +21,6 @@ JobTreeJob = namedtuple('JobTreeJob', (
     'resources',
     # The command to be run on the worker node
     'command',
-    # FIXME: still needed ???
-    'cwd',
     # The resource object representing the user script
     'userScript',
     # The resource object representing the jobTree source tarball

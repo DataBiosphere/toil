@@ -29,9 +29,7 @@ from jobTree.lib.bioio import getBasicOptionParser
 from jobTree.lib.bioio import parseBasicOptions
 from jobTree.common import loadJobStore, loadBatchSystem
 
-
 logger = logging.getLogger( __name__ )
-
 
 def main():
     parser = getBasicOptionParser("usage: %prog [--jobTree] JOB_TREE_DIR [more options]", "%prog 0.1")

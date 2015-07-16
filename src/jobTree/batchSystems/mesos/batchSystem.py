@@ -93,7 +93,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         job = JobTreeJob(jobID=jobID,
                          resources=ResourceRequirement(memory=memory, cpu=cpu),
                          command=command,
-                         cwd=os.getcwd(),
                          userScript=self.userScript,
                          jobTreeDistribution=self.jobTreeDistribution)
         job_type = job.resources
@@ -229,7 +228,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         framework.user = ""  # Have Mesos fill in the current user.
         framework.name = "jobTree"
 
-        # TODO(vinod): Make checkpointing the default when it is default on the slave.
 
         if os.getenv("MESOS_CHECKPOINT"):
             log.debug("Enabling checkpoint for the framework")
@@ -333,7 +331,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                     if int(task.task_id.value) not in self.runningJobMap:
                         # check to make sure task isn't already running (possibly in very unlikely edge case)
                         tasks.append(task)
-                        log.debug("Preparing to launch Mesos task %s using offer %s..." % (
+                        log.info("Preparing to launch Mesos task %s using offer %s..." % (
                             task.task_id.value, offer.id.value))
                         remainingCpus -= job_type.cpu
                         remainingMem -= self.__bytesToMB(job_type.memory)
@@ -344,7 +342,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
             for task in tasks:
                 self._updateStateToRunning(offer, task)
-                log.debug("...launching Mesos task %s" % task.task_id.value)
+                log.info("...launching Mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
                 log.warn("Offer not large enough to run any tasks")

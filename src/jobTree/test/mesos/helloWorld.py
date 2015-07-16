@@ -8,8 +8,6 @@
 from optparse import OptionParser
 
 from jobTree.target import Target
-from jobTree.stack import Stack
-
 
 class HelloWorld(object):
     def __init__(self, target):
@@ -54,11 +52,12 @@ if __name__ == '__main__':
 
     # Boilerplate -- startJobTree requires options
     parser = OptionParser()
-    Stack.addJobTreeOptions(parser)
+    Target.Runner.addJobTreeOptions(parser)
     options, args = parser.parse_args()
 
     # Create object that contains our FileStoreIDs
 
 
-    # Setup the job stack and launch jobTree job
-    i = Stack(Target.wrapTargetFn(hello_world)).startJobTree(options)
+    # Launch first jobTree Target
+    i = Target.wrapTargetFn(hello_world)
+    j = Target.Runner.startJobTree(i, options)

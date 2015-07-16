@@ -3,188 +3,158 @@ import logging
 import marshal as pickler
 #import cPickle as pickler
 #import pickle as pickler
-#import json as pickler
-import socket
+#import json as pickler    
 import random
 import shutil
 import os
-import re
-import errno
-from jobTree.lib.bioio import makeSubDir, getTempFile, system, absSymPath
-from jobTree.jobStores.abstractJobStore import AbstractJobStore, JobTreeState, NoSuchJobException, \
+import tempfile
+from jobTree.lib.bioio import absSymPath
+from jobTree.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
 from jobTree.job import Job
 
 logger = logging.getLogger( __name__ )
 
-
 class FileJobStore(AbstractJobStore):
-    """Represents the jobTree on using a network file system. For doc-strings
+    """Represents the jobTree using a network file system. For doc-strings
     of functions see AbstractJobStore.
     """
 
     def __init__(self, jobStoreDir, config=None):
+        #This is root directory in which everything in the store is kept
         self.jobStoreDir = absSymPath(jobStoreDir)
-        logger.info("Jobstore directory is: %s" % self.jobStoreDir)
+        logger.info("Jobstore directory is: %s", self.jobStoreDir)
+        self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
         if not os.path.exists(self.jobStoreDir):
             os.mkdir(self.jobStoreDir)
+            os.mkdir(self.tempFilesDir)
+        #Parameters for creating temporary files
+        self.validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        self.levels = 2
         super( FileJobStore, self ).__init__( config=config )
-        self._setupStatsDirs(create=config is not None)
+        
+    def deleteJobStore(self):
+        if os.path.exists(self.jobStoreDir):
+            shutil.rmtree(self.jobStoreDir)
     
-    def createFirstJob(self, command, memory, cpu):
-        if not os.path.exists(self._getJobFileDirName()):
-            os.mkdir(self._getJobFileDirName())
-        return self._makeJob(command, memory, cpu, self._getJobFileDirName())
+    ##########################################
+    #The following methods deal with creating/loading/updating/writing/checking for the
+    #existence of jobs
+    ########################################## 
+    
+    def create(self, command, memory, cpu, updateID=None,
+               predecessorNumber=0):
+        #The absolute path to the job directory.    
+        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
+        #Sub directory to put temporary files associated with the job in
+        os.mkdir(os.path.join(absJobDir, "g"))
+        #Make the job
+        job = Job(command=command, memory=memory, cpu=cpu, 
+                  jobStoreID=self._getRelativePath(absJobDir), 
+                  remainingRetryCount=self._defaultTryCount( ), 
+                  updateID=updateID,
+                  predecessorNumber=predecessorNumber)
+        #Write job file to disk
+        self.update(job)
+        return job
     
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
-
+    
     def getPublicUrl( self,  jobStoreFileID):
-        if os.path.exists(jobStoreFileID):
-            return 'file:'+jobStoreFileID
+        self._checkJobStoreFileID(jobStoreFileID)
+        jobStorePath = self._getAbsPath(jobStoreFileID)
+        if os.path.exists(jobStorePath):
+            return 'file:'+jobStorePath
         else:
             raise NoSuchFileException(jobStoreFileID)
 
     def getSharedPublicUrl( self,  FileName):
-        return self.getPublicUrl(jobStoreFileID=self.jobStoreDir +'/'+FileName)
+        jobStorePath = self.jobStoreDir+'/'+FileName
+        if os.path.exists(jobStorePath):
+            return 'file:'+jobStorePath
+        else:
+            raise NoSuchFileException(FileName)
 
     def load(self, jobStoreID):
+        self._checkJobStoreId(jobStoreID)
+        #Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
-        # The following clean up any issues resulting from the failure of the job during writing
-        # by the batch system.
-        updatingFilePresent = self._processAnyUpdatingFile(jobFile)
-        newFilePresent = self._processAnyNewFile(jobFile)
-        # Now load the job
-        try:
-            with open(jobFile, 'r') as fileHandle:
-                job = Job.fromList(pickler.load(fileHandle))
-        except IOError as e:
-            if e.errno == errno.ENOENT:
-                raise NoSuchJobException( jobStoreID )
-            else:
-                raise
-        # Deal with failure by lowering the retry limit
-        if updatingFilePresent or newFilePresent:
+        with open(jobFile, 'r') as fileHandle:
+            job = Job.fromDict(pickler.load(fileHandle))
+        #The following cleans up any issues resulting from the failure of the 
+        #job during writing by the batch system.
+        if os.path.isfile(jobFile + ".new"):
+            logger.warn("There was a .new file for the job: %s", jobStoreID)
+            os.remove(jobFile + ".new")
             job.setupJobAfterFailure(self.config)
-        return job   
+        return job
     
-    def store(self, job):
-        self._write(job, ".new")
-        os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
-
-    def addChildren(self, job, childCommands):
-        updatingFile = self._getJobFileName(job.jobStoreID) + ".updating"
-        open(updatingFile, 'w').close()
-        for ((command, memory, cpu), tempDir) in zip(childCommands, \
-                    self._createTempDirectories(job.jobStoreID, len(childCommands))):
-            childJob = self._makeJob(command, memory, cpu, tempDir)
-            self.store(childJob)
-            job.children.append((childJob.jobStoreID, memory, cpu))
-        self._write(job, ".new")
-        os.remove(updatingFile)
+    def update(self, job):
+        #The job is serialised to a file suffixed by ".new"
+        #The file is then moved to its correct path.
+        #Atomicity guarantees use the fact the underlying file systems "move"
+        #function is atomic. 
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
+            pickler.dump(job.toDict(), f)
+        #This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
-    def delete(self, job):
-        try:
-            # This is the atomic operation, if this file is not present the job is deleted.
-            os.remove( self._getJobFileName( job.jobStoreID ) )
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                pass
-            else:
-                raise
-
-        dirToRemove = job.jobStoreID
-        # FIXME: could we use shutil.rmtree here? It'll be significantly faster, especially ...
-        # FIXME: ... considering that system() launches a full shell
-        while 1:
-            head, tail = os.path.split(dirToRemove)
-            if re.match("t[0-9]+$", tail):
-                command = "rm -rf %s" % dirToRemove
-            else:
-                command = "rm -rf %s/*" % dirToRemove #We're at the root
-            try:
-                system(command)
-            except RuntimeError:
-                # FIXME: This dangerous, we should be as specific as possible with the expected exception
-                pass #This is not a big deal, as we expect collisions
-            dirToRemove = head
-            try:
-                if len(os.listdir(dirToRemove)) != 0:
-                    break
-            except os.error: #In case stuff went wrong, but as this is not critical we let it slide
-                # FIXME: should still log a warning-level message
-                break
-            
-    ##TO BE DELETED
-    def loadJobTreeState(self):
-        jobTreeState = JobTreeState()
-        if not os.path.exists(self._getJobFileDirName()):
-            return jobTreeState
-        jobTreeState.started = True
-        self._loadJobTreeState(self._getJobFileDirName(), jobTreeState)
-        return jobTreeState
-    ##END TO BE DELETED
-    
-    def loadJobsInStore(self):
-        if not os.path.exists(self._getJobFileDirName()): #Case dir does not yet exist
-            return []
-        jobs = []
-        def _loadJobs(jobTreeJobsRoot):
-            #Fn recursively walk over hierarchy of jobs and parses the jobs files.
-            jobFile = self._getJobFileName(jobTreeJobsRoot)
-            if os.path.exists(jobFile):
-                job = self.load(jobTreeJobsRoot)
-                jobs.append(job)
-            for childDir in FileJobStore._listChildDirs(jobTreeJobsRoot):
-                _loadJobs(childDir)
-        _loadJobs(self._getJobFileDirName())
-        return jobs
+    def delete(self, jobStoreID):
+        #The jobStoreID is the relative path to the directory containing the job,
+        #removing this directory deletes the job.
+        if self.exists(jobStoreID):
+            shutil.rmtree(self._getAbsPath(jobStoreID))
+ 
+    def jobs(self):
+        #Walk through list of temporary directories searching for jobs
+        for tempDir in self._tempDirectories():
+            for i in os.listdir(tempDir):
+                if i.startswith( 'job' ):
+                    yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
+ 
+    ##########################################
+    #Functions that deal with temporary files associated with jobs
+    ##########################################    
     
     def writeFile(self, jobStoreID, localFilePath):
-        if not os.path.exists(jobStoreID):
-            raise RuntimeError("JobStoreID %s does not exist" % jobStoreID)
-        if not os.path.isdir(jobStoreID):
-            raise RuntimeError("Path %s is not a dir" % jobStoreID)
-        jobStoreFileID = getTempFile(".tmp", os.path.join(jobStoreID, "g"))
-        shutil.copyfile(localFilePath, jobStoreFileID)
-        return jobStoreFileID
-    
+        self._checkJobStoreId(jobStoreID)
+        fd, absPath = self._getJobTempFile(jobStoreID)
+        shutil.copyfile(localFilePath, absPath)
+        os.close(fd)
+        return self._getRelativePath(absPath)
+
     def updateFile(self, jobStoreFileID, localFilePath):
-        if not os.path.exists(jobStoreFileID):
-            raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        if not os.path.isfile(jobStoreFileID):
-            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
-        shutil.copyfile(localFilePath, jobStoreFileID)
+        self._checkJobStoreFileID(jobStoreFileID)
+        shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
     
     def readFile(self, jobStoreFileID, localFilePath):
-        if not os.path.exists(jobStoreFileID):
-            raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        if not os.path.isfile(jobStoreFileID):
-            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
-        shutil.copyfile(jobStoreFileID, localFilePath)
+        self._checkJobStoreFileID(jobStoreFileID)
+        shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
     
     def deleteFile(self, jobStoreFileID):
-        if not os.path.exists(jobStoreFileID):
-            raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        os.remove(jobStoreFileID)
-        
+        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
+        if not os.path.exists(absPath):
+            return
+        if not os.path.isfile(absPath):
+            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
+        os.remove(self._getAbsPath(jobStoreFileID))
+    
     @contextmanager
     def writeFileStream(self, jobStoreID):
-        jobStoreFileID = getTempFile(".tmp", rootDir=os.path.join(jobStoreID, "g"))
-        with open(jobStoreFileID, 'w') as f:
-            yield f, jobStoreFileID
+        self._checkJobStoreId(jobStoreID)
+        fd, absPath =  self._getJobTempFile(jobStoreID)
+        with open(absPath, 'w') as f:
+            yield f, self._getRelativePath(absPath)
+        os.close(fd) #Close the os level file descript
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        if not os.path.exists(jobStoreFileID):
-            raise RuntimeError("File %s does not exist" % jobStoreFileID)
-        if not os.path.isfile(jobStoreFileID):
-            raise RuntimeError("Path %s is not a file" % jobStoreFileID)
+        self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(jobStoreFileID, 'w') as f:
+        with open(self._getAbsPath(jobStoreFileID), 'w') as f:
             yield f
     
     def getEmptyFileStoreID(self, jobStoreID):
@@ -193,14 +163,14 @@ class FileJobStore(AbstractJobStore):
     
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        try:
-            with open(jobStoreFileID, 'r') as f:
-                yield f
-        except IOError as e:
-            if e.errno == errno.ENOENT:
-                raise NoSuchFileException( jobStoreFileID )
-            else:
-                raise
+        self._checkJobStoreFileID(jobStoreFileID)
+        with open(self._getAbsPath(jobStoreFileID), 'r') as f:
+            yield f
+            
+    ##########################################
+    #The following methods deal with shared files, i.e. files not associated 
+    #with specific jobs.
+    ##########################################  
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName):
@@ -213,157 +183,114 @@ class FileJobStore(AbstractJobStore):
         assert self._validateSharedFileName( sharedFileName )
         with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
             yield f
-    
+             
     def writeStatsAndLogging(self, statsAndLoggingString):
-        tempStatsFile = os.path.join(random.choice(self.statsDirs), \
-                            "%s_%s.xml" % (socket.gethostname(), os.getpid()))
-        fileHandle = open(tempStatsFile + ".new", "w")
-        fileHandle.write(statsAndLoggingString)
-        fileHandle.close()
-        os.rename(tempStatsFile + ".new", tempStatsFile) #This operation is atomic
-    
+        #Temporary files are placed in the set of temporary files/directoies
+        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
+        with open(tempStatsFile, "w") as f:
+            f.write(statsAndLoggingString)
+        os.close(fd)
+        os.rename(tempStatsFile, tempStatsFile[:-4]) #This operation is atomic
+        
     def readStatsAndLogging( self, statsAndLoggingCallBackFn):
         numberOfFilesProcessed = 0
-        for dir in self.statsDirs:
-            for tempFile in os.listdir(dir):
-                if not tempFile.endswith( '.new' ):
-                    absTempFile = os.path.join(dir, tempFile)
-                    with open(absTempFile, 'r') as fH:
-                        statsAndLoggingCallBackFn(fH)
+        for tempDir in self._tempDirectories():
+            for tempFile in os.listdir(tempDir):
+                if tempFile.startswith( 'stats' ):
+                    absTempFile = os.path.join(tempDir, tempFile)
+                    if not tempFile.endswith( '.new' ):
+                        with open(absTempFile, 'r') as fH:
+                            statsAndLoggingCallBackFn(fH)
+                        numberOfFilesProcessed += 1
                     os.remove(absTempFile)
-                    numberOfFilesProcessed += 1
         return numberOfFilesProcessed
     
-    def deleteJobStore(self):
-        """
-        Removes the jobStore from the disk/store. Careful!
-        """
-        system("rm -rf %s" % self.jobStoreDir)
-    
-    ####
+    ##########################################
     #Private methods
-    ####
-
-    def _makeJob(self, command, memory, cpu, jobDir):
-        # Sub directory to put temporary files associated with the job in
-        makeSubDir(os.path.join(jobDir, "g"))
-        return Job.create(command=command, memory=memory, cpu=cpu,
-                          tryCount=self._defaultTryCount( ), jobStoreID=jobDir, logJobStoreFileID=None)
+    ##########################################   
+        
+    def _getAbsPath(self, relativePath):
+        """
+        :rtype : string, string is the absolute path to a file path relative
+        to the self.tempFilesDir.
+        """
+        return os.path.join(self.tempFilesDir, relativePath)
     
-    def _getJobFileDirName(self):
-        return os.path.join(self.jobStoreDir, "jobs")
+    def _getRelativePath(self, absPath):
+        """
+        absPath  is the absolute path to a file in the store,.
+        
+        :rtype : string, string is the path to the absPath file relative to the 
+        self.tempFilesDir
+        
+        """
+        return absPath[len(self.tempFilesDir)+1:]
     
     def _getJobFileName(self, jobStoreID):
-        return os.path.join(jobStoreID, "job")
-        
-    ##START TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED    
-    def _loadJobTreeState2(self, jobTreeJobsRoot, jobTreeState):
-        #Read job
-        job = self.load(jobTreeJobsRoot)
-        # FIXME: This is not a good place to do this. Firstly, this behaviour is not documented
-        # FIXME: ... in the abstract superclass. Secondly, this is behavior shared by all
-        # FIXME: ... implementations so it would be nice if it were factored out, either in the
-        # FIXME: ... caller or in the superclass.
-        # Reset the job
-        job.children = []
-        job.remainingRetryCount = self._defaultTryCount( )
-        #Get children
-        childJobs = reduce(lambda x,y:x+y, map(lambda childDir : 
-            self._loadJobTreeState(childDir, jobTreeState), FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
-        if len(childJobs) > 0:
-            jobTreeState.childCounts[job] = len(childJobs)
-            for childJob in childJobs:
-                jobTreeState.childJobStoreIdToParentJob[childJob.jobStoreID] = job
-        elif len(job.followOnCommands) > 0:
-            jobTreeState.updatedJobs.add(job)
-        else: #Job is stub with nothing left to do, so ignore
-            jobTreeState.shellJobs.add(job)
-            return []
-        return [ job ]
-    
-    def _loadJobTreeState(self, jobTreeJobsRoot, jobTreeState):
-        jobFile = self._getJobFileName(jobTreeJobsRoot)
-        if os.path.exists(jobFile):
-            return self._loadJobTreeState2(jobTreeJobsRoot, jobTreeState)
-        return reduce(lambda x,y:x+y, map(lambda childDir : \
-            self._loadJobTreeState2(childDir, jobTreeState), \
-            FileJobStore._listChildDirs(jobTreeJobsRoot)), [])
-    ##END TO BE DELETED WHEN LOAD JOBTREE STATE IS REMOVED
-    
-    def _processAnyUpdatingFile(self, jobFile):
-        if os.path.isfile(jobFile + ".updating"):
-            logger.warn("There was an .updating file for job: %s" % jobFile)
-            if os.path.isfile(jobFile + ".new"): #The job failed while writing the updated job file.
-                logger.warn("There was a .new file for the job: %s" % jobFile)
-                os.remove(jobFile + ".new") #The existance of the .updating file means it wasn't complete
-            for f in FileJobStore._listChildDirs(os.path.split(jobFile)[0]):
-                logger.warn("Removing broken child %s\n" % f)
-                system("rm -rf %s" % f)
-            assert os.path.isfile(jobFile)
-            os.remove(jobFile + ".updating") #Delete second the updating file second to preserve a correct state
-            logger.warn("We've reverted to the original job file: %s" % jobFile)
-            return True
-        return False
-    
-    def _processAnyNewFile(self, jobFile):
-        # The job was not properly updated before crashing
-        if os.path.isfile(jobFile + ".new"):
-            logger.warn("There was a .new file for the job and no .updating file %s" % jobFile)
-            if os.path.isfile(jobFile):
-                os.remove(jobFile)
-            os.rename(jobFile + ".new", jobFile)
-            return True
-        return False
-            
-    def _write(self, job, suffix=""):
-        fileHandle = open(self._getJobFileName(job.jobStoreID) + suffix, 'w')
-        pickler.dump(job.toList(), fileHandle)
-        fileHandle.close()
-    
-    def _createTempDirectories(self, rootDir, number, filesPerDir=4):
-        def fn(i):
-            dirName = os.path.join(rootDir, "t%i" % i)
-            os.mkdir(dirName)
-            return dirName
-        if number > filesPerDir:
-            if number % filesPerDir != 0:
-                return reduce(
-                    lambda x,y:x+y,
-                    [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir)
-                        for i in range(filesPerDir-1) ],
-                    self._createTempDirectories(fn(0), (number % filesPerDir) + number/filesPerDir, filesPerDir))
-            else:
-                return reduce(
-                    lambda x,y:x+y,
-                    [ self._createTempDirectories(fn(i+1), number/filesPerDir, filesPerDir) for i in range(filesPerDir) ],
-                    [])
-        else:
-            return [ fn(i) for i in xrange(number) ]
-    
-    @staticmethod
-    def _listChildDirsUnsafe(jobDir):
-        """Directories of child jobs for given job (not recursive).
         """
-        return [ os.path.join(jobDir, f) for f in os.listdir(jobDir) if re.match("t[0-9]+$", f) ]
+        :rtype : string, string is the file containing the serialised Job.Job instance
+        for the given job.
+        """
+        return os.path.join(self._getAbsPath(jobStoreID), "job")
+
+    def _getJobTempFile(self, jobStoreID):
+        """
+        :rtype : file-descriptor, string, string is absolute path to a temporary file within
+        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
+        is integer pointing to open operating system file handle. Should be closed using os.close()
+        after writing some material to the file.
+        """
+        fD, absPath = tempfile.mkstemp(suffix=".tmp", 
+                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+        return fD, absPath
     
-    @staticmethod
-    def _listChildDirs(jobDir):
-        try:
-            return FileJobStore._listChildDirsUnsafe(jobDir)
-        except:
-            logger.info("Encountered error while parsing job dir %s, so we will ignore it" % jobDir)
-        return []
+    def _checkJobStoreId(self, jobStoreID):
+        """
+        Raises a NoSuchJobException if the jobStoreID does not exist.
+        """
+        if not self.exists(jobStoreID):
+            raise NoSuchJobException("JobStoreID %s does not exist" % jobStoreID)
     
-    ##Stats private methods
+    def _checkJobStoreFileID(self, jobStoreFileID):
+        """
+        Raises NoSuchFileException if the jobStoreFileID does not exist or is not a file.
+        """
+        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
+        if not os.path.exists(absPath):
+            raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
+        if not os.path.isfile(absPath):
+            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
     
-    def _setupStatsDirs(self, create=False):
-        #Temp dirs
-        def fn(dir, subDir):
-            absSubDir = os.path.join(dir, str(subDir))
-            if create and not os.path.exists(absSubDir):
-                os.mkdir(absSubDir)
-            return absSubDir
-        statsDir = fn(self.jobStoreDir, "stats")
-        self.statsDirs = reduce(lambda x,y: x+y, [ [ fn(absSubDir, subSubDir) \
-                for subSubDir in xrange(10) ] \
-                for absSubDir in [ fn(statsDir, subDir) for subDir in xrange(10) ] ], [])
+    def _getTempSharedDir(self):
+        """
+        Gets a temporary directory in the hierarchy of directories in self.tempFilesDir.
+        This directory may contain multiple shared jobs/files.
+        
+        :rtype : string, path to temporary directory in which to place files/directories.
+        """
+        tempDir = self.tempFilesDir
+        for i in xrange(self.levels):
+            tempDir = os.path.join(tempDir, random.choice(self.validDirs))
+            if not os.path.exists(tempDir):
+                try:
+                    os.mkdir(tempDir)
+                except os.error:
+                    if not os.path.exists(tempDir): #In the case that a collision occurs and
+                        #it is created while we wait then we ignore
+                        raise
+        return tempDir
+     
+    def _tempDirectories(self):
+        """
+        :rtype : an iterator to the temporary directories containing jobs/stats files
+        in the hierarchy of directories in self.tempFilesDir
+        """
+        def _dirs(path, levels):
+            if levels > 0:
+                for subPath in os.listdir(path):
+                    for i in _dirs(os.path.join(path, subPath), levels-1):
+                        yield i
+            else:
+                yield path
+        for tempDir in _dirs(self.tempFilesDir, self.levels):
+            yield tempDir

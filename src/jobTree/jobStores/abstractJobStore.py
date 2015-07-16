@@ -3,26 +3,6 @@ from contextlib import contextmanager
 import re
 import xml.etree.cElementTree as ET
 
-
-class JobTreeState( object ):
-    """
-    Represents the state of the jobTree. This is returned by jobStore.loadJobTreeState()
-    """
-
-    def __init__( self ):
-        # TODO: document this field
-        self.started = False
-        # This is a hash of jobStoreIDs to the parent jobs.
-        self.childJobStoreIdToParentJob = { }
-        # Hash of parent jobs to counts of numbers of children. There are no entries for jobs
-        # without children in this map. IOW, there is no entry in the map whose value is 0.
-        self.childCounts = { }
-        # Jobs that have no children but one or more follow-on commands
-        self.updatedJobs = set( )
-        # Jobs that have no children or follow-on commands
-        self.shellJobs = set( )
-
-
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
         super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
@@ -40,18 +20,17 @@ class AbstractJobStore( object ):
     """ 
     Represents the physical storage for the jobs and associated files in a jobTree.
     """
-
     __metaclass__ = ABCMeta
 
     def __init__( self, config=None ):
         """
         FIXME: describe purpose and post-condition
 
-        :param config: If config is not None then a new physical store will be created and the
+        :param config: If config is not None then the
         given configuration object will be written to the shared file "config.xml" which can
-        later be retrieved using the readSharedFileStream. If config is None, the physical store
-        is assumed to already exist and the configuration object is read the shared file
-        "config.xml" in that .
+        later be retrieved using the readSharedFileStream. If this file already exists
+        it will be overwritten. If config is None, 
+        the shared file "config.xml" is assumed to exist and is retrieved. 
         """
         if config is None:
             with self.readSharedFileStream( "config.xml" ) as fileHandle:
@@ -64,17 +43,82 @@ class AbstractJobStore( object ):
     @property
     def config( self ):
         return self.__config
-
-    #
-    # The following methods deal with creating/loading/updating/writing/checking for the
-    # existence of jobs
-    #
+    
+    @abstractmethod
+    def deleteJobStore( self ):
+        """
+        Removes the jobStore from the disk/store. Careful!
+        """
+        raise NotImplementedError( )
+    
+    ##Cleanup functions
+    
+    def clean(self):
+        """
+        Function to cleanup the state of a jobStore after a restart.
+        Fixes jobs that might have been partially updated.
+        """
+        #Collate any jobs that were in the process of being created/deleted
+        jobsToDelete = set()
+        for job in self.jobs():
+            for updateID in job.jobsToDelete:
+                jobsToDelete.add(updateID)
+            
+        #Delete the jobs that should be delete
+        if len(jobsToDelete) > 0:
+            for job in self.jobs():
+                if job.updateID in jobsToDelete:
+                    self.delete(job.jobStoreID)
+        
+        #Cleanup the state of each job
+        for job in self.jobs():
+            changed = False #Flag to indicate if we need to update the job
+            #on disk
+            
+            if len(job.jobsToDelete) != 0:
+                job.jobsToDelete = set()
+                changed = True
+                
+            #While jobs at the end of the stack are already deleted remove
+            #those jobs from the stack (this cleans up the case that the job
+            #had successors to run, but had not been updated to reflect this)
+            while len(job.stack) > 0:
+                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
+                if len(jobs) < len(job.stack[-1]):
+                    changed = True
+                    if len(jobs) > 0:
+                        job.stack[-1] = jobs
+                        break
+                    else:
+                        job.stack.pop()
+                else:
+                    break
+                          
+            #This cleans the old log file which may 
+            #have been left if the job is being retried after a job failure. 
+            if job.logJobStoreFileID != None:
+                job.clearLogFile(self) 
+                changed = True
+            
+            if changed: #Update, but only if a change has occurred
+                self.update(job)
+        
+        #Remove any crufty stats/logging files from the previous run
+        self.readStatsAndLogging(lambda x : None)
+    
+    ##########################################
+    #The following methods deal with creating/loading/updating/writing/checking for the
+    #existence of jobs
+    ##########################################  
 
     @abstractmethod
-    def createFirstJob( self, command, memory, cpu ):
+    def create( self, command, memory, cpu, updateID=None,
+                predecessorNumber=0 ):
         """
-        Creates and returns the root job of the jobTree from which all others must be created.
-        This will only be called once, at the very beginning of the jobTree creation.
+        Creates a job, adding it to the store.
+        
+        Command, memory, cpu, updateID, predecessorNumber 
+        are all arguments to the job's constructor.
 
         :rtype : job.Job
         """
@@ -125,24 +169,14 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def store( self, job ):
+    def update( self, job ):
         """
         Persists the job in this store atomically.
         """
         raise NotImplementedError( )
 
     @abstractmethod
-    def addChildren( self, job, childCommands ):
-        """
-        Creates a set of child jobs for the given job using the list of child commands and
-        persists the job along with the new children atomically to this store. Each child command
-        is represented as a tuple of ( command, memory and cpu ). The given job must be persisted
-        even if the given list of children is empty.
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    def delete( self, job ):
+    def delete( self, jobStoreID ):
         """
         Removes from store atomically, can not then subsequently call load(), write(), update(),
         etc. with the job.
@@ -151,24 +185,19 @@ class AbstractJobStore( object ):
         will succeed silently.
         """
         raise NotImplementedError( )
-
-    @abstractmethod
-    def loadJobTreeState( self ):
-        """
-        Returns a jobTreeState object based on the state of the store.
-
-        :rtype : JobTreeState
-        """
-        raise NotImplementedError( )
     
-    @abstractmethod
-    def loadJobsInStore(self):
+    def jobs(self):
         """
-        Returns a list of all the jobs in the jobStore.
+        Returns iterator on the jobs in the store.
+        
+        :rtype : iterator
         """
         raise NotImplementedError( )
 
-    ##The following provide an way of creating/reading/writing/updating files associated with a given job.
+    ##########################################
+    #The following provide an way of creating/reading/writing/updating files 
+    #associated with a given job.
+    ##########################################  
 
     @abstractmethod
     def writeFile( self, jobStoreID, localFilePath ):
@@ -202,8 +231,9 @@ class AbstractJobStore( object ):
     @abstractmethod
     def deleteFile( self, jobStoreFileID ):
         """
-        Deletes the file with the given ID from this job store. Throws an exception if the file
-        does not exist.
+        Deletes the file with the given ID from this job store.  
+        This operation is idempotent, i.e. deleting a file twice or deleting a non-existent file
+        will succeed silently.
         """
         raise NotImplementedError( )
 
@@ -244,10 +274,11 @@ class AbstractJobStore( object ):
         read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
-
-    #
-    # The following methods deal with shared files, i.e. files not associated with specific jobs.
-    #
+    
+    ##########################################
+    #The following methods deal with shared files, i.e. files not associated 
+    #with specific jobs.
+    ##########################################  
 
     sharedFileNameRegex = re.compile( r'^[a-zA-Z0-9._-]+$' )
 
@@ -293,13 +324,6 @@ class AbstractJobStore( object ):
         Returns the number of stat/logging strings processed. 
         Stats/logging files are only read once and are removed from the 
         file store after being written to the given file handle.
-        """
-        raise NotImplementedError( )
-    
-    @abstractmethod
-    def deleteJobStore( self ):
-        """
-        Removes the jobStore from the disk/store. Careful!
         """
         raise NotImplementedError( )
 
