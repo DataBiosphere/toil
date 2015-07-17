@@ -228,7 +228,7 @@ class Target(object):
         For a target (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for 
         a graph with no follow-ons. The former follow on case could be improved!
         """
-        #Get augmented edges
+        #Get implied edges
         extraEdges = self._getImpliedEdges()
             
         #Check for directed cycles in the augmented graph
