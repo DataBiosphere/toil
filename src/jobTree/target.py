@@ -623,8 +623,8 @@ class Target(object):
     ####################################################
         
     def _dfs(self, visited):
-        """Adds all targets reacheable on a directed path from current node to the
-        set 'visited'.
+        """Adds the target and all targets reachable on a directed path from current 
+        node to the set 'visited'.
         """
         if self not in visited:
             visited.add(self) 
@@ -633,14 +633,14 @@ class Target(object):
         
     def _checkTargetGraphAcylicDFS(self, stack, visited, extraEdges):
         """
-        To DFS traversal to detect cycles in augmented target graph.
+        DFS traversal to detect cycles in augmented target graph.
         """
         if self not in visited:
             visited.add(self) 
             stack.append(self)
             for successor in self._children + self._followOns + extraEdges[self]:
                 successor._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
-            stack.pop()
+            assert stack.pop() == self
         if self in stack:
             raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
         
@@ -653,7 +653,8 @@ class Target(object):
         self._dfs(nodes)
         
         ##For each follow-on edge calculate the extra implied edges
-        #Map of targets to lists of targets connected by an implied follow-on edge 
+        #Adjacency list of implied edges, i.e. map of targets to lists of targets 
+        #connected by an implied edge 
         extraEdges = dict(map(lambda n : (n, []), nodes))
         for target in nodes:
             if len(target._followOns) > 0:
@@ -665,7 +666,7 @@ class Target(object):
                 #Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += target._followOns[:]
-        return extraEdges
+        return extraEdges 
     
     ####################################################
     #Function which worker calls to ultimately invoke
