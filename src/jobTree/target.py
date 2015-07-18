@@ -100,7 +100,7 @@ class Target(object):
         A check is made that will result in a runtime error if you attempt to do this.
         Allowing PromisedTargetReturnValue instances to be returned does not work because
         the mechanism to pass the promise uses a jobStoreFileID that will be deleted once
-        the current job and its successors have been completed. This is similar to
+        the current job and its descendants have been completed. This is similar to
         scope rules in a language like C, where returning a reference to memory allocated
         on the stack within a function will produce an undefined reference. 
         Disallowing this also avoids nested promises (PromisedTargetReturnValue 
@@ -123,7 +123,7 @@ class Target(object):
     def addFollowOn(self, followOnTarget):
         """
         Adds a follow-on target, follow-on targets will be run
-        after the child targets and their successors have been run. 
+        after the child targets and their descendants have been run. 
         Returns followOnTarget.
         
         See Target.checkTargetGraphAcylic for formal definition of allowed forms of
@@ -642,7 +642,8 @@ class Target(object):
                 successor._checkTargetGraphAcylicDFS(stack, visited, extraEdges)
             assert stack.pop() == self
         if self in stack:
-            raise RuntimeError("Detected cycle in augmented target graph: %s" % stack)
+            stack.append(self)
+            raise TargetGraphCycleException(stack)
         
     def _getImpliedEdges(self):
         """
@@ -738,6 +739,11 @@ class Target(object):
                 "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
                 moduleName)
         return moduleDirPath, moduleName
+    
+
+class TargetGraphCycleException( Exception ):
+    def __init__( self, stack ):
+        super( TargetGraphCycleException, self ).__init__( "A cycle of target dependencies has been detected '%s'" % stack )
 
 class FunctionWrappingTarget(Target):
     """
