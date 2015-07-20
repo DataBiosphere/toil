@@ -62,12 +62,12 @@ class TargetTest(JobTreeTest):
         """
         for test in xrange(100): 
             #Make a random DAG for the set of child edges
-            nodeNumber = random.choice(xrange(2, 100))
+            nodeNumber = random.choice(xrange(2, 20))
             childEdges = self.makeRandomDAG(nodeNumber)
             #Get an adjacency list representation and check is acyclic 
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            #Add in follow on edges - these are returned as a list, and as a set
+            #Add in follow on edges - these are returned as a list, and as a set 
             #of augmented edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
@@ -76,55 +76,63 @@ class TargetTest(JobTreeTest):
             rootTarget.checkTargetGraphAcylic() #This should not throw an exception
             
             def checkChildEdgeCycleDetection(fNode, tNode):
-                childEdges.add(fNode, tNode) #Create a cycle
-                adjacencyList[fNode].append(tNode)
+                childEdges.add((fNode, tNode)) #Create a cycle
+                adjacencyList[fNode].add(tNode)
                 self.assertTrue(not self.isAcyclic(adjacencyList))
                 try: 
                     self.makeTargetGraph(nodeNumber, childEdges, 
                                          followOnEdges, None).checkTargetGraphAcylic()
-                    self.assertTrue(False) #The cycle was not detected
+                    self.assertTrue(False) #A cycle was not detected
                 except TargetGraphCycleException:
                     pass #This is the expected behaviour
                 #Remove the edges
-                childEdges.pop()
-                adjacencyList[fNode].pop()
+                childEdges.remove((fNode, tNode))
+                adjacencyList[fNode].remove(tNode)
+                #Check is now acyclic again
+                self.makeTargetGraph(nodeNumber, childEdges, 
+                                     followOnEdges, None).checkTargetGraphAcylic()
             
             #Now try adding edges that create a cycle
             
             ##Try adding a child edge from a descendant to an ancestor
             fNode, tNode = self.getRandomEdge(nodeNumber)
-            if fNode in self.reachable(tNode, adjacencyList):
-                checkChildEdgeCycleDetection(fNode, tNode)
+            while fNode not in self.reachable(tNode, adjacencyList):
+                fNode, tNode = self.getRandomEdge(nodeNumber)
+            checkChildEdgeCycleDetection(fNode, tNode)
             
             ##Try adding a self child edge
-            checkChildEdgeCycleDetection(random.choice(xrange(nodeNumber)))
+            node = random.choice(xrange(nodeNumber))
+            checkChildEdgeCycleDetection(node, node)
             
             def checkFollowOnEdgeCycleDetection(fNode, tNode):
-                followOnEdges.add(fNode, tNode) #Create a cycle
+                followOnEdges.add((fNode, tNode)) #Create a cycle
                 try: 
                     self.makeTargetGraph(nodeNumber, childEdges, 
                                          followOnEdges, None).checkTargetGraphAcylic()
-                    self.assertTrue(False) #The cycle was not detected
+                    #self.assertTrue(False) #The cycle was not detected
                 except TargetGraphCycleException:
                     pass #This is the expected behaviour
                 #Remove the edges
-                followOnEdges.pop()
-                #Check is now acyclic
+                followOnEdges.remove((fNode, tNode))
+                #Check is now acyclic again
                 self.makeTargetGraph(nodeNumber, childEdges, 
                                      followOnEdges, None).checkTargetGraphAcylic()
         
             ##Try adding a follow on edge from a descendant to an ancestor
             fNode, tNode = self.getRandomEdge(nodeNumber)
-            if fNode in self.reachable(tNode, adjacencyList):
-                checkFollowOnEdgeCycleDetection(fNode, tNode)
+            while fNode not in self.reachable(tNode, adjacencyList):
+                fNode, tNode = self.getRandomEdge(nodeNumber)
+            checkFollowOnEdgeCycleDetection(fNode, tNode)
             
             ##Try adding a self follow on edge
-            checkFollowOnEdgeCycleDetection(random.choice(xrange(nodeNumber)))
+            node = random.choice(xrange(nodeNumber))
+            checkFollowOnEdgeCycleDetection(node, node)
             
             ##Try adding a follow on edge between two nodes with shared descendants
             fNode, tNode = self.getRandomEdge(nodeNumber)
-            if len(self.reachable(tNode, adjacencyList).\
-                   intersection(self.reachable(fNode, adjacencyList))) > 0:
+            if (len(self.reachable(tNode, adjacencyList).\
+                   intersection(self.reachable(fNode, adjacencyList))) > 0 and
+                   (fNode, tNode) not in childEdges):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
             
     def testEvaluatingRandomDAG(self):
@@ -132,19 +140,19 @@ class TargetTest(JobTreeTest):
         Randomly generate test input then check that the ordering of the running
         respected the constraints.
         """
-        for test in xrange(100): 
+        for test in xrange(30): 
             #Temporary file
             outFile = getTempFile(rootDir=os.getcwd())
             #Make a random DAG for the set of child edges
-            nodeNumber = random.choice(xrange(100))
+            nodeNumber = random.choice(xrange(2, 20))
             childEdges = self.makeRandomDAG(nodeNumber)
             #Get an adjacency list representation and check is acyclic 
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
-            self.checkAcyclic(adjacencyList)
+            self.assertTrue(self.isAcyclic(adjacencyList))
             #Add in follow on edges - these are returned as a list, and as a set
             #of augmented edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
-            self.checkAcyclic(adjacencyList)
+            self.assertTrue(self.isAcyclic(adjacencyList))
             #Make the target graph
             rootTarget = self.makeTargetGraph(nodeNumber, childEdges, followOnEdges, outFile)
             #Run the target  graph
@@ -153,21 +161,27 @@ class TargetTest(JobTreeTest):
             self.assertEquals(failedJobs, 0)
             #Get the ordering add the implied ordering to the graph
             with open(outFile, 'r') as fH:
-                ordering = fH.readline().split()
+                ordering = map(int, fH.readline().split())
             #Check all the targets were run
             self.assertEquals(set(ordering), set(xrange(nodeNumber)))
             #Add the ordering to the graph
             for i in xrange(nodeNumber-1):
                 adjacencyList[ordering[i]].add(ordering[i+1])
             #Check the ordering retains an acyclic graph
-            self.checkAcyclic(adjacencyList)
+            if not self.isAcyclic(adjacencyList):
+                print "ORDERING", ordering
+                print "CHILD EDGES", childEdges
+                print "FOLLOW ON EDGES", followOnEdges
+                print "ADJACENCY LIST", adjacencyList
+            self.assertTrue(self.isAcyclic(adjacencyList))
             #Cleanup
             os.remove(outFile)
             
     @staticmethod
     def getRandomEdge(nodeNumber):
-        fNode = random.choice(xrange(nodeNumber))
-        return (fNode, random.choice(xrange(fNode+1,nodeNumber)))
+        assert nodeNumber > 1
+        fNode = random.choice(xrange(nodeNumber-1))
+        return (fNode, random.choice(xrange(fNode,nodeNumber))) 
     
     @staticmethod
     def makeRandomDAG(nodeNumber):
@@ -178,12 +192,12 @@ class TargetTest(JobTreeTest):
         referring to nodes and the edge is from a to b.
         """
         #Pick number of total edges to create
-        edgeNumber = random.choice(xrange((nodeNumber-1, nodeNumber * (nodeNumber-1)) / 2)) 
+        edgeNumber = random.choice(xrange(nodeNumber-1, 1 + (nodeNumber * (nodeNumber-1)) / 2)) 
         #Make a spanning tree of edges so that nodes are connected
         edges = set(map(lambda i : (random.choice(xrange(i)), i), xrange(1, nodeNumber)))
         #Add extra random edges until there are edgeNumber edges
         while edgeNumber < len(edges):
-            edges.add(StaticTest.getRandomEdge(nodeNumber))
+            edges.add(TargetTest.getRandomEdge(nodeNumber))
         return edges
     
     @staticmethod
@@ -197,7 +211,7 @@ class TargetTest(JobTreeTest):
         return adjacencyList
     
     @staticmethod
-    def reachable(node, adjacencyList):
+    def reachable(node, adjacencyList, followOnAdjacencyList=None):
         """
         Find the set of nodes reachable from this node (including the node). 
         Return is a set of integers. 
@@ -208,32 +222,66 @@ class TargetTest(JobTreeTest):
                 visited.add(fNode)
                 for tNode in adjacencyList[fNode]:
                     dfs(tNode)
+                if followOnAdjacencyList != None:
+                    for tNode in followOnAdjacencyList[fNode]:
+                        dfs(tNode)
         dfs(node)
         return visited
     
     @staticmethod
-    def addRandomFollowOnEdges(adjacencyList):
+    def addRandomFollowOnEdges(childAdjacencyList):
         """
         Adds random follow on edges to the graph, represented as an adjacency list.
         The follow on edges are returned as a set and their augmented edges
         are added to the adjacency list.
         """
-            
         followOnEdges = set()
-        #Loop to create the follow on edges
+        followOnAdjacencyList = map(lambda i : set(), childAdjacencyList)        
+        #Loop to create the follow on edges (try 1000 times)
         while random.random() > 0.001:
-            fNode, tNode = StaticTest.getRandomEdge(len(adjacencyList))
-            fDescendants = self.reachable(fNode, adjacencyList)
-            tDescendants = self.reachable(tNode, adjacencyList)
-            #If there is no directed path from the fNode to the tNode can
-            #create any subset of follow on edges between fNode and tDescendants
-            if len(fDescendants.intersection(tDescendants)) == 0:
-                for tNode2 in tDescendants:
-                    if random.random() > 0.5:
-                        followOnEdges.add((fNode, tNode2))
-                        for descendant in fDescendants:
-                            adjacencyList[descendant].add(tNode2)
-                    
+            fNode, tNode = TargetTest.getRandomEdge(len(childAdjacencyList))
+            #Get the  descendants of fNode not on a path of edges starting with a follow-on
+            #edge from fNode
+            fDescendants = reduce(lambda i, j : i.union(j), map(lambda c : 
+TargetTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacencyList[fNode]), set())
+            fDescendants.add(fNode)
+            
+            #Make an adjacency list including augmented edges and proposed
+            #follow on edge
+            
+            #Add the new follow on edge
+            followOnAdjacencyList[fNode].add(tNode)
+            
+            #This function makes the augmented adjacency list
+            def makeAugmentedAdjacencyList():
+                augmentedAdjacencyList = map(lambda i : childAdjacencyList[i].union(followOnAdjacencyList[i]), 
+                       range(len(childAdjacencyList)))
+                def addImpliedEdges(node, followOnEdges):
+                    visited = set()
+                    def f(node):
+                        if node not in visited:
+                            visited.add(node)
+                            for i in followOnEdges:
+                                augmentedAdjacencyList[node].add(i)
+                            map(f, childAdjacencyList[node])
+                            map(f, followOnAdjacencyList[node])
+                    map(f, childAdjacencyList[node])
+                for node in xrange(len(followOnAdjacencyList)):
+                    addImpliedEdges(node, followOnAdjacencyList[node])
+                return augmentedAdjacencyList
+            augmentedAdjacencyList = makeAugmentedAdjacencyList()
+            
+            #If the augmented adjacency doesn't contain a cycle then add the follow on edge 
+            #to the list of follow ons else remove the follow on edge from the follow on 
+            #adjacency list
+            if TargetTest.isAcyclic(augmentedAdjacencyList):
+                followOnEdges.add((fNode, tNode))
+            else:
+                followOnAdjacencyList[fNode].remove(tNode)
+        
+        #Update adjacency list adding in augmented edges
+        childAdjacencyList[:] = makeAugmentedAdjacencyList()[:]
+        
         return followOnEdges
     
     @staticmethod   
@@ -249,26 +297,27 @@ class TargetTest(JobTreeTest):
             targets[fNode].addFollowOn(targets[tNode])
         return targets[0]
     
+    @staticmethod
     def isAcyclic(adjacencyList):
         """
         Returns true if there are any cycles in the graph, which is represented as an
         adjacency list. 
         """
-        def dfs(fNode, visited, stack):
+        def cyclic(fNode, visited, stack):
             if fNode not in visited:
+                visited.add(fNode)
                 assert fNode not in stack
                 stack.append(fNode)
-                visited.add(fNode)
                 for tNode in adjacencyList[fNode]:
-                    if dfs(tNode, visited, stack):
+                    if cyclic(tNode, visited, stack):
                         return True
                 assert stack.pop() == fNode
             return fNode in stack
         visited = set()
-        for i in len(adjacencyList):
-            if dfs(i, visited, []):
-                return True
-        return False
+        for i in xrange(len(adjacencyList)):
+            if cyclic(i, visited, []):
+                return False
+        return True
 
 def f(string, outFile):
     """
