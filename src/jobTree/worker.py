@@ -256,13 +256,15 @@ def main():
             #Run the job, if there is one
             ##########################################
             
+            print "ROUND!!!!!!!!!!!!!!!!!!!"
+            
             if job.command != None: 
                 if job.command[:11] == "scriptTree ":
                     #Make a temporary file directory for the target
                     localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a target command
-                    messages = loadTarget(job.command,jobStore)._execute(job=job, 
+                    messages = loadTarget(job.command, jobStore)._execute(job=job, 
                                     stats=stats, localTempDir=localTempDir, 
                                     jobStore=jobStore)
                     
@@ -304,19 +306,17 @@ def main():
             
             #We check the requirements of the job to see if we can run it
             #within the current worker
-            jobStoreID, memory, cpu, storage, predecessorID = jobs[0]
-            if memory > job.memory:
+            successorJobStoreID, successorMemory, successorCpu, successorPredecessorID = jobs[0]
+            if successorMemory > job.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break
-            if cpu > job.cpu:
+            if successorCpu > job.cpu:
                 logger.debug("We need more cpus for the next job, so finishing")
                 break
-            if predecessorID != None: 
+            if successorPredecessorID != None: 
                 logger.debug("The job has multiple predecessors, we must return to the leader.")
                 break
-            
-            break
-            
+          
             ##########################################
             #We have a single successor job.
             #We load the successor job and transplant its command and stack
@@ -330,12 +330,14 @@ def main():
             job.stack.pop()
             
             #Load the successor job
-            successorJob = jobStore.load(jobStoreID)
+            successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
-            assert successorJob.memory == memory
-            assert successorJob.cpu == cpu
+            assert successorJob.memory == successorMemory
+            assert successorJob.cpu == successorCpu
             assert successorJob.predecessorsFinished == set()
             assert successorJob.predecessorNumber == 1
+            assert successorJob.command != None
+            assert successorJobStoreID == successorJob.jobStoreID
             
             #Transplant the command and stack to the current job
             job.command = successorJob.command
@@ -344,7 +346,7 @@ def main():
             assert job.cpu >= successorJob.cpu
             
             #Checkpoint the job and delete the successorJob
-            jobStore.jobsToDelete = [ successorJob.jobStoreID ]
+            job.jobsToDelete = [ successorJob.jobStoreID ]
             jobStore.update(job)
             jobStore.delete(successorJob.jobStoreID)
             

@@ -379,7 +379,9 @@ class Target(object):
            
         def getLocalTempDir(self):
             """
-            Get the local temporary directory.
+            Get the local temporary directory. This directory will exist for the 
+            duration of the target only, and is guaranteed to be deleted once 
+            the target terminates.
             """
             return self.localTempDir
         
@@ -440,7 +442,7 @@ class Target(object):
                                     else float(jobStore.config.attrib["default_storage"])),
                                updateID=updateID, predecessorNumber=predecessorNumber)
         
-    def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor):
+    def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor, rootJob):
         """
         Creates a job for each target in the target graph, recursively.
         """
@@ -455,7 +457,7 @@ class Target(object):
             for successors in (self._followOns, self._children):
                 jobs = map(lambda successor:
                     successor._makeJobWrappers(jobStore, targetsToUUIDs, 
-                                               targetsToJobs, self), successors)
+                                               targetsToJobs, self, rootJob), successors)
                 if len(jobs) > 0:
                     job.stack.append(jobs)
             
@@ -468,8 +470,8 @@ class Target(object):
             #The pickled target is "run" as the command of the job, see worker
             #for the mechanism which unpickles the target and executes the Target.run
             #method.
-            fileStoreID = jobStore.getEmptyFileStoreID(job.jobStoreID)
-            with jobStore.writeFileStream(job.jobStoreID) as (fileHandle, fileStoreID):
+            fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
+            with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             targetClassName = self.__class__.__name__
             job.command = ' '.join( ('scriptTree', fileStoreID, targetClassName) + self.userModule)
@@ -506,7 +508,7 @@ class Target(object):
         for successors in (self._followOns, self._children):
             jobs = map(lambda successor:
                 successor._makeJobWrappers(jobStore, targetsToUUIDs, 
-                                           targetsToJobs, self), successors)
+                                           targetsToJobs, self, job), successors)
             if len(jobs) > 0:
                 job.stack.append(jobs)
         #Remove the jobs to delete list and remove the old command finishing the update
