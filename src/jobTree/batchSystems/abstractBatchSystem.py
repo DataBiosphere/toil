@@ -60,7 +60,7 @@ class AbstractBatchSystem:
         if memory > self.maxMemory:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
 
-    def issueJob(self, command, memory, cpu):
+    def issueJob(self, command, memory, cpu, storage):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for

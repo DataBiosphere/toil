@@ -79,7 +79,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueJob(self, command, memory, cpu):
+    def issueJob(self, command, memory, cpu, storage):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
@@ -91,7 +91,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         self.nextJobID += 1
 
         job = JobTreeJob(jobID=jobID,
-                         resources=ResourceRequirement(memory=memory, cpu=cpu),
+                         resources=ResourceRequirement(memory=memory, cpu=cpu, storage=storage),
                          command=command,
                          userScript=self.userScript,
                          jobTreeDistribution=self.jobTreeDistribution)
