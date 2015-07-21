@@ -423,7 +423,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             jobBatcher.issueJob(job.jobStoreID,
                                                 int(config.attrib["default_memory"]),
                                                 int(config.attrib["default_cpu"]),
-                                                int(config.attrib["defualt_storage"]))
+                                                int(config.attrib["default_storage"]))
                             logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:
                             totalFailedJobs += 1

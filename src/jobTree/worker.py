@@ -304,7 +304,7 @@ def main():
             
             #We check the requirements of the job to see if we can run it
             #within the current worker
-            jobStoreID, memory, cpu, predecessorID = jobs[0]
+            jobStoreID, memory, cpu, storage, predecessorID = jobs[0]
             if memory > job.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break

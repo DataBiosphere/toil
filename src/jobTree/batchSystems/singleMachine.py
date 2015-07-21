@@ -102,7 +102,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None:
                 logger.debug('Received queue sentinel.')
                 break
-            jobCommand, jobID, jobCpu, jobMem = args
+            jobCommand, jobID, jobCpu, jobMem, jobStorage = args
             try:
                 numThreads = int(jobCpu / self.minCpu)
                 logger.debug('Acquiring %i bytes of memory from pool of %i.', jobMem, self.memoryPool)
@@ -200,7 +200,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 outputQueue.put((jobID, process.returncode, threadsToStart))
             inputQueue.task_done()
 
-    def issueJob(self, command, memory, cpu):
+    def issueJob(self, command, memory, cpu, storage):
         """
         Adds the command and resources to a queue to be run.
         """
@@ -213,12 +213,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(memory, self.maxMemory)
 
         self.checkResourceRequest(memory, cpu)
-        logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
+        logger.debug("Issuing the command: %s with memory: %i, cpu: %i, storage: %i" % (command, memory, cpu, storage))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = command
-        self.inputQueue.put((command, jobID, cpu, memory))
+        self.inputQueue.put((command, jobID, cpu, memory, storage))
         return jobID
 
     def killJobs(self, jobIDs):

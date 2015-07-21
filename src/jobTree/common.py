@@ -104,7 +104,7 @@ def _addOptions(addGroupFn, defaultStr):
                             "by default is 2^31 = 2 gigabytes, default=%s" % defaultStr))
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
                       help="The number of cpus to dedicate a job. default=%s" % defaultStr)
-    addOptionFn("--defaultStorage", dest="defaultStorage", default=4294967296,
+    addOptionFn("--defaultStorage", dest="defaultStorage", default=2147483648,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % defaultStr)
     addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
                       help=("The maximum number of cpus to request from the batch system at any "
