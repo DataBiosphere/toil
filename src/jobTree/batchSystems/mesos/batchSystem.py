@@ -329,7 +329,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 # number of jobs left to run ourselves to avoid infinite loop.
                 while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
                                 remainingCpus >= job_type.cpu and \
-                                remainingStor >= job_type.storage and \
+                                remainingStor >= self.__bytesToMB(job_type.storage) and \
                                 remainingMem >= self.__bytesToMB(job_type.memory):  # job tree specifies mem in bytes.
 
                     task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
@@ -351,7 +351,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.info("...launching Mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
-                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem, offerCpus, offerStor)))
+                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem/ 1000000, offerCpus, offerStor/ 1000000)))
 
     def _createTask(self, jt_job, offer):
         """
@@ -375,7 +375,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         disk = task.resources.add()
         disk.name = "disk"
         disk.type = mesos_pb2.Value.SCALAR
-        disk.scalar.value = jt_job.resources.storage
+        disk.scalar.value = jt_job.resources.storage / 1000000
 
         mem = task.resources.add()
         mem.name = "mem"
