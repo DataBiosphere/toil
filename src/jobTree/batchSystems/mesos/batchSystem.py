@@ -35,8 +35,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCpus, maxMemory, maxStorage, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxStorage)
+    def __init__(self, config, maxCpus, maxMemory, maxDisk, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
         # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
         # passed along in every Mesos task. See jobTree.common.HotDeployedResource for details.
         self.userScript = userScript
@@ -79,19 +79,19 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueJob(self, command, memory, cpu, storage):
+    def issueJob(self, command, memory, cpu, disk):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
         is the path of the file to place any std-err/std-out in.
         """
         # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
-        self.checkResourceRequest(memory, cpu, storage)
+        self.checkResourceRequest(memory, cpu, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
 
         job = JobTreeJob(jobID=jobID,
-                         resources=ResourceRequirement(memory=memory, cpu=cpu, storage=storage),
+                         resources=ResourceRequirement(memory=memory, cpu=cpu, disk=disk),
                          command=command,
                          userScript=self.userScript,
                          jobTreeDistribution=self.jobTreeDistribution)
@@ -317,7 +317,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             tasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCpus, offerMem, offerStor = self._determineOfferResources(offer)
-            log.debug("Received offer %s with cpus: %s, storage: %s, and mem: %s" \
+            log.debug("Received offer %s with cpus: %s, disk: %s, and mem: %s" \
                       % (offer.id.value, offerCpus, offerStor, offerMem))
             remainingCpus = offerCpus
             remainingMem = offerMem
@@ -329,7 +329,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 # number of jobs left to run ourselves to avoid infinite loop.
                 while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
                                 remainingCpus >= job_type.cpu and \
-                                remainingStor >= self.__bytesToMB(job_type.storage) and \
+                                remainingStor >= self.__bytesToMB(job_type.disk) and \
                                 remainingMem >= self.__bytesToMB(job_type.memory):  # job tree specifies mem in bytes.
 
                     task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
@@ -340,7 +340,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                             task.task_id.value, offer.id.value))
                         remainingCpus -= job_type.cpu
                         remainingMem -= self.__bytesToMB(job_type.memory)
-                        remainingStor -= job_type.storage
+                        remainingStor -= job_type.disk
                     nextToLaunchIndex += 1
 
             # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
@@ -375,7 +375,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         disk = task.resources.add()
         disk.name = "disk"
         disk.type = mesos_pb2.Value.SCALAR
-        disk.scalar.value = jt_job.resources.storage / 1000000
+        disk.scalar.value = jt_job.resources.disk / 1000000
 
         mem = task.resources.add()
         mem.name = "mem"

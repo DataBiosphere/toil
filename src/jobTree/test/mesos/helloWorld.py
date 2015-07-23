@@ -18,7 +18,7 @@ def hello_world(target, memory=100, cpu=0.5):
     foo_bam = target.fileStore.writeGlobalFile('foo_bam.txt')
 
     # Spawn child
-    target.addChildTargetFn(hello_world_child, foo_bam, memory=100, cpu=0.5, storage=2000)
+    target.addChildTargetFn(hello_world_child, foo_bam, memory=100, cpu=0.5, disk=2000)
 
 
 def hello_world_child(target, hw, memory=100, cpu=0.5):
@@ -50,7 +50,7 @@ def main():
 
 
     # Launch first jobTree Target
-    i = Target.wrapTargetFn(hello_world, memory=100, cpu=0.5, storage=2000)
+    i = Target.wrapTargetFn(hello_world, memory=100, cpu=0.5, disk=2000)
     j = Target.Runner.startJobTree(i, options)
 
 

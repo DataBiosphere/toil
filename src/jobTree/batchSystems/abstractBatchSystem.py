@@ -40,7 +40,7 @@ class AbstractBatchSystem:
         """
         return False
 
-    def __init__(self, config, maxCpus, maxMemory, maxStorage):
+    def __init__(self, config, maxCpus, maxMemory, maxDisk):
         """This method must be called.
         The config object is setup by the jobTreeSetup script and
         has configuration parameters for the job tree. You can add stuff
@@ -49,21 +49,21 @@ class AbstractBatchSystem:
         self.config = config
         self.maxCpus = maxCpus
         self.maxMemory = maxMemory
-        self.maxStorage = maxStorage
+        self.maxDisk = maxDisk
         
-    def checkResourceRequest(self, memory, cpu, storage):
+    def checkResourceRequest(self, memory, cpu, disk):
         """Check resource request is not greater than that available.
         """
         assert memory is not None
-        assert storage is not None
+        assert disk is not None
         assert cpu is not None
         if cpu > self.maxCpus:
             raise InsufficientSystemResources('CPUs', cpu, self.maxCpus)
         if memory > self.maxMemory:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
-        if storage > self.maxStorage:
-            raise InsufficientSystemResources('storage', storage, self.maxStorage)
-    def issueJob(self, command, memory, cpu, storage):
+        if disk > self.maxDisk:
+            raise InsufficientSystemResources('disk', disk, self.maxDisk)
+    def issueJob(self, command, memory, cpu, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for

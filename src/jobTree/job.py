@@ -6,7 +6,7 @@ class Job( object ):
     """
     A class encapsulating the state of a jobTree job.
     """
-    def __init__( self, command, memory, cpu, storage,
+    def __init__( self, command, memory, cpu, disk,
                   jobStoreID, remainingRetryCount, 
                   updateID, predecessorNumber,
                   jobsToDelete=None, predecessorsFinished=None, 
@@ -15,7 +15,7 @@ class Job( object ):
         self.command = command
         self.memory = memory #Max number of bytes used by the job
         self.cpu = cpu #Number of cores to be used by the job
-        self.storage = storage #Max number of bytes on disk space used by the job
+        self.disk = disk #Max number of bytes on disk space used by the job
         
         #The jobStoreID of the job. JobStore.load(jobStoreID) will return 
         #the job
@@ -50,7 +50,7 @@ class Job( object ):
         self.predecessorsFinished = predecessorsFinished or set()
         
         #The list of successor jobs to run. Successor jobs are stored
-        #as 5-tuples of the form (jobStoreId, memory, cpu, storage, predecessorNumber).
+        #as 5-tuples of the form (jobStoreId, memory, cpu, disk, predecessorNumber).
         #Successor jobs are run in reverse order from the stack.
         self.stack = stack or []
         

@@ -36,21 +36,21 @@ class JobTest(JobTreeTest):
     
         command = "by your command"
         memory = 2^32
-        storage = 2^32
+        disk = 2^32
         cpu = 1
         jobStoreID = 100
         remainingRetryCount = 5
         predecessorNumber = 0
         updateID = 1000
         
-        j = Job(command, memory, cpu, storage, jobStoreID, remainingRetryCount,
+        j = Job(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         
         #Check attributes
         #
         self.assertEquals(j.command, command)
         self.assertEquals(j.memory, memory)
-        self.assertEquals(j.storage, storage)
+        self.assertEquals(j.disk, disk)
         self.assertEquals(j.cpu, cpu)
         self.assertEquals(j.jobStoreID, jobStoreID)
         self.assertEquals(j.remainingRetryCount, remainingRetryCount)
@@ -61,7 +61,7 @@ class JobTest(JobTreeTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = Job(command, memory, cpu, storage, jobStoreID, remainingRetryCount,
+        j2 = Job(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal

@@ -112,7 +112,7 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def create( self, command, memory, cpu, storage, updateID=None,
+    def create( self, command, memory, cpu, disk, updateID=None,
                 predecessorNumber=0 ):
         """
         Creates a job, adding it to the store.

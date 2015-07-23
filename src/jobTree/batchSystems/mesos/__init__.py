@@ -14,7 +14,7 @@ ResourceRequirement = namedtuple('ResourceRequirement', (
     # Number of CPU cores needed for a task
     'cpu',
     # Number of bytes (!) needed for task on disk
-    'storage'))
+    'disk'))
 
 JobTreeJob = namedtuple('JobTreeJob', (
     # A job ID specific to this batch system implementation
