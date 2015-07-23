@@ -42,12 +42,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     numCores = multiprocessing.cpu_count()
 
-    def __init__(self, config, maxCpus, maxMemory, badWorker=False):
+    def __init__(self, config, maxCpus, maxMemory, maxDisk, badWorker=False):
         assert type(maxCpus) == int
         if maxCpus > self.numCores:
             logger.warn('Limiting maxCpus to CPU count of system (%i).', self.numCores)
             maxCpus = self.numCores
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
         assert self.maxCpus >= 1
         assert self.maxMemory >= 1
         # The scale allows the user to apply a factor to each task's CPU requirement, thereby squeezing more tasks
@@ -102,7 +102,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None:
                 logger.debug('Received queue sentinel.')
                 break
-            jobCommand, jobID, jobCpu, jobMem = args
+            jobCommand, jobID, jobCpu, jobMem, jobDisk = args
             try:
                 numThreads = int(jobCpu / self.minCpu)
                 logger.debug('Acquiring %i bytes of memory from pool of %i.', jobMem, self.memoryPool)
@@ -200,7 +200,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 outputQueue.put((jobID, process.returncode, threadsToStart))
             inputQueue.task_done()
 
-    def issueJob(self, command, memory, cpu):
+    def issueJob(self, command, memory, cpu, disk):
         """
         Adds the command and resources to a queue to be run.
         """
@@ -212,13 +212,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert cpu >= self.minCpu
         assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(memory, self.maxMemory)
 
-        self.checkResourceRequest(memory, cpu)
-        logger.debug("Issuing the command: %s with memory: %i, cpu: %i" % (command, memory, cpu))
+        self.checkResourceRequest(memory, cpu, disk)
+        logger.debug("Issuing the command: %s with memory: %i, cpu: %i, disk: %i" % (command, memory, cpu, disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = command
-        self.inputQueue.put((command, jobID, cpu, memory))
+        self.inputQueue.put((command, jobID, cpu, memory, disk))
         return jobID
 
     def killJobs(self, jobIDs):

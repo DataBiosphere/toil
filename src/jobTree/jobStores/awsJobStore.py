@@ -63,13 +63,13 @@ class AWSJobStore( AbstractJobStore ):
         for jobItem in result:
             yield AWSJob.fromItem(jobItem)
 
-    def create( self, command, memory, cpu, updateID=None,
+    def create( self, command, memory, cpu, disk,updateID=None,
                 predecessorNumber=0 ):
         jobStoreID = self._newJobID( )
         log.debug( "Creating job %s for '%s'",
                    jobStoreID, '<no command>' if command is None else command )
         job = AWSJob( jobStoreID=jobStoreID,
-                             command=command, memory=memory, cpu=cpu,
+                             command=command, memory=memory, cpu=cpu, disk=disk,
                              remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
                              updateID=updateID, predecessorNumber=predecessorNumber)
         for attempt in retry_sdb( ):
@@ -440,7 +440,7 @@ class AWSJobStore( AbstractJobStore ):
                     version = upload.complete_upload( ).version_id
         key = self.files.get_key( jobStoreFileID )
         assert key.size == file_size
-        assert self._fileSizeAndTime( localFilePath ) == (file_size, file_time)
+        assert self._fileSizeAndTime( localFilePath ) == (file_size, file_time) #why do this? No one can touch the file while it is uploaded?
         return version
 
     @contextmanager
@@ -777,6 +777,7 @@ class AWSJob( Job ):
     fromItemTransform = defaultdict( lambda: passThrough,
                                      predecessorNumber=int,
                                      memory=float,
+                                     disk=float,
                                      cpu=float,
                                      updateID=str,
                                      command=toNoneable,
