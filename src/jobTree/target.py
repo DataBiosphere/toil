@@ -53,8 +53,6 @@ class Target(object):
     to jobTree. 
     """
     
-    __metaclass__ = ABCMeta
-    
     def __init__(self, memory=sys.maxint, cpu=sys.maxint):
         """
         This method must be called by any overiding constructor.
@@ -79,8 +77,7 @@ class Target(object):
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Target.rv()
         self._rvs = {}
-    
-    @abstractmethod  
+     
     def run(self, fileStore):
         """
         Do user stuff here, including creating any follow on jobs.
@@ -106,7 +103,7 @@ class Target(object):
         Disallowing this also avoids nested promises (PromisedTargetReturnValue 
         instances that contain other PromisedTargetReturnValue). 
         """
-        raise NotImplementedError()
+        pass
     
     def addChild(self, childTarget):
         """
@@ -383,6 +380,13 @@ class Target(object):
             """
             return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
         
+        def globalFileExists(self, fileStoreID):
+            """
+            :rtype : True if and only if the jobStore contains the given fileStoreID, else
+            false.
+            """
+            return self.jobStore.fileExists(fileStoreID)
+        
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
@@ -649,7 +653,7 @@ class Target(object):
                 if PromisedTargetReturnValue.jobStoreFileID == None:
                     PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
             #Now recursively do the same for the children and follow ons.
-            for successorTarget in self._children + self._followOns:
+            for successorTarget in self._children + self._followOns + self._services:
                 successorTarget._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
     
     @staticmethod
@@ -720,15 +724,18 @@ class Target(object):
                     extraEdges[descendant] += target._followOns[:]
         return extraEdges 
     
-    def _modifyTargetGraphForServices(self, jobStore):
+    def _modifyTargetGraphForServices(self, fileStore):
         """
-        Modifies the target graph to correcty schedule any services
+        Modifies the target graph to correctly schedule any services
         defined for this target.
         """
         if len(self._services) > 0:
-            #Set the stop jobStore fileID for each service
+            #Set the start/stop jobStore fileIDs for each service
             for service in self._services:
-                service.stopFileStoreID = jobStore.getEmptyFileStoreID()
+                service.startFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.startFileStoreID)
+                service.stopFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.stopFileStoreID)
             
             def removePredecessor(target):
                 assert self in target._predecessors
@@ -736,7 +743,8 @@ class Target(object):
             
             #t1 and t2 are used to run the children and followOns of the target
             #after the services of the target are started
-            t1, t2 = Target(), Target()
+            startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
+            t1, t2 = Target.wrapTargetFn(blockUntilDeleted, startFileStoreIDs), Target()
             #t1 runs the children of the target
             for child in self._children:
                 removePredecessor(child)
@@ -748,12 +756,12 @@ class Target(object):
                 t2.addChild(followOn)
             self._followOns = []
             #Wire up the self, t1 and t2
-            self.addFollowOn(t1)
+            self.addChild(t1)
             t1.addFollowOn(t2)
             #Now make the services children of the target
             for service in self._services:
                 self.addChild(service)
-                assert service._predecessors == set(self)
+                assert service._predecessors == set((self,))
             #The final task once t1 and t2 have finished is to stop the services
             #this is achieved by deleting the stopFileStoreIDs.
             t2.addFollowOnTargetFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
@@ -786,7 +794,7 @@ class Target(object):
         #Store the return values for any promised return value
         self._setReturnValuesForPromises(self, returnValues, jobStore)
         #Modify target graph to run any services correctly
-        self._modifyTargetGraphForServices(jobStore)
+        self._modifyTargetGraphForServices(fileStore)
         #Turn the graph into a graph of jobs in the jobStore
         self._serialiseTargetGraph(job, jobStore)
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
@@ -900,11 +908,11 @@ class TargetService(Target):
         #that the service should cease, is initialised in 
         #Target._modifyTargetGraphForServices
         self.stopFileStoreID = None
+        #Similarly a empty file which when deleted is used to signal that the 
+        #service is established
+        self.startFileStoreID = None
         
     def run(self, fileStore):
-        #Create an empty file in the jobStore which when deleted is used to signal
-        #that the service should cease
-        stopFileStoreID = fileStore.getEmptyFileStoreID()
         #Start the service
         startCredentials = self.service.start()
         #The start credentials  must be communicated to processes connecting to
@@ -912,9 +920,17 @@ class TargetService(Target):
         #cheat and set the return value promise within the run method
         self._setReturnValuesForPromises(self, startCredentials, 
                                          fileStore.jobStore)
+        self._rvs = {} #Set this to avoid the return values being updated after the 
+        #run method has completed!
+        #Now flag that the service is running jobs can connect to it
+        assert self.startFileStoreID != None
+        assert fileStore.globalFileExists(self.startFileStoreID)
+        fileStore.deleteGlobalFile(self.startFileStoreID)
+        assert not fileStore.globalFileExists(self.startFileStoreID)
         #Now block until we are told to stop, which is indicated by the removal 
         #of a file
-        while fileStore.jobStore.exists(stopFileStoreID):
+        assert self.stopFileStoreID != None
+        while fileStore.globalFileExists(self.stopFileStoreID):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         self.service.stop()
@@ -941,7 +957,7 @@ class PromisedTargetReturnValue():
         """
         assert self.jobStoreFileID != None 
         with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
-            value = cPickle.load(fileHandle) #If this doesn't work, then it is likely the Target that is promising value has not yet been run.
+            value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
             if isinstance(value, PromisedTargetReturnValue):
                 raise RuntimeError("A nested PromisedTargetReturnValue has been found.") #We do not allow the return of PromisedTargetReturnValue instance from the run function
             return value
@@ -958,4 +974,17 @@ def deleteFileStoreIDs(target, jobStoreFileIDsToDelete):
     """
     Target function that deletes a bunch of files using their jobStoreFileIDs
     """
-    map(lambda i : target.fileStore.delete(i), jobStoreFileIDsToDelete)
+    map(lambda i : target.fileStore.deleteGlobalFile(i), jobStoreFileIDsToDelete)
+
+def blockUntilDeleted(target, jobStoreFileIDs): 
+    """
+    Function will not terminate until all the fileStoreIDs in jobStoreFileIDs
+    cease to exist.
+    """
+    while True:
+        jobStoreFileIDs = [ i for i in jobStoreFileIDs 
+                           if target.fileStore.globalFileExists(i) ]
+        if len(jobStoreFileIDs) == 0:
+            break
+        time.sleep(1)
+        

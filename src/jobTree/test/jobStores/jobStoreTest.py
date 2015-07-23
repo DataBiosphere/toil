@@ -190,10 +190,15 @@ class hidden:
             # Test per-job files: Create empty file on master, ...
             #
             
-            #First recreate job 
+            # First recreate job 
             jobOnMaster = master.create( "master1", 12, 34, "foo")
             
             fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
+            
+            # Check file exists
+            self.assertTrue(worker.fileExists(fileOne))
+            self.assertTrue(master.fileExists(fileOne))
+            
             # ... write to the file on worker, ...
             with worker.updateFileStream( fileOne ) as f:
                 f.write( "one" )
@@ -236,6 +241,10 @@ class hidden:
                 self.assertEquals( f.read( ), "three" )
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             worker.deleteFile( fileOne )
+
+            # Check the file is gone
+            self.assertTrue(not worker.fileExists(fileOne))
+            self.assertTrue(not master.fileExists(fileOne))
 
             # Test stats and logging
             testRead = []

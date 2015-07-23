@@ -256,8 +256,6 @@ def main():
             #Run the job, if there is one
             ##########################################
             
-            print "ROUND!!!!!!!!!!!!!!!!!!!"
-            
             if job.command != None: 
                 if job.command[:11] == "scriptTree ":
                     #Make a temporary file directory for the target

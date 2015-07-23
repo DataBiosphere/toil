@@ -133,12 +133,17 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
     
     def deleteFile(self, jobStoreFileID):
-        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
-        if not os.path.exists(absPath):
+        if not self.fileExists(jobStoreFileID):
             return
+        os.remove(self._getAbsPath(jobStoreFileID))
+        
+    def fileExists(self, jobStoreFileID):
+        absPath = self._getAbsPath(jobStoreFileID)
+        if not os.path.exists(absPath):
+            return False
         if not os.path.isfile(absPath):
             raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
-        os.remove(self._getAbsPath(jobStoreFileID))
+        return True
     
     @contextmanager
     def writeFileStream(self, jobStoreID):
