@@ -439,7 +439,7 @@ class Target(object):
                                cpu=(self.cpu if self.cpu != sys.maxint
                                     else float(jobStore.config.attrib["default_cpu"])),
                                disk=(self.disk if self.disk != sys.maxint
-                                    else float(jobStore.config.attrib["default_storage"])),
+                                    else float(jobStore.config.attrib["default_disk"])),
                                updateID=updateID, predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor, rootJob):

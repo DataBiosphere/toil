@@ -104,7 +104,7 @@ def _addOptions(addGroupFn, defaultStr):
                             "by default is 2^31 = 2 gigabytes, default=%s" % defaultStr))
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
                       help="The number of cpus to dedicate a job. default=%s" % defaultStr)
-    addOptionFn("--defaultStorage", dest="defaultStorage", default=2147483648,
+    addOptionFn("--defaultDisk", dest="defaultDisk", default=2147483648,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % defaultStr)
     addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
                       help=("The maximum number of cpus to request from the batch system at any "
@@ -112,7 +112,7 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--maxMemory", dest="maxMemory", default=sys.maxint,
                       help=("The maximum amount of memory to request from the batch \
                       system at any one time. default=%s" % defaultStr))
-    addOptionFn("--maxStorage", dest="maxStorage", default=sys.maxint,
+    addOptionFn("--maxDisk", dest="maxDisk", default=sys.maxint,
                       help=("The maximum amount of disk space to request from the batch \
                       system at any one time. default=%s" % defaultStr))
 
@@ -218,10 +218,10 @@ def createConfig(options):
     config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
     config.attrib["default_memory"] = str(int(options.defaultMemory))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["default_storage"] = str(int(options.defaultStorage))
+    config.attrib["default_disk"] = str(int(options.defaultDisk))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
     config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_storage"] = str(int(options.maxStorage))
+    config.attrib["max_disk"] = str(int(options.maxDisk))
     config.attrib["scale"] = str(float(options.scale))
     if options.bigBatchSystem is not None:
         config.attrib["big_batch_system"] = options.bigBatchSystem
@@ -254,7 +254,7 @@ def loadBatchSystemClass(config, key="batch_system"):
     kwargs = dict(config=config,
                   maxCpus=int(config.attrib['max_cpus']),
                   maxMemory=int(config.attrib['max_memory']),
-                  maxStorage=int(config.attrib['max_storage']))
+                  maxDisk=int(config.attrib['max_disk']))
     if batchSystemName == 'parasol':
         batchSystemClass = ParasolBatchSystem
         logger.info('Using the parasol batch system')

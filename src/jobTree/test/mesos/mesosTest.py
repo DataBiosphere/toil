@@ -41,7 +41,6 @@ class MesosTest( JobTreeTest, MesosTestSupport ):
                                "--logLevel={logLevel}".format( dir=dir,
                                                                logLevel=getLogLevelString( ) ),
                                shell=True )
-        self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
     def __do_test_stress( self, useBadExecutor, numTargets ):
         """

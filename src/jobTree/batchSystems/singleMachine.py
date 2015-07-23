@@ -102,7 +102,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None:
                 logger.debug('Received queue sentinel.')
                 break
-            jobCommand, jobID, jobCpu, jobMem, jobStorage = args
+            jobCommand, jobID, jobCpu, jobMem, jobDisk = args
             try:
                 numThreads = int(jobCpu / self.minCpu)
                 logger.debug('Acquiring %i bytes of memory from pool of %i.', jobMem, self.memoryPool)
