@@ -54,6 +54,12 @@ class TargetTest(JobTreeTest):
         
         #Cleanup
         os.remove(outFile)
+        
+    def testService(self):
+        """
+        Tests the creation of a Target.Service.
+        """
+        pass
 
     def testCycleDetection(self):
         """

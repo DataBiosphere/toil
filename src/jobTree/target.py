@@ -23,15 +23,13 @@ from collections import namedtuple
 import os
 import sys
 import importlib
-import time
 from optparse import OptionParser
 import xml.etree.cElementTree as ET
 from abc import ABCMeta, abstractmethod
 import tempfile
 import uuid
-
+import time
 from jobTree.resource import ModuleDescriptor
-from jobTree.lib.bioio import getTempFile
 
 try:
     import cPickle 
@@ -72,7 +70,9 @@ class Target(object):
         self._children = []
         #See Target.addFollowOn
         self._followOns = []
-        #A follow-on or child of a target A, is a "successor" of A, if B
+        #See Target.addService
+        self._services = []
+        #A follow-on, service or child of a target A, is a "successor" of A, if B
         #is a successor of A, then A is a predecessor of B. 
         self._predecessors = set()
         #Variables used for serialisation
@@ -120,6 +120,20 @@ class Target(object):
         childTarget._addPredecessor(self)
         return childTarget
     
+    def addService(self, service):
+        """
+        Add a service of type Target.Service. The Target.Service.start() method 
+        will be called after the run method has completed but before any successors 
+        are run. It's Target.Service.stop() method will be called once the 
+        successors of the target have been run.
+        
+        :rtype : An instance of PromisedTargetReturnValue which will be replaced
+        with the return value from the service.start() in any successor of the job. 
+        """
+        targetService = TargetService(service)
+        self._services.append(targetService)
+        return targetService.rv()
+    
     def addFollowOn(self, followOnTarget):
         """
         Adds a follow-on target, follow-on targets will be run
@@ -132,7 +146,7 @@ class Target(object):
         self._followOns.append(followOnTarget)
         followOnTarget._addPredecessor(self)
         return followOnTarget
-        
+    
     ##Convenience functions for creating targets
     
     def addChildFn(self, fn, *args, **kwargs):
@@ -236,8 +250,9 @@ class Target(object):
     
     ####################################################
     #The following nested classes are used for
-    #creating job trees (Target.Runner) and 
-    #managing temporary files (Target.FileStore)
+    #creating job trees (Target.Runner), 
+    #managing temporary files (Target.FileStore),
+    #and defining a service (Target.Service)
     ####################################################
     
     class Runner(object):
@@ -390,6 +405,38 @@ class Target(object):
             is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
+    
+    class Service:
+        """
+        Abstract class used to define the interface to a service.
+        """
+        __metaclass__ = ABCMeta
+        def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+            """
+            Memory and cpu requirements are specified identically to the Target
+            constructor.
+            """
+            self.memory = memory
+            self.cpu = cpu
+        
+        @abstractmethod       
+        def start(self):
+            """
+            Start the service.
+            
+            :rtype : An object describing how to access the service. Must be 
+            pickleable. Will be used by a target to access the service.
+            """
+            pass
+        
+        @abstractmethod
+        def stop(self):
+            """
+            Stops the service.
+            
+            Function can block until complete. 
+            """
+            pass
 
     ####################################################
     #Private functions
@@ -459,10 +506,12 @@ class Target(object):
                     job.stack.append(jobs)
             
             #Pickle the target so that its run method can be run at a later time.
-            #Drop out the children/followOns/predecessors - which are all recored
-            #within the jobStore and do not need to be stored within the target
+            #Drop out the children/followOns/predecessors/services - which are 
+            #all recored within the jobStore and do not need to be stored within 
+            #the target
             self._children = []
             self._followOns = []
+            self._services = []
             self._predecessors = set()
             #The pickled target is "run" as the command of the job, see worker
             #for the mechanism which unpickles the target and executes the Target.run
@@ -671,6 +720,45 @@ class Target(object):
                     extraEdges[descendant] += target._followOns[:]
         return extraEdges 
     
+    def _modifyTargetGraphForServices(self, jobStore):
+        """
+        Modifies the target graph to correcty schedule any services
+        defined for this target.
+        """
+        if len(self._services) > 0:
+            #Set the stop jobStore fileID for each service
+            for service in self._services:
+                service.stopFileStoreID = jobStore.getEmptyFileStoreID()
+            
+            def removePredecessor(target):
+                assert self in target._predecessors
+                target._predecessors.remove(self)
+            
+            #t1 and t2 are used to run the children and followOns of the target
+            #after the services of the target are started
+            t1, t2 = Target(), Target()
+            #t1 runs the children of the target
+            for child in self._children:
+                removePredecessor(child)
+                t1.addChild(child)
+            self._children = []
+            #t2 runs the followOns of the target
+            for followOn in self._followOns:
+                removePredecessor(followOn)
+                t2.addChild(followOn)
+            self._followOns = []
+            #Wire up the self, t1 and t2
+            self.addFollowOn(t1)
+            t1.addFollowOn(t2)
+            #Now make the services children of the target
+            for service in self._services:
+                self.addChild(service)
+                assert service._predecessors == set(self)
+            #The final task once t1 and t2 have finished is to stop the services
+            #this is achieved by deleting the stopFileStoreIDs.
+            t2.addFollowOnTargetFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
+            self._services = [] #Defensive
+    
     ####################################################
     #Function which worker calls to ultimately invoke
     #a targets Target.run method, and then handle created
@@ -697,6 +785,8 @@ class Target(object):
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
         self._setReturnValuesForPromises(self, returnValues, jobStore)
+        #Modify target graph to run any services correctly
+        self._modifyTargetGraphForServices(jobStore)
         #Turn the graph into a graph of jobs in the jobStore
         self._serialiseTargetGraph(job, jobStore)
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
@@ -741,7 +831,6 @@ class Target(object):
                 "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
                 moduleName)
         return moduleDirPath, moduleName
-    
 
 class TargetGraphCycleException( Exception ):
     def __init__( self, stack ):
@@ -778,7 +867,6 @@ class FunctionWrappingTarget(Target):
     def getUserScript(self):
         return self.userFunctionModule
 
-
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
     Target used to wrap a function.
@@ -799,6 +887,37 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
         userFunction = self._getUserFunction()
         self.fileStore = fileStore
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+    
+class TargetService(Target):
+    """
+    Target used to wrap a Target.Service instance. This constructor should
+    not be called by a user.
+    """
+    def __init__(self, service):
+        Target.__init__(self, memory=service.memory, cpu=service.cpu)
+        self.service = service
+        #An empty file in the jobStore which when deleted is used to signal
+        #that the service should cease, is initialised in 
+        #Target._modifyTargetGraphForServices
+        self.stopFileStoreID = None
+        
+    def run(self, fileStore):
+        #Create an empty file in the jobStore which when deleted is used to signal
+        #that the service should cease
+        stopFileStoreID = fileStore.getEmptyFileStoreID()
+        #Start the service
+        startCredentials = self.service.start()
+        #The start credentials  must be communicated to processes connecting to
+        #the service, to do this while the run method is running we 
+        #cheat and set the return value promise within the run method
+        self._setReturnValuesForPromises(self, startCredentials, 
+                                         fileStore.jobStore)
+        #Now block until we are told to stop, which is indicated by the removal 
+        #of a file
+        while fileStore.jobStore.exists(stopFileStoreID):
+            time.sleep(1) #Avoid excessive polling
+        #Now kill the service
+        self.service.stop()
 
 class PromisedTargetReturnValue():
     """
@@ -834,3 +953,9 @@ class PromisedTargetReturnValue():
         assert self.jobStoreFileID != None
         with jobStore.updateFileStream(self.jobStoreFileID) as fileHandle:
             cPickle.dump(valueToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+
+def deleteFileStoreIDs(target, jobStoreFileIDsToDelete):
+    """
+    Target function that deletes a bunch of files using their jobStoreFileIDs
+    """
+    map(lambda i : target.fileStore.delete(i), jobStoreFileIDsToDelete)
