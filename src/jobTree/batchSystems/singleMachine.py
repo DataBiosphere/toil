@@ -42,12 +42,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     numCores = multiprocessing.cpu_count()
 
-    def __init__(self, config, maxCpus, maxMemory, badWorker=False):
+    def __init__(self, config, maxCpus, maxMemory, maxStorage, badWorker=False):
         assert type(maxCpus) == int
         if maxCpus > self.numCores:
             logger.warn('Limiting maxCpus to CPU count of system (%i).', self.numCores)
             maxCpus = self.numCores
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxStorage)
         assert self.maxCpus >= 1
         assert self.maxMemory >= 1
         # The scale allows the user to apply a factor to each task's CPU requirement, thereby squeezing more tasks
@@ -212,7 +212,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert cpu >= self.minCpu
         assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(memory, self.maxMemory)
 
-        self.checkResourceRequest(memory, cpu)
+        self.checkResourceRequest(memory, cpu, storage)
         logger.debug("Issuing the command: %s with memory: %i, cpu: %i, storage: %i" % (command, memory, cpu, storage))
         with self.jobIndexLock:
             jobID = self.jobIndex

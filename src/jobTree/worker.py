@@ -306,12 +306,15 @@ def main():
             
             #We check the requirements of the job to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCpu, successorPredecessorID = jobs[0]
+            successorJobStoreID, successorMemory, successorCpu, successorStorage, successorPredecessorID = jobs[0]
             if successorMemory > job.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break
             if successorCpu > job.cpu:
                 logger.debug("We need more cpus for the next job, so finishing")
+                break
+            if successorStorage > job.storage:
+                logger.debug("We need more storage for the next job, so finishing")
                 break
             if successorPredecessorID != None: 
                 logger.debug("The job has multiple predecessors, we must return to the leader.")

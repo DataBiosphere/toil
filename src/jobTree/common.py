@@ -253,7 +253,8 @@ def loadBatchSystemClass(config, key="batch_system"):
     batchSystemName = config.attrib[key]
     kwargs = dict(config=config,
                   maxCpus=int(config.attrib['max_cpus']),
-                  maxMemory=int(config.attrib['max_memory']))
+                  maxMemory=int(config.attrib['max_memory']),
+                  maxStorage=int(config.attrib['max_storage']))
     if batchSystemName == 'parasol':
         batchSystemClass = ParasolBatchSystem
         logger.info('Using the parasol batch system')

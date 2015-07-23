@@ -63,7 +63,7 @@ class SortTest(JobTreeTest, MesosTestSupport):
                 l.sort()
             
             # Run the jobTree
-            firstTarget = Target.wrapTargetFn(setup, tempSortFile, N)
+            firstTarget = Target.wrapTargetFn(setup, tempSortFile, N, memory=5000, )
             i = Target.Runner.startJobTree(firstTarget, options)
             
             #There should be no failed jobs

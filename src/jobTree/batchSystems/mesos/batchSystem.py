@@ -35,8 +35,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCpus, maxMemory, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory)
+    def __init__(self, config, maxCpus, maxMemory, maxStorage, masterIP, useBadExecutor=False, userScript=None, jobTreeDistribution=None):
+        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxStorage)
         # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
         # passed along in every Mesos task. See jobTree.common.HotDeployedResource for details.
         self.userScript = userScript
@@ -86,7 +86,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         is the path of the file to place any std-err/std-out in.
         """
         # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
-        self.checkResourceRequest(memory, cpu)
+        self.checkResourceRequest(memory, cpu, storage)
         jobID = self.nextJobID
         self.nextJobID += 1
 
