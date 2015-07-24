@@ -53,6 +53,9 @@ class AWSJobStore( AbstractJobStore ):
     """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadJobTreeState."""
 
+    def fileExists(self, jobStoreFileID ):
+        return bool(self.files.get_key( key_name=jobStoreFileID))
+
     def jobs( self ):
         for attempt in retry_sdb( ):
             with attempt:
