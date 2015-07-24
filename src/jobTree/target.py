@@ -127,7 +127,7 @@ class Target(object):
         :rtype : An instance of PromisedTargetReturnValue which will be replaced
         with the return value from the service.start() in any successor of the job. 
         """
-        targetService = TargetService(service)
+        targetService = ServiceTarget(service)
         self._services.append(targetService)
         return targetService.rv()
     
@@ -191,6 +191,14 @@ class Target(object):
         Convenience function for constructor of FunctionWrappingTarget
         """
         return FunctionWrappingTarget(fn, *args, **kwargs)
+    
+    def encapsulate(self):
+        """
+        See EncapsulatedTarget.
+        
+        :rtype : A new EncapsulatedTarget for this target.
+        """
+        return EncapsulatedTarget(self)
     
     ####################################################
     #The following function is used for passing return values between 
@@ -899,7 +907,7 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
         self.fileStore = fileStore
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
     
-class TargetService(Target):
+class ServiceTarget(Target):
     """
     Target used to wrap a Target.Service instance. This constructor should
     not be called by a user.
@@ -937,6 +945,57 @@ class TargetService(Target):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         self.service.stop()
+        
+class EncapsulatedTarget(Target):
+    """
+    An convenience Target class used to make a target subgraph appear to 
+    be a single target. 
+    
+    Let A be a root target potentially with children and follow-ons.
+    Without an encapsulated target the simplest way to specify a target B which 
+    runs after A and all its successors is to create a parent of A' and then make B 
+    a follow-on of A'. In turn if we wish to run C after B and its successors then we 
+    repeat the process to create B', a parent of B, creating a graph in which A' is run,
+    then A as a child of A', then the successors of A, then B' as a follow on of A', 
+    then B as a child of B', then the successors of B, then finally C as follow on of B', 
+    e.g.
+    
+    A, B, C = A(), B(), C() #Functions to create target graphs
+    A' = Target()
+    B' = Target()
+    A'.addChild(A)
+    A'.addFollowOn(B')
+    B'.addChild(B)
+    B'.addFollowOn(C)
+    
+    An encapsulated target of E(A) of A saves making A' and B', instead we can write:
+    
+    A, B, C = A().encapsulate(), B(), C() #Functions to create target graphs
+    A.addChild(B)
+    A.addFollowOn(C)
+    
+    Note the call to encapsulate creates the EncapsulatedTarget.
+    """
+    def __init__(self, target):
+        """
+        target is the target to encapsulate.
+        """
+        Target.__init__(self)
+        Target.addChild(self, target)
+        self.followOn = Target()
+        Target.addFollowOn(self, self.followOn)
+        
+    def addChild(self, childTarget):
+        return Target.addChild(self.followOn, childTarget)
+    
+    def addService(self, service):
+        return Target.addService(self.followOn, service)
+    
+    def addFollowOn(self, followOnTarget):
+        return Target.addFollowOn(self.followOn, followOnTarget)
+    
+    def rv(self, argIndex=0):
+        return self.followOn.rv(argIndex)
 
 class PromisedTargetReturnValue():
     """

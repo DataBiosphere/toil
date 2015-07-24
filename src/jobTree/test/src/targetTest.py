@@ -3,7 +3,7 @@ import os
 import random
 
 from jobTree.lib.bioio import getTempFile
-from jobTree.target import Target, TargetGraphCycleException
+from jobTree.target import Target, TargetGraphCycleException 
 from jobTree.test import JobTreeTest
 
 class TargetTest(JobTreeTest):
