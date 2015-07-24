@@ -235,6 +235,24 @@ class TargetTest(JobTreeTest):
         The follow on edges are returned as a set and their augmented edges
         are added to the adjacency list.
         """
+        #This function makes the augmented adjacency list
+        def makeAugmentedAdjacencyList():
+            augmentedAdjacencyList = map(lambda i : childAdjacencyList[i].union(followOnAdjacencyList[i]),
+                   range(len(childAdjacencyList)))
+            def addImpliedEdges(node, followOnEdges):
+                visited = set()
+                def f(node):
+                    if node not in visited:
+                        visited.add(node)
+                        for i in followOnEdges:
+                            augmentedAdjacencyList[node].add(i)
+                        map(f, childAdjacencyList[node])
+                        map(f, followOnAdjacencyList[node])
+                map(f, childAdjacencyList[node])
+            for node in xrange(len(followOnAdjacencyList)):
+                addImpliedEdges(node, followOnAdjacencyList[node])
+            return augmentedAdjacencyList
+
         followOnEdges = set()
         followOnAdjacencyList = map(lambda i : set(), childAdjacencyList)        
         #Loop to create the follow on edges (try 1000 times)
@@ -251,24 +269,7 @@ TargetTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacen
             
             #Add the new follow on edge
             followOnAdjacencyList[fNode].add(tNode)
-            
-            #This function makes the augmented adjacency list
-            def makeAugmentedAdjacencyList():
-                augmentedAdjacencyList = map(lambda i : childAdjacencyList[i].union(followOnAdjacencyList[i]), 
-                       range(len(childAdjacencyList)))
-                def addImpliedEdges(node, followOnEdges):
-                    visited = set()
-                    def f(node):
-                        if node not in visited:
-                            visited.add(node)
-                            for i in followOnEdges:
-                                augmentedAdjacencyList[node].add(i)
-                            map(f, childAdjacencyList[node])
-                            map(f, followOnAdjacencyList[node])
-                    map(f, childAdjacencyList[node])
-                for node in xrange(len(followOnAdjacencyList)):
-                    addImpliedEdges(node, followOnAdjacencyList[node])
-                return augmentedAdjacencyList
+
             augmentedAdjacencyList = makeAugmentedAdjacencyList()
             
             #If the augmented adjacency doesn't contain a cycle then add the follow on edge 

@@ -97,25 +97,25 @@ class JobBatcher:
         self.workerPath = os.path.join(jobTreePackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
-    def issueJob(self, jobStoreID, memory, cpu):
+    def issueJob(self, jobStoreID, memory, cpu, disk):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu)
+        jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
-                     "%s and cpus: %i and memory: %i",
-                     jobStoreID, str(jobBatchSystemID), cpu, memory)
+                     "%s and cpus: %i, disk: %i, and memory: %i",
+                     jobStoreID, str(jobBatchSystemID), cpu, disk, memory)
 
     def issueJobs(self, jobs):
         """
         Add a list of jobs, each represented as a tuple of 
-        (jobStoreID, memory, cpu).
+        (jobStoreID, memory, cpu, disk).
         """
-        for jobStoreID, memory, cpu in jobs:
-            self.issueJob(jobStoreID, memory, cpu)
+        for jobStoreID, memory, cpu, disk in jobs:
+            self.issueJob(jobStoreID, memory, cpu, disk)
 
     def getNumberOfJobsIssued(self):
         """
@@ -371,7 +371,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                     #If the job has a command it must be run before any successors
                     if job.command != None:
                         if job.remainingRetryCount > 0:
-                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu)
+                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu, job.disk)
                         else:
                             totalFailedJobs += 1
                             logger.warn("Job: %s is completely failed", job.jobStoreID)
@@ -389,7 +389,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         successors = []
                         #For each successor schedule if all predecessors have been
                         #completed
-                        for successorJobStoreID, memory, cpu, predecessorID in job.stack.pop():
+                        for successorJobStoreID, memory, cpu, disk, predecessorID in job.stack.pop():
                             #Build map from successor to predecessors.
                             if successorJobStoreID not in jobTreeState.successorJobStoreIDToPredecessorJobs:
                                 jobTreeState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
@@ -408,7 +408,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                                 assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                                 if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                     continue
-                            successors.append((successorJobStoreID, memory, cpu))
+                            successors.append((successorJobStoreID, memory, cpu, disk))
                         jobBatcher.issueJobs(successors)
 
                     #There are no remaining tasks to schedule within the job, but
@@ -422,7 +422,8 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         if job.remainingRetryCount > 0:
                             jobBatcher.issueJob(job.jobStoreID,
                                                 int(config.attrib["default_memory"]),
-                                                int(config.attrib["default_cpu"]))
+                                                int(config.attrib["default_cpu"]),
+                                                int(config.attrib["default_disk"]))
                             logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:
                             totalFailedJobs += 1

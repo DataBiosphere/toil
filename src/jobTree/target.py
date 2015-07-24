@@ -52,8 +52,7 @@ class Target(object):
     This public functions of this class and its  nested classes are the API 
     to jobTree. 
     """
-    
-    def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+    def __init__(self, memory=sys.maxint, cpu=sys.maxint, disk=sys.maxint):
         """
         This method must be called by any overiding constructor.
         
@@ -62,6 +61,7 @@ class Target(object):
         """
         self.memory = memory
         self.cpu = cpu
+        self.disk = disk
         #Private class variables
         
         #See Target.addChild
@@ -488,6 +488,8 @@ class Target(object):
                                        else float(jobStore.config.attrib["default_memory"])),
                                cpu=(self.cpu if self.cpu != sys.maxint
                                     else float(jobStore.config.attrib["default_cpu"])),
+                               disk=(self.disk if self.disk != sys.maxint
+                                    else float(jobStore.config.attrib["default_disk"])),
                                updateID=updateID, predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor, rootJob):
@@ -533,11 +535,11 @@ class Target(object):
             assert job.predecessorNumber > 1
         
         #The return is a tuple stored within the job.stack of the jobs to run.
-        #The tuple is jobStoreID, memory, cpu, predecessorID
+        #The tuple is jobStoreID, memory, cpu, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Target - it is just a unique ID
         #per predecessor 
-        return (job.jobStoreID, job.memory, job.cpu, 
+        return (job.jobStoreID, job.memory, job.cpu, job.disk,
                 None if job.predecessorNumber <= 1 else str(uuid.uuid4()))
     
     def _serialiseTargetGraph(self, job, jobStore):
@@ -854,8 +856,9 @@ class FunctionWrappingTarget(Target):
     def __init__(self, userFunction, *args, **kwargs):
         # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
-        Target.__init__(self, memory=memory, cpu=cpu)
+        Target.__init__(self, memory=memory, cpu=cpu, disk=disk)
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
