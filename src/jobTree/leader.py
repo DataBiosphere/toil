@@ -493,7 +493,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         ##########################################
         #Finish up the stats/logging aggregation process
         ##########################################
-        clean = config["clean"]
+        clean = config.attrib["clean"]
         if(clean=="always" or (clean == "onerror" and totalFailedJobs==0)):
             jobStore.delete()
         logger.info("Waiting for stats and logging collator process to finish")
