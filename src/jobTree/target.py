@@ -227,6 +227,14 @@ class Target(object):
     #Cycle/connectivity checking
     ####################################################
     
+    def checkTargetGraphForDeadlocks(self):
+        """
+        Raises a TargetGraphDeadlockException exception if the target graph
+        is cyclic or contains multiple roots.
+        """
+        self.checkTargetGraphConnected()
+        self.checkTargetGraphAcylic()
+    
     def getRootTargets(self):
         """
         A root is a target with no predecessors. 
@@ -839,10 +847,8 @@ class Target(object):
         fileStore = Target.FileStore(jobStore, job, localTempDir)
         returnValues = self.run(fileStore)
         #Check if the target graph has created
-        #any cycles of dependencies 
-        self.checkTargetGraphAcylic()
-        #Check if the target graph contains multiple roots
-        self.checkTargetGraphConnected()
+        #any cycles of dependencies or has multiple roots
+        self.checkTargetGraphForDeadlocks()
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
