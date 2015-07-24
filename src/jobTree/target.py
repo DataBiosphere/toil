@@ -23,15 +23,13 @@ from collections import namedtuple
 import os
 import sys
 import importlib
-import time
 from optparse import OptionParser
 import xml.etree.cElementTree as ET
 from abc import ABCMeta, abstractmethod
 import tempfile
 import uuid
-
+import time
 from jobTree.resource import ModuleDescriptor
-from jobTree.lib.bioio import getTempFile
 
 try:
     import cPickle 
@@ -54,10 +52,7 @@ class Target(object):
     This public functions of this class and its  nested classes are the API 
     to jobTree. 
     """
-    
-    __metaclass__ = ABCMeta
-    
-    def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+    def __init__(self, memory=sys.maxint, cpu=sys.maxint, disk=sys.maxint):
         """
         This method must be called by any overiding constructor.
         
@@ -66,21 +61,23 @@ class Target(object):
         """
         self.memory = memory
         self.cpu = cpu
+        self.disk = disk
         #Private class variables
         
         #See Target.addChild
         self._children = []
         #See Target.addFollowOn
         self._followOns = []
-        #A follow-on or child of a target A, is a "successor" of A, if B
+        #See Target.addService
+        self._services = []
+        #A follow-on, service or child of a target A, is a "successor" of A, if B
         #is a successor of A, then A is a predecessor of B. 
         self._predecessors = set()
         #Variables used for serialisation
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Target.rv()
         self._rvs = {}
-    
-    @abstractmethod  
+     
     def run(self, fileStore):
         """
         Do user stuff here, including creating any follow on jobs.
@@ -106,7 +103,7 @@ class Target(object):
         Disallowing this also avoids nested promises (PromisedTargetReturnValue 
         instances that contain other PromisedTargetReturnValue). 
         """
-        raise NotImplementedError()
+        pass
     
     def addChild(self, childTarget):
         """
@@ -120,6 +117,20 @@ class Target(object):
         childTarget._addPredecessor(self)
         return childTarget
     
+    def addService(self, service):
+        """
+        Add a service of type Target.Service. The Target.Service.start() method 
+        will be called after the run method has completed but before any successors 
+        are run. It's Target.Service.stop() method will be called once the 
+        successors of the target have been run.
+        
+        :rtype : An instance of PromisedTargetReturnValue which will be replaced
+        with the return value from the service.start() in any successor of the job. 
+        """
+        targetService = TargetService(service)
+        self._services.append(targetService)
+        return targetService.rv()
+    
     def addFollowOn(self, followOnTarget):
         """
         Adds a follow-on target, follow-on targets will be run
@@ -132,7 +143,7 @@ class Target(object):
         self._followOns.append(followOnTarget)
         followOnTarget._addPredecessor(self)
         return followOnTarget
-        
+    
     ##Convenience functions for creating targets
     
     def addChildFn(self, fn, *args, **kwargs):
@@ -236,8 +247,9 @@ class Target(object):
     
     ####################################################
     #The following nested classes are used for
-    #creating job trees (Target.Runner) and 
-    #managing temporary files (Target.FileStore)
+    #creating job trees (Target.Runner), 
+    #managing temporary files (Target.FileStore),
+    #and defining a service (Target.Service)
     ####################################################
     
     class Runner(object):
@@ -368,6 +380,13 @@ class Target(object):
             """
             return self.jobStore.getEmptyFileStoreID(self.job.jobStoreID)
         
+        def globalFileExists(self, fileStoreID):
+            """
+            :rtype : True if and only if the jobStore contains the given fileStoreID, else
+            false.
+            """
+            return self.jobStore.fileExists(fileStoreID)
+        
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
@@ -390,6 +409,38 @@ class Target(object):
             is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
+    
+    class Service:
+        """
+        Abstract class used to define the interface to a service.
+        """
+        __metaclass__ = ABCMeta
+        def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+            """
+            Memory and cpu requirements are specified identically to the Target
+            constructor.
+            """
+            self.memory = memory
+            self.cpu = cpu
+        
+        @abstractmethod       
+        def start(self):
+            """
+            Start the service.
+            
+            :rtype : An object describing how to access the service. Must be 
+            pickleable. Will be used by a target to access the service.
+            """
+            pass
+        
+        @abstractmethod
+        def stop(self):
+            """
+            Stops the service.
+            
+            Function can block until complete. 
+            """
+            pass
 
     ####################################################
     #Private functions
@@ -437,6 +488,8 @@ class Target(object):
                                        else float(jobStore.config.attrib["default_memory"])),
                                cpu=(self.cpu if self.cpu != sys.maxint
                                     else float(jobStore.config.attrib["default_cpu"])),
+                               disk=(self.disk if self.disk != sys.maxint
+                                    else float(jobStore.config.attrib["default_disk"])),
                                updateID=updateID, predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobStore, targetsToUUIDs, targetsToJobs, predecessor, rootJob):
@@ -459,10 +512,12 @@ class Target(object):
                     job.stack.append(jobs)
             
             #Pickle the target so that its run method can be run at a later time.
-            #Drop out the children/followOns/predecessors - which are all recored
-            #within the jobStore and do not need to be stored within the target
+            #Drop out the children/followOns/predecessors/services - which are 
+            #all recored within the jobStore and do not need to be stored within 
+            #the target
             self._children = []
             self._followOns = []
+            self._services = []
             self._predecessors = set()
             #The pickled target is "run" as the command of the job, see worker
             #for the mechanism which unpickles the target and executes the Target.run
@@ -480,11 +535,11 @@ class Target(object):
             assert job.predecessorNumber > 1
         
         #The return is a tuple stored within the job.stack of the jobs to run.
-        #The tuple is jobStoreID, memory, cpu, predecessorID
+        #The tuple is jobStoreID, memory, cpu, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Target - it is just a unique ID
         #per predecessor 
-        return (job.jobStoreID, job.memory, job.cpu, 
+        return (job.jobStoreID, job.memory, job.cpu, job.disk,
                 None if job.predecessorNumber <= 1 else str(uuid.uuid4()))
     
     def _serialiseTargetGraph(self, job, jobStore):
@@ -600,7 +655,7 @@ class Target(object):
                 if PromisedTargetReturnValue.jobStoreFileID == None:
                     PromisedTargetReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
             #Now recursively do the same for the children and follow ons.
-            for successorTarget in self._children + self._followOns:
+            for successorTarget in self._children + self._followOns + self._services:
                 successorTarget._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
     
     @staticmethod
@@ -671,6 +726,49 @@ class Target(object):
                     extraEdges[descendant] += target._followOns[:]
         return extraEdges 
     
+    def _modifyTargetGraphForServices(self, fileStore):
+        """
+        Modifies the target graph to correctly schedule any services
+        defined for this target.
+        """
+        if len(self._services) > 0:
+            #Set the start/stop jobStore fileIDs for each service
+            for service in self._services:
+                service.startFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.startFileStoreID)
+                service.stopFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.stopFileStoreID)
+            
+            def removePredecessor(target):
+                assert self in target._predecessors
+                target._predecessors.remove(self)
+            
+            #t1 and t2 are used to run the children and followOns of the target
+            #after the services of the target are started
+            startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
+            t1, t2 = Target.wrapTargetFn(blockUntilDeleted, startFileStoreIDs), Target()
+            #t1 runs the children of the target
+            for child in self._children:
+                removePredecessor(child)
+                t1.addChild(child)
+            self._children = []
+            #t2 runs the followOns of the target
+            for followOn in self._followOns:
+                removePredecessor(followOn)
+                t2.addChild(followOn)
+            self._followOns = []
+            #Wire up the self, t1 and t2
+            self.addChild(t1)
+            t1.addFollowOn(t2)
+            #Now make the services children of the target
+            for service in self._services:
+                self.addChild(service)
+                assert service._predecessors == set((self,))
+            #The final task once t1 and t2 have finished is to stop the services
+            #this is achieved by deleting the stopFileStoreIDs.
+            t2.addFollowOnTargetFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
+            self._services = [] #Defensive
+    
     ####################################################
     #Function which worker calls to ultimately invoke
     #a targets Target.run method, and then handle created
@@ -697,6 +795,8 @@ class Target(object):
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
         self._setReturnValuesForPromises(self, returnValues, jobStore)
+        #Modify target graph to run any services correctly
+        self._modifyTargetGraphForServices(fileStore)
         #Turn the graph into a graph of jobs in the jobStore
         self._serialiseTargetGraph(job, jobStore)
         #Change dir back to cwd dir, if changed by target (this is a safety issue)
@@ -741,7 +841,6 @@ class Target(object):
                 "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
                 moduleName)
         return moduleDirPath, moduleName
-    
 
 class TargetGraphCycleException( Exception ):
     def __init__( self, stack ):
@@ -757,8 +856,9 @@ class FunctionWrappingTarget(Target):
     def __init__(self, userFunction, *args, **kwargs):
         # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
         cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
-        Target.__init__(self, memory=memory, cpu=cpu)
+        Target.__init__(self, memory=memory, cpu=cpu, disk=disk)
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
@@ -777,7 +877,6 @@ class FunctionWrappingTarget(Target):
 
     def getUserScript(self):
         return self.userFunctionModule
-
 
 class TargetFunctionWrappingTarget(FunctionWrappingTarget):
     """
@@ -799,6 +898,45 @@ class TargetFunctionWrappingTarget(FunctionWrappingTarget):
         userFunction = self._getUserFunction()
         self.fileStore = fileStore
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+    
+class TargetService(Target):
+    """
+    Target used to wrap a Target.Service instance. This constructor should
+    not be called by a user.
+    """
+    def __init__(self, service):
+        Target.__init__(self, memory=service.memory, cpu=service.cpu)
+        self.service = service
+        #An empty file in the jobStore which when deleted is used to signal
+        #that the service should cease, is initialised in 
+        #Target._modifyTargetGraphForServices
+        self.stopFileStoreID = None
+        #Similarly a empty file which when deleted is used to signal that the 
+        #service is established
+        self.startFileStoreID = None
+        
+    def run(self, fileStore):
+        #Start the service
+        startCredentials = self.service.start()
+        #The start credentials  must be communicated to processes connecting to
+        #the service, to do this while the run method is running we 
+        #cheat and set the return value promise within the run method
+        self._setReturnValuesForPromises(self, startCredentials, 
+                                         fileStore.jobStore)
+        self._rvs = {} #Set this to avoid the return values being updated after the 
+        #run method has completed!
+        #Now flag that the service is running jobs can connect to it
+        assert self.startFileStoreID != None
+        assert fileStore.globalFileExists(self.startFileStoreID)
+        fileStore.deleteGlobalFile(self.startFileStoreID)
+        assert not fileStore.globalFileExists(self.startFileStoreID)
+        #Now block until we are told to stop, which is indicated by the removal 
+        #of a file
+        assert self.stopFileStoreID != None
+        while fileStore.globalFileExists(self.stopFileStoreID):
+            time.sleep(1) #Avoid excessive polling
+        #Now kill the service
+        self.service.stop()
 
 class PromisedTargetReturnValue():
     """
@@ -822,7 +960,7 @@ class PromisedTargetReturnValue():
         """
         assert self.jobStoreFileID != None 
         with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
-            value = cPickle.load(fileHandle) #If this doesn't work, then it is likely the Target that is promising value has not yet been run.
+            value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
             if isinstance(value, PromisedTargetReturnValue):
                 raise RuntimeError("A nested PromisedTargetReturnValue has been found.") #We do not allow the return of PromisedTargetReturnValue instance from the run function
             return value
@@ -834,3 +972,22 @@ class PromisedTargetReturnValue():
         assert self.jobStoreFileID != None
         with jobStore.updateFileStream(self.jobStoreFileID) as fileHandle:
             cPickle.dump(valueToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+
+def deleteFileStoreIDs(target, jobStoreFileIDsToDelete):
+    """
+    Target function that deletes a bunch of files using their jobStoreFileIDs
+    """
+    map(lambda i : target.fileStore.deleteGlobalFile(i), jobStoreFileIDsToDelete)
+
+def blockUntilDeleted(target, jobStoreFileIDs): 
+    """
+    Function will not terminate until all the fileStoreIDs in jobStoreFileIDs
+    cease to exist.
+    """
+    while True:
+        jobStoreFileIDs = [ i for i in jobStoreFileIDs 
+                           if target.fileStore.globalFileExists(i) ]
+        if len(jobStoreFileIDs) == 0:
+            break
+        time.sleep(1)
+        

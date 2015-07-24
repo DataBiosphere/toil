@@ -42,14 +42,14 @@ class FileJobStore(AbstractJobStore):
     #existence of jobs
     ########################################## 
     
-    def create(self, command, memory, cpu, updateID=None,
+    def create(self, command, memory, cpu, disk, updateID=None,
                predecessorNumber=0):
         #The absolute path to the job directory.    
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
-        job = Job(command=command, memory=memory, cpu=cpu, 
+        job = Job(command=command, memory=memory, cpu=cpu, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
@@ -133,12 +133,17 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
     
     def deleteFile(self, jobStoreFileID):
-        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
-        if not os.path.exists(absPath):
+        if not self.fileExists(jobStoreFileID):
             return
+        os.remove(self._getAbsPath(jobStoreFileID))
+        
+    def fileExists(self, jobStoreFileID):
+        absPath = self._getAbsPath(jobStoreFileID)
+        if not os.path.exists(absPath):
+            return False
         if not os.path.isfile(absPath):
             raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
-        os.remove(self._getAbsPath(jobStoreFileID))
+        return True
     
     @contextmanager
     def writeFileStream(self, jobStoreID):

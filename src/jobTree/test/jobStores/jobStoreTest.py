@@ -84,11 +84,12 @@ class hidden:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create( "master1", 12, 34, "foo")
+            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
             self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
             self.assertEquals(jobOnMaster.command, "master1")
             self.assertEquals(jobOnMaster.memory, 12)
-            self.assertEquals(jobOnMaster.cpu, 34) 
+            self.assertEquals(jobOnMaster.cpu, 34)
+            self.assertEquals(jobOnMaster.disk, 35)
             self.assertEquals(jobOnMaster.updateID, "foo")
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
@@ -114,10 +115,10 @@ class hidden:
             #Check jobs to delete persisted
             self.assertEquals(master.load(jobOnWorker.jobStoreID).jobsToDelete, [ "1", "2" ])
             #Create children
-            child1 = worker.create( "child1", 23, 45, "1", 1)
-            child2 = worker.create( "child2", 34, 56, "2", 1)
+            child1 = worker.create( "child1", 23, 45, 46, "1", 1)
+            child2 = worker.create( "child2", 34, 56, 57, "2", 1)
             #Update parent
-            jobOnWorker.stack.append(((child1.jobStoreID, 23, 45, 1), (child2.jobStoreID, 34, 56, 1)))
+            jobOnWorker.stack.append(((child1.jobStoreID, 23, 45, 46, 1), (child2.jobStoreID, 34, 56, 57, 1)))
             jobOnWorker.jobsToDelete = []
             worker.update(jobOnWorker)
             
@@ -191,9 +192,14 @@ class hidden:
             #
             
             #First recreate job 
-            jobOnMaster = master.create( "master1", 12, 34, "foo")
+            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
             
             fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
+            
+            # Check file exists
+            self.assertTrue(worker.fileExists(fileOne))
+            self.assertTrue(master.fileExists(fileOne))
+            
             # ... write to the file on worker, ...
             with worker.updateFileStream( fileOne ) as f:
                 f.write( "one" )
@@ -237,6 +243,10 @@ class hidden:
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             worker.deleteFile( fileOne )
 
+            # Check the file is gone
+            self.assertTrue(not worker.fileExists(fileOne))
+            self.assertTrue(not master.fileExists(fileOne))
+
             # Test stats and logging
             testRead = []
             files=master.readStatsAndLogging(testRead.append)
@@ -276,7 +286,7 @@ class hidden:
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
             self.assertEquals( partSize % bufSize, 0 )
-            job = self.master.create( "1", 2, 3, 0)
+            job = self.master.create( "1", 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -348,7 +358,7 @@ class hidden:
             self.master.delete( job.jobStoreID )
 
         def testZeroLengthFiles( self ):
-            job = self.master.create( "1", 2, 3, 0)
+            job = self.master.create( "1", 2, 3, 4, 0)
             nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
             with self.master.readFileStream( nullFile ) as f:
                 self.assertEquals( f.read( ), "" )

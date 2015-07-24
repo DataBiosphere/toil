@@ -112,7 +112,7 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def create( self, command, memory, cpu, updateID=None,
+    def create( self, command, memory, cpu, disk, updateID=None,
                 predecessorNumber=0 ):
         """
         Creates a job, adding it to the store.
@@ -236,6 +236,13 @@ class AbstractJobStore( object ):
         will succeed silently.
         """
         raise NotImplementedError( )
+    
+    @abstractmethod
+    def fileExists(self, jobStoreFileID ):
+        """
+        :rtype : True if the jobStoreFileID exists in the jobStore, else False
+        """
+        raise NotImplementedError()
 
     @abstractmethod
     @contextmanager
@@ -262,7 +269,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def getEmptyFileStoreID( self, jobStoreID ):
         """
-        Returns the ID of a new, empty file.
+        Returns the ID of a new, empty file. Calls to 
         """
         raise NotImplementedError( )
 

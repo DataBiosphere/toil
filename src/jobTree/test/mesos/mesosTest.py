@@ -33,7 +33,7 @@ class MesosTest( JobTreeTest, MesosTestSupport ):
         self._stopMesos()
         os.chdir( self.startDir )
         shutil.rmtree( self.tempDir )
-    @unittest.skip
+
     def test_hello_world( self ):
         dir = os.path.dirname( os.path.abspath( __file__ ) )
         subprocess.check_call( "python {dir}/helloWorld.py "
@@ -41,7 +41,6 @@ class MesosTest( JobTreeTest, MesosTestSupport ):
                                "--logLevel={logLevel}".format( dir=dir,
                                                                logLevel=getLogLevelString( ) ),
                                shell=True )
-        self.assertTrue( os.path.isfile( "./bar_bam.txt" ) )
 
     def __do_test_stress( self, useBadExecutor, numTargets ):
         """
