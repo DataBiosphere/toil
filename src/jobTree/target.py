@@ -224,15 +224,48 @@ class Target(object):
         return self._rvs[argIndex]
     
     ####################################################
-    #Cycle checking
+    #Cycle/connectivity checking
     ####################################################
     
+    def getRootTargets(self):
+        """
+        A root is a target with no predecessors. 
+        :rtype : set, the roots of the connected component of targets that 
+        contains this target.
+        """
+        roots = set()
+        visited = set() 
+        #Function to get the roots of a target
+        def getRoots(target):
+            if target not in visited:
+                visited.add(target)
+                if len(target._predecessors) > 0:
+                    map(lambda p : getRoots(p), target._predecessors)
+                else:
+                    roots.add(target)
+                #The following call ensures we explore all successor edges.
+                map(lambda c : getRoots(c), target._children + 
+                    target._followOns + target._services)
+        getRoots(self)
+        return roots
+    
+    def checkTargetGraphConnected(self):
+        """
+        Raises a TargetGraphDeadlockException exception if getRootTargets() does not 
+        contain exactly one root target.
+        As execution always starts from one root target, having multiple root targets will
+        cause a deadlock to occur.
+        """
+        rootTargets = self.getRootTargets()
+        if len(rootTargets) != 1:
+            raise TargetGraphDeadlockException("Graph does not contain exactly one root targets: %s" % rootTargets)
+    
     def checkTargetGraphAcylic(self):
-        """ 
-        Raises a RuntimeError exception if the target graph rooted at this target 
-        contains any cycles of child/followOn dependencies in the augmented target graph
-        (see below). Such cycles are not allowed in valid target graphs.
-        This function is run during execution.
+        """
+        Raises a TargetGraphDeadlockException exception if the connected component
+        of targets containing this target contains any cycles of child/followOn dependencies 
+        in the augmented target graph (see below). Such cycles are not allowed 
+        in valid target graphs. This function is run during execution.
         
         A target B that is on a directed path of child/followOn edges from a 
         target A in the target graph is a descendant of A, 
@@ -247,11 +280,18 @@ class Target(object):
         For a target (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for 
         a graph with no follow-ons. The former follow on case could be improved!
         """
+        #Get the root targets
+        roots = self.getRootTargets()
+        if len(roots) == 0:
+            raise TargetGraphDeadlockException("Graph contains no root targets due to cycles")
+        
         #Get implied edges
-        extraEdges = self._getImpliedEdges()
+        extraEdges = self._getImpliedEdges(roots)
             
         #Check for directed cycles in the augmented graph
-        self._checkTargetGraphAcylicDFS([], set(), extraEdges)
+        visited = set()
+        for root in roots:
+            root._checkTargetGraphAcylicDFS([], visited, extraEdges)
     
     ####################################################
     #The following nested classes are used for
@@ -708,15 +748,17 @@ class Target(object):
             assert stack.pop() == self
         if self in stack:
             stack.append(self)
-            raise TargetGraphCycleException(stack)
-        
-    def _getImpliedEdges(self):
+            raise TargetGraphDeadlockException("A cycle of target dependencies has been detected '%s'" % stack)
+    
+    @staticmethod
+    def _getImpliedEdges(roots):
         """
         Gets the set of implied edges. See Target.checkTargetGraphAcylic
         """
         #Get nodes in target graph
         nodes = set()
-        self._dfs(nodes)
+        for root in roots:
+            root._dfs(nodes)
         
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of targets to lists of targets 
@@ -799,6 +841,8 @@ class Target(object):
         #Check if the target graph has created
         #any cycles of dependencies 
         self.checkTargetGraphAcylic()
+        #Check if the target graph contains multiple roots
+        self.checkTargetGraphConnected()
         #Set the promised value jobStoreFileIDs
         self._setFileIDsForPromisedValues(jobStore, job.jobStoreID, set())
         #Store the return values for any promised return value
@@ -850,9 +894,9 @@ class Target(object):
                 moduleName)
         return moduleDirPath, moduleName
 
-class TargetGraphCycleException( Exception ):
-    def __init__( self, stack ):
-        super( TargetGraphCycleException, self ).__init__( "A cycle of target dependencies has been detected '%s'" % stack )
+class TargetGraphDeadlockException( Exception ):
+    def __init__( self, string ):
+        super( TargetGraphDeadlockException, self ).__init__( string )
 
 class FunctionWrappingTarget(Target):
     """

@@ -269,7 +269,9 @@ class AbstractJobStore( object ):
     @abstractmethod
     def getEmptyFileStoreID( self, jobStoreID ):
         """
-        Returns the ID of a new, empty file. Calls to 
+        :rtype : string, the ID of a new, empty file. 
+        
+        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
         """
         raise NotImplementedError( )
 

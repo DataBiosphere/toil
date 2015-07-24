@@ -3,7 +3,7 @@ import os
 import random
 
 from jobTree.lib.bioio import getTempFile
-from jobTree.target import Target, TargetGraphCycleException 
+from jobTree.target import Target, TargetGraphDeadlockException 
 from jobTree.test import JobTreeTest
 
 class TargetTest(JobTreeTest):
@@ -55,10 +55,11 @@ class TargetTest(JobTreeTest):
         #Cleanup
         os.remove(outFile)
 
-    def testCycleDetection(self):
+    def testDeadlockDetection(self):
         """
         Randomly generate target graphs with various types of cycle in them and
-        check they cause an exception properly.
+        check they cause an exception properly. Also check that multiple roots 
+        causes a deadlock exception.
         """
         for test in xrange(100): 
             #Make a random DAG for the set of child edges
@@ -74,6 +75,19 @@ class TargetTest(JobTreeTest):
             #Make the target graph
             rootTarget = self.makeTargetGraph(nodeNumber, childEdges, followOnEdges, None)
             rootTarget.checkTargetGraphAcylic() #This should not throw an exception
+            rootTarget.checkTargetGraphConnected() #Nor this
+            #Check root detection explicitly
+            self.assertEquals(rootTarget.getRootTargets(), set((rootTarget,)))
+            
+            #Test making multiple roots
+            childEdges2 = childEdges.copy()
+            childEdges2.add((nodeNumber, 1)) #This creates an extra root at "nodeNumber"
+            rootTarget2 = self.makeTargetGraph(nodeNumber+1, childEdges2, followOnEdges, None)
+            try:
+                rootTarget2.checkTargetGraphConnected()
+                self.assertTrue(False) #Multiple roots were not detected
+            except TargetGraphDeadlockException:
+                pass #This is the expected behaviour
             
             def checkChildEdgeCycleDetection(fNode, tNode):
                 childEdges.add((fNode, tNode)) #Create a cycle
@@ -83,7 +97,7 @@ class TargetTest(JobTreeTest):
                     self.makeTargetGraph(nodeNumber, childEdges, 
                                          followOnEdges, None).checkTargetGraphAcylic()
                     self.assertTrue(False) #A cycle was not detected
-                except TargetGraphCycleException:
+                except TargetGraphDeadlockException:
                     pass #This is the expected behaviour
                 #Remove the edges
                 childEdges.remove((fNode, tNode))
@@ -110,7 +124,7 @@ class TargetTest(JobTreeTest):
                     self.makeTargetGraph(nodeNumber, childEdges, 
                                          followOnEdges, None).checkTargetGraphAcylic()
                     #self.assertTrue(False) #The cycle was not detected
-                except TargetGraphCycleException:
+                except TargetGraphDeadlockException:
                     pass #This is the expected behaviour
                 #Remove the edges
                 followOnEdges.remove((fNode, tNode))
