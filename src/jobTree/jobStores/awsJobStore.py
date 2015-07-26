@@ -54,7 +54,7 @@ class AWSJobStore( AbstractJobStore ):
     it is loaded by loadJobTreeState."""
 
     def fileExists(self, jobStoreFileID ):
-        return bool(self.files.get_key( key_name=jobStoreFileID))
+        return bool(self.versions.get_item(item_name=jobStoreFileID, consistent_read=True))
 
     def jobs( self ):
         for attempt in retry_sdb( ):
