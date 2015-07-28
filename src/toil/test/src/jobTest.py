@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Test Job class
+"""Test Batchjob class
 """
 
 import unittest
@@ -7,9 +7,9 @@ import os
 from toil.lib.bioio import system
 from optparse import OptionParser
 from toil.common import setupToil
-from toil.target import Target
+from toil.batchJob import Job
 from toil.test import ToilTest
-from toil.job import Job
+from toil.batchjob import Batchjob
 
 class JobTest(ToilTest):
     
@@ -17,7 +17,7 @@ class JobTest(ToilTest):
         super( JobTest, self ).setUp( )
         self.testToil = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
-        Target.Runner.addToilOptions(parser)
+        Job.Runner.addToilOptions(parser)
         options, args = parser.parse_args()
         options.toil = self.testToil
         self.contextManager = setupToil(options)
@@ -31,7 +31,7 @@ class JobTest(ToilTest):
     
     def testJob(self):       
         """
-        Tests functions of a job.
+        Tests functions of a batchjob.
         """ 
     
         command = "by your command"
@@ -43,7 +43,7 @@ class JobTest(ToilTest):
         predecessorNumber = 0
         updateID = 1000
         
-        j = Job(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j = Batchjob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         
         #Check attributes
@@ -61,7 +61,7 @@ class JobTest(ToilTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = Job(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j2 = Batchjob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal

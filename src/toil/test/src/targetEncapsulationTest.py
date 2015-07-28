@@ -1,21 +1,21 @@
 import os
 from toil.lib.bioio import getTempFile
-from toil.target import Target as T
+from toil.batchJob import Job as T
 from toil.test import ToilTest
-from toil.test.src.targetTest import f
+from toil.test.src.jobTest import f
 
-class TargetEncapsulationTest(ToilTest):
+class JobEncapsulationTest(ToilTest):
     """
-    Tests testing the EncapsulationTarget class
+    Tests testing the EncapsulationJob class
     """
     def testEncapsulation(self):
         """
-        Tests the Target.encapsulation method, which uses the EncapsulationTarget 
+        Tests the Job.encapsulation method, which uses the EncapsulationJob
         class.
         """
         #Temporary file
         outFile = getTempFile(rootDir=os.getcwd())
-        #Make a target graph
+        #Make a job graph
         a = T.wrapFn(f, "A", outFile)
         b = a.addChildFn(f, a.rv(), outFile)
         c = a.addFollowOnFn(f, b.rv(), outFile)

@@ -25,7 +25,7 @@ numCores = 2
 #
 numJobs = 2
 
-# How much CPU to allocate for a particular job
+# How much CPU to allocate for a particular batchjob
 #
 numCoresPerJob = (numCores) / numJobs
 
@@ -95,7 +95,7 @@ class hidden:
             self.wait_for_jobs(numJobs=2)
             # Assert that jobs were correctly labeled by JobID
             self.assertEqual({0, 1}, set(self.batchSystem.getRunningJobIDs().keys()))
-            # Assert that the length of the job was recorded
+            # Assert that the length of the batchjob was recorded
             self.assertTrue(len([t for t in self.batchSystem.getRunningJobIDs().values() if t > 0]) == 2)
             self.batchSystem.killJobs([0, 1])
 
@@ -106,7 +106,7 @@ class hidden:
             # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killJobs([jobID])
             self.assertEqual({}, self.batchSystem.getRunningJobIDs())
-            # Make sure that killJob doesn't hang / raise KeyError on unknown job IDs
+            # Make sure that killJob doesn't hang / raise KeyError on unknown batchjob IDs
             self.batchSystem.killJobs([0])
 
         def testGetUpdatedJob(self):

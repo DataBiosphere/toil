@@ -43,7 +43,7 @@ class AbstractBatchSystem:
     def __init__(self, config, maxCpus, maxMemory, maxDisk):
         """This method must be called.
         The config object is setup by the toilSetup script and
-        has configuration parameters for the job tree. You can add stuff
+        has configuration parameters for the jobtree. You can add stuff
         to that script to get parameters for your batch system.
         """
         self.config = config
@@ -66,35 +66,35 @@ class AbstractBatchSystem:
     def issueJob(self, command, memory, cpu, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cpu is the number of cpus needed for
-        the job and error-file is the path of the file to place any std-err/std-out in.
+        the number of bytes the batchjob needs to run in and cpu is the number of cpus needed for
+        the batchjob and error-file is the path of the file to place any std-err/std-out in.
         """
         raise NotImplementedError('Abstract method: issueJob')
 
     
     def killJobs(self, jobIDs):
-        """Kills the given job IDs.
+        """Kills the given batchjob IDs.
         """
         raise NotImplementedError('Abstract method: killJobs')
 
     # FIXME: Return value should be a set (then also fix the tests)
 
     def getIssuedJobIDs(self):
-        """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
+        """A list of jobs (as jobIDs) currently issued (may be running, or maybe
         just waiting). Despite the result being a list, the ordering should not
         be depended upon.
         """
         raise NotImplementedError('Abstract method: getIssuedJobIDs')
     
     def getRunningJobIDs(self):
-        """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
+        """Gets a map of jobs (as jobIDs) currently running (not just waiting)
         and a how long they have been running for (in seconds).
         """
         raise NotImplementedError('Abstract method: getRunningJobIDs')
     
     def getUpdatedJob(self, maxWait):
-        """Gets a job that has updated its status,
-        according to the job manager. Max wait gives the number of seconds to pause 
+        """Gets a batchjob that has updated its status,
+        according to the batchjob manager. Max wait gives the number of seconds to pause
         waiting for a result. If a result is available returns (jobID, exitValue)
         else it returns None.
         """

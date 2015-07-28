@@ -3,17 +3,17 @@ import os
 import random
 
 from toil.lib.bioio import getTempFile
-from toil.target import Target, TargetGraphDeadlockException
+from toil.batchJob import Job, JobGraphDeadlockException
 from toil.test import ToilTest
 
-class TargetTest(ToilTest):
+class JobTest(ToilTest):
     """
-    Tests testing the target class
+    Tests testing the job class
     """
 
     def testStatic(self):
         """
-        Create a DAG of targets non-dynamically and run it. DAG is:
+        Create a DAG of jobs non-dynamically and run it. DAG is:
         
         A -> F
         \-------
@@ -26,13 +26,13 @@ class TargetTest(ToilTest):
         #Temporary file
         outFile = getTempFile(rootDir=os.getcwd())
         
-        #Create the targets
-        A = Target.wrapFn(f, "A", outFile)
-        B = Target.wrapFn(f, A.rv(0), outFile)
-        C = Target.wrapFn(f, B.rv(0), outFile)
-        D = Target.wrapFn(f, C.rv(0), outFile)
-        E = Target.wrapFn(f, D.rv(0), outFile)
-        F = Target.wrapFn(f, E.rv(0), outFile)
+        #Create the jobs
+        A = Job.wrapFn(f, "A", outFile)
+        B = Job.wrapFn(f, A.rv(0), outFile)
+        C = Job.wrapFn(f, B.rv(0), outFile)
+        D = Job.wrapFn(f, C.rv(0), outFile)
+        E = Job.wrapFn(f, D.rv(0), outFile)
+        F = Job.wrapFn(f, E.rv(0), outFile)
         
         #Connect them into a workflow
         A.addChild(B)
@@ -43,11 +43,11 @@ class TargetTest(ToilTest):
         A.addFollowOn(F)
         
         #Create the runner for the workflow.
-        options = Target.Runner.getDefaultOptions()
+        options = Job.Runner.getDefaultOptions()
         options.logLevel = "INFO"
         #Run the workflow, the return value being the number of failed jobs
-        self.assertEquals(Target.Runner.startToil(A, options), 0)
-        Target.Runner.cleanup(options) #This removes the jobStore
+        self.assertEquals(Job.Runner.startToil(A, options), 0)
+        Job.Runner.cleanup(options) #This removes the jobStore
         
         #Check output
         self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
@@ -57,7 +57,7 @@ class TargetTest(ToilTest):
 
     def testDeadlockDetection(self):
         """
-        Randomly generate target graphs with various types of cycle in them and
+        Randomly generate job graphs with various types of cycle in them and
         check they cause an exception properly. Also check that multiple roots 
         causes a deadlock exception.
         """
@@ -72,21 +72,21 @@ class TargetTest(ToilTest):
             #of augmented edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            #Make the target graph
-            rootTarget = self.makeTargetGraph(nodeNumber, childEdges, followOnEdges, None)
-            rootTarget.checkTargetGraphAcylic() #This should not throw an exception
-            rootTarget.checkTargetGraphConnected() #Nor this
+            #Make the job graph
+            rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, None)
+            rootJob.checkJobGraphAcylic() #This should not throw an exception
+            rootJob.checkJobGraphConnected() #Nor this
             #Check root detection explicitly
-            self.assertEquals(rootTarget.getRootTargets(), set((rootTarget,)))
+            self.assertEquals(rootJob.getRootJobs(), set((rootJob,)))
             
             #Test making multiple roots
             childEdges2 = childEdges.copy()
             childEdges2.add((nodeNumber, 1)) #This creates an extra root at "nodeNumber"
-            rootTarget2 = self.makeTargetGraph(nodeNumber+1, childEdges2, followOnEdges, None)
+            rootJob2 = self.makeJobGraph(nodeNumber+1, childEdges2, followOnEdges, None)
             try:
-                rootTarget2.checkTargetGraphConnected()
+                rootJob2.checkJobGraphConnected()
                 self.assertTrue(False) #Multiple roots were not detected
-            except TargetGraphDeadlockException:
+            except JobGraphDeadlockException:
                 pass #This is the expected behaviour
             
             def checkChildEdgeCycleDetection(fNode, tNode):
@@ -94,17 +94,17 @@ class TargetTest(ToilTest):
                 adjacencyList[fNode].add(tNode)
                 self.assertTrue(not self.isAcyclic(adjacencyList))
                 try: 
-                    self.makeTargetGraph(nodeNumber, childEdges, 
-                                         followOnEdges, None).checkTargetGraphAcylic()
+                    self.makeJobGraph(nodeNumber, childEdges,
+                                         followOnEdges, None).checkJobGraphAcylic()
                     self.assertTrue(False) #A cycle was not detected
-                except TargetGraphDeadlockException:
+                except JobGraphDeadlockException:
                     pass #This is the expected behaviour
                 #Remove the edges
                 childEdges.remove((fNode, tNode))
                 adjacencyList[fNode].remove(tNode)
                 #Check is now acyclic again
-                self.makeTargetGraph(nodeNumber, childEdges, 
-                                     followOnEdges, None).checkTargetGraphAcylic()
+                self.makeJobGraph(nodeNumber, childEdges,
+                                     followOnEdges, None).checkJobGraphAcylic()
             
             #Now try adding edges that create a cycle
             
@@ -121,16 +121,16 @@ class TargetTest(ToilTest):
             def checkFollowOnEdgeCycleDetection(fNode, tNode):
                 followOnEdges.add((fNode, tNode)) #Create a cycle
                 try: 
-                    self.makeTargetGraph(nodeNumber, childEdges, 
-                                         followOnEdges, None).checkTargetGraphAcylic()
+                    self.makeJobGraph(nodeNumber, childEdges,
+                                         followOnEdges, None).checkJobGraphAcylic()
                     #self.assertTrue(False) #The cycle was not detected
-                except TargetGraphDeadlockException:
+                except JobGraphDeadlockException:
                     pass #This is the expected behaviour
                 #Remove the edges
                 followOnEdges.remove((fNode, tNode))
                 #Check is now acyclic again
-                self.makeTargetGraph(nodeNumber, childEdges, 
-                                     followOnEdges, None).checkTargetGraphAcylic()
+                self.makeJobGraph(nodeNumber, childEdges,
+                                     followOnEdges, None).checkJobGraphAcylic()
         
             ##Try adding a follow on edge from a descendant to an ancestor
             fNode, tNode = self.getRandomEdge(nodeNumber)
@@ -167,16 +167,16 @@ class TargetTest(ToilTest):
             #of augmented edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            #Make the target graph
-            rootTarget = self.makeTargetGraph(nodeNumber, childEdges, followOnEdges, outFile)
-            #Run the target  graph
-            options = Target.Runner.getDefaultOptions()
-            failedJobs = Target.Runner.startToil(rootTarget, options)
+            #Make the job graph
+            rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile)
+            #Run the job  graph
+            options = Job.Runner.getDefaultOptions()
+            failedJobs = Job.Runner.startToil(rootJob, options)
             self.assertEquals(failedJobs, 0)
             #Get the ordering add the implied ordering to the graph
             with open(outFile, 'r') as fH:
                 ordering = map(int, fH.readline().split())
-            #Check all the targets were run
+            #Check all the jobs were run
             self.assertEquals(set(ordering), set(xrange(nodeNumber)))
             #Add the ordering to the graph
             for i in xrange(nodeNumber-1):
@@ -211,7 +211,7 @@ class TargetTest(ToilTest):
         edges = set(map(lambda i : (random.choice(xrange(i)), i), xrange(1, nodeNumber)))
         #Add extra random edges until there are edgeNumber edges
         while edgeNumber < len(edges):
-            edges.add(TargetTest.getRandomEdge(nodeNumber))
+            edges.add(JobTest.getRandomEdge(nodeNumber))
         return edges
     
     @staticmethod
@@ -271,11 +271,11 @@ class TargetTest(ToilTest):
         followOnAdjacencyList = map(lambda i : set(), childAdjacencyList)        
         #Loop to create the follow on edges (try 1000 times)
         while random.random() > 0.001:
-            fNode, tNode = TargetTest.getRandomEdge(len(childAdjacencyList))
+            fNode, tNode = JobTest.getRandomEdge(len(childAdjacencyList))
             #Get the  descendants of fNode not on a path of edges starting with a follow-on
             #edge from fNode
             fDescendants = reduce(lambda i, j : i.union(j), map(lambda c : 
-TargetTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacencyList[fNode]), set())
+JobTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacencyList[fNode]), set())
             fDescendants.add(fNode)
             
             #Make an adjacency list including augmented edges and proposed
@@ -289,7 +289,7 @@ TargetTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacen
             #If the augmented adjacency doesn't contain a cycle then add the follow on edge 
             #to the list of follow ons else remove the follow on edge from the follow on 
             #adjacency list
-            if TargetTest.isAcyclic(augmentedAdjacencyList):
+            if JobTest.isAcyclic(augmentedAdjacencyList):
                 followOnEdges.add((fNode, tNode))
             else:
                 followOnAdjacencyList[fNode].remove(tNode)
@@ -300,17 +300,17 @@ TargetTest.reachable(c, childAdjacencyList, followOnAdjacencyList), childAdjacen
         return followOnEdges
     
     @staticmethod   
-    def makeTargetGraph(nodeNumber, childEdges, followOnEdges, outFile):
+    def makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile):
         """
-        Converts a DAG into a target graph. childEdges and followOnEdges are 
+        Converts a DAG into a job graph. childEdges and followOnEdges are
         the lists of child and followOn edges.
         """
-        targets = map(lambda i : Target.wrapFn(f, str(i) + " ", outFile), xrange(nodeNumber))
+        jobs = map(lambda i : Job.wrapFn(f, str(i) + " ", outFile), xrange(nodeNumber))
         for fNode, tNode in childEdges:
-            targets[fNode].addChild(targets[tNode])
+            jobs[fNode].addChild(jobs[tNode])
         for fNode, tNode in followOnEdges:
-            targets[fNode].addFollowOn(targets[tNode])
-        return targets[0]
+            jobs[fNode].addFollowOn(jobs[tNode])
+        return jobs[0]
     
     @staticmethod
     def isAcyclic(adjacencyList):

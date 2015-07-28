@@ -17,11 +17,11 @@ log = logging.getLogger(__name__)
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
     """
-    Represents a file or directory that will be deployed to each node before any targets in the user script are
+    Represents a file or directory that will be deployed to each node before any jobs in the user script are
     invoked. Each instance is a namedtuple with the following elements:
 
     The pathHash element contains the MD5 (in hexdigest form) of the path to the resource on the leader node. The
-    path, and therefore its hash is unique within a job store.
+    path, and therefore its hash is unique within a batchjob store.
 
     The url element is a "file:" or "http:" URL at which the resource can be obtained.
 
@@ -40,7 +40,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     @classmethod
     def create(cls, jobStore, leaderPath):
         """
-        Saves the content of the file or directory at the given path to the given job store and returns a resource
+        Saves the content of the file or directory at the given path to the given batchjob store and returns a resource
         object representing that content for the purpose of obtaining it again at a generic, public URL. This method
         should be invoked on the leader node.
 
@@ -307,7 +307,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     def saveAsResourceTo(self, jobStore):
         """
         Store the file containing this module--or even the Python package directory hierarchy containing that
-        file--as a resource to the given job store and return the corresponding resource object. Should only be
+        file--as a resource to the given batchjob store and return the corresponding resource object. Should only be
         called on a leader node.
 
         :type jobStore: toil.jobStores.abstractJobStore.AbstractJobStore

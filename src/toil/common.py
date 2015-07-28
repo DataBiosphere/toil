@@ -65,9 +65,9 @@ def toilPackageDirPath():
     Returns the absolute path of the directory that corresponds to the top-level toil package. The return value is
     guaranteed to end in '/toil'.
     """
-    import toil.target
+    import toil.batchJob
 
-    result = os.path.dirname(absSymPath(toil.target.__file__))
+    result = os.path.dirname(absSymPath(toil.batchJob.__file__))
     assert result.endswith('/toil')
     return result
 
@@ -76,18 +76,18 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
     location of the toil and turn on stats collation about the performance of jobs.")
     addOptionFn("--toil", dest="toil", default="./toil",
-                      help=("Store in which to place job management files \
+                      help=("Store in which to place batchjob management files \
                       and the global accessed temporary files"
                             "(If this is a file path this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
-                            "job tree, then try and restart the jobs in it. The default=%s" % defaultStr))
+                            "jobtree, then try and restart the jobs in it. The default=%s" % defaultStr))
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
-                      help="Records statistics about the job-tree to be used by toilStats. default=%s" % defaultStr)
+                      help="Records statistics about the batchjob-tree to be used by toilStats. default=%s" % defaultStr)
 
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
-                      help=("The type of batch system to run the job(s) with, currently can be "
+                      help=("The type of batch system to run the batchjob(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf/mesos/badmesos'. default=%s" % defaultStr))
     addOptionFn("--scale", dest="scale", default=1,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
@@ -100,12 +100,12 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn = addGroupFn("toil options for cpu/memory requirements",
                              "The options to specify default cpu/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cpu requested from the batch system.")
     addOptionFn("--defaultMemory", dest="defaultMemory", default=2147483648,
-                      help=("The default amount of memory to request for a job (in bytes), "
+                      help=("The default amount of memory to request for a batchjob (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % defaultStr))
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
-                      help="The number of cpus to dedicate a job. default=%s" % defaultStr)
+                      help="The number of cpus to dedicate a batchjob. default=%s" % defaultStr)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=2147483648,
-                      help="The amount of disk space to dedicate a job (in bytes). default=%s" % defaultStr)
+                      help="The amount of disk space to dedicate a batchjob (in bytes). default=%s" % defaultStr)
     addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
                       help=("The maximum number of cpus to request from the batch system at any "
                             "one time. default=%s" % defaultStr))
@@ -120,12 +120,12 @@ def _addOptions(addGroupFn, defaultStr):
             "The options for jobs that either run too long/fail or get lost \
             (some batch systems have issues!)")
     addOptionFn("--retryCount", dest="retryCount", default=0,
-                      help=("Number of times to retry a failing job before giving up and "
-                            "labeling job failed. default=%s" % defaultStr))
+                      help=("Number of times to retry a failing batchjob before giving up and "
+                            "labeling batchjob failed. default=%s" % defaultStr))
     addOptionFn("--maxJobDuration", dest="maxJobDuration", default=str(sys.maxint),
-                      help=("Maximum runtime of a job (in seconds) before we kill it "
+                      help=("Maximum runtime of a batchjob (in seconds) before we kill it "
                             "(this is a lower bound, and the actual time before killing "
-                            "the job may be longer). default=%s" % defaultStr))
+                            "the batchjob may be longer). default=%s" % defaultStr))
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency",
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. (default is set by the batch system)"))
@@ -154,7 +154,7 @@ def _addOptions(addGroupFn, defaultStr):
                             "therefore paying significant scheduling overhead, by running tiny "
                             "jobs in series on a single node/core of the cluster. default=%s" % defaultStr))
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=50120,
-                      help=("The maximum size of a job log file to keep (in bytes), log files larger "
+                      help=("The maximum size of a batchjob log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % defaultStr))
 
@@ -194,7 +194,7 @@ def verifyToilOptions(options):
     for r in required:
         if r not in vars(options):
             raise RuntimeError("Error, there is a missing option (%s), "
-                               "did you remember to call Target.addToilOptions()?" % r)
+                               "did you remember to call Job.addToilOptions()?" % r)
     if options.toil is None:
         raise RuntimeError("Specify --toil")
 
@@ -205,7 +205,7 @@ def createConfig(options):
     
     TODO: Make the config object a proper class
     """
-    logger.info("Starting to create the job tree setup for the first time")
+    logger.info("Starting to create the toil setup for the first time")
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["master_ip"] = options.masterIP
@@ -265,7 +265,7 @@ def loadBatchSystemClass(config, key="batch_system"):
         batchSystemClass = GridengineBatchSystem
         logger.info('Using the grid engine machine batch system')
     elif batchSystemName == 'acid_test' or batchSystemName == 'acidTest':
-        # The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs
+        # The chance that a batchjob does not complete after 32 goes in one in 4 billion, so you need a lot of jobs
         # before this becomes probable
         config.attrib['try_count'] = str(32)
         batchSystemClass = SingleMachineBatchSystem
@@ -345,10 +345,10 @@ def loadJobStore( jobStoreString, config=None ):
         jobStoreName, jobStoreArgs = jobStoreString.split( ':', 1 )
     except ValueError:
         raise RuntimeError(
-            'Job store string must either be a path starting in . or / or a contain at least one '
-            'colon separating the name of the job store implementation from an initialization '
-            'string specific to that job store. If a path starting in . or / is passed, the file '
-            'job store will be used for backwards compatibility.' )
+            'Batchjob store string must either be a path starting in . or / or a contain at least one '
+            'colon separating the name of the batchjob store implementation from an initialization '
+            'string specific to that batchjob store. If a path starting in . or / is passed, the file '
+            'batchjob store will be used for backwards compatibility.' )
 
     if jobStoreName == 'file':
         from toil.jobStores.fileJobStore import FileJobStore
@@ -359,7 +359,7 @@ def loadJobStore( jobStoreString, config=None ):
         region, namePrefix = jobStoreArgs.split( ':', 1 )
         return AWSJobStore( region, namePrefix, config=config )
     else:
-        raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
+        raise RuntimeError( "Unknown batchjob store implementation '%s'" % jobStoreName )
 
 
 def serialiseEnvironment(jobStore):

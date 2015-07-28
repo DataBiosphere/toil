@@ -73,51 +73,51 @@ def bsub(bsubline):
     liney = process.stdout.readline()
     logger.info("BSUB: " + liney)
     result = int(liney.strip().split()[1].strip('<>'))
-    logger.debug("Got the job id: %s" % (str(result)))
+    logger.debug("Got the batchjob id: %s" % (str(result)))
     return result
 
 def getjobexitcode(lsfJobID):
-        job, task = lsfJobID
+        batchjob, task = lsfJobID
         
-        #first try bjobs to find out job state
-        args = ["bjobs", "-l", str(job)]
-        logger.info("Checking job exit code for job via bjobs: " + str(job))
+        #first try bjobs to find out batchjob state
+        args = ["bjobs", "-l", str(batchjob)]
+        logger.info("Checking batchjob exit code for batchjob via bjobs: " + str(batchjob))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         started = 0
         for line in process.stdout:
             if line.find("Done successfully") > -1:
-                logger.info("bjobs detected job completed for job: " + str(job))
+                logger.info("bjobs detected batchjob completed for batchjob: " + str(batchjob))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("bjobs detected job failed for job: " + str(job))
+                logger.info("bjobs detected batchjob failed for batchjob: " + str(batchjob))
                 return 1
-            elif line.find("New job is waiting for scheduling") > -1:
-                logger.info("bjobs detected job pending scheduling for job: " + str(job))
+            elif line.find("New batchjob is waiting for scheduling") > -1:
+                logger.info("bjobs detected batchjob pending scheduling for batchjob: " + str(batchjob))
                 return None
             elif line.find("PENDING REASONS") > -1:
-                logger.info("bjobs detected job pending for job: " + str(job))
+                logger.info("bjobs detected batchjob pending for batchjob: " + str(batchjob))
                 return None
             elif line.find("Started on ") > -1:
                 started = 1
         
         if started == 1:
-            logger.info("bjobs detected job started but not completed: " + str(job))
+            logger.info("bjobs detected batchjob started but not completed: " + str(batchjob))
             return None
 
         #if not found in bjobs, then try bacct (slower than bjobs)
-        logger.info("bjobs failed to detect job - trying bacct: " + str(job))
+        logger.info("bjobs failed to detect batchjob - trying bacct: " + str(batchjob))
         
-        args = ["bacct", "-l", str(job)]
-        logger.info("Checking job exit code for job via bacct:" + str(job))
+        args = ["bacct", "-l", str(batchjob)]
+        logger.info("Checking batchjob exit code for batchjob via bacct:" + str(batchjob))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         for line in process.stdout:
             if line.find("Completed <done>") > -1:
-                logger.info("Detected job completed for job: " + str(job))
+                logger.info("Detected batchjob completed for batchjob: " + str(batchjob))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("Detected job failed for job: " + str(job))
+                logger.info("Detected batchjob failed for batchjob: " + str(batchjob))
                 return 1
-        logger.info("Cant determine exit code for job or job still running: " + str(job))
+        logger.info("Cant determine exit code for batchjob or batchjob still running: " + str(batchjob))
         return None
 
 class Worker(Thread):
@@ -131,7 +131,7 @@ class Worker(Thread):
         
     def run(self):
         while True:
-            # Load new job ids:
+            # Load new batchjob ids:
             while not self.newJobsQueue.empty():
                 self.currentjobs.append(self.newJobsQueue.get())
 
@@ -143,7 +143,7 @@ class Worker(Thread):
                 self.boss.lsfJobIDs[jobID] = (lsfJobID, None)
                 self.runningjobs.add((lsfJobID, None))
 
-            # Test known job list
+            # Test known batchjob list
             for lsfJobID in list(self.runningjobs):
                 exit = getjobexitcode(lsfJobID)
                 if exit is not None:
@@ -159,7 +159,7 @@ class LSFBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.lsfResultsFile = getParasolResultsFileName(config.attrib["job_store"])
-        #Reset the job queue and results (initially, we do this again once we've killed the jobs)
+        #Reset the batchjob queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
         self.lsfResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()
@@ -184,21 +184,21 @@ class LSFBatchSystem(AbstractBatchSystem):
         self.currentjobs.add(jobID)
         bsubline = prepareBsub(cpu, memory) + [command]
         self.newJobsQueue.put((jobID, bsubline))
-        logger.info("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+        logger.info("Issued the batchjob command: %s with batchjob id: %s " % (command, str(jobID)))
         return jobID
         
     def getLsfID(self, jobID):
         if not jobID in self.lsfJobIDs:
              RuntimeError("Unknown jobID, could not be converted")
 
-        (job,task) = self.lsfJobIDs[jobID]
+        (batchjob,task) = self.lsfJobIDs[jobID]
         if task is None:
-             return str(job) 
+             return str(batchjob)
         else:
-             return str(job) + "." + str(task)   
+             return str(batchjob) + "." + str(task)
     
     def killJobs(self, jobIDs):
-        """Kills the given job IDs.
+        """Kills the given batchjob IDs.
         """
         for jobID in jobIDs:
             logger.info("DEL: " + str(self.getLsfID(jobID)))

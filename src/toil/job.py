@@ -1,139 +1,1102 @@
-import logging
+#!/usr/bin/env python
 
+#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+#
+#Permission is hereby granted, free of charge, to any person obtaining a copy
+#of this software and associated documentation files (the "Software"), to deal
+#in the Software without restriction, including without limitation the rights
+#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#copies of the Software, and to permit persons to whom the Software is
+#furnished to do so, subject to the following conditions:
+#
+#The above copyright notice and this permission notice shall be included in
+#all copies or substantial portions of the Software.
+#
+#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+#THE SOFTWARE.
+from collections import namedtuple
+import os
+import sys
+import importlib
+from optparse import OptionParser
+import xml.etree.cElementTree as ET
+from abc import ABCMeta, abstractmethod
+import tempfile
+import uuid
+import time
+from toil.resource import ModuleDescriptor
+
+try:
+    import cPickle 
+except ImportError:
+    import pickle as cPickle
+    
+import logging
 logger = logging.getLogger( __name__ )
 
-class Job( object ):
+from toil.lib.bioio import (setLoggingFromOptions,
+                               getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
+from toil.common import setupToil, addOptions
+from toil.leader import mainLoop
+
+class Job(object):
     """
-    A class encapsulating the state of a toil job.
+    Represents a unit of work in toil. Jobs are composed into graphs
+    which make up a workflow. 
+    
+    This public functions of this class and its  nested classes are the API 
+    to toil.
     """
-    def __init__( self, command, memory, cpu, disk,
-                  jobStoreID, remainingRetryCount, 
-                  updateID, predecessorNumber,
-                  jobsToDelete=None, predecessorsFinished=None, 
-                  stack=None, logJobStoreFileID=None): 
-        #The command to be executed and its memory and cpu requirements.
-        self.command = command
-        self.memory = memory #Max number of bytes used by the job
-        self.cpu = cpu #Number of cores to be used by the job
-        self.disk = disk #Max number of bytes on disk space used by the job
+    def __init__(self, memory=sys.maxint, cpu=sys.maxint, disk=sys.maxint):
+        """
+        This method must be called by any overiding constructor.
         
-        #The jobStoreID of the job. JobStore.load(jobStoreID) will return 
-        #the job
-        self.jobStoreID = jobStoreID
+        Memory is the maximum number of bytes of memory the job will
+        require to run. Cpu is the number of cores required. 
+        """
+        self.memory = memory
+        self.cpu = cpu
+        self.disk = disk
+        #Private class variables
         
-        #The number of times the job should be retried if it fails
-        #This number is reduced by retries until it is zero
-        #and then no further retries are made
-        self.remainingRetryCount = remainingRetryCount
+        #See Job.addChild
+        self._children = []
+        #See Job.addFollowOn
+        self._followOns = []
+        #See Job.addService
+        self._services = []
+        #A follow-on, service or child of a job A, is a "successor" of A, if B
+        #is a successor of A, then A is a predecessor of B. 
+        self._predecessors = set()
+        #Variables used for serialisation
+        self.userModule = ModuleDescriptor.forModule(self.__module__)
+        #See Job.rv()
+        self._rvs = {}
+     
+    def run(self, fileStore):
+        """
+        Do user stuff here, including creating any follow on jobs.
         
-        #These two variables are used in creating a graph of jobs.
-        #The updateID is a unique identifier.
-        #The jobsToDelete is a set of updateIDs for jobs being created.
-        #During the creation of a root job and its successors, first the 
-        #root job is created with the list of jobsToDelete including all 
-        #the successors (referenced by updateIDs). Next the successor jobs are created.
-        #Finally the jobsToDelete variable in the root job is set to an empty
-        #set and updated. It is easy to verify that as single job 
-        #creations/updates are atomic, if failure 
-        #occurs at any stage up to the completion of the final update 
-        #we can revert to the state immediately before the creation
-        #of the graph of jobs. 
-        self.updateID = updateID
-        self.jobsToDelete = jobsToDelete or []
+        The fileStore argument is an instance of Job.FileStore, and can
+        be used to create temporary files which can be shared between jobs.
         
-        #The number of predecessor jobs of a given job.
-        #A predecessor is a job which references this job in its stack.
-        self.predecessorNumber = predecessorNumber
-        #The IDs of predecessors that have finished. 
-        #When len(predecessorsFinished) == predecessorNumber then the
-        #job can be run.
-        self.predecessorsFinished = predecessorsFinished or set()
+        The return values of the function can be passed to other jobs
+        by means of the rv() function. 
         
-        #The list of successor jobs to run. Successor jobs are stored
-        #as 5-tuples of the form (jobStoreId, memory, cpu, disk, predecessorNumber).
-        #Successor jobs are run in reverse order from the stack.
-        self.stack = stack or []
+        If the return value is a tuple, rv(i) would refer to the ith (indexed from 0)
+        member of the tuple. If the return value is not a tuple then rV(0) or rV() would
+        refer to the return value of the function. 
         
-        #A jobStoreFileID of the log file for a job. 
-        #This will be none unless the job failed and the logging
-        #has been captured to be reported on the leader.
-        self.logJobStoreFileID = logJobStoreFileID 
-
-    def setupJobAfterFailure(self, config):
+        Note: We disallow return values to be PromisedJobReturnValue instances
+        (generated by the Job.rv() function - see below).
+        A check is made that will result in a runtime error if you attempt to do this.
+        Allowing PromisedJobReturnValue instances to be returned does not work because
+        the mechanism to pass the promise uses a jobStoreFileID that will be deleted once
+        the current batchjob and its descendants have been completed. This is similar to
+        scope rules in a language like C, where returning a reference to memory allocated
+        on the stack within a function will produce an undefined reference. 
+        Disallowing this also avoids nested promises (PromisedJobReturnValue
+        instances that contain other PromisedJobReturnValue).
         """
-        Reduce the remainingRetryCount if greater than zero and set the memory
-        to be at least as big as the default memory (in case of exhaustion of memory,
-        which is common).
-        """
-        self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-        logger.warn("Due to failure we are reducing the remaining retry count of job %s to %s",
-                    self.jobStoreID, self.remainingRetryCount)
-        # Set the default memory to be at least as large as the default, in
-        # case this was a malloc failure (we do this because of the combined
-        # batch system)
-        if self.memory < float(config.attrib["default_memory"]):
-            self.memory = float(config.attrib["default_memory"])
-            logger.warn("We have increased the default memory of the failed job to %s bytes",
-                        self.memory)
-
-    def clearLogFile( self, jobStore ):
-        """
-        Clears the log file, if it is set.
-        """
-        if self.logJobStoreFileID is not None:
-            jobStore.deleteFile( self.logJobStoreFileID )
-            self.logJobStoreFileID = None
-
-    def setLogFile( self, logFile, jobStore ):
-        """
-        Sets the log file in the file store. 
-        """
-        if self.logJobStoreFileID is not None:
-            self.clearLogFile(jobStore)
-        self.logJobStoreFileID = jobStore.writeFile( self.jobStoreID, logFile )
-        assert self.logJobStoreFileID is not None
-
-    def getLogFileHandle( self, jobStore ):
-        """
-        Returns a context manager that yields a file handle to the log file
-        """
-        return jobStore.readFileStream( self.logJobStoreFileID )
-
-    # Serialization support methods
-
-    def toDict( self ):
-        return self.__dict__.copy( )
-
-    @classmethod
-    def fromDict( cls, d ):
-        return cls( **d )
-
-    def copy(self):
-        """
-        :rtype: Job
-        """
-        return self.__class__( **self.__dict__ )
+        pass
     
-    def __hash__( self ):
-        return hash( self.jobStoreID )
-
-    def __eq__( self, other ):
-        return (
-            isinstance( other, self.__class__ )
-            and self.remainingRetryCount == other.remainingRetryCount
-            and self.jobStoreID == other.jobStoreID
-            and self.updateID == other.updateID
-            and self.jobsToDelete == other.jobsToDelete
-            and self.stack == other.stack
-            and self.predecessorNumber == other.predecessorNumber
-            and self.predecessorsFinished == other.predecessorsFinished
-            and self.logJobStoreFileID == other.logJobStoreFileID )
-
-    def __ne__( self, other ):
-        return not self.__eq__( other )
-
-    def __repr__( self ):
-        return '%s( **%r )' % ( self.__class__.__name__, self.__dict__ )
+    def addChild(self, childJob):
+        """
+        Adds the child job to be run as child of this job. Returns childJob.
+        Child jobs are run after the Job.run method has completed.
+        
+        See Job.checkJobGraphAcylic for formal definition of allowed forms of
+        job graph.
+        """
+        self._children.append(childJob)
+        childJob._addPredecessor(self)
+        return childJob
     
-    def __str__(self):
-        return str(self.toDict())
+    def addService(self, service):
+        """
+        Add a service of type Job.Service. The Job.Service.start() method
+        will be called after the run method has completed but before any successors 
+        are run. It's Job.Service.stop() method will be called once the
+        successors of the job have been run.
+        
+        :rtype : An instance of PromisedJobReturnValue which will be replaced
+        with the return value from the service.start() in any successor of the batchjob.
+        """
+        jobService = ServiceJob(service)
+        self._services.append(jobService)
+        return jobService.rv()
+    
+    def addFollowOn(self, followOnJob):
+        """
+        Adds a follow-on job, follow-on jobs will be run
+        after the child jobs and their descendants have been run.
+        Returns followOnJob.
+        
+        See Job.checkJobGraphAcylic for formal definition of allowed forms of
+        job graph.
+        """
+        self._followOns.append(followOnJob)
+        followOnJob._addPredecessor(self)
+        return followOnJob
+    
+    ##Convenience functions for creating jobs
+    
+    def addChildFn(self, fn, *args, **kwargs):
+        """
+        Adds a child fn. See FunctionWrappingJob.
+        Returns the new child Job.
+        """
+        return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
+
+    def addChildJobFn(self, fn, *args, **kwargs):
+        """
+        Adds a child job fn. See JobFunctionWrappingJob.
+        Returns the new child Job.
+        """
+        return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
+    
+    def addFollowOnFn(self, fn, *args, **kwargs):
+        """
+        Adds a follow-on fn. See FunctionWrappingJob.
+        Returns the new follow-on Job.
+        """
+        return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
+
+    def addFollowOnJobFn(self, fn, *args, **kwargs):
+        """
+        Add a follow-on job fn. See JobFunctionWrappingJob.
+        Returns the new follow-on Job.
+        """
+        return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
+    
+    @staticmethod
+    def wrapJobFn(fn, *args, **kwargs):
+        """
+        Makes a Job out of a job function.
+        
+        Convenience function for constructor of JobFunctionWrappingJob
+        """
+        return JobFunctionWrappingJob(fn, *args, **kwargs)
+ 
+    @staticmethod
+    def wrapFn(fn, *args, **kwargs):
+        """
+        Makes a Job out of a function.
+        
+        Convenience function for constructor of FunctionWrappingJob
+        """
+        return FunctionWrappingJob(fn, *args, **kwargs)
+    
+    def encapsulate(self):
+        """
+        See EncapsulatedJob.
+        
+        :rtype : A new EncapsulatedJob for this job.
+        """
+        return EncapsulatedJob(self)
+    
+    ####################################################
+    #The following function is used for passing return values between 
+    #job run functions
+    ####################################################
+    
+    def rv(self, argIndex=0):
+        """
+        Gets a PromisedJobReturnValue, representing the argIndex return
+        value of the run function (see run method for description).
+        This PromisedJobReturnValue, if a class attribute of a Job instance,
+        call it T, will be replaced by the actual return value just before the 
+        run function of T is called. The function rv therefore allows the output 
+        from one Job to be wired as input to another Job before either
+        is actually run.  
+        """
+        #Check if the return value has already been promised and if it has
+        #return it
+        if argIndex in self._rvs:
+            return self._rvs[argIndex]
+        #Create, store, return new PromisedJobReturnValue
+        self._rvs[argIndex] = PromisedJobReturnValue()
+        return self._rvs[argIndex]
+    
+    ####################################################
+    #Cycle/connectivity checking
+    ####################################################
+    
+    def checkJobGraphForDeadlocks(self):
+        """
+        Raises a JobGraphDeadlockException exception if the job graph
+        is cyclic or contains multiple roots.
+        """
+        self.checkJobGraphConnected()
+        self.checkJobGraphAcylic()
+    
+    def getRootJobs(self):
+        """
+        A root is a job with no predecessors.
+        :rtype : set, the roots of the connected component of jobs that
+        contains this job.
+        """
+        roots = set()
+        visited = set() 
+        #Function to get the roots of a job
+        def getRoots(job):
+            if job not in visited:
+                visited.add(job)
+                if len(job._predecessors) > 0:
+                    map(lambda p : getRoots(p), job._predecessors)
+                else:
+                    roots.add(job)
+                #The following call ensures we explore all successor edges.
+                map(lambda c : getRoots(c), job._children +
+                    job._followOns + job._services)
+        getRoots(self)
+        return roots
+    
+    def checkJobGraphConnected(self):
+        """
+        Raises a JobGraphDeadlockException exception if getRootJobs() does not
+        contain exactly one root job.
+        As execution always starts from one root job, having multiple root jobs will
+        cause a deadlock to occur.
+        """
+        rootJobs = self.getRootJobs()
+        if len(rootJobs) != 1:
+            raise JobGraphDeadlockException("Graph does not contain exactly one root jobs: %s" % rootJobs)
+    
+    def checkJobGraphAcylic(self):
+        """
+        Raises a JobGraphDeadlockException exception if the connected component
+        of jobs containing this job contains any cycles of child/followOn dependencies
+        in the augmented job graph (see below). Such cycles are not allowed
+        in valid job graphs. This function is run during execution.
+        
+        A job B that is on a directed path of child/followOn edges from a
+        job A in the job graph is a descendant of A,
+        similarly A is an ancestor of B.
+        
+        A follow-on edge (A, B) between two jobs A and B is equivalent
+        to adding a child edge to B from (1) A, (2) from each child of A, 
+        and (3) from the descendants of each child of A. We
+        call such an edge an "implied" edge. The augmented job graph is a
+        job graph including all the implied edges.
+
+        For a job (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for
+        a graph with no follow-ons. The former follow on case could be improved!
+        """
+        #Get the root jobs
+        roots = self.getRootJobs()
+        if len(roots) == 0:
+            raise JobGraphDeadlockException("Graph contains no root jobs due to cycles")
+        
+        #Get implied edges
+        extraEdges = self._getImpliedEdges(roots)
+            
+        #Check for directed cycles in the augmented graph
+        visited = set()
+        for root in roots:
+            root._checkJobGraphAcylicDFS([], visited, extraEdges)
+    
+    ####################################################
+    #The following nested classes are used for
+    #creating jobtrees (Job.Runner),
+    #managing temporary files (Job.FileStore),
+    #and defining a service (Job.Service)
+    ####################################################
+    
+    class Runner(object):
+        """
+        Used to setup and run a graph of jobs.
+        """
+    
+        @staticmethod
+        def getDefaultOptions():
+            """
+            Returns an optparse.Values object of the 
+            options used by a toil.
+            """
+            parser = OptionParser()
+            Job.Runner.addToilOptions(parser)
+            options, args = parser.parse_args(args=[])
+            assert len(args) == 0
+            return options
+            
+        @staticmethod
+        def addToilOptions(parser):
+            """
+            Adds the default toil options to an optparse or argparse
+            parser object.
+            """
+            addOptions(parser)
+    
+        @staticmethod
+        def startToil(job, options):
+            """
+            Runs the toil using the given options (see Job.Runner.getDefaultOptions
+            and Job.Runner.addToilOptions) starting with this job.
+            
+            Raises an exception if the given toil already exists.
+            """
+            setLoggingFromOptions(options)
+            with setupToil(options) as (config, batchSystem, jobStore):
+                jobStore.clean()
+                if "rootJob" not in config.attrib: #No jobs have yet been run
+                    # Setup the first batchjob.
+                    rootJob = job._serialiseFirstJob(jobStore)
+                else:
+                    rootJob = jobStore.load(config.attrib["rootJob"])
+                return mainLoop(config, batchSystem, jobStore, rootJob)
+        
+        @staticmethod
+        def cleanup(options):
+            """
+            Removes the jobStore backing the toil.
+            """
+            with setupToil(options) as (config, batchSystem, jobStore):
+                jobStore.deleteJobStore()
+            
+    class FileStore:
+        """
+        Class used to manage temporary files and log messages, 
+        passed as argument to the Job.run method.
+        """
+        
+        def __init__(self, jobStore, batchjob, localTempDir):
+            """
+            This constructor should not be called by the user, 
+            FileStore instances are only provided as arguments 
+            to the run function.
+            """
+            self.jobStore = jobStore
+            self.batchjob = batchjob
+            self.localTempDir = localTempDir
+            self.loggingMessages = []
+        
+        def writeGlobalFile(self, localFileName):
+            """
+            Takes a file (as a path) and uploads it to to the global file store, returns
+            an ID that can be used to retrieve the file. 
+            """
+            return self.jobStore.writeFile(self.batchjob.jobStoreID, localFileName)
+        
+        def updateGlobalFile(self, fileStoreID, localFileName):
+            """
+            Replaces the existing version of a file in the global file store, 
+            keyed by the fileStoreID. 
+            Throws an exception if the file does not exist.
+            """
+            self.jobStore.updateFile(fileStoreID, localFileName)
+        
+        def readGlobalFile(self, fileStoreID, localFilePath=None):
+            """
+            Returns a path to a local copy of the file keyed by fileStoreID. 
+            The version will be consistent with the last copy of the file 
+            written/updated to the global file store. If localFilePath is not None, 
+            the returned file path will be localFilePath.
+            """
+            if localFilePath is None:
+                fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
+                self.jobStore.readFile(fileStoreID, localFilePath)
+                os.close(fd)
+            else:
+                self.jobStore.readFile(fileStoreID, localFilePath)
+            return localFilePath
+        
+        def deleteGlobalFile(self, fileStoreID):
+            """
+            Deletes a global file with the given fileStoreID. Returns true if 
+            file exists, else false.
+            """
+            return self.jobStore.deleteFile(fileStoreID)
+        
+        def writeGlobalFileStream(self):
+            """
+            Similar to writeGlobalFile, but returns a context manager yielding a 
+            tuple of 1) a file handle which can be written to and 2) the ID of 
+            the resulting file in the batchjob store. The yielded file handle does
+            not need to and should not be closed explicitly.
+            """
+            return self.jobStore.writeFileStream(self.batchjob.jobStoreID)
+        
+        def updateGlobalFileStream(self, fileStoreID):
+            """
+            Similar to updateGlobalFile, but returns a context manager yielding 
+            a file handle which can be written to. The yielded file handle does 
+            not need to and should not be closed explicitly.
+            """
+            return self.jobStore.updateFileStream(fileStoreID)
+        
+        def getEmptyFileStoreID(self):
+            """
+            Returns the ID of a new, empty file.
+            """
+            return self.jobStore.getEmptyFileStoreID(self.batchjob.jobStoreID)
+        
+        def globalFileExists(self, fileStoreID):
+            """
+            :rtype : True if and only if the jobStore contains the given fileStoreID, else
+            false.
+            """
+            return self.jobStore.fileExists(fileStoreID)
+        
+        def readGlobalFileStream(self, fileStoreID):
+            """
+            Similar to readGlobalFile, but returns a context manager yielding a 
+            file handle which can be read from. The yielded file handle does not 
+            need to and should not be closed explicitly.
+            """
+            return self.jobStore.readFileStream(fileStoreID)
+           
+        def getLocalTempDir(self):
+            """
+            Get the local temporary directory. This directory will exist for the 
+            duration of the job only, and is guaranteed to be deleted once
+            the job terminates.
+            """
+            return self.localTempDir
+        
+        def logToMaster(self, string):
+            """
+            Send a logging message to the leader. Will only ne reported if logging 
+            is set to INFO level (or lower) in the leader.
+            """
+            self.loggingMessages.append(str(string))
+    
+    class Service:
+        """
+        Abstract class used to define the interface to a service.
+        """
+        __metaclass__ = ABCMeta
+        def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+            """
+            Memory and cpu requirements are specified identically to the Job
+            constructor.
+            """
+            self.memory = memory
+            self.cpu = cpu
+        
+        @abstractmethod       
+        def start(self):
+            """
+            Start the service.
+            
+            :rtype : An object describing how to access the service. Must be 
+            pickleable. Will be used by a job to access the service.
+            """
+            pass
+        
+        @abstractmethod
+        def stop(self):
+            """
+            Stops the service.
+            
+            Function can block until complete. 
+            """
+            pass
+
+    ####################################################
+    #Private functions
+    ####################################################
+    
+    def _addPredecessor(self, predecessorJob):
+        """
+        Adds a predecessor job to the set of predecessor jobs. Raises a
+        RuntimeError is the job is already a predecessor.
+        """
+        if predecessorJob in self._predecessors:
+            raise RuntimeError("The given job is already a predecessor of this job")
+        self._predecessors.add(predecessorJob)
+
+    ####################################################
+    #The following functions are used to serialise
+    #a job graph to the jobStore
+    ####################################################
+    
+    def _getHashOfJobsToUUIDs(self, jobsToUUIDs):
+        """
+        Creates a map of the jobs in the graph to randomly selected UUIDs.
+        Excludes the root job.
+        """
+        #Call recursively
+        for successor in self._children + self._followOns:
+            successor._getHashOfJobsToUUIDs2(jobsToUUIDs)
+        return jobsToUUIDs
+        
+    def getUserScript(self):
+        return self.userModule
+
+    def _getHashOfJobsToUUIDs2(self, jobsToUUIDs):
+        if self not in jobsToUUIDs:
+            jobsToUUIDs[self] = str(uuid.uuid1())
+            self._getHashOfJobsToUUIDs(jobsToUUIDs)
+           
+    def _createEmptyJobForJob(self, jobStore, updateID=None, command=None,
+                                 predecessorNumber=0):
+        """
+        Create an empty batchjob for the job.
+        """
+        return jobStore.create(command=command,
+                               memory=(self.memory if self.memory != sys.maxint 
+                                       else float(jobStore.config.attrib["default_memory"])),
+                               cpu=(self.cpu if self.cpu != sys.maxint
+                                    else float(jobStore.config.attrib["default_cpu"])),
+                               disk=(self.disk if self.disk != sys.maxint
+                                    else float(jobStore.config.attrib["default_disk"])),
+                               updateID=updateID, predecessorNumber=predecessorNumber)
+        
+    def _makeJobWrappers(self, jobStore, jobsToUUIDs, jobsToJobs, predecessor, rootJob):
+        """
+        Creates a batchjob for each job in the job graph, recursively.
+        """
+        if self not in jobsToJobs:
+            #The batchjob for the job
+            assert predecessor in self._predecessors
+            batchjob = self._createEmptyJobForJob(jobStore, jobsToUUIDs[self],
+                                                predecessorNumber=len(self._predecessors))
+            jobsToJobs[self] = batchjob
+            
+            #Add followOns/children to be run after the current job.
+            for successors in (self._followOns, self._children):
+                jobs = map(lambda successor:
+                    successor._makeJobWrappers(jobStore, jobsToUUIDs,
+                                               jobsToJobs, self, rootJob), successors)
+                if len(jobs) > 0:
+                    batchjob.stack.append(jobs)
+            
+            #Pickle the job so that its run method can be run at a later time.
+            #Drop out the children/followOns/predecessors/services - which are 
+            #all recored within the jobStore and do not need to be stored within
+            #the job
+            self._children = []
+            self._followOns = []
+            self._services = []
+            self._predecessors = set()
+            #The pickled job is "run" as the command of the batchjob, see worker
+            #for the mechanism which unpickles the job and executes the Job.run
+            #method.
+            fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
+            with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
+                cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            jobClassName = self.__class__.__name__
+            batchjob.command = ' '.join( ('scriptTree', fileStoreID, jobClassName) + self.userModule)
+            #Update the status of the batchjob on disk
+            jobStore.update(batchjob)
+        else:
+            #Lookup the already created batchjob
+            batchjob = jobsToJobs[self]
+            assert batchjob.predecessorNumber > 1
+        
+        #The return is a tuple stored within the batchjob.stack of the jobs to run.
+        #The tuple is jobStoreID, memory, cpu, disk, predecessorID
+        #The predecessorID is used to establish which predecessors have been
+        #completed before running the given Job - it is just a unique ID
+        #per predecessor 
+        return (batchjob.jobStoreID, batchjob.memory, batchjob.cpu, batchjob.disk,
+                None if batchjob.predecessorNumber <= 1 else str(uuid.uuid4()))
+    
+    def _serialiseJobGraph(self, batchjob, jobStore):
+        """
+        Serialises the graph of jobs rooted at this job,
+        storing them in the jobStore.
+        Assumes the root job is already in the jobStore.
+        """
+        #Create jobIDs as UUIDs
+        jobsToUUIDs = self._getHashOfJobsToUUIDs({})
+        #Set the jobs to delete
+        batchjob.jobsToDelete = list(jobsToUUIDs.values())
+        #Update the batchjob on disk. The jobs to delete is a record of what to
+        #remove if the update goes wrong
+        jobStore.update(batchjob)
+        #Create the jobs for followOns/children
+        jobsToJobs = {}
+        for successors in (self._followOns, self._children):
+            jobs = map(lambda successor:
+                successor._makeJobWrappers(jobStore, jobsToUUIDs,
+                                           jobsToJobs, self, batchjob), successors)
+            if len(jobs) > 0:
+                batchjob.stack.append(jobs)
+        #Remove the jobs to delete list and remove the old command finishing the update
+        batchjob.jobsToDelete = []
+        batchjob.command = None
+        jobStore.update(batchjob)
+        
+    def _serialiseFirstJob(self, jobStore):
+        """
+        Serialises the root job. Returns the wrapping batchjob.
+        """
+        #Pickles the job within a shared file in the jobStore called
+        #"firstJob"
+        sharedJobFile = "firstJob"
+        with jobStore.writeSharedFileStream(sharedJobFile) as f:
+            cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
+        #Make the first batchjob
+        jobClassName = self.__class__.__name__
+        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
+        batchjob = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
+        #Set the config rootJob attrib
+        assert "rootJob" not in jobStore.config.attrib
+        jobStore.config.attrib["rootJob"] = batchjob.jobStoreID
+        with jobStore.writeSharedFileStream("config.xml") as f:
+            ET.ElementTree( jobStore.config ).write(f)
+        #Return the first batchjob
+        return batchjob
+
+    ####################################################
+    #Functions to pass Job.run return values to the
+    #input arguments of other Job instances
+    ####################################################
+   
+    def _switchOutPromisedJobReturnValues(self, jobStore):
+        """
+        Replaces each PromisedJobReturnValue instance that is a class
+        attribute of the job with PromisedJobReturnValue's stored value.
+        Will do this also for PromisedJobReturnValue instances within lists,
+        tuples, sets or dictionaries that are class attributes of the Job.
+        
+        This function is called just before the run method.
+        """
+
+        # FIXME: why is the substitution only done one level deep? IOW, what about, say, a dict of lists
+
+        # FIXME: This replaces subclasses of list, tuple and dict with the instances of the respective base ...
+        # FIXME: ... class. For a potential fix, see my quick fix for tuples.
+
+        # FIXME: This unnecessarily touches attributes that don't have a promise. It touches attributes of the ...
+        # FIXME: ... job base classes which provably have no PromisedJobReturnValues in them
+
+        #Iterate on the class attributes of the Job instance.
+        for attr, value in self.__dict__.iteritems():
+            #If the variable is a PromisedJobReturnValue replace with the
+            #actual stored return value of the PromisedJobReturnValue
+            #else if the variable is a list, tuple or set or dict replace any 
+            #PromisedJobReturnValue instances within
+            #the container with the stored return value.
+
+            # FIXME: This lambda might become more readable if "value" wasn't closed over but passed in.
+
+            # FIXME: I find lambdas awkward. A simple nested def should suffice
+
+            f = lambda : map(lambda x : x.loadValue(jobStore) if
+                        isinstance(x, PromisedJobReturnValue) else x, value)
+            if isinstance(value, PromisedJobReturnValue):
+                self.__dict__[attr] = value.loadValue(jobStore)
+            elif isinstance(value, list):
+                self.__dict__[attr] = f()
+            elif value.__class__ == tuple:
+                self.__dict__[attr] = tuple(f())
+            elif isinstance(value, tuple):
+                self.__dict__[attr] = value.__class__(*f())
+            elif isinstance(value, set):
+                self.__dict__[attr] = set(f())
+            elif isinstance(value, dict):
+                self.__dict__[attr] = dict(map(lambda x : (x, value[x].loadValue(jobStore) if
+                        isinstance(x, PromisedJobReturnValue) else value[x]), value))
+      
+    def _setFileIDsForPromisedValues(self, jobStore, jobStoreID, visited):
+        """
+        Sets the jobStoreFileID for each PromisedJobReturnValue in the
+        graph of jobs created.
+        """
+        #Replace any None references with valid jobStoreFileIDs. We
+        #do this here, rather than within the original constructor of the
+        #promised value because we don't necessarily have access to the jobStore when
+        #the PromisedJobReturnValue instances are created.
+        if self not in visited:
+            visited.add(self)
+            for PromisedJobReturnValue in self._rvs.values():
+                if PromisedJobReturnValue.jobStoreFileID == None:
+                    PromisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
+            #Now recursively do the same for the children and follow ons.
+            for successorJob in self._children + self._followOns + self._services:
+                successorJob._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
+    
+    @staticmethod
+    def _setReturnValuesForPromises(job, returnValues, jobStore):
+        """
+        Sets the values for promises using the return values from the job's
+        run function.
+        """
+        for i in job._rvs.keys():
+            if isinstance(returnValues, tuple):
+                argToStore = returnValues[i]
+            else:
+                if i != 0:
+                    raise RuntimeError("Referencing return value index (%s)"
+                                " that is out of range: %s" % (i, returnValues))
+                argToStore = returnValues
+            job._rvs[i]._storeValue(argToStore, jobStore)
+    
+    ####################################################
+    #Functions associated with Job.checkJobGraphAcyclic to establish
+    #that the job graph does not contain any cycles of dependencies.
+    ####################################################
+        
+    def _dfs(self, visited):
+        """Adds the job and all jobs reachable on a directed path from current
+        node to the set 'visited'.
+        """
+        if self not in visited:
+            visited.add(self) 
+            for successor in self._children + self._followOns:
+                successor._dfs(visited)
+        
+    def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
+        """
+        DFS traversal to detect cycles in augmented job graph.
+        """
+        if self not in visited:
+            visited.add(self) 
+            stack.append(self)
+            for successor in self._children + self._followOns + extraEdges[self]:
+                successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
+            assert stack.pop() == self
+        if self in stack:
+            stack.append(self)
+            raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
+    
+    @staticmethod
+    def _getImpliedEdges(roots):
+        """
+        Gets the set of implied edges. See Job.checkJobGraphAcylic
+        """
+        #Get nodes in job graph
+        nodes = set()
+        for root in roots:
+            root._dfs(nodes)
+        
+        ##For each follow-on edge calculate the extra implied edges
+        #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
+        #connected by an implied edge 
+        extraEdges = dict(map(lambda n : (n, []), nodes))
+        for job in nodes:
+            if len(job._followOns) > 0:
+                #Get set of jobs connected by a directed path to job, starting
+                #with a child edge
+                reacheable = set()
+                for child in job._children:
+                    child._dfs(reacheable)
+                #Now add extra edges
+                for descendant in reacheable:
+                    extraEdges[descendant] += job._followOns[:]
+        return extraEdges 
+    
+    def _modifyJobGraphForServices(self, fileStore):
+        """
+        Modifies the job graph to correctly schedule any services
+        defined for this job.
+        """
+        if len(self._services) > 0:
+            #Set the start/stop jobStore fileIDs for each service
+            for service in self._services:
+                service.startFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.startFileStoreID)
+                service.stopFileStoreID = fileStore.getEmptyFileStoreID()
+                assert fileStore.globalFileExists(service.stopFileStoreID)
+            
+            def removePredecessor(job):
+                assert self in job._predecessors
+                job._predecessors.remove(self)
+            
+            #t1 and t2 are used to run the children and followOns of the job
+            #after the services of the job are started
+            startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
+            t1, t2 = Job.wrapJobFn(blockUntilDeleted, startFileStoreIDs), Job()
+            #t1 runs the children of the job
+            for child in self._children:
+                removePredecessor(child)
+                t1.addChild(child)
+            self._children = []
+            #t2 runs the followOns of the job
+            for followOn in self._followOns:
+                removePredecessor(followOn)
+                t2.addChild(followOn)
+            self._followOns = []
+            #Wire up the self, t1 and t2
+            self.addChild(t1)
+            t1.addFollowOn(t2)
+            #Now make the services children of the job
+            for service in self._services:
+                self.addChild(service)
+                assert service._predecessors == set((self,))
+            #The final task once t1 and t2 have finished is to stop the services
+            #this is achieved by deleting the stopFileStoreIDs.
+            t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
+            self._services = [] #Defensive
+    
+    ####################################################
+    #Function which worker calls to ultimately invoke
+    #a jobs Job.run method, and then handle created
+    #children/followOn jobs
+    ####################################################
+       
+    def _execute(self, batchjob, stats, localTempDir, jobStore):
+        """This is the core method for running the job within a worker.
+        """ 
+        if stats != None:
+            startTime = time.time()
+            startClock = getTotalCpuTime()
+        
+        baseDir = os.getcwd()
+        #Switch out any promised return value instances with the actual values
+        self._switchOutPromisedJobReturnValues(jobStore)
+        #Run the job, first cleanup then run.
+        fileStore = Job.FileStore(jobStore, batchjob, localTempDir)
+        returnValues = self.run(fileStore)
+        #Check if the job graph has created
+        #any cycles of dependencies or has multiple roots
+        self.checkJobGraphForDeadlocks()
+        #Set the promised value jobStoreFileIDs
+        self._setFileIDsForPromisedValues(jobStore, batchjob.jobStoreID, set())
+        #Store the return values for any promised return value
+        self._setReturnValuesForPromises(self, returnValues, jobStore)
+        #Modify job graph to run any services correctly
+        self._modifyJobGraphForServices(fileStore)
+        #Turn the graph into a graph of jobs in the jobStore
+        self._serialiseJobGraph(batchjob, jobStore)
+        #Change dir back to cwd dir, if changed by job (this is a safety issue)
+        if os.getcwd() != baseDir:
+            os.chdir(baseDir)
+        #Finish up the stats
+        if stats != None:
+            stats = ET.SubElement(stats, "job")
+            stats.attrib["time"] = str(time.time() - startTime)
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            stats.attrib["clock"] = str(totalCpuTime - startClock)
+            stats.attrib["class"] = ".".join((self.__class__.__name__,))
+            stats.attrib["memory"] = str(totalMemoryUsage)
+        #Return any logToMaster logging messages
+        return fileStore.loggingMessages
+    
+    ####################################################
+    #Method used to resolve the module in which an inherited job instances
+    #class is defined
+    ####################################################
+    
+    @staticmethod
+    def _resolveMainModule( moduleName ):
+        """
+        Returns a tuple of two elements, the first element being the path 
+        to the directory containing the given
+        module and the second element being the name of the module. 
+        If the given module name is "__main__",
+        then that is translated to the actual file name of the top-level 
+        script without .py or .pyc extensions. The
+        caller can then add the first element of the returned tuple to 
+        sys.path and load the module from there. See also worker.loadJob().
+        """
+        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
+        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
+        if moduleName.endswith('.py'):
+            moduleName = moduleName[:-3]
+        elif moduleName.endswith('.pyc'):
+            moduleName = moduleName[:-4]
+        else:
+            raise RuntimeError(
+                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
+                moduleName)
+        return moduleDirPath, moduleName
+
+class JobGraphDeadlockException( Exception ):
+    def __init__( self, string ):
+        super( JobGraphDeadlockException, self ).__init__( string )
+
+class FunctionWrappingJob(Job):
+    """
+    Job used to wrap a function.
+    
+    Function can not be nested function or class function, currently.
+    *args and **kwargs are used as the arguments to the function.
+    """
+    def __init__(self, userFunction, *args, **kwargs):
+        # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
+        cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
+        memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
+        Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
+        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
+        self.userFunctionName = str(userFunction.__name__)
+        self._args=args
+        self._kwargs=kwargs
+        
+    def _getUserFunction(self):
+        userFunctionModule = self.userFunctionModule.localize()
+        if userFunctionModule.dirPath not in sys.path:
+            # FIXME: prepending to sys.path will probably fix #103
+            sys.path.append(userFunctionModule.dirPath)
+        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+
+    def run(self,fileStore):
+        userFunction = self._getUserFunction( )
+        return userFunction(*self._args, **self._kwargs)
+
+    def getUserScript(self):
+        return self.userFunctionModule
+
+class JobFunctionWrappingJob(FunctionWrappingJob):
+    """
+    Job used to wrap a function.
+    A job function is a function which takes as its first argument a reference
+    to the wrapping job.
+    
+    To enable the job function to get access to the Job.FileStore
+    instance (see Job.Run), it is made a variable of the wrapping job, so in the wrapped
+    job function the attribute "fileStore" of the first argument (the job) is
+    an instance of the Job.FileStore class.
+    """
+
+    def __init__(self, userFunction, *args, **kwargs):
+        super(JobFunctionWrappingJob, self).__init__(userFunction, *args, **kwargs)
+        self.fileStore = None
+
+    def run(self, fileStore):
+        userFunction = self._getUserFunction()
+        self.fileStore = fileStore
+        return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+    
+class ServiceJob(Job):
+    """
+    Job used to wrap a Job.Service instance. This constructor should
+    not be called by a user.
+    """
+    def __init__(self, service):
+        Job.__init__(self, memory=service.memory, cpu=service.cpu)
+        self.service = service
+        #An empty file in the jobStore which when deleted is used to signal
+        #that the service should cease, is initialised in 
+        #Job._modifyJobGraphForServices
+        self.stopFileStoreID = None
+        #Similarly a empty file which when deleted is used to signal that the 
+        #service is established
+        self.startFileStoreID = None
+        
+    def run(self, fileStore):
+        #Start the service
+        startCredentials = self.service.start()
+        #The start credentials  must be communicated to processes connecting to
+        #the service, to do this while the run method is running we 
+        #cheat and set the return value promise within the run method
+        self._setReturnValuesForPromises(self, startCredentials, 
+                                         fileStore.jobStore)
+        self._rvs = {} #Set this to avoid the return values being updated after the 
+        #run method has completed!
+        #Now flag that the service is running jobs can connect to it
+        assert self.startFileStoreID != None
+        assert fileStore.globalFileExists(self.startFileStoreID)
+        fileStore.deleteGlobalFile(self.startFileStoreID)
+        assert not fileStore.globalFileExists(self.startFileStoreID)
+        #Now block until we are told to stop, which is indicated by the removal 
+        #of a file
+        assert self.stopFileStoreID != None
+        while fileStore.globalFileExists(self.stopFileStoreID):
+            time.sleep(1) #Avoid excessive polling
+        #Now kill the service
+        self.service.stop()
+        
+class EncapsulatedJob(Job):
+    """
+    An convenience Job class used to make a job subgraph appear to
+    be a single job.
+    
+    Let A be a root job potentially with children and follow-ons.
+    Without an encapsulated job the simplest way to specify a job B which
+    runs after A and all its successors is to create a parent of A' and then make B 
+    a follow-on of A'. In turn if we wish to run C after B and its successors then we 
+    repeat the process to create B', a parent of B, creating a graph in which A' is run,
+    then A as a child of A', then the successors of A, then B' as a follow on of A', 
+    then B as a child of B', then the successors of B, then finally C as follow on of B', 
+    e.g.
+    
+    A, B, C = A(), B(), C() #Functions to create job graphs
+    A' = Job()
+    B' = Job()
+    A'.addChild(A)
+    A'.addFollowOn(B')
+    B'.addChild(B)
+    B'.addFollowOn(C)
+    
+    An encapsulated job of E(A) of A saves making A' and B', instead we can write:
+    
+    A, B, C = A().encapsulate(), B(), C() #Functions to create job graphs
+    A.addChild(B)
+    A.addFollowOn(C)
+    
+    Note the call to encapsulate creates the EncapsulatedJob.
+    """
+    def __init__(self, job):
+        """
+        job is the job to encapsulate.
+        """
+        Job.__init__(self)
+        Job.addChild(self, job)
+        self.followOn = Job()
+        Job.addFollowOn(self, self.followOn)
+        
+    def addChild(self, childJob):
+        return Job.addChild(self.followOn, childJob)
+    
+    def addService(self, service):
+        return Job.addService(self.followOn, service)
+    
+    def addFollowOn(self, followOnJob):
+        return Job.addFollowOn(self.followOn, followOnJob)
+    
+    def rv(self, argIndex=0):
+        return self.followOn.rv(argIndex)
+
+class PromisedJobReturnValue():
+    """
+    References a return value from a Job's run function. Let T be a job.
+    Instances of PromisedJobReturnValue are created by
+    T.rv(i), where i is an integer reference to a return value of T's run function
+    (casting the return value as a tuple). 
+    When passed to the constructor of a different Job the PromisedJobReturnValue
+    will be replaced by the actual referenced return value after the Job's run function
+    has finished (see Job._switchOutPromisedJobReturnValues).
+    This mechanism allows a return values from one Job's run method to be input
+    argument to Job before the former Job's run function has been executed.
+    """ 
+    def __init__(self):
+        self.jobStoreFileID = None #The None value is
+        #replaced with a real jobStoreFileID by the Job object.
+        
+    def loadValue(self, jobStore):
+        """
+        Unpickles the promised value and returns it. 
+        """
+        assert self.jobStoreFileID != None
+        with jobStore.readFileStream(self.jobStoreFileID) as fileHandle:
+            value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
+            if isinstance(value, PromisedJobReturnValue):
+                raise RuntimeError("A nested PromisedJobReturnValue has been found.") #We do not allow the return of PromisedJobReturnValue instance from the run function
+            return value
+
+    def _storeValue(self, valueToStore, jobStore):
+        """
+        Pickle the promised value. This is done by the job.
+        """
+        assert self.jobStoreFileID != None
+        with jobStore.updateFileStream(self.jobStoreFileID) as fileHandle:
+            cPickle.dump(valueToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+
+def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
+    """
+    Job function that deletes a bunch of files using their jobStoreFileIDs
+    """
+    map(lambda i : job.fileStore.deleteGlobalFile(i), jobStoreFileIDsToDelete)
+
+def blockUntilDeleted(job, jobStoreFileIDs):
+    """
+    Function will not terminate until all the fileStoreIDs in jobStoreFileIDs
+    cease to exist.
+    """
+    while True:
+        jobStoreFileIDs = [ i for i in jobStoreFileIDs
+                           if job.fileStore.globalFileExists(i) ]
+        if len(jobStoreFileIDs) == 0:
+            break
+        time.sleep(1)
+        

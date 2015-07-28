@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 class MesosExecutor(mesos.interface.Executor):
     """
-    Part of mesos framework, runs on mesos slave. A toil job is passed to it via the task.data field, and launched
+    Part of mesos framework, runs on mesos slave. A toil batchjob is passed to it via the task.data field, and launched
     via call(toil.command). Uses the ExecutorDriver to communicate.
     """
 
@@ -53,7 +53,7 @@ class MesosExecutor(mesos.interface.Executor):
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.info("Registered with framework")
-        statThread = threading.Thread(target=self._sendStats, args=[driver])
+        statThread = threading.Thread(job=self._sendStats, args=[driver])
         statThread.setDaemon(True)
         statThread.start()
 
@@ -117,17 +117,17 @@ class MesosExecutor(mesos.interface.Executor):
             finally:
                 del self.runningTasks[task.task_id.value]
 
-        def runJob(job):
+        def runJob(batchjob):
             """
-            :type job: toil.batchSystems.mesos.ToilJob
+            :type batchjob: toil.batchSystems.mesos.ToilJob
 
             :rtype: subprocess.Popen
             """
-            if job.userScript:
-                job.userScript.register()
-            log.debug("Invoking command: '%s'", job.command)
+            if batchjob.userScript:
+                batchjob.userScript.register()
+            log.debug("Invoking command: '%s'", batchjob.command)
             with self.popenLock:
-                return subprocess.Popen(job.command, shell=True)
+                return subprocess.Popen(batchjob.command, shell=True)
 
         def sendUpdate(taskState, message=''):
             log.debug("Sending status update ...")
@@ -138,7 +138,7 @@ class MesosExecutor(mesos.interface.Executor):
             driver.sendStatusUpdate(status)
             log.debug("Sent status update")
 
-        thread = threading.Thread(target=runTask)
+        thread = threading.Thread(job=runTask)
         thread.start()
 
     def frameworkMessage(self, driver, message):

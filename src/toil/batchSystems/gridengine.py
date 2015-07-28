@@ -78,12 +78,12 @@ def qsub(qsubline):
     logger.debug("**"+" ".join(qsubline))
     process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
     result = int(process.stdout.readline().strip().split('.')[0])
-    logger.debug("Got the job id: %s" % (str(result)))
+    logger.debug("Got the batchjob id: %s" % (str(result)))
     return result
 
 def getjobexitcode(sgeJobID):
-        job, task = sgeJobID
-        args = ["qacct", "-j", str(job)]
+        batchjob, task = sgeJobID
+        args = ["qacct", "-j", str(batchjob)]
         if task is not None:
              args.extend(["-t", str(task)])
 
@@ -127,11 +127,11 @@ class Worker(Thread):
         if not jobID in self.sgeJobIDs:
              RuntimeError("Unknown jobID, could not be converted")
 
-        (job,task) = self.sgeJobIDs[jobID]
+        (batchjob,task) = self.sgeJobIDs[jobID]
         if task is None:
-             return str(job) 
+             return str(batchjob)
         else:
-             return str(job) + "." + str(task)
+             return str(batchjob) + "." + str(task)
 
     def forgetJob(self, jobID):
         self.runningJobs.remove(jobID)
@@ -144,7 +144,7 @@ class Worker(Thread):
         while not self.killQueue.empty():
             killList.append(self.killQueue.get())
 
-        # Do the dirty job
+        # Do the dirty batchjob
         for jobID in list(killList):
             if jobID in self.runningJobs:
                 process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
@@ -168,7 +168,7 @@ class Worker(Thread):
                 time.sleep(5)
 
     def createJobs(self):
-        # Load new job ids:
+        # Load new batchjob ids:
         while not self.newJobsQueue.empty():
             self.waitingJobs.append(self.newJobsQueue.get())
 
@@ -202,7 +202,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.gridengineResultsFile = getParasolResultsFileName(config.attrib["job_store"])
-        #Reset the job queue and results (initially, we do this again once we've killed the jobs)
+        #Reset the batchjob queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()
@@ -228,11 +228,11 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
         self.currentjobs.add(jobID)
         self.newJobsQueue.put((jobID, cpu, memory, command))
-        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+        logger.debug("Issued the batchjob command: %s with batchjob id: %s " % (command, str(jobID)))
         return jobID
 
     def killJobs(self, jobIDs):
-        """Kills the given jobs, represented as Job ids, then checks they are dead by checking
+        """Kills the given jobs, represented as Batchjob ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
         for jobID in jobIDs:
