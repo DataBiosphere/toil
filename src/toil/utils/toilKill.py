@@ -54,8 +54,8 @@ def main():
     logger.info("Starting routine to kill running jobs in the toil: %s" % options.toil)
     ####This behaviour is now broken
     batchSystem = loadBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
-    for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
-        batchSystem.killJobs(jobID)
+    for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.
+        batchSystem.killBatchJobs(jobID)
     logger.info("All jobs SHOULD have been killed")
 
 def _test():

@@ -103,7 +103,7 @@ class JobBatcher:
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cpu, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued batchjob with batchjob store ID: %s and batchjob batch system ID: "
                      "%s and cpus: %i, disk: %i, and memory: %i",
@@ -157,7 +157,7 @@ class JobBatcher:
         Kills the given set of jobs and then sends them for processing
         """
         if len(jobsToKill) > 0:
-            self.batchSystem.killJobs(jobsToKill)
+            self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 self.processFinishedJob(jobBatchSystemID, 1)
     
@@ -179,7 +179,7 @@ class JobBatcher:
         jobsToKill = []
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
-            runningJobs = self.batchSystem.getRunningJobIDs()
+            runningJobs = self.batchSystem.getRunningBatchJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The batchjob: %s has been running for: %s seconds, more than the "
@@ -197,7 +197,7 @@ class JobBatcher:
         this function (say 10).. then we try deleting the batchjob (though its probably lost), we wait
         then we pass the batchjob to processFinishedJob.
         """
-        runningJobs = set(self.batchSystem.getIssuedJobIDs())
+        runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(self.getJobIDs())
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
         missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
@@ -331,7 +331,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     ##########################################
 
     #Kill any jobs on the batch system queue from the last time.
-    assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
+    assert len(batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
     logger.info("Checked batch system has no running jobs and no updated jobs")
 
     jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState)
@@ -445,7 +445,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
 
             #Asks the batch system what jobs have been completed,
             #give
-            updatedJob = batchSystem.getUpdatedJob(10)
+            updatedJob = batchSystem.getUpdatedBatchJob(10)
             if updatedJob != None:
                 jobBatchSystemID, result = updatedJob
                 if jobBatcher.hasJob(jobBatchSystemID):

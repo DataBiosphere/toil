@@ -324,7 +324,7 @@ def addBatchSystemConfigOptions(config, batchSystemClass, options):
     """
     #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(
-        batchSystemClass.getRescueJobFrequency()
+        batchSystemClass.getRescueBatchJobFrequency()
         if options.rescueJobsFrequency is None
         else options.rescueJobsFrequency))
 

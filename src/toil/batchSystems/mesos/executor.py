@@ -53,7 +53,7 @@ class MesosExecutor(mesos.interface.Executor):
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.info("Registered with framework")
-        statThread = threading.Thread(job=self._sendStats, args=[driver])
+        statThread = threading.Thread(target=self._sendStats, args=[driver])
         statThread.setDaemon(True)
         statThread.start()
 
@@ -138,7 +138,7 @@ class MesosExecutor(mesos.interface.Executor):
             driver.sendStatusUpdate(status)
             log.debug("Sent status update")
 
-        thread = threading.Thread(job=runTask)
+        thread = threading.Thread(target=runTask)
         thread.start()
 
     def frameworkMessage(self, driver, message):

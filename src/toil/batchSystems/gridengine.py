@@ -221,7 +221,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
-    def issueJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cpu):
         self.checkResourceRequest(memory, cpu)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -231,7 +231,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         logger.debug("Issued the batchjob command: %s with batchjob id: %s " % (command, str(jobID)))
         return jobID
 
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Batchjob ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
@@ -251,15 +251,15 @@ class GridengineBatchSystem(AbstractBatchSystem):
         if len(killList) > 0:
             time.sleep(5)
     
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """Gets the list of jobs issued to SGE.
         """
         return list(self.currentjobs)
     
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         return self.worker.getRunningJobIDs()
     
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
         if i == None:
             return None
@@ -274,7 +274,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return 0.0
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. We allow this every 10 minutes..
         """

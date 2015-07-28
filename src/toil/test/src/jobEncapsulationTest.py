@@ -1,6 +1,6 @@
 import os
 from toil.lib.bioio import getTempFile
-from toil.batchJob import Job as T
+from toil.job import Job as T
 from toil.test import ToilTest
 from toil.test.src.jobTest import f
 

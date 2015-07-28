@@ -23,7 +23,7 @@ import shutil
 import time
 import math
 import datetime
-from toil.batchJob import Job
+from toil.job import Job
 from toil.test import ToilTest
 
 class DependenciesTest(ToilTest):

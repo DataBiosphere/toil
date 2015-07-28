@@ -109,7 +109,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Reset the batchjob queue and results (initially, we do this again once we've killed the jobs)
         self.queuePattern = re.compile("q\s+([0-9]+)")
         self.runningPattern = re.compile("r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")
-        self.killJobs(self.getIssuedJobIDs()) #Kill any jobs on the current stack
+        self.killBatchJobs(self.getIssuedBatchJobIDs()) #Kill any jobs on the current stack
         logger.info("Going to sleep for a few seconds to kill any existing jobs")
         time.sleep(5) #Give batch system a second to sort itself out.
         logger.info("Removed any old jobs from the queue")
@@ -125,7 +125,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Stuff to allow max cpus to be work
         self.outputQueue1 = Queue()
         self.outputQueue2 = Queue()
-        #worker = Thread(job=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
+        #worker = Thread(target=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
         #worker.setDaemon(True)
         worker = Process(job=getUpdatedJob, args=(self.parasolResultsFile, self.outputQueue1, self.outputQueue2))
         worker.daemon = True
@@ -133,7 +133,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.usedCpus = 0
         self.jobIDsToCpu = {}
          
-    def issueJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cpu):
         """Issues parasol with batchjob commands.
         """
         self.checkResourceRequest(memory, cpu)
@@ -169,7 +169,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         logger.debug("Issued the batchjob command: %s with (parasol) batchjob id: %i " % (parasolCommand, jobID))
         return jobID
     
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Batchjob ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
@@ -177,13 +177,13 @@ class ParasolBatchSystem(AbstractBatchSystem):
             for jobID in jobIDs:
                 exitValue = popenParasolCommand("%s remove batchjob %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
-            runningJobs = self.getIssuedJobIDs()
+            runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 return
             time.sleep(5)
             logger.warn("Tried to kill some jobs, but something happened and they are still going, so I'll try again")
     
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """Gets the list of jobs issued to parasol.
         """
         #Example issued batchjob, first field is jobID, last is the results file
@@ -197,14 +197,14 @@ class ParasolBatchSystem(AbstractBatchSystem):
                     issuedJobs.add(jobID)
         return list(issuedJobs)
     
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         """Returns map of running jobIDs and the time they have been running.
         """
         #Example lines..
         #r 5410186 benedictpaten worker 1247029663 localhost
         #r 5410324 benedictpaten worker 1247030076 localhost
         runningJobs = {}
-        issuedJobs = self.getIssuedJobIDs()
+        issuedJobs = self.getIssuedBatchJobIDs()
         for line in popenParasolCommand("%s -results=%s pstat2 " % (self.parasolCommand, self.parasolResultsFile))[1]:
             if line != '':
                 match = self.runningPattern.match(line)
@@ -215,14 +215,14 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         runningJobs[jobID] = time.time() - startTime
         return runningJobs
     
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         jobID = self.getFromQueueSafely(self.outputQueue2, maxWait)
         if jobID != None:
             self.outputQueue2.task_done()
         return jobID
     
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. 
         """

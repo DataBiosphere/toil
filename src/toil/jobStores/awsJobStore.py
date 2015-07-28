@@ -24,7 +24,7 @@ import time
 
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
-from toil.batchjob import Batchjob
+from toil.batchJob import BatchJob
 
 log = logging.getLogger( __name__ )
 

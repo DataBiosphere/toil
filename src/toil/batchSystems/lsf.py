@@ -178,7 +178,7 @@ class LSFBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.lsfResultsFileHandle.close() #Close the results file, cos were done.        
     
-    def issueJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cpu):
         jobID = self.nextJobID
         self.nextJobID += 1
         self.currentjobs.add(jobID)
@@ -197,7 +197,7 @@ class LSFBatchSystem(AbstractBatchSystem):
         else:
              return str(batchjob) + "." + str(task)
     
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """Kills the given batchjob IDs.
         """
         for jobID in jobIDs:
@@ -218,18 +218,18 @@ class LSFBatchSystem(AbstractBatchSystem):
                              "so I'll try again")
                 time.sleep(5)
     
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
         just waiting).
         """
         return self.currentjobs
     
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
         and a how long they have been running for (in seconds).
         """
         times = {}
-        currentjobs = set(self.lsfJobIDs[x] for x in self.getIssuedJobIDs())
+        currentjobs = set(self.lsfJobIDs[x] for x in self.getIssuedBatchJobIDs())
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
         
         for currline in process.stdout:
@@ -242,7 +242,7 @@ class LSFBatchSystem(AbstractBatchSystem):
                 times[self.jobIDs[(items[0])]] = time.time() - jobstart
         return times
     
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         i = None
         try:
             sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
@@ -261,7 +261,7 @@ class LSFBatchSystem(AbstractBatchSystem):
         return 15
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
         making it expensive. We allow this every 10 minutes..
         """

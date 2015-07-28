@@ -1,7 +1,7 @@
 import sys
 from optparse import OptionParser
 
-from toil.batchJob import Job
+from toil.job import Job
 
 def touchFile( fileStore ):
     with fileStore.writeGlobalFileStream() as (f, id):

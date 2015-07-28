@@ -2,7 +2,7 @@ import logging
 
 logger = logging.getLogger( __name__ )
 
-class Batchjob( object ):
+class BatchJob( object ):
     """
     A class encapsulating the state of a toil batchjob.
     """
@@ -110,7 +110,7 @@ class Batchjob( object ):
 
     def copy(self):
         """
-        :rtype: Batchjob
+        :rtype: BatchJob
         """
         return self.__class__( **self.__dict__ )
     

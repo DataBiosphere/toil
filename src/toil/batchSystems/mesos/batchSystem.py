@@ -79,7 +79,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cpu, disk):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
         the number of bytes the batchjob needs to run in and cpu is the number of cpus needed for the batchjob and error-file
@@ -103,7 +103,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
         return jobID
 
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """
         Kills the given batchjob IDs.
         """
@@ -115,7 +115,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             self.killSet.add(jobID)
             localSet.add(jobID)
 
-            if jobID not in self.getIssuedJobIDs():
+            if jobID not in self.getIssuedBatchJobIDs():
                 self.killSet.remove(jobID)
                 localSet.remove(jobID)
                 log.debug("Batchjob %s already finished", jobID)
@@ -133,7 +133,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.debug("sleeping in the while")
                 time.sleep(1)
 
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
@@ -147,7 +147,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
         return jobList
 
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         """
         Gets a map of jobs (as jobIDs) currently running (not just waiting) and a how long they have been running for
         (in seconds).
@@ -157,7 +157,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         """
         Gets a batchjob that has updated its status, according to the batchjob manager. Max wait gives the number of seconds to
         pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
@@ -177,7 +177,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         return self.reconciliationPeriod
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """
         Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2, making it expensive. We
         allow this every 10 minutes..
@@ -306,7 +306,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         job_types = self._sortJobsByResourceReq()
 
-        if len(job_types) == 0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
+        if len(job_types) == 0 or (len(self.getIssuedBatchJobIDs()) - len(self.getRunningBatchJobIDs()) == 0):
             log.debug("Declining offers")
             # If there are no jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)

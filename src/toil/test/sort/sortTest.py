@@ -9,7 +9,7 @@ from uuid import uuid4
 import logging
 import shutil
 import tempfile
-from toil.batchJob import Job
+from toil.job import Job
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.common import parasolIsInstalled, gridEngineIsInstalled
