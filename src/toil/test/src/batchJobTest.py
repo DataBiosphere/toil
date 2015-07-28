@@ -7,9 +7,9 @@ import os
 from toil.lib.bioio import system
 from optparse import OptionParser
 from toil.common import setupToil
-from toil.batchJob import Job
+from toil.job import Job
 from toil.test import ToilTest
-from toil.batchjob import Batchjob
+from toil.batchJob import BatchJob
 
 class JobTest(ToilTest):
     
@@ -43,7 +43,7 @@ class JobTest(ToilTest):
         predecessorNumber = 0
         updateID = 1000
         
-        j = Batchjob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j = BatchJob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         
         #Check attributes
@@ -61,7 +61,7 @@ class JobTest(ToilTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = Batchjob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j2 = BatchJob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal

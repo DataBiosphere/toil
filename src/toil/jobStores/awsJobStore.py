@@ -773,7 +773,7 @@ def passThrough( v ): return v
 def skip( _ ): return None
 
 
-class AWSJob( Batchjob ):
+class AWSJob( BatchJob ):
     """
     A Batchjob that can be converted to and from a SimpleDB Item
     """
