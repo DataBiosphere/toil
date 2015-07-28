@@ -6,7 +6,7 @@ from optparse import OptionParser
 import os
 import random
 
-from toil.batchJob import Job
+from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 success_ratio = 0.5

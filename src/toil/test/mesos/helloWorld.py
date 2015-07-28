@@ -7,7 +7,7 @@
 
 from optparse import OptionParser
 import os
-from toil.batchJob import Job
+from toil.job import Job
 
 def hello_world(job, memory=100, cpu=0.5):
 
