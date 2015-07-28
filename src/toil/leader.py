@@ -343,7 +343,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     ##########################################
 
     stopStatsAndLoggingAggregatorProcess = Queue() #When this is s
-    worker = Process(job=statsAndLoggingAggregatorProcess,
+    worker = Process(target=statsAndLoggingAggregatorProcess,
                      args=(jobStore, stopStatsAndLoggingAggregatorProcess))
     worker.start() 
     try:

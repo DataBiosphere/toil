@@ -127,7 +127,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.outputQueue2 = Queue()
         #worker = Thread(target=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
         #worker.setDaemon(True)
-        worker = Process(job=getUpdatedJob, args=(self.parasolResultsFile, self.outputQueue1, self.outputQueue2))
+        worker = Process(target=getUpdatedJob, args=(self.parasolResultsFile, self.outputQueue1, self.outputQueue2))
         worker.daemon = True
         worker.start()
         self.usedCpus = 0
