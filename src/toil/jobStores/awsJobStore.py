@@ -485,7 +485,7 @@ class AWSJobStore( AbstractJobStore ):
                     except:
                         log.exception( "Exception in simple reader thread" )
 
-                thread = Thread( job=reader if multipart else simpleReader )
+                thread = Thread( target=reader if multipart else simpleReader )
                 thread.start( )
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
@@ -513,7 +513,7 @@ class AWSJobStore( AbstractJobStore ):
                     # objects are idempotent.
                     writable.close( )
 
-                thread = Thread( job=writer )
+                thread = Thread( target=writer )
                 thread.start( )
                 yield readable
                 thread.join( )

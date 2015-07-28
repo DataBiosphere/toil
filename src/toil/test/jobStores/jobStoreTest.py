@@ -304,7 +304,7 @@ class hidden:
 
                 # Multipart upload from stream
                 #
-                checksumThread = Thread( job=checksumThreadFn )
+                checksumThread = Thread( target=checksumThreadFn )
                 checksumThread.start( )
                 try:
                     with open(random_device) as readable:
