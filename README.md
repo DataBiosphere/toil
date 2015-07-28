@@ -1,4 +1,4 @@
-#jobTree
+#toil
 Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, parasol and on multi-core machines.
 
 ##Authors
@@ -12,9 +12,9 @@ Python based pipeline management software for clusters that makes running recurs
 
 1. Install sonLib. See https://github.com/benedictpaten/sonLib
 
-2. Place the directory containing the jobTree in the same directory as sonLib. 
-The directory containing both sonLib and jobTree should be on your python path. i.e.
-PYTHONPATH=${PYTHONPATH}:FOO where FOO/jobTree is the path containing the base directory of jobTree. 
+2. Place the directory containing the toil in the same directory as sonLib.
+The directory containing both sonLib and toil should be on your python path. i.e.
+PYTHONPATH=${PYTHONPATH}:FOO where FOO/toil is the path containing the base directory of toil.
 
 3. Build the code:
 Type 'make all' in the base directory, this just puts some stuff that is currently all python based in the bin dir. In the future there might be some actual compilation.
@@ -22,44 +22,44 @@ Type 'make all' in the base directory, this just puts some stuff that is current
 4. Test the code:
 	python allTests.py or 'make test'.
 
-##Running and examining a jobTree script
+##Running and examining a toil script
 
-The following walks through running a jobTree script and using the command-line tools **jobTreeStatus**, **jobTreeRun** and **jobTreeStats**, which are used to analyse the status, restart and print performance statistics, respectively, about a run.
+The following walks through running a toil script and using the command-line tools **toilStatus**, **toilRun** and **toilStats**, which are used to analyse the status, restart and print performance statistics, respectively, about a run.
 
-Once jobTree is installed, running a jobTree script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
+Once toil is installed, running a toil script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
 
-<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --jobTree bar/jobTree --batchSystem parasol --logLevel INFO --stats</code>
+<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --toil bar/toil --batchSystem parasol --logLevel INFO --stats</code>
 
-Which in this case uses the parasol batch system, and INFO level logging and where foo is the file to sort and bar/jobTree is the location of a directory (which should not already exist) from which the batch will be managed. Details of the jobTree options are described below; the stats option is used to gather statistics about the jobs in a run.
+Which in this case uses the parasol batch system, and INFO level logging and where foo is the file to sort and bar/toil is the location of a directory (which should not already exist) from which the batch will be managed. Details of the toil options are described below; the stats option is used to gather statistics about the jobs in a run.
 
-The script will return a zero exit value if the jobTree system is successfully able to run to completion, else it will create an exception. If the script fails because a job failed then the log file information of the job will be reported to std error. 
-The jobTree directory (here 'bar/jobTree') is not automatically deleted regardless of success or failure, and contains a record of the jobs run, which can be enquired about using the **jobTreeStatus** command. e.g.
+The script will return a zero exit value if the toil system is successfully able to run to completion, else it will create an exception. If the script fails because a job failed then the log file information of the job will be reported to std error.
+The toil directory (here 'bar/toil') is not automatically deleted regardless of success or failure, and contains a record of the jobs run, which can be enquired about using the **toilStatus** command. e.g.
 
-<code>[]$jobTreeStatus bar/jobTree --verbose</code>
+<code>[]$toilStatus bar/toil --verbose</code>
 
 ```
 There are 0 active jobs, 0 parent jobs with children, 0 totally failed jobs and 0 empty jobs (i.e. finished but not cleaned up) curre
-ntly in job tree: jobTree
+ntly in job tree: toil
 There are no failed jobs to report
 ```
 
-If a job failed, this provides a convenient way to reprint the error. The following are the important options to **jobTreeStatus**:
+If a job failed, this provides a convenient way to reprint the error. The following are the important options to **toilStatus**:
 
-    --jobTree=JOBTREE     Directory containing the job tree. The jobTree location can also be specified as the argument to the script. default=./jobTree
+    --toil=TOIL     Directory containing the job tree. The toil location can also be specified as the argument to the script. default=./toil
     --verbose             Print loads of information, particularly all the log
                         files of jobs that failed. default=False
     --failIfNotComplete   Return exit value of 1 if job tree jobs not all
                         completed. default=False
 
-If a job in the script failed or the system goes down, you may wish to retry the job after fixing the error. This can be achieved by restarting the script with the **jobTreeRun** command which will restart an existing jobTree.
+If a job in the script failed or the system goes down, you may wish to retry the job after fixing the error. This can be achieved by restarting the script with the **toilRun** command which will restart an existing toil.
 
-<code>[]$ jobTreeRun --jobTree bar/jobTree --logLevel INFO</code>
+<code>[]$ toilRun --toil bar/toil --logLevel INFO</code>
 
 It will always attempt to restart the jobs from the previous point of failure. 
 
-If the script was run with the **--stats** option then **jobTreeStats** can be run on the pipeline do generate information about the performance of the run, in terms of how many jobs were run, how long they executed for and how much CPU time/wait time was involved, e.g.:
+If the script was run with the **--stats** option then **toilStats** can be run on the pipeline do generate information about the performance of the run, in terms of how many jobs were run, how long they executed for and how much CPU time/wait time was involved, e.g.:
 
-<code>[]$jobTreeStats bar/jobTree</code>
+<code>[]$toilStats bar/toil</code>
 
 ```
 Batch System: singleMachine
@@ -98,7 +98,7 @@ Target
 The breakdown is given per "slave", which is unit of serial execution, and per "target", which corresponds to a scriptTree target (see below).
 Despite its simplicity, we've found this can be **very** useful for tracking down performance issues, particularly when trying out a pipeline on a new system. 
 
-The important arguments to **jobTreeStats** are:
+The important arguments to **toilStats** are:
 
     --outputFile=OUTPUTFILE
                         File in which to write results
@@ -117,9 +117,9 @@ The important arguments to **jobTreeStats** are:
     --cache               stores a cache to speed up data display.
 
 
-##jobTree options
+##toil options
 
-   A jobTree script will have the following command-line options.
+   A toil script will have the following command-line options.
    
     Options that control logging.
 
@@ -133,17 +133,17 @@ The important arguments to **jobTreeStats** are:
     --rotatingLogging   Turn on rotating logging, which prevents log files
                         getting too big.
                         
-   Options to specify the location of the jobTree and turn on stats
+   Options to specify the location of the toil and turn on stats
     collation about the performance of jobs.
 
-    --jobTree=JOBTREE   Directory in which to place job management files and
+    --toil=TOIL   Directory in which to place job management files and
                         the global accessed temporary file directories(this
                         needs to be globally accessible by all machines
                         running jobs). If you pass an existing directory it
                         will check if it's a valid existing job tree, then try
-                        and restart the jobs in it. The default=./jobTree
+                        and restart the jobs in it. The default=./toil
     --stats             Records statistics about the job-tree to be used by
-                        jobTreeStats. default=False
+                        toilStats. default=False
 
    Options for specifying the batch system, and arguments to the
     batch system/big batch system (see below).
@@ -196,7 +196,7 @@ The important arguments to **jobTreeStats** are:
                         by the batch system. Expert parameter. (default is set
                         by the batch system)
 
-  jobTree big batch system options; jobTree can employ a secondary batch system for running large
+  toil big batch system options; toil can employ a secondary batch system for running large
     memory/cpu jobs using the following arguments.
 
     --bigBatchSystem=BIGBATCHSYSTEM
@@ -236,14 +236,14 @@ The important arguments to **jobTreeStats** are:
                         jobs). This is deprecated
 
 
-##Overview of jobTree
+##Overview of toil
 
-The following sections are for people creating jobTree scripts and as general information. The presentation **[docs/jobTreeSlides.pdf](https://github.com/benedictpaten/jobTree/blob/master/doc/jobTreeSlides.pdf)** is also a quite useful, albeit slightly out of date, guide to using jobTree. -
+The following sections are for people creating toil scripts and as general information. The presentation **[docs/toilSlides.pdf](https://github.com/benedictpaten/toil/blob/master/doc/toilSlides.pdf)** is also a quite useful, albeit slightly out of date, guide to using toil. -
 
 Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
 other jobs in a simple way. 
 
-The basic pattern provided by jobTree is as follows: 
+The basic pattern provided by toil is as follows:
 
 1. You have a job running on your cluster which requires further parallelisation. 
 2. You create a list of jobs to perform this parallelisation. These are the 'child' jobs of your process, we call them collectively the 'children'.
@@ -253,9 +253,9 @@ The basic pattern provided by jobTree is as follows:
 6. Upon completion of all the children (and children's children and follow-ons, collectively descendants) the follow-on job is run. The follow-on job may create more children.
 
 ##scriptTree
-ScriptTree provides a Python interface to jobTree, and is now the only way to interface with jobTree (previously you could manipulate XML files, but I've removed that functionality as I improved the underlying system).
+ScriptTree provides a Python interface to toil, and is now the only way to interface with toil (previously you could manipulate XML files, but I've removed that functionality as I improved the underlying system).
 
-Aside from being the interface to jobTree, scriptTree was designed to remediate some of the pain of writing wrapper scripts for cluster jobs, via the extension of a simple python wrapper class (called a 'Target' to avoid confusion with the more general use of the word 'job') which does much of the work for you.  Using scriptTree, you can describe your script as a series of these classes which link together, with all the arguments and options specified in one place. The script then, using the magic of python pickles, generates all the wrappers dynamically and clean them up when done.
+Aside from being the interface to toil, scriptTree was designed to remediate some of the pain of writing wrapper scripts for cluster jobs, via the extension of a simple python wrapper class (called a 'Target' to avoid confusion with the more general use of the word 'job') which does much of the work for you.  Using scriptTree, you can describe your script as a series of these classes which link together, with all the arguments and options specified in one place. The script then, using the magic of python pickles, generates all the wrappers dynamically and clean them up when done.
 
 This inherited template pattern has the following advantages:
 
@@ -263,9 +263,9 @@ This inherited template pattern has the following advantages:
 2. You write less boiler plate.
 3. You can organise all the input arguments and options in one place.
 
-The best way to learn how to use script tree is to look at an example. The following is taken from (an old version of) <code>jobTree.test.sort.scriptTreeTest_Sort.py</code> which provides a complete script for performing a parallel merge sort. 
+The best way to learn how to use script tree is to look at an example. The following is taken from (an old version of) <code>toil.test.sort.scriptTreeTest_Sort.py</code> which provides a complete script for performing a parallel merge sort.
 
-Below is the first 'Target' of this script inherited from the base class 'jobTree.scriptTree.Target'. Its job is to setup the merge sort.
+Below is the first 'Target' of this script inherited from the base class 'toil.scriptTree.Target'. Its job is to setup the merge sort.
 
 ```python
 class Setup(Target):
@@ -304,13 +304,13 @@ def setup(target, inputFile, N):
     target.setFollowOnFn(cleanup, (tempOutputFile, inputFile))
 ```
 
-The code to turn this into a target uses the static method **[Target.makeTargetFnTarget](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L142)**:
+The code to turn this into a target uses the static method **[Target.makeTargetFnTarget](https://github.com/benedictpaten/toil/blob/development/scriptTree/target.py#L142)**:
 
 ```
 Target.makeTargetFnTarget(setup, (fileToSort, N))
 ```
 
-Notice that the child and follow-on targets have also been refactored as functions, hence the methods **[addChildTargetFn](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L82)** and **[setFollowOnFn](https://github.com/benedictpaten/jobTree/blob/development/scriptTree/target.py#L67)**, which take functions as opposed to Target objects.
+Notice that the child and follow-on targets have also been refactored as functions, hence the methods **[addChildTargetFn](https://github.com/benedictpaten/toil/blob/development/scriptTree/target.py#L82)** and **[setFollowOnFn](https://github.com/benedictpaten/toil/blob/development/scriptTree/target.py#L67)**, which take functions as opposed to Target objects.
 
 Note, there are two types of functions you can wrap - **target functions**, whose first argument must be the wrapping target object (the setup function above is an excample of a target function), and plain functions that do not have a reference to the wrapping target.
 
@@ -323,7 +323,7 @@ For example, see **tests/sorts/scriptTreeTest_Sort.py**.
 The first line to notice is:
 
 ```python
-from jobTree.scriptTree.target import Target, Stack
+from toil.scriptTree.target import Target, Stack
 ```
 
 This imports the Target and Stack objects (the stack object is used to run the targets).
@@ -342,10 +342,10 @@ Creates an options parser using the python module optparse.
 The line:
 
 ```python
-    Stack.addJobTreeOptions(parser)
+    Stack.addToilOptions(parser)
 ```
 
-Adds the jobTree options to the parser. Most importantly it adds the command line options "--jobTree [path to jobTree]", which is the location in which the jobTree will be created, and which must be supplied to the script.
+Adds the toil options to the parser. Most importantly it adds the command line options "--toil [path to toil]", which is the location in which the toil will be created, and which must be supplied to the script.
 
 The subsequent lines parse the input arguments, notably the line:
 
@@ -358,22 +358,22 @@ reads in the input parameters.
 The line:
 
 ```python
-    i = Stack(Setup(options.fileToSort, int(options.N))).startJobTree(options)
+    i = Stack(Setup(options.fileToSort, int(options.N))).startToil(options)
 ```
 
-Is where the first target is created (the Setup target shown above), where a stack object is created, which is passed the first target as its sole construction argument, and finally where the jobTree is executed from, using the stack's **startJobTree(options)** function. The 'options' argument will contain a dictionary of command line arguments which are used by jobTree. The return value of this function is equal to the number of failed targets. In this case we choose to throw an exception if there are any remaining.
+Is where the first target is created (the Setup target shown above), where a stack object is created, which is passed the first target as its sole construction argument, and finally where the toil is executed from, using the stack's **startToil(options)** function. The 'options' argument will contain a dictionary of command line arguments which are used by toil. The return value of this function is equal to the number of failed targets. In this case we choose to throw an exception if there are any remaining.
 
 One final important detail, the lines:
 
 ```python
     if __name__ == '__main__':
-        from jobTree.test.sort.scriptTreeTest_Sort import *
+        from toil.test.sort.scriptTreeTest_Sort import *
 ```
 
 reload the objects in the module, such that their module names will be absolute (this is necessary for the serialization that is used). Targets in other classes that are imported do not need to be reloaded in this way.
 
 ##Atomicity
-jobTree and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until jobTree knows your children have been completed okay you can not assume that your Target has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
+toil and scriptTree are designed to be robust, so that individuals jobs (targets) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until toil knows your children have been completed okay you can not assume that your Target has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (target):
          
 1. **Never cleans up / alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
 2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the job tree master process. 
@@ -384,13 +384,13 @@ jobTree and scriptTree are designed to be robust, so that individuals jobs (targ
 4. Logs sensibly, so that error messages can be transmitted back to the master and the pipeline can be successfully debugged.
 
 ##Environment
-jobTree replicates the environment in which jobTree or scriptTree is invoked and provides this environment to all the jobs/targets. This ensures uniformity of the environment variables for every job.
+toil replicates the environment in which toil or scriptTree is invoked and provides this environment to all the jobs/targets. This ensures uniformity of the environment variables for every job.
 
 ##FAQ's:
 
-* _How robust is jobTree to failures of nodes and/or the master?_
+* _How robust is toil to failures of nodes and/or the master?_
 
-    JobTree checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
+    Toil checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
 
 * _How scaleable?_
 
@@ -398,13 +398,13 @@ jobTree replicates the environment in which jobTree or scriptTree is invoked and
 
 * _Can you support the XYZ batch system?_
 
-    See the abstract base class '[AbstractBatchSystem](https://github.com/benedictpaten/jobTree/blob/master/batchSystems/abstractBatchSystem.py)' in the code to see what functions need to be implemented. It's reasonably straight forward.
+    See the abstract base class '[AbstractBatchSystem](https://github.com/benedictpaten/toil/blob/master/batchSystems/abstractBatchSystem.py)' in the code to see what functions need to be implemented. It's reasonably straight forward.
 
-* _Is there an API for the jobTree top level commands?_
+* _Is there an API for the toil top level commands?_
 
     Not really - at this point please use scriptTree and the few command line utilities present in the bin directory.
 
 * _Why am I getting the error "ImportError: No module named etree.ElementTree"?_
 
-    The version of python in your path is less than 2.5. When jobTree spawns a new job it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
+    The version of python in your path is less than 2.5. When toil spawns a new job it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
 
