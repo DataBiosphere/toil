@@ -82,7 +82,8 @@ def _addOptions(addGroupFn, defaultStr):
                             "If you pass an existing directory it will check if it's a valid existing "
                             "jobtree, then try and restart the jobs in it. The default=%s" % defaultStr))
     addOptionFn("--workDir", dest="workDir", default='/tmp',
-                      help="Where temporary files generated during the Toil run should be placed. default=%s" % defaultStr)
+                      help="Absolute path to directory where temporary files generated during the Toil run should "
+                           "be placed. default=%s" % defaultStr)
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the batchjob-tree to be used by toilStats. default=%s" % defaultStr)
 
