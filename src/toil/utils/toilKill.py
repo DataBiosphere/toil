@@ -35,7 +35,7 @@ def main():
     parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [more options]", "%prog 0.1")
     
     parser.add_option("--toil", dest="toil",
-                      help="Job store path. Can also be specified as the single argument to the script.")
+                      help="Batchjob store path. Can also be specified as the single argument to the script.")
     
     options, args = parseBasicOptions(parser)
     
@@ -54,8 +54,8 @@ def main():
     logger.info("Starting routine to kill running jobs in the toil: %s" % options.toil)
     ####This behaviour is now broken
     batchSystem = loadBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
-    for jobID in batchSystem.getIssuedJobIDs(): #Just in case we do it again.
-        batchSystem.killJobs(jobID)
+    for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.
+        batchSystem.killBatchJobs(jobID)
     logger.info("All jobs SHOULD have been killed")
 
 def _test():

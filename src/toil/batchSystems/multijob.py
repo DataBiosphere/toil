@@ -29,22 +29,22 @@ try:
 except ImportError:
     import pickle as cPickle
 
-class MultiTarget:
+class MultiJob:
     def __init__(self, commands):
         self.commands = commands
 
     def execute(self):
         task_id = int(os.environ['SGE_TASK_ID'])
         if task_id is None:
-             RuntimeError("Multi-target launched without task id") 
+             RuntimeError("Multi-job launched without task id")
         if task_id < 1 or task_id > len(self.commands):
              RuntimeError("Task ID not within the array range 1 <= %i <= %i", task_id, len(self.commands))
-        (job, outfile) = self.commands[task_id - 1]
+        (batchjob, outfile) = self.commands[task_id - 1]
         if outfile is None:
-                ret = subprocess.call(job.split())
+                ret = subprocess.call(batchjob.split())
         else:
                 file = open(outfile, "w")
-                ret = subprocess.call(job.split(), stderr=file,stdout=file)
+                ret = subprocess.call(batchjob.split(), stderr=file,stdout=file)
                 file.close()
         sys.exit(ret)
 
@@ -61,12 +61,12 @@ class MultiTarget:
 
 
 def main():
-    global fileHandle, multitarget
+    global fileHandle, multijob
     fileHandle = open(sys.argv[1], 'r')
     sys.path += [sys.argv[2]]
-    multitarget = cPickle.load(fileHandle)
+    multijob = cPickle.load(fileHandle)
     fileHandle.close()
-    multitarget.execute()
+    multijob.execute()
 
 
 if __name__ == "__main__":

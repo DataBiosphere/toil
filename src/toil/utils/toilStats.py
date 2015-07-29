@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-""" Reports the state of your given job tree.
+""" Reports the state of your given jobtree.
 """
 import logging
 import sys
@@ -95,7 +95,7 @@ def initializeOptions(parser):
     # Construct the arguments.
     ##########################################
     parser.add_option("--toil", dest="toil", default='./toil',
-                      help="Job store path. Can also be specified as the single argument to the script. Default=%default")
+                      help="Batchjob store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
@@ -107,11 +107,11 @@ def initializeOptions(parser):
                       help=("comma separated list from [time, clock, wait, "
                             "memory]"))
     parser.add_option("--sortCategory", default="time",
-                      help=("how to sort Target list. may be from [alpha, "
+                      help=("how to sort Job list. may be from [alpha, "
                             "time, clock, wait, memory, count]. "
                             "default=%(default)s"))
     parser.add_option("--sortField", default="med",
-                      help=("how to sort Target list. may be from [min, "
+                      help=("how to sort Job list. may be from [min, "
                             "med, ave, max, total]. "
                             "default=%(default)s"))
     parser.add_option("--sortReverse", "--reverseSort", default=False,
@@ -130,7 +130,7 @@ def checkOptions(options, args, parser):
     assert len(args) <= 1  # Only toil may be specified as argument
     if len(args) == 1:  # Allow toil directory as arg
         options.toil = args[0]
-    logger.info("Checking if we have files for job tree")
+    logger.info("Checking if we have files for toil")
     if options.toil == None:
         parser.error("Specify --toil")
     defaultCategories = ["time", "clock", "wait", "memory"]
@@ -270,12 +270,12 @@ def refineData(root, options):
     """ walk down from the root and gather up the important bits.
     """
     worker = JTTag(root.find("worker"))
-    target = JTTag(root.find("target"))
-    targetTypesTree = root.find("target_types")
-    targetTypes = []
-    for child in targetTypesTree:
-        targetTypes.append(JTTag(child))
-    return root, worker, target, targetTypes
+    job = JTTag(root.find("job"))
+    jobTypesTree = root.find("job_types")
+    jobTypes = []
+    for child in jobTypesTree:
+        jobTypes.append(JTTag(child))
+    return root, worker, job, jobTypes
 
 def sprintTag(key, tag, options, columnWidths=None):
     """ Generate a pretty-print ready string from a JTTag().
@@ -286,7 +286,7 @@ def sprintTag(key, tag, options, columnWidths=None):
     sub_header = "  %7s " % "n"
     tag_str = "  %s" % reportNumber(tag.total_number, options, field=7)
     out_str = ""
-    if key == "target":
+    if key == "job":
         out_str += " %-12s | %7s%7s%7s%7s\n" % ("Worker Jobs", "min",
                                            "med", "ave", "max")
         worker_str = "%s| " % (" " * 14)
@@ -398,8 +398,8 @@ def get(tree, name):
         a = float("nan")
     return a
 
-def sortTargets(targetTypes, options):
-    """ Return a targetTypes all sorted.
+def sortJobs(jobTypes, options):
+    """ Return a jobTypes all sorted.
     """
     longforms = {"med": "median",
                  "ave": "average",
@@ -413,24 +413,24 @@ def sortTargets(targetTypes, options):
         options.sortCategory == "memory"
         ):
         return sorted(
-            targetTypes,
+            jobTypes,
             key=lambda tag: getattr(tag, "%s_%s"
                                     % (sortField, options.sortCategory)),
             reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
         return sorted(
-            targetTypes, key=lambda tag: tag.name,
+            jobTypes, key=lambda tag: tag.name,
             reverse=options.sortReverse)
     elif options.sortCategory == "count":
-        return sorted(targetTypes, key=lambda tag: tag.total_number,
+        return sorted(jobTypes, key=lambda tag: tag.total_number,
                       reverse=options.sortReverse)
 
-def reportPrettyData(root, worker, target, target_types, options):
+def reportPrettyData(root, worker, job, job_types, options):
     """ print the important bits out.
     """
     out_str = "Batch System: %s\n" % root.attrib["batch_system"]
     out_str += ("Default CPU: %s  Default Memory: %s\n"
-                "Job Time: %s  Max CPUs: %s  Max Threads: %s\n" % (
+                "Batchjob Time: %s  Max CPUs: %s  Max Threads: %s\n" % (
         reportNumber(get(root, "default_cpu"), options),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
         reportTime(get(root, "job_time"), options),
@@ -441,25 +441,25 @@ def reportPrettyData(root, worker, target, target_types, options):
         reportTime(get(root, "total_clock"), options),
         reportTime(get(root, "total_run_time"), options),
         ))
-    target_types = sortTargets(target_types, options)
-    columnWidths = computeColumnWidths(target_types, worker, target, options)
+    job_types = sortJobs(job_types, options)
+    columnWidths = computeColumnWidths(job_types, worker, job, options)
     out_str += "Worker\n"
     out_str += sprintTag("worker", worker, options, columnWidths=columnWidths)
-    out_str += "Target\n"
-    out_str += sprintTag("target", target, options, columnWidths=columnWidths)
-    for t in target_types:
+    out_str += "Job\n"
+    out_str += sprintTag("job", job, options, columnWidths=columnWidths)
+    for t in job_types:
         out_str += " %s\n" % t.name
         out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
-def computeColumnWidths(target_types, worker, target, options):
+def computeColumnWidths(job_types, worker, job, options):
     """ Return a ColumnWidths() object with the correct max widths.
     """
     cw = ColumnWidths()
-    for t in target_types:
+    for t in job_types:
         updateColumnWidths(t, cw, options)
     updateColumnWidths(worker, cw, options)
-    updateColumnWidths(target, cw, options)
+    updateColumnWidths(job, cw, options)
     return cw
 
 def updateColumnWidths(tag, cw, options):
@@ -559,7 +559,7 @@ def getStats(options):
         with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
             stats = ET.parse(fH).getroot() # Try parsing the whole file.
     except ET.ParseError: # If it doesn't work then we build the file incrementally
-        sys.stderr.write("The job tree stats file is incomplete or corrupt, "
+        sys.stderr.write("The toil stats file is incomplete or corrupt, "
                          "we'll try instead to parse what's in the file "
                          "incrementally until we reach an error.\n")
         with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
@@ -594,24 +594,24 @@ def processData(config, stats, options):
     workers = stats.findall("worker")
     buildElement(collatedStatsTag, workers, "worker")
 
-    # Add aggregated target info
-    targets = []
+    # Add aggregated job info
+    jobs = []
     for worker in workers:
-        targets += worker.findall("target")
-    def fn4(job):
-        return list(worker.findall("target"))
-    createSummary(buildElement(collatedStatsTag, targets, "target"),
+        jobs += worker.findall("job")
+    def fn4(batchjob):
+        return list(worker.findall("job"))
+    createSummary(buildElement(collatedStatsTag, jobs, "job"),
                   workers, "worker", fn4)
-    # Get info for each target
-    targetNames = set()
-    for target in targets:
-        targetNames.add(target.attrib["class"])
-    targetTypesTag = ET.SubElement(collatedStatsTag, "target_types")
-    for targetName in targetNames:
-        targetTypes = [ target for target in targets
-                        if target.attrib["class"] == targetName ]
+    # Get info for each job
+    jobNames = set()
+    for job in jobs:
+        jobNames.add(job.attrib["class"])
+    jobTypesTag = ET.SubElement(collatedStatsTag, "job_types")
+    for jobName in jobNames:
+        jobTypes = [ job for job in jobs
+                        if job.attrib["class"] == jobName ]
         # FIXME: unused assignment
-        targetTypeTag = buildElement(targetTypesTag, targetTypes, targetName)
+        jobTypeTag = buildElement(jobTypesTag, jobTypes, jobName)
     return collatedStatsTag
 
 def reportData(xml_tree, options):
@@ -619,8 +619,8 @@ def reportData(xml_tree, options):
     if options.raw:
         out_str = prettyXml(xml_tree)
     else:
-        root, worker, target, target_types = refineData(xml_tree, options)
-        out_str = reportPrettyData(root, worker, target, target_types, options)
+        root, worker, job, job_types = refineData(xml_tree, options)
+        out_str = reportPrettyData(root, worker, job, job_types, options)
     if options.outputFile != None:
         fileHandle = open(options.outputFile, "w")
         fileHandle.write(out_str)
@@ -730,7 +730,7 @@ def cacheAvailable(options):
 """
 
 def main():
-    """ Reports stats on the job-tree, use with --stats option to toil.
+    """ Reports stats on the batchjob-tree, use with --stats option to toil.
     """
 
     parser = getBasicOptionParser(

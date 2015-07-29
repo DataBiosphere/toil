@@ -9,7 +9,7 @@ from uuid import uuid4
 import logging
 import shutil
 import tempfile
-from toil.target import Target
+from toil.job import Job
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.common import parasolIsInstalled, gridEngineIsInstalled
@@ -22,7 +22,7 @@ class SortTest(ToilTest, MesosTestSupport):
     
     def setUp(self):
         super( SortTest, self).setUp()
-        self.toilDir = os.path.join(os.getcwd(), "testToil") #A directory for the job tree to be created in
+        self.toilDir = os.path.join(os.getcwd(), "testToil") #A directory for the jobtree to be created in
         self.tempDir = tempfile.mkdtemp(prefix="tempDir", dir=os.getcwd())
         self.testNo = 5
         
@@ -39,9 +39,9 @@ class SortTest(ToilTest, MesosTestSupport):
         Tests toil by sorting a file in parallel.
         """
         for test in xrange(testNo):
-            options = Target.Runner.getDefaultOptions()
+            options = Job.Runner.getDefaultOptions()
             
-            #Job tree
+            #toil
             if jobStore == 'file':
                 options.toil = self.toilDir
             else:
@@ -63,8 +63,8 @@ class SortTest(ToilTest, MesosTestSupport):
                 l.sort()
             
             # Run the toil
-            firstTarget = Target.wrapTargetFn(setup, tempSortFile, N, memory=5000, )
-            i = Target.Runner.startToil(firstTarget, options)
+            firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=5000, )
+            i = Job.Runner.startToil(firstJob, options)
             
             #There should be no failed jobs
             self.assertEquals(i, 0)
@@ -182,23 +182,23 @@ def makeFileToSort(fileName, lines=10, maxLineLength=10):
             fileHandle.write(getRandomLine(maxLineLength))
 
 ###########################################
-#Target functions
+#Job functions
 ###########################################           
     
 success_ratio = 0.5
 
-def setup(target, inputFile, N):
+def setup(job, inputFile, N):
     """Sets up the sort.
     """
-    tempOutputFileStoreID = target.fileStore.getEmptyFileStoreID()
-    target.addChildTargetFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
-    target.addFollowOnTargetFn(cleanup, tempOutputFileStoreID, inputFile)
+    tempOutputFileStoreID = job.fileStore.getEmptyFileStoreID()
+    job.addChildJobFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
+    job.addFollowOnJobFn(cleanup, tempOutputFileStoreID, inputFile)
 
-def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
+def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
-    a follow on job is then created which merges back the results else
+    a follow on batchjob is then created which merges back the results else
     the file is sorted and placed in the output.
     """
     if random.random() > success_ratio:
@@ -206,53 +206,53 @@ def down(target, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     length = fileEnd - fileStart
     assert length >= 0
     if length > N:
-        target.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
+        job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
                                       % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         assert midPoint >= fileStart
         assert midPoint+1 < fileEnd
         #We will subdivide the file
-        tempFileStoreID1 = target.fileStore.getEmptyFileStoreID()
-        tempFileStoreID2 = target.fileStore.getEmptyFileStoreID()
+        tempFileStoreID1 = job.fileStore.getEmptyFileStoreID()
+        tempFileStoreID2 = job.fileStore.getEmptyFileStoreID()
         #The use of rv here is for testing purposes
-        #The rv(0) of the first child target is tempFileStoreID1, 
+        #The rv(0) of the first child job is tempFileStoreID1,
         #similarly rv(0) of the second child is tempFileStoreID2
-        target.addFollowOnTargetFn(up, 
-                                   target.addChildTargetFn(down, inputFile, fileStart, 
+        job.addFollowOnJobFn(up,
+                                   job.addChildJobFn(down, inputFile, fileStart,
                                                            midPoint+1, N, tempFileStoreID1).rv(0),
-                                   target.addChildTargetFn(down, inputFile, midPoint+1, 
+                                   job.addChildJobFn(down, inputFile, midPoint+1,
                                                            fileEnd, N, tempFileStoreID2).rv(0), #Add one to avoid the newline
                                    outputFileStoreID)                
     else:
         #We can sort this bit of the file
-        target.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
+        job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
                                       % (fileStart, fileEnd, inputFile) )
-        with target.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+        with job.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
         #Make a local copy and sort the file
-        tempOutputFile = target.fileStore.readGlobalFile(outputFileStoreID)
+        tempOutputFile = job.fileStore.readGlobalFile(outputFileStoreID)
         sort(tempOutputFile)
-        target.fileStore.updateGlobalFile(outputFileStoreID, tempOutputFile)
+        job.fileStore.updateGlobalFile(outputFileStoreID, tempOutputFile)
     return outputFileStoreID
 
-def up(target, inputFileID1, inputFileID2, outputFileStoreID):
+def up(job, inputFileID1, inputFileID2, outputFileStoreID):
     """Merges the two files and places them in the output.
     """
     if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
-    with target.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
-        with target.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
-            with target.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
+    with job.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+        with job.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
+            with job.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
-    target.fileStore.logToMaster( "Merging %s and %s to %s"
+    job.fileStore.logToMaster( "Merging %s and %s to %s"
                                   % (inputFileID1, inputFileID2, outputFileStoreID) )
 
-def cleanup(target, tempOutputFileStoreID, outputFile):
+def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
     if random.random() > success_ratio:
         raise RuntimeError() #This is a test error and not a failure of the tests
-    target.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
+    job.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
     #sort(outputFile)
 
 if __name__ == '__main__':

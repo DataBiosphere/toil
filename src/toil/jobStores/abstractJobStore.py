@@ -5,7 +5,7 @@ import xml.etree.cElementTree as ET
 
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
-        super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
+        super( NoSuchJobException, self ).__init__( "The batchjob '%s' does not exist" % jobStoreID )
 
 class ConcurrentFileModificationException( Exception ):
     def __init__( self, jobStoreFileID ):
@@ -60,48 +60,48 @@ class AbstractJobStore( object ):
         """
         #Collate any jobs that were in the process of being created/deleted
         jobsToDelete = set()
-        for job in self.jobs():
-            for updateID in job.jobsToDelete:
+        for batchjob in self.jobs():
+            for updateID in batchjob.jobsToDelete:
                 jobsToDelete.add(updateID)
             
         #Delete the jobs that should be delete
         if len(jobsToDelete) > 0:
-            for job in self.jobs():
-                if job.updateID in jobsToDelete:
-                    self.delete(job.jobStoreID)
+            for batchjob in self.jobs():
+                if batchjob.updateID in jobsToDelete:
+                    self.delete(batchjob.jobStoreID)
         
-        #Cleanup the state of each job
-        for job in self.jobs():
-            changed = False #Flag to indicate if we need to update the job
+        #Cleanup the state of each batchjob
+        for batchjob in self.jobs():
+            changed = False #Flag to indicate if we need to update the batchjob
             #on disk
             
-            if len(job.jobsToDelete) != 0:
-                job.jobsToDelete = set()
+            if len(batchjob.jobsToDelete) != 0:
+                batchjob.jobsToDelete = set()
                 changed = True
                 
             #While jobs at the end of the stack are already deleted remove
-            #those jobs from the stack (this cleans up the case that the job
+            #those jobs from the stack (this cleans up the case that the batchjob
             #had successors to run, but had not been updated to reflect this)
-            while len(job.stack) > 0:
-                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
-                if len(jobs) < len(job.stack[-1]):
+            while len(batchjob.stack) > 0:
+                jobs = [ command[0] for command in batchjob.stack[-1] if self.exists(command[0]) ]
+                if len(jobs) < len(batchjob.stack[-1]):
                     changed = True
                     if len(jobs) > 0:
-                        job.stack[-1] = jobs
+                        batchjob.stack[-1] = jobs
                         break
                     else:
-                        job.stack.pop()
+                        batchjob.stack.pop()
                 else:
                     break
                           
             #This cleans the old log file which may 
-            #have been left if the job is being retried after a job failure. 
-            if job.logJobStoreFileID != None:
-                job.clearLogFile(self) 
+            #have been left if the batchjob is being retried after a batchjob failure.
+            if batchjob.logJobStoreFileID != None:
+                batchjob.clearLogFile(self)
                 changed = True
             
             if changed: #Update, but only if a change has occurred
-                self.update(job)
+                self.update(batchjob)
         
         #Remove any crufty stats/logging files from the previous run
         self.readStatsAndLogging(lambda x : None)
@@ -115,19 +115,19 @@ class AbstractJobStore( object ):
     def create( self, command, memory, cpu, disk, updateID=None,
                 predecessorNumber=0 ):
         """
-        Creates a job, adding it to the store.
+        Creates a batchjob, adding it to the store.
         
         Command, memory, cpu, updateID, predecessorNumber 
-        are all arguments to the job's constructor.
+        are all arguments to the batchjob's constructor.
 
-        :rtype : job.Job
+        :rtype : batchjob.Batchjob
         """
         raise NotImplementedError( )
 
     @abstractmethod
     def exists( self, jobStoreID ):
         """
-        Returns true if the job is in the store, else false.
+        Returns true if the batchjob is in the store, else false.
 
         :rtype : bool
         """
@@ -136,7 +136,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def getPublicUrl( self,  FileName):
         """
-        Returns a publicly accessible URL to the given file in the job store.
+        Returns a publicly accessible URL to the given file in the batchjob store.
         The returned URL starts with 'http:',  'https:' or 'file:'.
         The returned URL may expire as early as 1h after its been returned.
         Throw an exception if the file does not exist.
@@ -148,7 +148,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def getSharedPublicUrl( self,  jobStoreFileID):
         """
-        Returns a publicly accessible URL to the given file in the job store.
+        Returns a publicly accessible URL to the given file in the batchjob store.
         The returned URL starts with 'http:',  'https:' or 'file:'.
         The returned URL may expire as early as 1h after its been returned.
         Throw an exception if the file does not exist.
@@ -160,18 +160,18 @@ class AbstractJobStore( object ):
     @abstractmethod
     def load( self, jobStoreID ):
         """
-        Loads a job for the given jobStoreID and returns it.
+        Loads a batchjob for the given jobStoreID and returns it.
 
-        :rtype : job.Job
+        :rtype : batchjob.Batchjob
 
-        :raises: NoSuchJobException if there is no job with the given jobStoreID
+        :raises: NoSuchJobException if there is no batchjob with the given jobStoreID
         """
         raise NotImplementedError( )
 
     @abstractmethod
-    def update( self, job ):
+    def update( self, batchjob ):
         """
-        Persists the job in this store atomically.
+        Persists the batchjob in this store atomically.
         """
         raise NotImplementedError( )
 
@@ -179,9 +179,9 @@ class AbstractJobStore( object ):
     def delete( self, jobStoreID ):
         """
         Removes from store atomically, can not then subsequently call load(), write(), update(),
-        etc. with the job.
+        etc. with the batchjob.
 
-        This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
+        This operation is idempotent, i.e. deleting a batchjob twice or deleting a non-existent batchjob
         will succeed silently.
         """
         raise NotImplementedError( )
@@ -196,16 +196,16 @@ class AbstractJobStore( object ):
 
     ##########################################
     #The following provide an way of creating/reading/writing/updating files 
-    #associated with a given job.
+    #associated with a given batchjob.
     ##########################################  
 
     @abstractmethod
     def writeFile( self, jobStoreID, localFilePath ):
         """
-        Takes a file (as a path) and places it in this job store. Returns an ID that can be used
-        to retrieve the file at a later time. jobStoreID is the id of the job from which the file
-        is being created. When delete(job) is called all files written with the given
-        job.jobStoreID will be removed from the jobStore.
+        Takes a file (as a path) and places it in this batchjob store. Returns an ID that can be used
+        to retrieve the file at a later time. jobStoreID is the id of the batchjob from which the file
+        is being created. When delete(batchjob) is called all files written with the given
+        batchjob.jobStoreID will be removed from the jobStore.
         """
         raise NotImplementedError( )
 
@@ -231,7 +231,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def deleteFile( self, jobStoreFileID ):
         """
-        Deletes the file with the given ID from this job store.  
+        Deletes the file with the given ID from this batchjob store.
         This operation is idempotent, i.e. deleting a file twice or deleting a non-existent file
         will succeed silently.
         """
@@ -249,7 +249,7 @@ class AbstractJobStore( object ):
     def writeFileStream( self, jobStoreID ):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of 1) a file handle
-        which can be written to and 2) the ID of the resulting file in the job store. The yielded
+        which can be written to and 2) the ID of the resulting file in the batchjob store. The yielded
         file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
@@ -301,7 +301,7 @@ class AbstractJobStore( object ):
         by the given name.
 
         :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
-        the physical storage represented by this job store
+        the physical storage represented by this batchjob store
 
         :raises ConcurrentFileModificationException: if the file was modified concurrently during
         an invocation of this method

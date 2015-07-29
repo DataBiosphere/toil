@@ -37,7 +37,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def __init__(self, config, maxCpus, maxMemory, maxDisk, masterIP, useBadExecutor=False, userScript=None, toilDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
-        # The hot-deployed resources representing the user script and the job tree distribution respectively. Will be
+        # The hot-deployed resources representing the user script and the toil distribution respectively. Will be
         # passed along in every Mesos task. See toil.common.HotDeployedResource for details.
         self.userScript = userScript
         self.toilDistribution = toilDistribution
@@ -45,7 +45,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Written to when mesos kills tasks, as directed by toil
         self.killedSet = set()
 
-        # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
+        # Dictionary of queues, which toil assigns jobs to. Each queue represents a batchjob type,
         # defined by resource usage
         self.jobQueueList = defaultdict(list)
 
@@ -79,33 +79,33 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cpu, disk):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
+        the number of bytes the batchjob needs to run in and cpu is the number of cpus needed for the batchjob and error-file
         is the path of the file to place any std-err/std-out in.
         """
-        # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
+        # puts batchjob into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cpu, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
 
-        job = ToilJob(jobID=jobID,
+        batchjob = ToilJob(jobID=jobID,
                          resources=ResourceRequirement(memory=memory, cpu=cpu, disk=disk),
                          command=command,
                          userScript=self.userScript,
                          toilDistribution=self.toilDistribution)
-        job_type = job.resources
+        job_type = batchjob.resources
 
-        log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
-        self.jobQueueList[job_type].append(job)
+        log.debug("Queueing the batchjob command: %s with batchjob id: %s ..." % (command, str(jobID)))
+        self.jobQueueList[job_type].append(batchjob)
         log.debug("... queued")
 
         return jobID
 
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """
-        Kills the given job IDs.
+        Kills the given batchjob IDs.
         """
         localSet = set()
         if self.driver is None:
@@ -115,10 +115,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             self.killSet.add(jobID)
             localSet.add(jobID)
 
-            if jobID not in self.getIssuedJobIDs():
+            if jobID not in self.getIssuedBatchJobIDs():
                 self.killSet.remove(jobID)
                 localSet.remove(jobID)
-                log.debug("Job %s already finished", jobID)
+                log.debug("Batchjob %s already finished", jobID)
             else:
                 taskId = mesos_pb2.TaskID()
                 taskId.value = str(jobID)
@@ -133,7 +133,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.debug("sleeping in the while")
                 time.sleep(1)
 
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
@@ -147,7 +147,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
         return jobList
 
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         """
         Gets a map of jobs (as jobIDs) currently running (not just waiting) and a how long they have been running for
         (in seconds).
@@ -157,9 +157,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         """
-        Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
+        Gets a batchjob that has updated its status, according to the batchjob manager. Max wait gives the number of seconds to
         pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
         """
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
@@ -167,7 +167,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
-        log.debug("Job updated with code {}".format(retcode))
+        log.debug("Batchjob updated with code {}".format(retcode))
         return i
 
     def getWaitDuration(self):
@@ -177,7 +177,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         return self.reconciliationPeriod
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """
         Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2, making it expensive. We
         allow this every 10 minutes..
@@ -290,9 +290,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def _deleteByJobID(self, jobID, ):
         # FIXME: not efficient, I'm sure.
         for key, jobType in self.jobQueueList.iteritems():
-            for job in jobType:
-                if jobID == job.jobID:
-                    jobType.remove(job)
+            for batchjob in jobType:
+                if jobID == batchjob.jobID:
+                    jobType.remove(batchjob)
 
     def _updateStateToRunning(self, offer, task):
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
@@ -306,7 +306,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         job_types = self._sortJobsByResourceReq()
 
-        if len(job_types) == 0 or (len(self.getIssuedJobIDs()) - len(self.getRunningJobIDs()) == 0):
+        if len(job_types) == 0 or (len(self.getIssuedBatchJobIDs()) - len(self.getRunningBatchJobIDs()) == 0):
             log.debug("Declining offers")
             # If there are no jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
@@ -330,7 +330,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
                                 remainingCpus >= job_type.cpu and \
                                 remainingStor >= self.__bytesToMB(job_type.disk) and \
-                                remainingMem >= self.__bytesToMB(job_type.memory):  # job tree specifies mem in bytes.
+                                remainingMem >= self.__bytesToMB(job_type.memory):  # toil specifies mem in bytes.
 
                     task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
                     if int(task.task_id.value) not in self.runningJobMap:
@@ -355,7 +355,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _createTask(self, jt_job, offer):
         """
-        Build the Mesos task object from the toil job here to avoid further cluttering resourceOffers
+        Build the Mesos task object from the toil batchjob here to avoid further cluttering resourceOffers
         """
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(jt_job.jobID)
@@ -455,6 +455,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     @staticmethod
     def __bytesToMB(mem):
         """
-        used when converting job tree reqs to Mesos reqs
+        used when converting toil reqs to Mesos reqs
         """
         return mem / 1024 / 1024
