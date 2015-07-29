@@ -1,4 +1,4 @@
-#toil
+#Toil
 Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, parasol and on multi-core machines.
 
 ##Authors
