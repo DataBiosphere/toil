@@ -81,9 +81,9 @@ def _addOptions(addGroupFn, defaultStr):
                             "(If this is a file path this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
                             "jobtree, then try and restart the jobs in it. The default=%s" % defaultStr))
-    addOptionFn("--workDir", dest="workDir", default='/tmp',
-                      help="Absolute path to directory where temporary files generated during the Toil run should "
-                           "be placed. default=%s" % defaultStr)
+    addOptionFn("--workDir", dest="workDir", default=None,
+                help="Absolute path to directory where temporary files generated during the Toil run should "
+                     "be placed. default=%s" % defaultStr)
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the batchjob-tree to be used by toilStats. default=%s" % defaultStr)
 
@@ -212,7 +212,6 @@ def createConfig(options):
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["master_ip"] = options.masterIP
-    config.attrib["work_dir"] = options.workDir
     config.attrib["job_store"] = os.path.abspath(options.toil) if options.toil.startswith('.') else options.toil
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
@@ -235,6 +234,8 @@ def createConfig(options):
         config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
     if options.stats:
         config.attrib["stats"] = ""
+    if options.workDir:
+        config.attrib["work_dir"] = options.workDir
     return config
 
 
