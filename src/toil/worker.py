@@ -142,12 +142,15 @@ def main():
 
     setLogLevel(config.attrib["log_level"])
 
+    tempRootDir = config.attrib.get('work_dir')
+
     ##########################################
     #Setup the temporary directories.
     ##########################################
         
-    #Dir to put all the temp files in.
-    localWorkerTempDir = getTempDirectory()
+    #Dir to put all the temp files in. If tempRootDir is None, tempdir looks at environment variables to determine
+    # where to put the tempDir.
+    localWorkerTempDir = getTempDirectory(tempRootDir)
     
     ##########################################
     #Setup the logging
