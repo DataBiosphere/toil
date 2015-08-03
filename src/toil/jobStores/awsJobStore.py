@@ -7,6 +7,8 @@ import os
 import re
 from threading import Thread
 import uuid
+import base64
+import hashlib
 
 # noinspection PyUnresolvedReferences
 from boto.sdb.domain import Domain
@@ -92,7 +94,10 @@ class AWSJobStore( AbstractJobStore ):
         self.stats = None
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
+        self.sseKey = None
         create = config is not None
+        if create and "sse_key" in config:
+            self.sseKey = config.attrib["sse_key"]
         self.jobDomain = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
@@ -112,7 +117,9 @@ class AWSJobStore( AbstractJobStore ):
         Create url, check if valid, return.
         """
         key = self.files.get_key( key_name=jobStoreFileID)
-        return key.generate_url(expires_in=3600) # one hour
+        headers = {}
+        self.__add_encryption_headers( headers )
+        return key.generate_url(expires_in=3600, headers=headers) # one hour
 
     def getSharedPublicUrl(self, FileName):
         jobStoreFileID = self._newFileID( FileName )
@@ -417,14 +424,16 @@ class AWSJobStore( AbstractJobStore ):
 
     def _upload( self, jobStoreFileID, localFilePath ):
         file_size, file_time = self._fileSizeAndTime( localFilePath )
+        headers = {}
+        self.__add_encryption_headers( headers )
         if file_size <= self._s3_part_size:
             key = self.files.new_key( key_name=jobStoreFileID )
             key.name = jobStoreFileID
-            key.set_contents_from_filename( localFilePath )
+            key.set_contents_from_filename( localFilePath, headers=headers)
             version = key.version_id
         else:
             with open( localFilePath, 'rb' ) as f:
-                upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
+                upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID, headers=headers)
                 try:
                     start = 0
                     part_num = itertools.count( )
@@ -451,11 +460,13 @@ class AWSJobStore( AbstractJobStore ):
         key = bucket.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
+        headers = {}
+        self.__add_encryption_headers( headers )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def reader( ):
                     try:
-                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID )
+                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID, headers=headers )
                         try:
                             for part_num in itertools.count( ):
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -481,7 +492,7 @@ class AWSJobStore( AbstractJobStore ):
                     log.debug( "Using single part upload" )
                     try:
                         buf = StringIO( readable.read( ) )
-                        assert key.set_contents_from_file( fp=buf ) == buf.len
+                        assert key.set_contents_from_file( fp=buf, headers=headers ) == buf.len
                     except:
                         log.exception( "Exception in simple reader thread" )
 
@@ -585,6 +596,10 @@ class AWSJobStore( AbstractJobStore ):
         status = bucket.get_versioning_status( )
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
 
+    def __add_encryption_headers( self, headers ):
+        if self.sseKey is not None:
+            self._add_encryption_headers( self.sseKey, headers )
+
     def deleteJobStore( self ):
         for bucket in (self.files, self.stats):
             if bucket is not None:
@@ -601,6 +616,14 @@ class AWSJobStore( AbstractJobStore ):
             if domain is not None:
                 domain.delete( )
 
+    @staticmethod
+    def _add_encryption_headers( sse_key, headers ):
+        assert len( sse_key ) == 32
+        encoded_sse_key = base64.b64encode( sse_key )
+        encoded_sse_key_md5 = base64.b64encode( hashlib.md5( sse_key ).digest( ) )
+        headers[ 'x-amz-server-side-encryption-customer-algorithm' ] = 'AES256'
+        headers[ 'x-amz-server-side-encryption-customer-key' ] = encoded_sse_key
+        headers[ 'x-amz-server-side-encryption-customer-key-md5' ] = encoded_sse_key_md5
 
 # Boto converts all attribute values to strings by default, so an attribute value of None would
 # becomes 'None' in SimpleDB. To truly represent attribute values of None, we'd have to always

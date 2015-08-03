@@ -84,6 +84,8 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil run should "
                      "be placed. default=%s" % defaultStr)
+    addOptionFn("--sseKey", dest="sseKey", default=None,
+            help="Key to be used for encryption of files stored to cloud jobStore. Default=%s" % defaultStr)
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the batchjob-tree to be used by toilStats. default=%s" % defaultStr)
 
@@ -236,6 +238,8 @@ def createConfig(options):
         config.attrib["stats"] = ""
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
+    if options.sseKey:
+        config.attrib["sse_key"] = options.sseKey
     return config
 
 
