@@ -116,7 +116,9 @@ class AWSJobStore( AbstractJobStore ):
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
         Create url, check if valid, return.
         """
-        key = self.files.get_key( key_name=jobStoreFileID)
+        headers = {}
+        self.__add_encryption_headers( headers )
+        key = self.files.get_key( key_name=jobStoreFileID, headers=headers)
         headers = {}
         self.__add_encryption_headers( headers )
         return key.generate_url(expires_in=3600, headers=headers) # one hour
@@ -450,7 +452,7 @@ class AWSJobStore( AbstractJobStore ):
                     raise
                 else:
                     version = upload.complete_upload( ).version_id
-        key = self.files.get_key( jobStoreFileID )
+        key = self.files.get_key( jobStoreFileID, headers=headers )
         assert key.size == file_size
         assert self._fileSizeAndTime( localFilePath ) == (file_size, file_time) #why do this? No one can touch the file while it is uploaded?
         return version
@@ -507,12 +509,16 @@ class AWSJobStore( AbstractJobStore ):
             assert key.version_id is not None
 
     def _download( self, jobStoreFileID, localFilePath, version ):
-        key = self.files.get_key( jobStoreFileID, validate=False )
+        headers = {}
+        self.__add_encryption_headers( headers )
+        key = self.files.get_key( jobStoreFileID, headers=headers,validate=False )
         key.get_contents_to_filename( localFilePath, version_id=version )
 
     @contextmanager
     def _downloadStream( self, jobStoreFileID, version, bucket ):
-        key = bucket.get_key( jobStoreFileID, validate=False )
+        headers = {}
+        self.__add_encryption_headers( headers )
+        key = bucket.get_key( jobStoreFileID, headers=headers, validate=False )
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
