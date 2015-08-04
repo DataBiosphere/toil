@@ -351,7 +351,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.info("...launching Mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
-                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem/ 1000000, offerCpus, offerStor/ 1000000)))
+                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem*1000000, offerCpus, offerStor*1000000)))
 
     def _createTask(self, jt_job, offer):
         """
