@@ -20,7 +20,7 @@ def __try_import( name ):
 # Mesos as a whole. And while mesos.interface *can* be installed via pip, it is not sufficient
 # for our purposes. We therefore don't explicitly depend on neither mesos.native nor
 # mesos.interface. Instead, we require them both to be absent or present. In the latter case,
-# we dynamically add the dependencies we need to use Mesos.
+# we dynamically add the dependencies we need in order to to use Mesos.
 
 mesos_imports = __try_import( 'mesos.native' ) + __try_import( 'mesos.interface' )
 
