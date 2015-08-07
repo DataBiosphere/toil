@@ -342,7 +342,7 @@ class Job(object):
             Raises an exception if the given toil already exists.
             """
             setLoggingFromOptions(options)
-            with setupToil(options) as (config, batchSystem, jobStore):
+            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 jobStore.clean()
                 if "rootJob" not in config.attrib: #No jobs have yet been run
                     # Setup the first batchjob.

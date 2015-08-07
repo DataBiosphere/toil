@@ -11,10 +11,10 @@ from toil.job import Job
 from toil.test import ToilTest
 from toil.batchJob import BatchJob
 
-class JobTest(ToilTest):
+class BatchJobTest(ToilTest):
     
     def setUp(self):
-        super( JobTest, self ).setUp( )
+        super( BatchJobTest, self ).setUp( )
         self.testToil = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
         Job.Runner.addToilOptions(parser)
@@ -27,7 +27,7 @@ class JobTest(ToilTest):
     def tearDown(self):
         self.contextManager.__exit__(None, None, None)
         system("rm -rf %s" % self.testToil)
-        super( JobTest, self ).tearDown( )
+        super( BatchJobTest, self ).tearDown( )
     
     def testJob(self):       
         """
