@@ -11,7 +11,7 @@ import tempfile
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
-from toil.batchJob import BatchJob
+from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
 
@@ -49,7 +49,7 @@ class FileJobStore(AbstractJobStore):
         #Sub directory to put temporary files associated with the batchjob in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the batchjob
-        batchjob = BatchJob(command=command, memory=memory, cpu=cpu, disk=disk,
+        batchjob = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
@@ -81,7 +81,7 @@ class FileJobStore(AbstractJobStore):
         #Load a valid version of the batchjob
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            batchjob = BatchJob.fromDict(pickler.load(fileHandle))
+            batchjob = JobWrapper.fromDict(pickler.load(fileHandle))
         #The following cleans up any issues resulting from the failure of the 
         #batchjob during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):

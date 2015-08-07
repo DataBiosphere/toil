@@ -65,9 +65,9 @@ def toilPackageDirPath():
     Returns the absolute path of the directory that corresponds to the top-level toil package. The return value is
     guaranteed to end in '/toil'.
     """
-    import toil.batchJob
+    import toil.jobWrapper
 
-    result = os.path.dirname(absSymPath(toil.batchJob.__file__))
+    result = os.path.dirname(absSymPath(toil.jobWrapper.__file__))
     assert result.endswith('/toil')
     return result
 

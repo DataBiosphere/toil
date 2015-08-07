@@ -9,12 +9,12 @@ from optparse import OptionParser
 from toil.common import setupToil
 from toil.job import Job
 from toil.test import ToilTest
-from toil.batchJob import BatchJob
+from toil.jobWrapper import JobWrapper
 
-class BatchJobTest(ToilTest):
+class JobWrapperTest(ToilTest):
     
     def setUp(self):
-        super( BatchJobTest, self ).setUp( )
+        super( JobWrapperTest, self ).setUp( )
         self.testToil = os.path.join(os.getcwd(), "testJobDir")
         parser = OptionParser()
         Job.Runner.addToilOptions(parser)
@@ -27,7 +27,7 @@ class BatchJobTest(ToilTest):
     def tearDown(self):
         self.contextManager.__exit__(None, None, None)
         system("rm -rf %s" % self.testToil)
-        super( BatchJobTest, self ).tearDown( )
+        super( JobWrapperTest, self ).tearDown( )
     
     def testJob(self):       
         """
@@ -43,7 +43,7 @@ class BatchJobTest(ToilTest):
         predecessorNumber = 0
         updateID = 1000
         
-        j = BatchJob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j = JobWrapper(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         
         #Check attributes
@@ -61,7 +61,7 @@ class BatchJobTest(ToilTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = BatchJob(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
+        j2 = JobWrapper(command, memory, cpu, disk, jobStoreID, remainingRetryCount,
                   updateID, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
