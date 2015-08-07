@@ -640,7 +640,7 @@ class Job(object):
         #Set the config rootJob attrib
         assert "rootJob" not in jobStore.config.attrib
         jobStore.config.attrib["rootJob"] = batchjob.jobStoreID
-        with jobStore.writeSharedFileStream("config.xml") as f:
+        with jobStore.writeSharedFileStream("config.xml", isProtected=False) as f:
             ET.ElementTree( jobStore.config ).write(f)
         #Return the first batchjob
         return batchjob

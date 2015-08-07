@@ -32,6 +32,9 @@ log = logging.getLogger( __name__ )
 
 # FIXME: Command length is currently limited to 1024 characters
 
+# FIXME: Passing in both headers and validate=False caused BotoClientError: When providing 'validate=False', no other
+# params are allowed. Solution, validate=False was removed completely, but could potentially be passed if not encrypting
+
 # NB: Number of messages per batchjob is limited to 256-x, 1024 bytes each, with x being the number of
 # other attributes in the item
 
@@ -96,13 +99,14 @@ class AWSJobStore( AbstractJobStore ):
         self.s3 = self._connectS3( )
         self.sseKey = None
         create = config is not None
-        if create and "sse_key" in config:
-            self.sseKey = config.attrib["sse_key"]
         self.jobDomain = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
         super( AWSJobStore, self ).__init__( config=config )
+        if 'sse_key' in self.config.attrib:
+            with open(self.config.attrib["sse_key"]) as f:
+                self.sseKey=f.readline()
 
     def exists( self, jobStoreID ):
         for attempt in retry_sdb( ):
@@ -110,18 +114,15 @@ class AWSJobStore( AbstractJobStore ):
                 return bool( self.jobDomain.get_attributes( item_name=jobStoreID,
                                                        attribute_name=[ ],
                                                        consistent_read=True ) )
-    def getPublicUrl( self,  jobStoreFileID):
+    def getPublicUrl( self, jobStoreFileID):
         """
         For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
         Create url, check if valid, return.
+        Encrypted file urls are currently not supported
         """
-        headers = {}
-        self.__add_encryption_headers( headers )
-        key = self.files.get_key( key_name=jobStoreFileID, headers=headers)
-        headers = {}
-        self.__add_encryption_headers( headers )
-        return key.generate_url(expires_in=3600, headers=headers) # one hour
+        key = self.files.get_key( key_name=jobStoreFileID)
+        return key.generate_url(expires_in=3600) # one hour
 
     def getSharedPublicUrl(self, FileName):
         jobStoreFileID = self._newFileID( FileName )
@@ -195,11 +196,11 @@ class AWSJobStore( AbstractJobStore ):
                    firstVersion, jobStoreFileID, jobStoreID )
 
     @contextmanager
-    def writeSharedFileStream( self, sharedFileName ):
+    def writeSharedFileStream( self, sharedFileName, isProtected=True ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID, self.files ) as (writable, key):
+        with self._uploadStream( jobStoreFileID, self.files, encrypted=isProtected ) as (writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str( self.sharedFileJobID ) if oldVersion is None else None
@@ -245,14 +246,14 @@ class AWSJobStore( AbstractJobStore ):
             yield readable
 
     @contextmanager
-    def readSharedFileStream( self, sharedFileName ):
+    def readSharedFileStream( self, sharedFileName, isProtected=True ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
         log.debug( "Read version %s from shared file %s (%s)",
                    version, sharedFileName, jobStoreFileID )
-        with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
+        with self._downloadStream( jobStoreFileID, version, self.files, encrypted=isProtected ) as readable:
             yield readable
 
     def deleteFile( self, jobStoreFileID ):
@@ -458,12 +459,13 @@ class AWSJobStore( AbstractJobStore ):
         return version
 
     @contextmanager
-    def _uploadStream( self, jobStoreFileID, bucket, multipart=True ):
+    def _uploadStream( self, jobStoreFileID, bucket, multipart=True, encrypted=True ):
         key = bucket.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
         headers = {}
-        self.__add_encryption_headers( headers )
+        if encrypted:
+            self.__add_encryption_headers( headers )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def reader( ):
@@ -480,7 +482,7 @@ class AWSJobStore( AbstractJobStore ):
                                 if len( buf ) == 0 and part_num > 0: break
                                 upload.upload_part_from_file( fp=StringIO( buf ),
                                                               # S3 part numbers are 1-based
-                                                              part_num=part_num + 1 )
+                                                              part_num=part_num + 1, headers=headers )
                                 if len( buf ) == 0: break
                         except:
                             upload.cancel_upload( )
@@ -511,19 +513,20 @@ class AWSJobStore( AbstractJobStore ):
     def _download( self, jobStoreFileID, localFilePath, version ):
         headers = {}
         self.__add_encryption_headers( headers )
-        key = self.files.get_key( jobStoreFileID, headers=headers,validate=False )
-        key.get_contents_to_filename( localFilePath, version_id=version )
+        key = self.files.get_key( jobStoreFileID, headers=headers )
+        key.get_contents_to_filename( localFilePath, version_id=version, headers=headers )
 
     @contextmanager
-    def _downloadStream( self, jobStoreFileID, version, bucket ):
+    def _downloadStream( self, jobStoreFileID, version, bucket, encrypted=True ):
         headers = {}
-        self.__add_encryption_headers( headers )
-        key = bucket.get_key( jobStoreFileID, headers=headers, validate=False )
+        if encrypted:
+            self.__add_encryption_headers( headers )
+        key = bucket.get_key( jobStoreFileID, headers=headers)
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def writer( ):
-                    key.get_contents_to_file( writable, version_id=version )
+                    key.get_contents_to_file( writable, headers=headers, version_id=version)
                     # This close() will send EOF to the reading end and ultimately cause the
                     # yield to return. It also makes the implict .close() done by the enclosing
                     # "with" context redundant but that should be ok since .close() on file
