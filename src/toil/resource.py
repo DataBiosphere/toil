@@ -21,7 +21,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
     script are invoked. Each instance is a namedtuple with the following elements:
 
     The pathHash element contains the MD5 (in hexdigest form) of the path to the resource on the
-    leader node. The path, and therefore its hash is unique within a batchjob store.
+    leader node. The path, and therefore its hash is unique within a job store.
 
     The url element is a "file:" or "http:" URL at which the resource can be obtained.
 
