@@ -6,6 +6,7 @@ import os
 import urllib2
 import tempfile
 from threading import Thread
+import tempfile
 import uuid
 from xml.etree.cElementTree import Element
 
@@ -53,6 +54,14 @@ class hidden:
             config.attrib[ "try_count" ] = str( self.default_try_count )
             return config
 
+        def _encryptedConfig(self):
+            config = self._dummyConfig()
+            sse_key = tempfile.mkdtemp() + "keyFile"
+            with open(sse_key, 'w') as f:
+                f.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            config.attrib["sse_key"] = sse_key
+            return config
+
         @abstractmethod
         def createJobStore( self, config=None ):
             """
@@ -78,14 +87,21 @@ class hidden:
             """
             master = self.master
 
+            self.jobStoreRunThrough(master)
+
+        def testSSE( self ):
+            config=self._encryptedConfig()
+            jobStore = self.createJobStore(config)
+            self.jobStoreRunThrough(jobStore, config=config)
+
+        def jobStoreRunThrough(self, master, config=None):
             # Test initial state
             #
-            self.assertFalse( master.exists( "foo" ) )
-
+            self.assertFalse(master.exists("foo"))
             # Create parent batchjob and verify its existence/properties
             #
-            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
-            self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
+            jobOnMaster = master.create("master1", 12, 34, 35, "foo")
+            self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, "master1")
             self.assertEquals(jobOnMaster.memory, 12)
             self.assertEquals(jobOnMaster.cpu, 34)
@@ -95,184 +111,161 @@ class hidden:
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
             self.assertEquals(jobOnMaster.logJobStoreFileID, None)
-
             # Create a second instance of the batchjob store, simulating a worker ...
             #
-            worker = self.createJobStore( )
+            worker = self.createJobStore(config=config)
             # ... and load the parent batchjob there.
-            jobOnWorker = worker.load( jobOnMaster.jobStoreID )
-            self.assertEquals( jobOnMaster, jobOnWorker )
-
+            jobOnWorker = worker.load(jobOnMaster.jobStoreID)
+            self.assertEquals(jobOnMaster, jobOnWorker)
             # Update state on batchjob
             #
             # The following demonstrates the batchjob creation pattern, where jobs
             # to be created are referenced in "jobsToDelete" array, which is
             # persisted to disk first
             # If things go wrong during the update, this list of jobs to delete
-            # is used to fix the state 
-            jobOnWorker.jobsToDelete = [ "1", "2" ]
+            # is used to fix the state
+            jobOnWorker.jobsToDelete = ["1", "2"]
             worker.update(jobOnWorker)
-            #Check jobs to delete persisted
-            self.assertEquals(master.load(jobOnWorker.jobStoreID).jobsToDelete, [ "1", "2" ])
-            #Create children
-            child1 = worker.create( "child1", 23, 45, 46, "1", 1)
-            child2 = worker.create( "child2", 34, 56, 57, "2", 1)
-            #Update parent
+            # Check jobs to delete persisted
+            self.assertEquals(master.load(jobOnWorker.jobStoreID).jobsToDelete, ["1", "2"])
+            # Create children
+            child1 = worker.create("child1", 23, 45, 46, "1", 1)
+            child2 = worker.create("child2", 34, 56, 57, "2", 1)
+            # Update parent
             jobOnWorker.stack.append(((child1.jobStoreID, 23, 45, 46, 1), (child2.jobStoreID, 34, 56, 57, 1)))
             jobOnWorker.jobsToDelete = []
             worker.update(jobOnWorker)
-            
             # Check equivalence between master and worker
             #
-            self.assertNotEquals( jobOnWorker, jobOnMaster )
+            self.assertNotEquals(jobOnWorker, jobOnMaster)
             # Reload parent batchjob on master
-            jobOnMaster = master.load( jobOnMaster.jobStoreID )
-            self.assertEquals( jobOnWorker, jobOnMaster )
+            jobOnMaster = master.load(jobOnMaster.jobStoreID)
+            self.assertEquals(jobOnWorker, jobOnMaster)
             # Load children on master an check equivalence
             self.assertEquals(master.load(child1.jobStoreID), child1)
             self.assertEquals(master.load(child2.jobStoreID), child2)
-            
             # Test changing and persisting batchjob state across multiple jobs
             #
-            childJobs = [ worker.load( childCommand[ 0 ] ) for childCommand in jobOnMaster.stack[-1] ]
+            childJobs = [worker.load(childCommand[0]) for childCommand in jobOnMaster.stack[-1]]
             for childJob in childJobs:
-                childJob.logJobStoreFileID = str( uuid.uuid4( ) )
+                childJob.logJobStoreFileID = str(uuid.uuid4())
                 childJob.remainingRetryCount = 66
-                self.assertNotEquals( childJob, master.load( childJob.jobStoreID ) )
+                self.assertNotEquals(childJob, master.load(childJob.jobStoreID))
             for childJob in childJobs:
-                worker.update( childJob )
+                worker.update(childJob)
             for childJob in childJobs:
-                self.assertEquals( master.load( childJob.jobStoreID ), childJob )
-                self.assertEquals( worker.load( childJob.jobStoreID ), childJob )    
+                self.assertEquals(master.load(childJob.jobStoreID), childJob)
+                self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
-            # Test batchjob iterator
-            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(worker.jobs()))
-            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(master.jobs()))
-
+                # Test batchjob iterator
+            self.assertEquals(set(childJobs + [jobOnMaster]), set(worker.jobs()))
+            self.assertEquals(set(childJobs + [jobOnMaster]), set(master.jobs()))
             # Test batchjob deletions
             #
-            
-            #First delete parent, this should have no effect on the children
+            # First delete parent, this should have no effect on the children
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertTrue(worker.exists(jobOnMaster.jobStoreID))
-            master.delete( jobOnMaster.jobStoreID )
+            master.delete(jobOnMaster.jobStoreID)
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             self.assertFalse(worker.exists(jobOnMaster.jobStoreID))
-            
             for childJob in childJobs:
                 self.assertTrue(master.exists(childJob.jobStoreID))
                 self.assertTrue(worker.exists(childJob.jobStoreID))
-                master.delete( childJob.jobStoreID )
+                master.delete(childJob.jobStoreID)
                 self.assertFalse(master.exists(childJob.jobStoreID))
                 self.assertFalse(worker.exists(childJob.jobStoreID))
-                self.assertRaises( NoSuchJobException, worker.load, childJob.jobStoreID )
-                self.assertRaises( NoSuchJobException, master.load, childJob.jobStoreID )
-            
+                self.assertRaises(NoSuchJobException, worker.load, childJob.jobStoreID)
+                self.assertRaises(NoSuchJobException, master.load, childJob.jobStoreID)
+
             # Test batchjob iterator now has no jobs
             #
             self.assertEquals(set(), set(worker.jobs()))
             self.assertEquals(set(), set(master.jobs()))
-
             # Test shared files: Write shared file on master, ...
             #
-            with master.writeSharedFileStream( "foo" ) as f:
-                f.write( "bar" )
+            with master.writeSharedFileStream("foo") as f:
+                f.write("bar")
             # ... read that file on worker, ...
-            with worker.readSharedFileStream( "foo" ) as f:
-                self.assertEquals( "bar", f.read( ) )
+            with worker.readSharedFileStream("foo") as f:
+                self.assertEquals("bar", f.read())
             # ... and read it again on master.
-            with master.readSharedFileStream( "foo" ) as f:
-                self.assertEquals( "bar", f.read( ) )
+            with master.readSharedFileStream("foo") as f:
+                self.assertEquals("bar", f.read())
 
-            #FIXME: TEST GETURL HERE.
-            sharedUrl = master.getSharedPublicUrl("foo")
+            with master.writeSharedFileStream("nonEncrypted", isProtected=False) as f:
+                f.write("bar")
+            sharedUrl = master.getSharedPublicUrl("nonEncrypted")
             self.assertTrue(urlIsValid(sharedUrl))
-
             # Test per-batchjob files: Create empty file on master, ...
             #
-            
-            #First recreate batchjob
-            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
-            
-            fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
-            
+            # First recreate batchjob
+            jobOnMaster = master.create("master1", 12, 34, 35, "foo")
+            fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
             self.assertTrue(worker.fileExists(fileOne))
             self.assertTrue(master.fileExists(fileOne))
-            
             # ... write to the file on worker, ...
-            with worker.updateFileStream( fileOne ) as f:
-                f.write( "one" )
+            with worker.updateFileStream(fileOne) as f:
+                f.write("one")
             # ... read the file as a stream on the master, ....
-
-            # test regular file urls
-            regUrl = master.getPublicUrl(fileOne)
-            self.assertTrue(urlIsValid(regUrl))
-
-            with master.readFileStream( fileOne ) as f:
-                self.assertEquals( f.read( ), "one" )
+            with master.readFileStream(fileOne) as f:
+                self.assertEquals(f.read(), "one")
 
             # ... and copy it to a temporary physical file on the master.
-            fh, path = tempfile.mkstemp( )
+            fh, path = tempfile.mkstemp()
             try:
-                os.close( fh )
-                master.readFile( fileOne, path )
-                with open( path, 'r+' ) as f:
-                    self.assertEquals( f.read( ), "one" )
+                os.close(fh)
+                master.readFile(fileOne, path)
+                with open(path, 'r+') as f:
+                    self.assertEquals(f.read(), "one")
                     # Write a different string to the local file ...
-                    f.seek( 0 )
-                    f.truncate( 0 )
-                    f.write( "two" )
+                    f.seek(0)
+                    f.truncate(0)
+                    f.write("two")
                 # ... and create a second file from the local file.
-                fileTwo = master.writeFile( jobOnMaster.jobStoreID, path )
-                with worker.readFileStream( fileTwo ) as f:
-                    self.assertEquals( f.read( ), "two" )
+                fileTwo = master.writeFile(jobOnMaster.jobStoreID, path)
+                with worker.readFileStream(fileTwo) as f:
+                    self.assertEquals(f.read(), "two")
                 # Now update the first file from the local file ...
-                master.updateFile( fileOne, path )
-                with worker.readFileStream( fileOne ) as f:
-                    self.assertEquals( f.read( ), "two" )
+                master.updateFile(fileOne, path)
+                with worker.readFileStream(fileOne) as f:
+                    self.assertEquals(f.read(), "two")
 
 
             finally:
-                os.unlink( path )
+                os.unlink(path)
             # Create a third file to test the last remaining method.
-            with worker.writeFileStream( jobOnMaster.jobStoreID ) as ( f, fileThree ):
-                f.write( "three" )
-            with master.readFileStream( fileThree ) as f:
-                self.assertEquals( f.read( ), "three" )
+            with worker.writeFileStream(jobOnMaster.jobStoreID) as (f, fileThree):
+                f.write("three")
+            with master.readFileStream(fileThree) as f:
+                self.assertEquals(f.read(), "three")
             # Delete a file explicitly but leave files for the implicit deletion through the parent
-            worker.deleteFile( fileOne )
-
+            worker.deleteFile(fileOne)
             # Check the file is gone
             self.assertTrue(not worker.fileExists(fileOne))
             self.assertTrue(not master.fileExists(fileOne))
-
             # Test stats and logging
             testRead = []
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==0)
-
+            files = master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files == 0)
             master.writeStatsAndLogging("abc")
-
-            files=master.readStatsAndLogging(testRead.append)
-            assert len(testRead)==1
-            self.assertTrue(files==1)
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==0)
+            files = master.readStatsAndLogging(testRead.append)
+            assert len(testRead) == 1
+            self.assertTrue(files == 1)
+            files = master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files == 0)
             master.writeStatsAndLogging("abc")
             master.writeStatsAndLogging("abc")
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==2)
+            files = master.readStatsAndLogging(testRead.append)
+            self.assertTrue(files == 2)
             # Delete parent and its associated files
             #
-            master.delete( jobOnMaster.jobStoreID )
-            self.assertFalse( master.exists( jobOnMaster.jobStoreID ) )
+            master.delete(jobOnMaster.jobStoreID)
+            self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # Files should be gone as well. NB: the fooStream() methods return context managers
-            self.assertRaises( NoSuchFileException, worker.readFileStream( fileTwo ).__enter__ )
-            self.assertRaises( NoSuchFileException, worker.readFileStream( fileThree ).__enter__ )
-
+            self.assertRaises(NoSuchFileException, worker.readFileStream(fileTwo).__enter__)
+            self.assertRaises(NoSuchFileException, worker.readFileStream(fileThree).__enter__)
             # TODO: Who deletes the shared files?
-
             # TODO: Test stats methods
 
         def testMultipartUploads( self ):
