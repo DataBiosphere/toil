@@ -143,6 +143,8 @@ def main():
     setLogLevel(config.attrib["log_level"])
 
     tempRootDir = config.attrib.get('work_dir')
+    if tempRootDir is not None and not os.path.exists(tempRootDir):
+        raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
 
     ##########################################
     #Setup the temporary directories.
