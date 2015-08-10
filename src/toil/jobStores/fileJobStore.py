@@ -45,7 +45,7 @@ class FileJobStore(AbstractJobStore):
     def create(self, command, memory, cpu, disk, updateID=None,
                predecessorNumber=0):
         #The absolute path to the job directory.
-        absJobDir = tempfile.mkdtemp(prefix="batchjob", dir=self._getTempSharedDir())
+        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
@@ -110,7 +110,7 @@ class FileJobStore(AbstractJobStore):
         #Walk through list of temporary directories searching for jobs
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
-                if i.startswith( 'batchjob' ):
+                if i.startswith( 'job' ):
                     yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
  
     ##########################################
@@ -236,7 +236,7 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, string is the file containing the serialised Batchjob.Batchjob instance
         for the given job.
         """
-        return os.path.join(self._getAbsPath(jobStoreID), "batchjob")
+        return os.path.join(self._getAbsPath(jobStoreID), "job")
 
     def _getJobTempFile(self, jobStoreID):
         """
