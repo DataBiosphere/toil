@@ -117,8 +117,8 @@ class AbstractJobStore( object ):
                     break
                           
             #Reset the retry count of the job 
-            if batchjob.remainingRetryCount < int(self.config.attrib["try_count"]):
-                batchjob.remainingRetryCount = int(self.config.attrib["try_count"]) 
+            if job.remainingRetryCount < int(self.config.attrib["try_count"]):
+                job.remainingRetryCount = int(self.config.attrib["try_count"])
                 changed = True
                           
             #This cleans the old log file which may 

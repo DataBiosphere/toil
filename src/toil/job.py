@@ -350,7 +350,7 @@ class Job(object):
                     jobStore.clean() #This cleans up any half written jobs after a restart
                     rootJob = job._loadRootJob(jobStore)
                 else:
-                    #Setup the first batchjob.
+                    #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
         
@@ -639,12 +639,12 @@ class Job(object):
         #Make the first job
         jobClassName = self.__class__.__name__
         command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
-        batchjob = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
+        jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
         #Store the name of the first job in a file in case of restart
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:
-            f.write(batchjob.jobStoreID)
-        #Return the first batchjob
-        return batchjob
+            f.write(jobWrapper.jobStoreID)
+        #Return the first job wrapper
+        return jobWrapper
 
     @staticmethod      
     def _loadRootJob(jobStore):
