@@ -95,7 +95,7 @@ def initializeOptions(parser):
     # Construct the arguments.
     ##########################################
     parser.add_option("--toil", dest="toil", default='./toil',
-                      help="Batchjob store path. Can also be specified as the single argument to the script. Default=%default")
+                      help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
@@ -596,7 +596,7 @@ def processData(config, stats, options):
     jobs = []
     for worker in workers:
         jobs += worker.findall("job")
-    def fn4(batchjob):
+    def fn4(job):
         return list(worker.findall("job"))
     createSummary(buildElement(collatedStatsTag, jobs, "job"),
                   workers, "worker", fn4)
@@ -728,7 +728,7 @@ def cacheAvailable(options):
 """
 
 def main():
-    """ Reports stats on the batchjob-tree, use with --stats option to toil.
+    """ Reports stats on the job-tree, use with --stats option to toil.
     """
 
     parser = getBasicOptionParser(

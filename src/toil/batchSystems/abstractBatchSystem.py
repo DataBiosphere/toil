@@ -67,13 +67,13 @@ class AbstractBatchSystem:
     def issueBatchJob(self, command, memory, cpu, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
-        the number of bytes the batchjob needs to run in and cpu is the number of cpus needed for
-        the batchjob and error-file is the path of the file to place any std-err/std-out in.
+        the number of bytes the job needs to run in and cpu is the number of cpus needed for
+        the job and error-file is the path of the file to place any std-err/std-out in.
         """
         raise NotImplementedError('Abstract method: issueBatchJob')
 
     def killBatchJobs(self, jobIDs):
-        """Kills the given batchjob IDs.
+        """Kills the given job IDs.
         """
         raise NotImplementedError('Abstract method: killBatchJobs')
 
@@ -93,8 +93,8 @@ class AbstractBatchSystem:
         raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
     
     def getUpdatedBatchJob(self, maxWait):
-        """Gets a batchjob that has updated its status,
-        according to the batchjob manager. Max wait gives the number of seconds to pause
+        """Gets a job that has updated its status,
+        according to the job manager. Max wait gives the number of seconds to pause
         waiting for a result. If a result is available returns (jobID, exitValue)
         else it returns None.
         """

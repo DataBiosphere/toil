@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 class MesosExecutor(mesos.interface.Executor):
     """
-    Part of mesos framework, runs on mesos slave. A toil batchjob is passed to it via the task.data field, and launched
+    Part of mesos framework, runs on mesos slave. A toil job is passed to it via the task.data field, and launched
     via call(toil.command). Uses the ExecutorDriver to communicate.
     """
 
@@ -117,17 +117,17 @@ class MesosExecutor(mesos.interface.Executor):
             finally:
                 del self.runningTasks[task.task_id.value]
 
-        def runJob(batchjob):
+        def runJob(job):
             """
-            :type batchjob: toil.batchSystems.mesos.ToilJob
+            :type job: toil.batchSystems.mesos.ToilJob
 
             :rtype: subprocess.Popen
             """
-            if batchjob.userScript:
-                batchjob.userScript.register()
-            log.debug("Invoking command: '%s'", batchjob.command)
+            if job.userScript:
+                job.userScript.register()
+            log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
-                return subprocess.Popen(batchjob.command, shell=True)
+                return subprocess.Popen(job.command, shell=True)
 
         def sendUpdate(taskState, message=''):
             log.debug("Sending status update ...")
