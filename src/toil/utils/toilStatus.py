@@ -98,7 +98,7 @@ def main():
                 with batchjob.getLogFileHandle(jobStore) as logFileHandle:
                     logStream(logFileHandle, batchjob.jobStoreID, logger.warn)
             else:
-                print "Log file for batchjob %s is not present" % batchjob.jobStoreID
+                print "Log file for job %s is not present" % batchjob.jobStoreID
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     

@@ -50,7 +50,7 @@ class AWSJobStore( AbstractJobStore ):
     # FIXME: Eliminate after consolidating behaviour with FileJobStore
 
     resetJobInLoadState = True
-    """Whether to reset the messages, remainingRetryCount and children attributes of a batchjob when
+    """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadToilState."""
 
     def fileExists(self, jobStoreFileID ):
@@ -69,7 +69,7 @@ class AWSJobStore( AbstractJobStore ):
     def create( self, command, memory, cpu, disk,updateID=None,
                 predecessorNumber=0 ):
         jobStoreID = self._newJobID( )
-        log.debug( "Creating batchjob %s for '%s'",
+        log.debug( "Creating job %s for '%s'",
                    jobStoreID, '<no command>' if command is None else command )
         batchjob = AWSJob( jobStoreID=jobStoreID,
                              command=command, memory=memory, cpu=cpu, disk=disk,
@@ -132,11 +132,11 @@ class AWSJobStore( AbstractJobStore ):
         batchjob = AWSJob.fromItem(result[0])
         if batchjob is None:
             raise NoSuchJobException( jobStoreID )
-        log.debug( "Loaded batchjob %s", jobStoreID )
+        log.debug( "Loaded job %s", jobStoreID )
         return batchjob
 
     def update( self, batchjob ):
-        log.debug( "Updating batchjob %s", batchjob.jobStoreID )
+        log.debug( "Updating job %s", batchjob.jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
                 assert self.jobDomain.put_attributes( item_name=batchjob.jobStoreID,
@@ -144,7 +144,7 @@ class AWSJobStore( AbstractJobStore ):
 
     def delete( self, jobStoreID ):
         # remove job and replace with jobStoreId.
-        log.debug( "Deleting batchjob %s", jobStoreID )
+        log.debug( "Deleting job %s", jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
                 self.jobDomain.delete_attributes( item_name=jobStoreID )
@@ -155,7 +155,7 @@ class AWSJobStore( AbstractJobStore ):
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True ) )
         if items:
-            log.debug( "Deleting %d file(s) associated with batchjob %s", len( items ), jobStoreID )
+            log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
             for attempt in retry_sdb( ):
                 with attempt:
                     self.versions.batch_delete_attributes( { item.name: None for item in items } )
@@ -170,7 +170,7 @@ class AWSJobStore( AbstractJobStore ):
         jobStoreFileID = self._newFileID( )
         firstVersion = self._upload( jobStoreFileID, localFilePath )
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion )
-        log.debug( "Wrote initial version %s of file %s for batchjob %s from path '%s'",
+        log.debug( "Wrote initial version %s of file %s for job %s from path '%s'",
                    firstVersion, jobStoreFileID, jobStoreID, localFilePath )
         return jobStoreFileID
 
@@ -182,7 +182,7 @@ class AWSJobStore( AbstractJobStore ):
         firstVersion = key.version_id
         assert firstVersion is not None
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion )
-        log.debug( "Wrote initial version %s of file %s for batchjob %s",
+        log.debug( "Wrote initial version %s of file %s for job %s",
                    firstVersion, jobStoreFileID, jobStoreID )
 
     @contextmanager
@@ -268,7 +268,7 @@ class AWSJobStore( AbstractJobStore ):
     def getEmptyFileStoreID( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID )
-        log.debug( "Registered empty file %s for batchjob %s", jobStoreFileID, jobStoreID )
+        log.debug( "Registered empty file %s for job %s", jobStoreFileID, jobStoreID )
         return jobStoreFileID
 
     def writeStatsAndLogging( self, statsAndLoggingString ):

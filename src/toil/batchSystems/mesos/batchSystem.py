@@ -97,7 +97,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                          toilDistribution=self.toilDistribution)
         job_type = batchjob.resources
 
-        log.debug("Queueing the batchjob command: %s with batchjob id: %s ..." % (command, str(jobID)))
+        log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
         self.jobQueueList[job_type].append(batchjob)
         log.debug("... queued")
 

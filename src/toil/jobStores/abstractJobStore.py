@@ -5,7 +5,7 @@ import xml.etree.cElementTree as ET
 
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
-        super( NoSuchJobException, self ).__init__( "The batchjob '%s' does not exist" % jobStoreID )
+        super( NoSuchJobException, self ).__init__( "The job '%s' does not exist" % jobStoreID )
 
 class ConcurrentFileModificationException( Exception ):
     def __init__( self, jobStoreFileID ):

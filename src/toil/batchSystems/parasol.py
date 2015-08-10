@@ -137,8 +137,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """Issues parasol with job commands.
         """
         self.checkResourceRequest(memory, cpu)
-        pattern = re.compile("your batchjob ([0-9]+).*")
-        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add batchjob '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
+        pattern = re.compile("your job ([0-9]+).*")
+        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
         #Deal with the cpus
         self.usedCpus += cpu
         while True: #Process finished results with no wait
@@ -161,12 +161,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
             if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
                 break
             else:
-                logger.info("We failed to properly add the batchjob, we will try again after a sleep")
+                logger.info("We failed to properly add the job, we will try again after a sleep")
                 time.sleep(5)
         jobID = int(match.group(1))
         self.jobIDsToCpu[jobID] = cpu
-        logger.debug("Got the parasol batchjob id: %s from line: %s" % (jobID, line))
-        logger.debug("Issued the batchjob command: %s with (parasol) batchjob id: %i " % (parasolCommand, jobID))
+        logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
+        logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID
     
     def killBatchJobs(self, jobIDs):
@@ -175,7 +175,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         while True:
             for jobID in jobIDs:
-                exitValue = popenParasolCommand("%s remove batchjob %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
+                exitValue = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):

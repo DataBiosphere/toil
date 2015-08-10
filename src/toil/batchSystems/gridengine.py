@@ -78,7 +78,7 @@ def qsub(qsubline):
     logger.debug("**"+" ".join(qsubline))
     process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
     result = int(process.stdout.readline().strip().split('.')[0])
-    logger.debug("Got the batchjob id: %s" % (str(result)))
+    logger.debug("Got the job id: %s" % (str(result)))
     return result
 
 def getjobexitcode(sgeJobID):
@@ -228,7 +228,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
         self.currentjobs.add(jobID)
         self.newJobsQueue.put((jobID, cpu, memory, command))
-        logger.debug("Issued the batchjob command: %s with batchjob id: %s " % (command, str(jobID)))
+        logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
 
     def killBatchJobs(self, jobIDs):

@@ -85,7 +85,7 @@ class FileJobStore(AbstractJobStore):
         #The following cleans up any issues resulting from the failure of the 
         #job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
-            logger.warn("There was a .new file for the batchjob: %s", jobStoreID)
+            logger.warn("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
             batchjob.setupJobAfterFailure(self.config)
         return batchjob

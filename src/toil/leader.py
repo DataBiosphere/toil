@@ -56,7 +56,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
         def statsAndLoggingCallBackFn(fileHandle2):
             node = ET.parse(fileHandle2).getroot()
             for message in node.find("messages").findall("message"):
-                logger.warn("Got message from batchjob at time: %s : %s",
+                logger.warn("Got message from job at time: %s : %s",
                                     time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
             ET.ElementTree(node).write(fileHandle)
         
@@ -105,7 +105,7 @@ class JobBatcher:
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cpu, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
-        logger.debug("Issued batchjob with batchjob store ID: %s and batchjob batch system ID: "
+        logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cpus: %i, disk: %i, and memory: %i",
                      jobStoreID, str(jobBatchSystemID), cpu, disk, memory)
 
@@ -172,8 +172,8 @@ class JobBatcher:
         maxJobDuration = float(self.config.attrib["max_job_duration"])
         idealJobTime = float(self.config.attrib["job_time"])
         if maxJobDuration < idealJobTime * 10:
-            logger.warn("The max batchjob duration is less than 10 times the ideal the batchjob time, so I'm setting it "
-                        "to the ideal batchjob time, sorry, but I don't want to crash your jobs "
+            logger.warn("The max job duration is less than 10 times the ideal the job time, so I'm setting it "
+                        "to the ideal job time, sorry, but I don't want to crash your jobs "
                         "because of limitations in toil ")
             maxJobDuration = idealJobTime * 10
         jobsToKill = []
@@ -182,8 +182,8 @@ class JobBatcher:
             runningJobs = self.batchSystem.getRunningBatchJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
-                    logger.warn("The batchjob: %s has been running for: %s seconds, more than the "
-                                "max batchjob duration: %s, we'll kill it",
+                    logger.warn("The job: %s has been running for: %s seconds, more than the "
+                                "max job duration: %s, we'll kill it",
                                 str(self.getJob(jobBatchSystemID)),
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
@@ -232,21 +232,21 @@ class JobBatcher:
         if self.jobStore.exists(jobStoreID):
             batchjob = self.jobStore.load(jobStoreID)
             if batchjob.logJobStoreFileID is not None:
-                logger.warn("The batchjob seems to have left a log file, indicating failure: %s", jobStoreID)
+                logger.warn("The job seems to have left a log file, indicating failure: %s", jobStoreID)
                 with batchjob.getLogFileHandle( self.jobStore ) as logFileStream:
                     logStream( logFileStream, jobStoreID, logger.warn )
             assert batchjob not in self.toilState.updatedJobs
             if resultStatus != 0:
                 if batchjob.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite batchjob failing: %s", jobStoreID)
+                    logger.warn("No log file is present, despite job failing: %s", jobStoreID)
                 batchjob.setupJobAfterFailure(self.config)
             self.toilState.updatedJobs.add(batchjob) #Now we know the
             #job is done we can add it to the list of updated job files
-            logger.debug("Added batchjob: %s to active jobs", jobStoreID)
+            logger.debug("Added job: %s to active jobs", jobStoreID)
         else:  #The job is done
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
-                            "batchjob %s seems to have finished and been removed", jobStoreID)
+                            "job %s seems to have finished and been removed", jobStoreID)
             self._updatePredecessorStatus(jobStoreID)
             
     def _updatePredecessorStatus(self, jobStoreID):
@@ -450,17 +450,17 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 jobBatchSystemID, result = updatedJob
                 if jobBatcher.hasJob(jobBatchSystemID):
                     if result == 0:
-                        logger.debug("Batch system is reporting that the batchjob with "
-                                     "batch system ID: %s and batchjob store ID: %s ended successfully",
+                        logger.debug("Batch system is reporting that the job with "
+                                     "batch system ID: %s and job store ID: %s ended successfully",
                                      jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID))
                     else:
-                        logger.warn("Batch system is reporting that the batchjob with "
-                                    "batch system ID: %s and batchjob store ID: %s failed with exit value %i",
+                        logger.warn("Batch system is reporting that the job with "
+                                    "batch system ID: %s and job store ID: %s failed with exit value %i",
                                     jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result)
                     jobBatcher.processFinishedJob(jobBatchSystemID, result)
                 else:
                     logger.warn("A result seems to already have been processed "
-                                "for batchjob with batch system ID: %i", jobBatchSystemID)
+                                "for job with batch system ID: %i", jobBatchSystemID)
             else:
                 ##########################################
                 #Process jobs that have gone awry

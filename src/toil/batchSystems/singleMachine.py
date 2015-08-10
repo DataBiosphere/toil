@@ -169,7 +169,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             finally:
                 # noinspection PyProtectedMember
                 value = self.cpuSemaphore._Semaphore__value
-                logger.debug('Finished batchjob. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
+                logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
         logger.info('Exiting worker thread normally.')
 
@@ -207,10 +207,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         # Round cpu to minCpu and apply scale
         cpu = math.ceil(cpu * self.scale / self.minCpu) * self.minCpu
         assert cpu <= self.maxCpus, \
-            'batchjob is requesting {} cpu, which is greater than {} available on the machine. Scale currently set ' \
-            'to {} consider adjusting batchjob or scale.'.format(cpu, multiprocessing.cpu_count(), self.scale)
+            'job is requesting {} cpu, which is greater than {} available on the machine. Scale currently set ' \
+            'to {} consider adjusting job or scale.'.format(cpu, multiprocessing.cpu_count(), self.scale)
         assert cpu >= self.minCpu
-        assert memory <= self.maxMemory, 'batchjob requests {} mem, only {} total available.'.format(memory, self.maxMemory)
+        assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(memory, self.maxMemory)
 
         self.checkResourceRequest(memory, cpu, disk)
         logger.debug("Issuing the command: %s with memory: %i, cpu: %i, disk: %i" % (command, memory, cpu, disk))

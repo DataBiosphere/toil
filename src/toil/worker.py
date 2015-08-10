@@ -219,7 +219,7 @@ def main():
         ##########################################
         
         batchjob = jobStore.load(jobStoreID)
-        logger.debug("Parsed batchjob")
+        logger.debug("Parsed job")
         
         ##########################################
         #Cleanup from any earlier invocation of the job
@@ -288,7 +288,7 @@ def main():
             
             #Exceeded the amount of time the worker is allowed to run for so quit
             if time.time() - startTime > float(config.attrib["job_time"]):
-                logger.debug("We are breaking because the maximum time the batchjob should run for has been exceeded")
+                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
                 break
 
             #No more jobs to run so quit
@@ -309,16 +309,16 @@ def main():
             #within the current worker
             successorJobStoreID, successorMemory, successorCpu, successorsDisk, successorPredecessorID = jobs[0]
             if successorMemory > batchjob.memory:
-                logger.debug("We need more memory for the next batchjob, so finishing")
+                logger.debug("We need more memory for the next job, so finishing")
                 break
             if successorCpu > batchjob.cpu:
-                logger.debug("We need more cpus for the next batchjob, so finishing")
+                logger.debug("We need more cpus for the next job, so finishing")
                 break
             if successorsDisk > batchjob.disk:
-                logger.debug("We need more disk for the next batchjob, so finishing")
+                logger.debug("We need more disk for the next job, so finishing")
                 break
             if successorPredecessorID != None: 
-                logger.debug("The batchjob has multiple predecessors, we must return to the leader.")
+                logger.debug("The job has multiple predecessors, we must return to the leader.")
                 break
           
             ##########################################
@@ -354,7 +354,7 @@ def main():
             jobStore.update(batchjob)
             jobStore.delete(successorJob.jobStoreID)
             
-            logger.debug("Starting the next batchjob")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
@@ -383,7 +383,7 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed batchjob on host %s", socket.gethostname())
+        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         batchjob = jobStore.load(jobStoreID)
         batchjob.setupJobAfterFailure(config)
         workerFailed = True
