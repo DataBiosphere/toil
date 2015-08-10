@@ -191,7 +191,7 @@ class hidden:
             # Test per-job files: Create empty file on master, ...
             #
             
-            #First recreate job 
+            #First recreate job
             jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
             
             fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )

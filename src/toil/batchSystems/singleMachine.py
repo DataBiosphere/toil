@@ -200,7 +200,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 outputQueue.put((jobID, process.returncode, threadsToStart))
             inputQueue.task_done()
 
-    def issueJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cpu, disk):
         """
         Adds the command and resources to a queue to be run.
         """
@@ -221,7 +221,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.inputQueue.put((command, jobID, cpu, memory, disk))
         return jobID
 
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """
         As jobs are already run, this method has no effect.
         """
@@ -234,13 +234,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 while id in self.runningJobs:
                     pass
 
-    def getIssuedJobIDs(self):
+    def getIssuedBatchJobIDs(self):
         """
         Just returns all the jobs that have been run, but not yet returned as updated.
         """
         return self.jobs.keys()
 
-    def getRunningJobIDs(self):
+    def getRunningBatchJobIDs(self):
         """
         Return empty map
         """
@@ -261,7 +261,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         for thread in self.workerThreads:
             thread.join()
 
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         """
         Returns a map of the run jobs and the return value of their processes.
         """
@@ -276,7 +276,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         return jobID, exitValue
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """

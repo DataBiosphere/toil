@@ -20,7 +20,7 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-"""Reports the state of your given job tree.
+"""Reports the state of your given toil.
 """
 import logging
 
@@ -34,7 +34,7 @@ from toil.common import loadJobStore
 logger = logging.getLogger( __name__ )
 
 def main():
-    """Reports the state of the job tree.
+    """Reports the state of the toil.
     """
     
     ##########################################
@@ -53,7 +53,7 @@ def main():
                       default=False)
     
     parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
-                      help="Return exit value of 1 if job tree jobs not all completed. default=%default",
+                      help="Return exit value of 1 if toil jobs not all completed. default=%default",
                       default=False)
     
     options, args = parseBasicOptions(parser)
@@ -71,7 +71,7 @@ def main():
     #Do some checks.
     ##########################################
     
-    logger.info("Checking if we have files for job tree")
+    logger.info("Checking if we have files for toil")
     assert options.toil != None
     
     ##########################################
@@ -88,7 +88,7 @@ def main():
     
     print "There are %i active jobs, %i parent jobs with children, \
     %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) \
-    currently in job tree: %s" % \
+    currently in toil: %s" % \
     (len(toilState.updatedJobs), len(toilState.childCounts),
      len(failedJobs), len(toilState.shellJobs), options.toil)
     
@@ -98,7 +98,7 @@ def main():
                 with job.getLogFileHandle(jobStore) as logFileHandle:
                     logStream(logFileHandle, job.jobStoreID, logger.warn)
             else:
-                print "Log file for job %s is not present" % job.jobStoreID 
+                print "Log file for job %s is not present" % job.jobStoreID
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     

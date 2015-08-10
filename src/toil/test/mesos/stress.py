@@ -1,34 +1,34 @@
 import sys
 from optparse import OptionParser
 
-from toil.target import Target
+from toil.job import Job
 
 def touchFile( fileStore ):
     with fileStore.writeGlobalFileStream() as (f, id):
         f.write( "This is a triumph" )
 
-class LongTestTarget(Target):
-    def __init__(self, numTargets):
-        Target.__init__(self,  memory=100000, cpu=0.01)
-        self.numTargets = numTargets
+class LongTestJob(Job):
+    def __init__(self, numJobs):
+        Job.__init__(self,  memory=100000, cpu=0.01)
+        self.numJobs = numJobs
 
     def run(self, fileStore):
-        for i in range(0,self.numTargets):
-            self.addChild(HelloWorldTarget(i))
+        for i in range(0,self.numJobs):
+            self.addChild(HelloWorldJob(i))
         self.addFollowOn(LongTestFollowOn())
 
-class LongTestFollowOn(Target):
+class LongTestFollowOn(Job):
 
     def __init__(self):
-        Target.__init__(self,  memory=1000000, cpu=0.01)
+        Job.__init__(self,  memory=1000000, cpu=0.01)
 
     def run(self, fileStore):
         touchFile( fileStore )
 
-class HelloWorldTarget(Target):
+class HelloWorldJob(Job):
 
     def __init__(self,i):
-        Target.__init__(self,  memory=100000, cpu=0.01)
+        Job.__init__(self,  memory=100000, cpu=0.01)
         self.i=i
 
 
@@ -36,28 +36,28 @@ class HelloWorldTarget(Target):
         touchFile( fileStore )
         self.addFollowOn(HelloWorldFollowOn(self.i))
 
-class HelloWorldFollowOn(Target):
+class HelloWorldFollowOn(Job):
 
     def __init__(self,i):
-        Target.__init__(self,  memory=200000, cpu=0.01)
+        Job.__init__(self,  memory=200000, cpu=0.01)
         self.i = i
 
     def run(self, fileStore):
         touchFile( fileStore)
 
-def main(numTargets, useBadExecutor=False):
+def main(numJobs, useBadExecutor=False):
     args = list( sys.argv )
     args.append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
     args.append("--retryCount=3")
 
     # Boilerplate -- startToil requires options
     parser = OptionParser()
-    Target.Runner.addToilOptions(parser)
+    Job.Runner.addToilOptions(parser)
     options, args = parser.parse_args( args )
 
-    # Launch first toil Target
-    i = LongTestTarget( numTargets )
-    j = Target.Runner.startToil(i,  options )
+    # Launch first toil Job
+    i = LongTestJob( numJobs )
+    j = Job.Runner.startToil(i,  options )
 
 if __name__=="__main__":
     main(5, useBadExecutor=False)

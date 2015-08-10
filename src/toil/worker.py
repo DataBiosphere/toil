@@ -53,19 +53,19 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.truncate()
         fh.close()
 
-def loadTarget(command, jobStore):
+def loadJob(command, jobStore):
     """
-    Unpickles a target.Target instance by decoding the command.
-    See target.Target._serialiseFirstTarget and target.Target._serialiseFirstTarget
-    target.Target._makeJobWrappers to see how the Target is encoded in the command.
+    Unpickles a job.Job instance by decoding the command.
+    See job.Job._serialiseFirstJob and job.Job._serialiseFirstJob
+    job.Job._makeJobWrappers to see how the Job is encoded in the command.
     Essentially the command is a reference to a jobStoreFileID containing 
-    the pickle file for the target and a list of modules which must be imported 
-    so that the Target can be successfully unpickled. 
+    the pickle file for the job and a list of modules which must be imported
+    so that the Job can be successfully unpickled.
     """
     commandTokens = command.split()
     assert "scriptTree" == commandTokens[0]
     pickleFile = commandTokens[1]
-    targetClassName = commandTokens[2]
+    jobClassName = commandTokens[2]
     # must import lazily because toil might not be on sys.path when the top-level of this module is run
     from toil.resource import ModuleDescriptor
     userModule = ModuleDescriptor(*commandTokens[3:])
@@ -75,8 +75,8 @@ def loadTarget(command, jobStore):
         sys.path.append(userModule.dirPath)
     userModule = importlib.import_module(userModule.name)
     thisModule = sys.modules[__name__]
-    thisModule.__dict__[targetClassName] = userModule.__dict__[targetClassName]
-    if pickleFile == "firstTarget":
+    thisModule.__dict__[jobClassName] = userModule.__dict__[jobClassName]
+    if pickleFile == "firstJob":
         openFileStream = jobStore.readSharedFileStream( pickleFile )
     else:
         openFileStream = jobStore.readFileStream( pickleFile )
@@ -142,12 +142,15 @@ def main():
 
     setLogLevel(config.attrib["log_level"])
 
+    tempRootDir = config.attrib.get('work_dir')
+
     ##########################################
     #Setup the temporary directories.
     ##########################################
         
-    #Dir to put all the temp files in.
-    localWorkerTempDir = getTempDirectory()
+    #Dir to put all the temp files in. If tempRootDir is None, tempdir looks at environment variables to determine
+    # where to put the tempDir.
+    localWorkerTempDir = getTempDirectory(tempRootDir)
     
     ##########################################
     #Setup the logging
@@ -235,9 +238,9 @@ def main():
                 
                 
         #This cleans the old log file which may 
-        #have been left if the job is being retried after a job failure. 
+        #have been left if the job is being retried after a job failure.
         if job.logJobStoreFileID != None:
-            job.clearLogFile(jobStore) 
+            job.clearLogFile(jobStore)
     
         ##########################################
         #Setup the stats, if requested
@@ -256,20 +259,20 @@ def main():
             #Run the job, if there is one
             ##########################################
             
-            if job.command != None: 
+            if job.command != None:
                 if job.command[:11] == "scriptTree ":
-                    #Make a temporary file directory for the target
+                    #Make a temporary file directory for the job
                     localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
-                    #Is a target command
-                    messages = loadTarget(job.command, jobStore)._execute(job=job, 
+                    #Is a job command
+                    messages = loadJob(job.command, jobStore)._execute( jobWrapper=job,
                                     stats=stats, localTempDir=localTempDir, 
                                     jobStore=jobStore)
                     
                     #Remove the temporary file directory
                     shutil.rmtree(localTempDir)
     
-                else: #Is another command (running outside of targets may be deprecated)
+                else: #Is another command (running outside of jobs may be deprecated)
                     system(job.command)
                     messages = []
             else:
@@ -321,7 +324,7 @@ def main():
             ##########################################
             #We have a single successor job.
             #We load the successor job and transplant its command and stack
-            #into the current job so that it can be run 
+            #into the current job so that it can be run
             #as if it were a command that were part of the current job.
             #We can then delete the successor job in the jobStore, as it is
             #wholly incorporated into the current job.

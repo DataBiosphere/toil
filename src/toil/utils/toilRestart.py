@@ -56,7 +56,7 @@ def main():
         options.toil = args[0]
         
     ##########################################
-    #Now run the job tree construction/leader
+    #Now run the toil construction/leader
     ##########################################  
         
     setLoggingFromOptions(options)

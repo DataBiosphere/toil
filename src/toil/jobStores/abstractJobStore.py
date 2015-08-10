@@ -95,9 +95,9 @@ class AbstractJobStore( object ):
                     break
                           
             #This cleans the old log file which may 
-            #have been left if the job is being retried after a job failure. 
+            #have been left if the job is being retried after a job failure.
             if job.logJobStoreFileID != None:
-                job.clearLogFile(self) 
+                job.clearLogFile(self)
                 changed = True
             
             if changed: #Update, but only if a change has occurred
@@ -120,7 +120,7 @@ class AbstractJobStore( object ):
         Command, memory, cpu, updateID, predecessorNumber 
         are all arguments to the job's constructor.
 
-        :rtype : job.Job
+        :rtype : toil.jobWrapper.JobWrapper
         """
         raise NotImplementedError( )
 
@@ -162,7 +162,7 @@ class AbstractJobStore( object ):
         """
         Loads a job for the given jobStoreID and returns it.
 
-        :rtype : job.Job
+        :rtype: toil.jobWrapper.JobWrapper
 
         :raises: NoSuchJobException if there is no job with the given jobStoreID
         """
@@ -231,7 +231,7 @@ class AbstractJobStore( object ):
     @abstractmethod
     def deleteFile( self, jobStoreFileID ):
         """
-        Deletes the file with the given ID from this job store.  
+        Deletes the file with the given ID from this job store.
         This operation is idempotent, i.e. deleting a file twice or deleting a non-existent file
         will succeed silently.
         """

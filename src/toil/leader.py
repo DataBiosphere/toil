@@ -103,7 +103,7 @@ class JobBatcher:
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueJob(jobCommand, memory, cpu, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cpu, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cpus: %i, disk: %i, and memory: %i",
@@ -111,7 +111,7 @@ class JobBatcher:
 
     def issueJobs(self, jobs):
         """
-        Add a list of jobs, each represented as a tuple of 
+        Add a list of jobs, each represented as a tuple of
         (jobStoreID, memory, cpu, disk).
         """
         for jobStoreID, memory, cpu, disk in jobs:
@@ -119,7 +119,7 @@ class JobBatcher:
 
     def getNumberOfJobsIssued(self):
         """
-        Gets number of jobs that have been added by issueJob(s) and not 
+        Gets number of jobs that have been added by issueJob(s) and not
         removed by removeJobID
         """
         assert self.jobsIssued >= 0
@@ -157,7 +157,7 @@ class JobBatcher:
         Kills the given set of jobs and then sends them for processing
         """
         if len(jobsToKill) > 0:
-            self.batchSystem.killJobs(jobsToKill)
+            self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 self.processFinishedJob(jobBatchSystemID, 1)
     
@@ -165,7 +165,7 @@ class JobBatcher:
 
     def reissueOverLongJobs(self):
         """
-        Check each issued job - if it is running for longer than desirable 
+        Check each issued job - if it is running for longer than desirable
         issue a kill instruction.
         Wait for the job to die then we pass the job to processFinishedJob.
         """
@@ -179,7 +179,7 @@ class JobBatcher:
         jobsToKill = []
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
-            runningJobs = self.batchSystem.getRunningJobIDs()
+            runningJobs = self.batchSystem.getRunningBatchJobIDs()
             for jobBatchSystemID in runningJobs.keys():
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The job: %s has been running for: %s seconds, more than the "
@@ -197,14 +197,14 @@ class JobBatcher:
         this function (say 10).. then we try deleting the job (though its probably lost), we wait
         then we pass the job to processFinishedJob.
         """
-        runningJobs = set(self.batchSystem.getIssuedJobIDs())
+        runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(self.getJobIDs())
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
         missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
             logger.warn("Batch system id: %s is no longer missing", str(jobBatchSystemID))
-        assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have 
+        assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have
         #no unexpected jobs running
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
@@ -273,7 +273,7 @@ class JobBatcher:
 ##########################################
 #Class to represent the state of the toil in memory. Loads this
 #representation from the toil, in the process cleaning up
-#the state of the jobs in the job tree.
+#the state of the jobs in the jobtree.
 ##########################################    
   
 class ToilState( object ):
@@ -283,7 +283,7 @@ class ToilState( object ):
     def __init__( self, jobStore, rootJob ):
         # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
         self.successorJobStoreIDToPredecessorJobs = { }
-        # Hash of jobs to counts of numbers of successors issued. 
+        # Hash of jobs to counts of numbers of successors issued.
         # There are no entries for jobs
         # without successors in this map. 
         self.successorCounts = { }
@@ -292,28 +292,28 @@ class ToilState( object ):
         ##Algorithm to build this information
         self._buildToilState(rootJob, jobStore)
 
-    def _buildToilState(self, job, jobStore):
+    def _buildToilState(self, jobWrapper, jobStore):
         """
-        Traverses tree of jobs from the root job (rootJob) building the 
+        Traverses tree of jobs from the root job (rootJob) building the
         ToilState class.
         """
-        if job.command != None or len(job.stack) == 0: #If the job has a command
+        if jobWrapper.command != None or len(jobWrapper.stack) == 0: #If the job has a command
             #or is ready to be deleted it is ready to be processed
-            self.updatedJobs.add(job)
+            self.updatedJobs.add(jobWrapper)
         else: #There exist successors
-            self.successorCounts[job] = len(job.stack[-1])
-            for successorJobStoreID in job.stack[-1]:
+            self.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
+            for successorJobStoreID in jobWrapper.stack[-1]:
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
-                    #Given that the successor job does not yet point back at a 
+                    #Given that the successor job does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [job]
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
                     self._buildToilState(jobStore.load(successorJobStoreID),
                                             jobStore)
                 else:
                     #We have already looked at the successor, so we don't recurse, 
                     #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
 def mainLoop(config, batchSystem, jobStore, rootJob):
     """
@@ -331,7 +331,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     ##########################################
 
     #Kill any jobs on the batch system queue from the last time.
-    assert len(batchSystem.getIssuedJobIDs()) == 0 #Batch system must start with no active jobs!
+    assert len(batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
     logger.info("Checked batch system has no running jobs and no updated jobs")
 
     jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState)
@@ -396,13 +396,13 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
                             #Case that the job has multiple predecessors
                             if predecessorID != None:
-                                #Load the wrapped target
+                                #Load the wrapped job
                                 job2 = jobStore.load(successorJobStoreID)
                                 #Remove the predecessor from the list of predecessors
                                 job2.predecessorsFinished.add(predecessorID)
                                 #Checkpoint
                                 jobStore.update(job2)
-                                #If the targets predecessors have all not all completed then
+                                #If the jobs predecessors have all not all completed then
                                 #ignore the job
                                 assert len(job2.predecessorsFinished) >= 1
                                 assert len(job2.predecessorsFinished) <= job2.predecessorNumber
@@ -445,7 +445,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
 
             #Asks the batch system what jobs have been completed,
             #give
-            updatedJob = batchSystem.getUpdatedJob(10)
+            updatedJob = batchSystem.getUpdatedBatchJob(10)
             if updatedJob != None:
                 jobBatchSystemID, result = updatedJob
                 if jobBatcher.hasJob(jobBatchSystemID):

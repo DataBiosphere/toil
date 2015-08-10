@@ -48,13 +48,13 @@ class CombinedBatchSystem(AbstractBatchSystem):
     def _strip(self, id):
         return id[1]
 
-    def issueJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cpu):
         if self.batchSystemChoiceFn(command, memory, cpu):
-            return self._jobIDForBatchSystem1(self.batchSystem1.issueJob(command, memory, cpu))
+            return self._jobIDForBatchSystem1(self.batchSystem1.issueBatchJob(command, memory, cpu))
         else:
-            return self._jobIDForBatchSystem2(self.batchSystem2.issueJob(command, memory, cpu))
+            return self._jobIDForBatchSystem2(self.batchSystem2.issueBatchJob(command, memory, cpu))
         
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         l, l2 = [], []
         for jobID in jobIDs:
             if self._isJobIDForBatchSystem1(jobID):
@@ -62,22 +62,22 @@ class CombinedBatchSystem(AbstractBatchSystem):
             else:
                 assert self._isJobIDForBatchSystem2(jobID)
                 l2.append(self._strip(jobID))
-        self.batchSystem1.killJobs(l)
-        self.batchSystem2.killJobs(l2)
+        self.batchSystem1.killBatchJobs(l)
+        self.batchSystem2.killBatchJobs(l2)
     
-    def getIssuedJobIDs(self):
-        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getIssuedJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getIssuedJobIDs() ]
+    def getIssuedBatchJobIDs(self):
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getIssuedBatchJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getIssuedBatchJobIDs() ]
     
-    def getRunningJobIDs(self):
-        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getRunningJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getRunningJobIDs() ]
+    def getRunningBatchJobIDs(self):
+        return [ self._jobIDForBatchSystem1(id) for id in self.batchSystem1.getRunningBatchJobIDs() ] + [ self._jobIDForBatchSystem2(id) for id in self.batchSystem2.getRunningBatchJobIDs() ]
    
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         endTime = time.time() + maxWait
         while 1:
-            updatedJob = self.batchSystem2.getUpdatedJob(0) #Small positive values of wait seem to 
+            updatedJob = self.batchSystem2.getUpdatedBatchJob(0) #Small positive values of wait seem to
             if updatedJob != None:
                 return (self._jobIDForBatchSystem2(updatedJob[0]), updatedJob[1])
-            updatedJob = self.batchSystem1.getUpdatedJob(0)
+            updatedJob = self.batchSystem1.getUpdatedBatchJob(0)
             if updatedJob != None:
                 return (self._jobIDForBatchSystem1(updatedJob[0]), updatedJob[1])
             remaining = endTime - time.time()
@@ -87,5 +87,5 @@ class CombinedBatchSystem(AbstractBatchSystem):
 
     # FIXME: This should be a static method
 
-    def getRescueJobFrequency(self):
-        return min(self.batchSystem1.getRescueJobFrequency(), self.batchSystem2.getRescueJobFrequency())
+    def getRescueBatchJobFrequency(self):
+        return min(self.batchSystem1.getRescueBatchJobFrequency(), self.batchSystem2.getRescueBatchJobFrequency())

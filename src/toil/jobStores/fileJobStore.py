@@ -11,7 +11,7 @@ import tempfile
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
-from toil.job import Job
+from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
 
@@ -44,12 +44,12 @@ class FileJobStore(AbstractJobStore):
     
     def create(self, command, memory, cpu, disk, updateID=None,
                predecessorNumber=0):
-        #The absolute path to the job directory.    
+        #The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
-        job = Job(command=command, memory=memory, cpu=cpu, disk=disk,
+        job = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
@@ -81,7 +81,7 @@ class FileJobStore(AbstractJobStore):
         #Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            job = Job.fromDict(pickler.load(fileHandle))
+            job = JobWrapper.fromDict(pickler.load(fileHandle))
         #The following cleans up any issues resulting from the failure of the 
         #job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -233,7 +233,7 @@ class FileJobStore(AbstractJobStore):
     
     def _getJobFileName(self, jobStoreID):
         """
-        :rtype : string, string is the file containing the serialised Job.Job instance
+        :rtype : string, string is the file containing the serialised JobWrapper instance
         for the given job.
         """
         return os.path.join(self._getAbsPath(jobStoreID), "job")

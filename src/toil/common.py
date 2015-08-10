@@ -65,9 +65,9 @@ def toilPackageDirPath():
     Returns the absolute path of the directory that corresponds to the top-level toil package. The return value is
     guaranteed to end in '/toil'.
     """
-    import toil.target
+    import toil.jobWrapper
 
-    result = os.path.dirname(absSymPath(toil.target.__file__))
+    result = os.path.dirname(absSymPath(toil.jobWrapper.__file__))
     assert result.endswith('/toil')
     return result
 
@@ -80,7 +80,10 @@ def _addOptions(addGroupFn, defaultStr):
                       and the global accessed temporary files"
                             "(If this is a file path this needs to be globally accessible by all machines running jobs).\n"
                             "If you pass an existing directory it will check if it's a valid existing "
-                            "job tree, then try and restart the jobs in it. The default=%s" % defaultStr))
+                            "jobtree, then try and restart the jobs in it. The default=%s" % defaultStr))
+    addOptionFn("--workDir", dest="workDir", default=None,
+                help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
+                     "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by toilStats. default=%s" % defaultStr)
 
@@ -129,8 +132,6 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency",
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. (default is set by the batch system)"))
-    addOptionFn("--resume", dest="resume", action='store_true', default=False,
-                      help=("Pass this flag to resume a previous, incomplete job with an existing jobStore. defualt = %s" % defaultStr))
     addOptionFn("--clean", dest="clean", choices=['always', 'onerror','never'], default='always',
                       help=("Determines the deletion of the jobStore upon completion of the program. If you wish to be able to restart the run, "
                             "choose \'never\'. Default=%s" % defaultStr))
@@ -199,7 +200,7 @@ def verifyToilOptions(options):
     for r in required:
         if r not in vars(options):
             raise RuntimeError("Error, there is a missing option (%s), "
-                               "did you remember to call Target.addToilOptions()?" % r)
+                               "did you remember to call Job.addToilOptions()?" % r)
     if options.toil is None:
         raise RuntimeError("Specify --toil")
 
@@ -210,7 +211,7 @@ def createConfig(options):
     
     TODO: Make the config object a proper class
     """
-    logger.info("Starting to create the job tree setup for the first time")
+    logger.info("Starting to create the toil setup for the first time")
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["master_ip"] = options.masterIP
@@ -237,8 +238,8 @@ def createConfig(options):
         config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
     if options.stats:
         config.attrib["stats"] = ""
-    if options.resume:
-        config.attrib["resume"] = ""
+    if options.workDir:
+        config.attrib["work_dir"] = options.workDir
     return config
 
 
@@ -332,7 +333,7 @@ def addBatchSystemConfigOptions(config, batchSystemClass, options):
     """
     #Set the parameters determining the polling frequency of the system.  
     config.attrib["rescue_jobs_frequency"] = str(float(
-        batchSystemClass.getRescueJobFrequency()
+        batchSystemClass.getRescueBatchJobFrequency()
         if options.rescueJobsFrequency is None
         else options.rescueJobsFrequency))
 

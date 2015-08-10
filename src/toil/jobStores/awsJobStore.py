@@ -24,7 +24,7 @@ import time
 
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
-from toil.job import Job
+from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger( __name__ )
 
@@ -773,7 +773,7 @@ def passThrough( v ): return v
 def skip( _ ): return None
 
 
-class AWSJob( Job ):
+class AWSJob( JobWrapper ):
     """
     A Job that can be converted to and from a SimpleDB Item
     """

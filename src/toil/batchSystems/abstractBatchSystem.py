@@ -43,7 +43,7 @@ class AbstractBatchSystem:
     def __init__(self, config, maxCpus, maxMemory, maxDisk):
         """This method must be called.
         The config object is setup by the toilSetup script and
-        has configuration parameters for the job tree. You can add stuff
+        has configuration parameters for the jobtree. You can add stuff
         to that script to get parameters for your batch system.
         """
         self.config = config
@@ -63,42 +63,42 @@ class AbstractBatchSystem:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
-    def issueJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cpu, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cpu is the number of cpus needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
         """
-        raise NotImplementedError('Abstract method: issueJob')
+        raise NotImplementedError('Abstract method: issueBatchJob')
 
     
-    def killJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         """Kills the given job IDs.
         """
-        raise NotImplementedError('Abstract method: killJobs')
+        raise NotImplementedError('Abstract method: killBatchJobs')
 
     # FIXME: Return value should be a set (then also fix the tests)
 
-    def getIssuedJobIDs(self):
-        """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
+    def getIssuedBatchJobIDs(self):
+        """A list of jobs (as jobIDs) currently issued (may be running, or maybe
         just waiting). Despite the result being a list, the ordering should not
         be depended upon.
         """
-        raise NotImplementedError('Abstract method: getIssuedJobIDs')
+        raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
     
-    def getRunningJobIDs(self):
-        """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
+    def getRunningBatchJobIDs(self):
+        """Gets a map of jobs (as jobIDs) currently running (not just waiting)
         and a how long they have been running for (in seconds).
         """
-        raise NotImplementedError('Abstract method: getRunningJobIDs')
+        raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
     
-    def getUpdatedJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait):
         """Gets a job that has updated its status,
-        according to the job manager. Max wait gives the number of seconds to pause 
+        according to the job manager. Max wait gives the number of seconds to pause
         waiting for a result. If a result is available returns (jobID, exitValue)
         else it returns None.
         """
-        raise NotImplementedError('Abstract method: getUpdatedJob')
+        raise NotImplementedError('Abstract method: getUpdatedBatchJob')
 
     def shutdown(self):
         """Called at the completion of a toil invocation.
@@ -107,11 +107,11 @@ class AbstractBatchSystem:
         raise NotImplementedError('Abstract Method: shutdown')
 
     @classmethod
-    def getRescueJobFrequency(cls):
+    def getRescueBatchJobFrequency(cls):
         """Gets the period of time to wait (floating point, in seconds) between checking for 
         missing/overlong jobs.
         """
-        raise NotImplementedError('Abstract method: getRescueJobFrequency')
+        raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
 
     # FIXME: Add a link to the issue tracker for this bug in multiprocessing
 

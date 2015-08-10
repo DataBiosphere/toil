@@ -71,7 +71,7 @@ class hidden:
             test_path = os.path.join(self.tempDir, 'test.txt')
             # sleep 1 coupled to command as 'touch' was too fast for wait_for_jobs to catch
             jobCommand = 'touch {}; sleep 1'.format(test_path)
-            self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1, disk=1000)
+            self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=.1, disk=1000)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
@@ -85,43 +85,43 @@ class hidden:
             self.batchSystem.checkResourceRequest(memory=10, cpu=1, disk=100)
 
         def testGetIssuedJobIDs(self):
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
-            self.batchSystem.issueJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
-            self.assertEqual({0, 1}, set(self.batchSystem.getIssuedJobIDs()))
+            self.batchSystem.issueBatchJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
+            self.assertEqual({0, 1}, set(self.batchSystem.getIssuedBatchJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1, disk=1000)
-            self.batchSystem.issueJob('sleep 100', memory=10, cpu=.1, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 100', memory=10, cpu=.1, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 100', memory=10, cpu=.1, disk=1000)
             self.wait_for_jobs(numJobs=2)
             # Assert that jobs were correctly labeled by JobID
-            self.assertEqual({0, 1}, set(self.batchSystem.getRunningJobIDs().keys()))
+            self.assertEqual({0, 1}, set(self.batchSystem.getRunningBatchJobIDs().keys()))
             # Assert that the length of the job was recorded
-            self.assertTrue(len([t for t in self.batchSystem.getRunningJobIDs().values() if t > 0]) == 2)
-            self.batchSystem.killJobs([0, 1])
+            self.assertTrue(len([t for t in self.batchSystem.getRunningBatchJobIDs().values() if t > 0]) == 2)
+            self.batchSystem.killBatchJobs([0, 1])
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            jobID = self.batchSystem.issueJob(jobCommand, memory=10, cpu=.1, disk=1000)
+            jobID = self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=.1, disk=1000)
             self.wait_for_jobs()
             # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
-            self.batchSystem.killJobs([jobID])
-            self.assertEqual({}, self.batchSystem.getRunningJobIDs())
+            self.batchSystem.killBatchJobs([jobID])
+            self.assertEqual({}, self.batchSystem.getRunningBatchJobIDs())
             # Make sure that killJob doesn't hang / raise KeyError on unknown job IDs
-            self.batchSystem.killJobs([0])
+            self.batchSystem.killBatchJobs([0])
 
         def testGetUpdatedJob(self):
             delay = 1
             jobCommand = 'sleep %i' % delay
             for i in range(numJobs):
-                self.batchSystem.issueJob(jobCommand, memory=10, cpu=numCoresPerJob, disk=1000)
+                self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=numCoresPerJob, disk=1000)
             jobs = set((i, 0) for i in range(numJobs))
             self.wait_for_jobs(numJobs=numJobs, wait_for_completion=True)
             for i in range(numJobs):
-                jobs.remove(self.batchSystem.getUpdatedJob(delay * 2))
+                jobs.remove(self.batchSystem.getUpdatedBatchJob(delay * 2))
             self.assertFalse(jobs)
 
         def testGetRescueJobFrequency(self):
-            self.assertTrue(self.batchSystem.getRescueJobFrequency() > 0)
+            self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
 
         @staticmethod
         def _createDummyConfig():
@@ -142,12 +142,12 @@ class hidden:
             return config
 
         def wait_for_jobs(self, numJobs=1, wait_for_completion=False):
-            while not self.batchSystem.getIssuedJobIDs():
+            while not self.batchSystem.getIssuedBatchJobIDs():
                 pass
-            while not len(self.batchSystem.getRunningJobIDs().keys()) == numJobs:
+            while not len(self.batchSystem.getRunningBatchJobIDs().keys()) == numJobs:
                 time.sleep(0.1)
             if wait_for_completion:
-                while self.batchSystem.getRunningJobIDs():
+                while self.batchSystem.getRunningBatchJobIDs():
                     time.sleep(0.1)
                     # pass updates too quickly (~24e6 iter/sec), which is why I'm using time.sleep(0.1):
 
