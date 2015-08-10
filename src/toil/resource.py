@@ -41,7 +41,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
     @classmethod
     def create( cls, jobStore, leaderPath ):
         """
-        Saves the content of the file or directory at the given path to the given batchjob store
+        Saves the content of the file or directory at the given path to the given job store
         and returns a resource object representing that content for the purpose of obtaining it
         again at a generic, public URL. This method should be invoked on the leader node.
 
@@ -317,7 +317,7 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
     def saveAsResourceTo( self, jobStore ):
         """
         Store the file containing this module--or even the Python package directory hierarchy
-        containing that file--as a resource to the given batchjob store and return the
+        containing that file--as a resource to the given job store and return the
         corresponding resource object. Should only be called on a leader node.
 
         :type jobStore: toil.jobStores.abstractJobStore.AbstractJobStore

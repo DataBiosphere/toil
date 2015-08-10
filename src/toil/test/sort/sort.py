@@ -22,7 +22,7 @@ def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
-    a follow on batchjob is then created which merges back the results else
+    a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
     if random.random() > success_ratio:

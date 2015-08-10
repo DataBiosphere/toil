@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-"""Test Batchjob class
-"""
 
 import unittest
 import os
@@ -31,7 +29,7 @@ class JobWrapperTest(ToilTest):
     
     def testJob(self):       
         """
-        Tests functions of a batchjob.
+        Tests functions of a job.
         """ 
     
         command = "by your command"

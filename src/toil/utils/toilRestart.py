@@ -63,7 +63,7 @@ def main():
     with setupToil(options) as (config, batchSystem, jobStore):
         jobStore.clean()
         if "rootJob" not in config.attrib:
-            print "There is no root batchjob in the toil from which to start, exiting"
+            print "There is no root job in the toil from which to start, exiting"
             sys.exit(0)
         return mainLoop(config, batchSystem, jobStore, jobStore.load(config.attrib["rootJob"]))
     

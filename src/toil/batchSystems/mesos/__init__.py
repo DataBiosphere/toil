@@ -17,9 +17,9 @@ ResourceRequirement = namedtuple('ResourceRequirement', (
     'disk'))
 
 ToilJob = namedtuple('ToilJob', (
-    # A batchjob ID specific to this batch system implementation
+    # A job ID specific to this batch system implementation
     'jobID',
-    # A ResourceRequirement tuple describing the resources needed by this batchjob
+    # A ResourceRequirement tuple describing the resources needed by this job
     'resources',
     # The command to be run on the worker node
     'command',
