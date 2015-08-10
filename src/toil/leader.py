@@ -499,7 +499,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         worker.join()
         logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
         clean = config.attrib["clean"]
-        if(clean=="always" or (clean == "onerror" and totalFailedJobs==0)):
+        if clean=="always" or clean == "onError" and totalFailedJobs>0 or clean == "onSuccess" and totalFailedJobs==0:
             jobStore.deleteJobStore()
 
     return totalFailedJobs #Returns number of failed jobs
