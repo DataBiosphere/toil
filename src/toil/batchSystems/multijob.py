@@ -39,12 +39,12 @@ class MultiJob:
              RuntimeError("Multi-job launched without task id")
         if task_id < 1 or task_id > len(self.commands):
              RuntimeError("Task ID not within the array range 1 <= %i <= %i", task_id, len(self.commands))
-        (batchjob, outfile) = self.commands[task_id - 1]
+        (job, outfile) = self.commands[task_id - 1]
         if outfile is None:
-                ret = subprocess.call(batchjob.split())
+                ret = subprocess.call(job.split())
         else:
                 file = open(outfile, "w")
-                ret = subprocess.call(batchjob.split(), stderr=file,stdout=file)
+                ret = subprocess.call(job.split(), stderr=file,stdout=file)
                 file.close()
         sys.exit(ret)
 

@@ -230,17 +230,17 @@ class JobBatcher:
         """    
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
-            batchjob = self.jobStore.load(jobStoreID)
-            if batchjob.logJobStoreFileID is not None:
+            job = self.jobStore.load(jobStoreID)
+            if job.logJobStoreFileID is not None:
                 logger.warn("The job seems to have left a log file, indicating failure: %s", jobStoreID)
-                with batchjob.getLogFileHandle( self.jobStore ) as logFileStream:
+                with job.getLogFileHandle( self.jobStore ) as logFileStream:
                     logStream( logFileStream, jobStoreID, logger.warn )
-            assert batchjob not in self.toilState.updatedJobs
+            assert job not in self.toilState.updatedJobs
             if resultStatus != 0:
-                if batchjob.logJobStoreFileID is None:
+                if job.logJobStoreFileID is None:
                     logger.warn("No log file is present, despite job failing: %s", jobStoreID)
-                batchjob.setupJobAfterFailure(self.config)
-            self.toilState.updatedJobs.add(batchjob) #Now we know the
+                job.setupJobAfterFailure(self.config)
+            self.toilState.updatedJobs.add(job) #Now we know the
             #job is done we can add it to the list of updated job files
             logger.debug("Added job: %s to active jobs", jobStoreID)
         else:  #The job is done
@@ -292,28 +292,28 @@ class ToilState( object ):
         ##Algorithm to build this information
         self._buildToilState(rootJob, jobStore)
 
-    def _buildToilState(self, batchjob, jobStore):
+    def _buildToilState(self, jobWrapper, jobStore):
         """
         Traverses tree of jobs from the root job (rootJob) building the
         ToilState class.
         """
-        if batchjob.command != None or len(batchjob.stack) == 0: #If the job has a command
+        if jobWrapper.command != None or len(jobWrapper.stack) == 0: #If the job has a command
             #or is ready to be deleted it is ready to be processed
-            self.updatedJobs.add(batchjob)
+            self.updatedJobs.add(jobWrapper)
         else: #There exist successors
-            self.successorCounts[batchjob] = len(batchjob.stack[-1])
-            for successorJobStoreID in batchjob.stack[-1]:
+            self.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
+            for successorJobStoreID in jobWrapper.stack[-1]:
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
                     #Given that the successor job does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [batchjob]
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
                     self._buildToilState(jobStore.load(successorJobStoreID),
                                             jobStore)
                 else:
                     #We have already looked at the successor, so we don't recurse, 
                     #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(batchjob)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
 def mainLoop(config, batchSystem, jobStore, rootJob):
     """
@@ -367,33 +367,33 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued",
                              len(toilState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
 
-                for batchjob in toilState.updatedJobs:
+                for job in toilState.updatedJobs:
                     #If the job has a command it must be run before any successors
-                    if batchjob.command != None:
-                        if batchjob.remainingRetryCount > 0:
-                            jobBatcher.issueJob(batchjob.jobStoreID, batchjob.memory, batchjob.cpu, batchjob.disk)
+                    if job.command != None:
+                        if job.remainingRetryCount > 0:
+                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu, job.disk)
                         else:
                             totalFailedJobs += 1
-                            logger.warn("Batchjob: %s is completely failed", batchjob.jobStoreID)
+                            logger.warn("Batchjob: %s is completely failed", job.jobStoreID)
 
                     #There exist successors to run
-                    elif len(batchjob.stack) > 0:
-                        assert len(batchjob.stack[-1]) > 0
+                    elif len(job.stack) > 0:
+                        assert len(job.stack[-1]) > 0
                         logger.debug("Batchjob: %s has %i successors to schedule",
-                                     batchjob.jobStoreID, len(batchjob.stack[-1]))
+                                     job.jobStoreID, len(job.stack[-1]))
                         #Record the number of successors that must be completed before
                         #the job can be considered again
-                        assert batchjob not in toilState.successorCounts
-                        toilState.successorCounts[batchjob] = len(batchjob.stack[-1])
+                        assert job not in toilState.successorCounts
+                        toilState.successorCounts[job] = len(job.stack[-1])
                         #List of successors to schedule
                         successors = []
                         #For each successor schedule if all predecessors have been
                         #completed
-                        for successorJobStoreID, memory, cpu, disk, predecessorID in batchjob.stack.pop():
+                        for successorJobStoreID, memory, cpu, disk, predecessorID in job.stack.pop():
                             #Build map from successor to predecessors.
                             if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                                 toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
-                            toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(batchjob)
+                            toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
                             #Case that the job has multiple predecessors
                             if predecessorID != None:
                                 #Load the wrapped job
@@ -419,15 +419,15 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                     #process that deletes jobs and then feeds them back into the set
                     #of jobs to be processed
                     else:
-                        if batchjob.remainingRetryCount > 0:
-                            jobBatcher.issueJob(batchjob.jobStoreID,
+                        if job.remainingRetryCount > 0:
+                            jobBatcher.issueJob(job.jobStoreID,
                                                 int(config.attrib["default_memory"]),
                                                 int(config.attrib["default_cpu"]),
                                                 int(config.attrib["default_disk"]))
-                            logger.debug("Batchjob: %s is empty, we are scheduling to clean it up", batchjob.jobStoreID)
+                            logger.debug("Batchjob: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:
                             totalFailedJobs += 1
-                            logger.warn("Batchjob: %s is empty but completely failed - something is very wrong", batchjob.jobStoreID)
+                            logger.warn("Batchjob: %s is empty but completely failed - something is very wrong", job.jobStoreID)
 
                 toilState.updatedJobs = set() #We've considered them all, so reset
 

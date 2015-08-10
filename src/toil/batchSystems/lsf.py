@@ -77,47 +77,47 @@ def bsub(bsubline):
     return result
 
 def getjobexitcode(lsfJobID):
-        batchjob, task = lsfJobID
+        job, task = lsfJobID
         
         #first try bjobs to find out job state
-        args = ["bjobs", "-l", str(batchjob)]
-        logger.info("Checking job exit code for job via bjobs: " + str(batchjob))
+        args = ["bjobs", "-l", str(job)]
+        logger.info("Checking job exit code for job via bjobs: " + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         started = 0
         for line in process.stdout:
             if line.find("Done successfully") > -1:
-                logger.info("bjobs detected job completed for job: " + str(batchjob))
+                logger.info("bjobs detected job completed for job: " + str(job))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("bjobs detected job failed for job: " + str(batchjob))
+                logger.info("bjobs detected job failed for job: " + str(job))
                 return 1
             elif line.find("New job is waiting for scheduling") > -1:
-                logger.info("bjobs detected job pending scheduling for job: " + str(batchjob))
+                logger.info("bjobs detected job pending scheduling for job: " + str(job))
                 return None
             elif line.find("PENDING REASONS") > -1:
-                logger.info("bjobs detected job pending for job: " + str(batchjob))
+                logger.info("bjobs detected job pending for job: " + str(job))
                 return None
             elif line.find("Started on ") > -1:
                 started = 1
         
         if started == 1:
-            logger.info("bjobs detected job started but not completed: " + str(batchjob))
+            logger.info("bjobs detected job started but not completed: " + str(job))
             return None
 
         #if not found in bjobs, then try bacct (slower than bjobs)
-        logger.info("bjobs failed to detect job - trying bacct: " + str(batchjob))
+        logger.info("bjobs failed to detect job - trying bacct: " + str(job))
         
-        args = ["bacct", "-l", str(batchjob)]
-        logger.info("Checking job exit code for job via bacct:" + str(batchjob))
+        args = ["bacct", "-l", str(job)]
+        logger.info("Checking job exit code for job via bacct:" + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         for line in process.stdout:
             if line.find("Completed <done>") > -1:
-                logger.info("Detected job completed for job: " + str(batchjob))
+                logger.info("Detected job completed for job: " + str(job))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("Detected job failed for job: " + str(batchjob))
+                logger.info("Detected job failed for job: " + str(job))
                 return 1
-        logger.info("Cant determine exit code for job or job still running: " + str(batchjob))
+        logger.info("Cant determine exit code for job or job still running: " + str(job))
         return None
 
 class Worker(Thread):
@@ -191,11 +191,11 @@ class LSFBatchSystem(AbstractBatchSystem):
         if not jobID in self.lsfJobIDs:
              RuntimeError("Unknown jobID, could not be converted")
 
-        (batchjob,task) = self.lsfJobIDs[jobID]
+        (job,task) = self.lsfJobIDs[jobID]
         if task is None:
-             return str(batchjob)
+             return str(job)
         else:
-             return str(batchjob) + "." + str(task)
+             return str(job) + "." + str(task)
     
     def killBatchJobs(self, jobIDs):
         """Kills the given job IDs.

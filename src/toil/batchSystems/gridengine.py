@@ -82,8 +82,8 @@ def qsub(qsubline):
     return result
 
 def getjobexitcode(sgeJobID):
-        batchjob, task = sgeJobID
-        args = ["qacct", "-j", str(batchjob)]
+        job, task = sgeJobID
+        args = ["qacct", "-j", str(job)]
         if task is not None:
              args.extend(["-t", str(task)])
 
@@ -127,11 +127,11 @@ class Worker(Thread):
         if not jobID in self.sgeJobIDs:
              RuntimeError("Unknown jobID, could not be converted")
 
-        (batchjob,task) = self.sgeJobIDs[jobID]
+        (job,task) = self.sgeJobIDs[jobID]
         if task is None:
-             return str(batchjob)
+             return str(job)
         else:
-             return str(batchjob) + "." + str(task)
+             return str(job) + "." + str(task)
 
     def forgetJob(self, jobID):
         self.runningJobs.remove(jobID)

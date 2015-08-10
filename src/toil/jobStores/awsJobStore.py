@@ -71,15 +71,15 @@ class AWSJobStore( AbstractJobStore ):
         jobStoreID = self._newJobID( )
         log.debug( "Creating job %s for '%s'",
                    jobStoreID, '<no command>' if command is None else command )
-        batchjob = AWSJob( jobStoreID=jobStoreID,
+        job = AWSJob( jobStoreID=jobStoreID,
                              command=command, memory=memory, cpu=cpu, disk=disk,
                              remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
                              updateID=updateID, predecessorNumber=predecessorNumber)
         for attempt in retry_sdb( ):
             with attempt:
                 assert self.jobDomain.put_attributes( item_name=jobStoreID,
-                                                 attributes=batchjob.toItem( ) )
-        return batchjob
+                                                 attributes=job.toItem( ) )
+        return job
 
     def __init__( self, region, namePrefix, config=None ):
         log.debug( "Instantiating %s for region %s and name prefix '%s'",
@@ -129,18 +129,18 @@ class AWSJobStore( AbstractJobStore ):
                     consistent_read=True ) )
         if len(result)!=1:
             raise NoSuchJobException(jobStoreID)
-        batchjob = AWSJob.fromItem(result[0])
-        if batchjob is None:
+        job = AWSJob.fromItem(result[0])
+        if job is None:
             raise NoSuchJobException( jobStoreID )
         log.debug( "Loaded job %s", jobStoreID )
-        return batchjob
+        return job
 
-    def update( self, batchjob ):
-        log.debug( "Updating job %s", batchjob.jobStoreID )
+    def update( self, job ):
+        log.debug( "Updating job %s", job.jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
-                assert self.jobDomain.put_attributes( item_name=batchjob.jobStoreID,
-                                                 attributes=batchjob.toItem( ) )
+                assert self.jobDomain.put_attributes( item_name=job.jobStoreID,
+                                                 attributes=job.toItem( ) )
 
     def delete( self, jobStoreID ):
         # remove job and replace with jobStoreId.

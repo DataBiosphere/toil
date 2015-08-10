@@ -82,9 +82,9 @@ def main():
     config = jobStore.config
     toilState = jobStore.loadToilState() #This initialises the object toil.toilState used to track the active toil
     
-    failedJobs = [ batchjob for batchjob in toilState.updatedJobs | \
+    failedJobs = [ job for job in toilState.updatedJobs | \
                   set(toilState.childCounts.keys()) \
-                  if batchjob.remainingRetryCount == 0 ]
+                  if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, \
     %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) \
@@ -93,12 +93,12 @@ def main():
      len(failedJobs), len(toilState.shellJobs), options.toil)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
-        for batchjob in failedJobs:
-            if batchjob.logJobStoreFileID is not None:
-                with batchjob.getLogFileHandle(jobStore) as logFileHandle:
-                    logStream(logFileHandle, batchjob.jobStoreID, logger.warn)
+        for job in failedJobs:
+            if job.logJobStoreFileID is not None:
+                with job.getLogFileHandle(jobStore) as logFileHandle:
+                    logStream(logFileHandle, job.jobStoreID, logger.warn)
             else:
-                print "Log file for job %s is not present" % batchjob.jobStoreID
+                print "Log file for job %s is not present" % job.jobStoreID
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     

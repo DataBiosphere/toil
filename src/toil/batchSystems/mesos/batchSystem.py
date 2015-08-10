@@ -90,15 +90,15 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         jobID = self.nextJobID
         self.nextJobID += 1
 
-        batchjob = ToilJob(jobID=jobID,
+        job = ToilJob(jobID=jobID,
                          resources=ResourceRequirement(memory=memory, cpu=cpu, disk=disk),
                          command=command,
                          userScript=self.userScript,
                          toilDistribution=self.toilDistribution)
-        job_type = batchjob.resources
+        job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
-        self.jobQueueList[job_type].append(batchjob)
+        self.jobQueueList[job_type].append(job)
         log.debug("... queued")
 
         return jobID
@@ -290,9 +290,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def _deleteByJobID(self, jobID, ):
         # FIXME: not efficient, I'm sure.
         for key, jobType in self.jobQueueList.iteritems():
-            for batchjob in jobType:
-                if jobID == batchjob.jobID:
-                    jobType.remove(batchjob)
+            for job in jobType:
+                if jobID == job.jobID:
+                    jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),

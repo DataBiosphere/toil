@@ -598,7 +598,7 @@ def processData(config, stats, options):
     jobs = []
     for worker in workers:
         jobs += worker.findall("job")
-    def fn4(batchjob):
+    def fn4(job):
         return list(worker.findall("job"))
     createSummary(buildElement(collatedStatsTag, jobs, "job"),
                   workers, "worker", fn4)

@@ -60,48 +60,48 @@ class AbstractJobStore( object ):
         """
         #Collate any jobs that were in the process of being created/deleted
         jobsToDelete = set()
-        for batchjob in self.jobs():
-            for updateID in batchjob.jobsToDelete:
+        for job in self.jobs():
+            for updateID in job.jobsToDelete:
                 jobsToDelete.add(updateID)
             
         #Delete the jobs that should be delete
         if len(jobsToDelete) > 0:
-            for batchjob in self.jobs():
-                if batchjob.updateID in jobsToDelete:
-                    self.delete(batchjob.jobStoreID)
+            for job in self.jobs():
+                if job.updateID in jobsToDelete:
+                    self.delete(job.jobStoreID)
         
         #Cleanup the state of each job
-        for batchjob in self.jobs():
+        for job in self.jobs():
             changed = False #Flag to indicate if we need to update the job
             #on disk
             
-            if len(batchjob.jobsToDelete) != 0:
-                batchjob.jobsToDelete = set()
+            if len(job.jobsToDelete) != 0:
+                job.jobsToDelete = set()
                 changed = True
                 
             #While jobs at the end of the stack are already deleted remove
             #those jobs from the stack (this cleans up the case that the job
             #had successors to run, but had not been updated to reflect this)
-            while len(batchjob.stack) > 0:
-                jobs = [ command[0] for command in batchjob.stack[-1] if self.exists(command[0]) ]
-                if len(jobs) < len(batchjob.stack[-1]):
+            while len(job.stack) > 0:
+                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
+                if len(jobs) < len(job.stack[-1]):
                     changed = True
                     if len(jobs) > 0:
-                        batchjob.stack[-1] = jobs
+                        job.stack[-1] = jobs
                         break
                     else:
-                        batchjob.stack.pop()
+                        job.stack.pop()
                 else:
                     break
                           
             #This cleans the old log file which may 
             #have been left if the job is being retried after a job failure.
-            if batchjob.logJobStoreFileID != None:
-                batchjob.clearLogFile(self)
+            if job.logJobStoreFileID != None:
+                job.clearLogFile(self)
                 changed = True
             
             if changed: #Update, but only if a change has occurred
-                self.update(batchjob)
+                self.update(job)
         
         #Remove any crufty stats/logging files from the previous run
         self.readStatsAndLogging(lambda x : None)
@@ -169,7 +169,7 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def update( self, batchjob ):
+    def update( self, job ):
         """
         Persists the job in this store atomically.
         """

@@ -286,7 +286,7 @@ class hidden:
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
             self.assertEquals( partSize % bufSize, 0 )
-            batchjob = self.master.create( "1", 2, 3, 4, 0)
+            job = self.master.create( "1", 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -308,7 +308,7 @@ class hidden:
                 checksumThread.start( )
                 try:
                     with open(random_device) as readable:
-                        with self.master.writeFileStream( batchjob.jobStoreID ) as ( writable, fileId ):
+                        with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
                                 checksumQueue.put( buf )
@@ -340,7 +340,7 @@ class hidden:
                                 buf = readable.read( bufSize )
                                 writable.write( buf )
                                 checksum.update( buf )
-                    fileId = self.master.writeFile( batchjob.jobStoreID, path )
+                    fileId = self.master.writeFile( job.jobStoreID, path )
                 finally:
                     os.unlink( path )
                 before = checksum.hexdigest( )
@@ -355,18 +355,18 @@ class hidden:
                         checksum.update( buf )
                 after = checksum.hexdigest( )
                 self.assertEquals( before, after )
-            self.master.delete( batchjob.jobStoreID )
+            self.master.delete( job.jobStoreID )
 
         def testZeroLengthFiles( self ):
-            batchjob = self.master.create( "1", 2, 3, 4, 0)
-            nullFile = self.master.writeFile( batchjob.jobStoreID, '/dev/null' )
+            job = self.master.create( "1", 2, 3, 4, 0)
+            nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
             with self.master.readFileStream( nullFile ) as f:
                 self.assertEquals( f.read( ), "" )
-            with self.master.writeFileStream( batchjob.jobStoreID ) as ( f, nullStream ):
+            with self.master.writeFileStream( job.jobStoreID ) as ( f, nullStream ):
                 pass
             with self.master.readFileStream( nullStream ) as f:
                 self.assertEquals( f.read( ), "" )
-            self.master.delete( batchjob.jobStoreID )
+            self.master.delete( job.jobStoreID )
 
 class FileJobStoreTest( hidden.AbstractJobStoreTest ):
     def createJobStore( self, config=None ):

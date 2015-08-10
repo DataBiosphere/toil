@@ -49,14 +49,14 @@ class FileJobStore(AbstractJobStore):
         #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
-        batchjob = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
+        job = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
                   predecessorNumber=predecessorNumber)
         #Write job file to disk
-        self.update(batchjob)
-        return batchjob
+        self.update(job)
+        return job
     
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
@@ -81,24 +81,24 @@ class FileJobStore(AbstractJobStore):
         #Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            batchjob = JobWrapper.fromDict(pickler.load(fileHandle))
+            job = JobWrapper.fromDict(pickler.load(fileHandle))
         #The following cleans up any issues resulting from the failure of the 
         #job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
             logger.warn("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
-            batchjob.setupJobAfterFailure(self.config)
-        return batchjob
+            job.setupJobAfterFailure(self.config)
+        return job
     
-    def update(self, batchjob):
+    def update(self, job):
         #The job is serialised to a file suffixed by ".new"
         #The file is then moved to its correct path.
         #Atomicity guarantees use the fact the underlying file systems "move"
         #function is atomic. 
-        with open(self._getJobFileName(batchjob.jobStoreID) + ".new", 'w') as f:
-            pickler.dump(batchjob.toDict(), f)
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
+            pickler.dump(job.toDict(), f)
         #This should be atomic for the file system
-        os.rename(self._getJobFileName(batchjob.jobStoreID) + ".new", self._getJobFileName(batchjob.jobStoreID))
+        os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, jobStoreID):
         #The jobStoreID is the relative path to the directory containing the job,
