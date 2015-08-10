@@ -117,17 +117,17 @@ class MesosExecutor(mesos.interface.Executor):
             finally:
                 del self.runningTasks[task.task_id.value]
 
-        def runJob(batchjob):
+        def runJob(job):
             """
-            :type batchjob: toil.batchSystems.mesos.ToilJob
+            :type job: toil.batchSystems.mesos.ToilJob
 
             :rtype: subprocess.Popen
             """
-            if batchjob.userScript:
-                batchjob.userScript.register()
-            log.debug("Invoking command: '%s'", batchjob.command)
+            if job.userScript:
+                job.userScript.register()
+            log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
-                return subprocess.Popen(batchjob.command, shell=True)
+                return subprocess.Popen(job.command, shell=True)
 
         def sendUpdate(taskState, message=''):
             log.debug("Sending status update ...")
