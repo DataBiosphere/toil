@@ -95,7 +95,7 @@ def initializeOptions(parser):
     # Construct the arguments.
     ##########################################
     parser.add_option("--toil", dest="toil", default='./toil',
-                      help="Batchjob store path. Can also be specified as the single argument to the script. Default=%default")
+                      help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_option("--raw", action="store_true", default=False,
@@ -430,7 +430,7 @@ def reportPrettyData(root, worker, job, job_types, options):
     """
     out_str = "Batch System: %s\n" % root.attrib["batch_system"]
     out_str += ("Default CPU: %s  Default Memory: %s\n"
-                "Batchjob Time: %s  Max CPUs: %s  Max Threads: %s\n" % (
+                "Job Time: %s  Max CPUs: %s  Max Threads: %s\n" % (
         reportNumber(get(root, "default_cpu"), options),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
         reportTime(get(root, "job_time"), options),
@@ -598,7 +598,7 @@ def processData(config, stats, options):
     jobs = []
     for worker in workers:
         jobs += worker.findall("job")
-    def fn4(batchjob):
+    def fn4(job):
         return list(worker.findall("job"))
     createSummary(buildElement(collatedStatsTag, jobs, "job"),
                   workers, "worker", fn4)
@@ -730,7 +730,7 @@ def cacheAvailable(options):
 """
 
 def main():
-    """ Reports stats on the batchjob-tree, use with --stats option to toil.
+    """ Reports stats on the job-tree, use with --stats option to toil.
     """
 
     parser = getBasicOptionParser(

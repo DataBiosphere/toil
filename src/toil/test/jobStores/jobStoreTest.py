@@ -81,8 +81,8 @@ class hidden:
 
         def test( self ):
             """
-            This is a front-to-back test of the "happy" path in a batchjob store, i.e. covering things
-            that occur in the dat to day life of a batchjob store. The purist might insist that this be
+            This is a front-to-back test of the "happy" path in a job store, i.e. covering things
+            that occur in the dat to day life of a job store. The purist might insist that this be
             split up into several cases and I agree wholeheartedly.
             """
             master = self.master
@@ -98,7 +98,7 @@ class hidden:
             # Test initial state
             #
             self.assertFalse(master.exists("foo"))
-            # Create parent batchjob and verify its existence/properties
+            # Create parent job and verify its existence/properties
             #
             jobOnMaster = master.create("master1", 12, 34, 35, "foo")
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
@@ -111,15 +111,16 @@ class hidden:
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
             self.assertEquals(jobOnMaster.logJobStoreFileID, None)
-            # Create a second instance of the batchjob store, simulating a worker ...
+
+            # Create a second instance of the job store, simulating a worker ...
             #
             worker = self.createJobStore(config=config)
             # ... and load the parent batchjob there.
             jobOnWorker = worker.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnMaster, jobOnWorker)
-            # Update state on batchjob
+            # Update state on job
             #
-            # The following demonstrates the batchjob creation pattern, where jobs
+            # The following demonstrates the job creation pattern, where jobs
             # to be created are referenced in "jobsToDelete" array, which is
             # persisted to disk first
             # If things go wrong during the update, this list of jobs to delete
@@ -138,13 +139,13 @@ class hidden:
             # Check equivalence between master and worker
             #
             self.assertNotEquals(jobOnWorker, jobOnMaster)
-            # Reload parent batchjob on master
+            # Reload parent job on master
             jobOnMaster = master.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnWorker, jobOnMaster)
             # Load children on master an check equivalence
             self.assertEquals(master.load(child1.jobStoreID), child1)
             self.assertEquals(master.load(child2.jobStoreID), child2)
-            # Test changing and persisting batchjob state across multiple jobs
+            # Test changing and persisting job state across multiple jobs
             #
             childJobs = [worker.load(childCommand[0]) for childCommand in jobOnMaster.stack[-1]]
             for childJob in childJobs:
@@ -157,10 +158,10 @@ class hidden:
                 self.assertEquals(master.load(childJob.jobStoreID), childJob)
                 self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
-                # Test batchjob iterator
+            # Test job iterator
             self.assertEquals(set(childJobs + [jobOnMaster]), set(worker.jobs()))
             self.assertEquals(set(childJobs + [jobOnMaster]), set(master.jobs()))
-            # Test batchjob deletions
+            # Test job deletions
             #
             # First delete parent, this should have no effect on the children
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
@@ -177,7 +178,7 @@ class hidden:
                 self.assertRaises(NoSuchJobException, worker.load, childJob.jobStoreID)
                 self.assertRaises(NoSuchJobException, master.load, childJob.jobStoreID)
 
-            # Test batchjob iterator now has no jobs
+            # Test job iterator now has no jobs
             #
             self.assertEquals(set(), set(worker.jobs()))
             self.assertEquals(set(), set(master.jobs()))
@@ -196,9 +197,9 @@ class hidden:
                 f.write("bar")
             sharedUrl = master.getSharedPublicUrl("nonEncrypted")
             self.assertTrue(urlIsValid(sharedUrl))
-            # Test per-batchjob files: Create empty file on master, ...
+            # Test per-job files: Create empty file on master, ...
             #
-            # First recreate batchjob
+            # First recreate job
             jobOnMaster = master.create("master1", 12, 34, 35, "foo")
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
@@ -271,7 +272,7 @@ class hidden:
         def testMultipartUploads( self ):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
-            running it against the other batchjob stores as well.
+            running it against the other job stores as well.
             """
             # Should not block. On Linux, /dev/random blocks when its running low on entropy
             random_device = '/dev/urandom'
@@ -279,7 +280,7 @@ class hidden:
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
             self.assertEquals( partSize % bufSize, 0 )
-            batchjob = self.master.create( "1", 2, 3, 4, 0)
+            job = self.master.create( "1", 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -301,7 +302,7 @@ class hidden:
                 checksumThread.start( )
                 try:
                     with open(random_device) as readable:
-                        with self.master.writeFileStream( batchjob.jobStoreID ) as ( writable, fileId ):
+                        with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
                                 checksumQueue.put( buf )
@@ -333,7 +334,7 @@ class hidden:
                                 buf = readable.read( bufSize )
                                 writable.write( buf )
                                 checksum.update( buf )
-                    fileId = self.master.writeFile( batchjob.jobStoreID, path )
+                    fileId = self.master.writeFile( job.jobStoreID, path )
                 finally:
                     os.unlink( path )
                 before = checksum.hexdigest( )
@@ -348,18 +349,18 @@ class hidden:
                         checksum.update( buf )
                 after = checksum.hexdigest( )
                 self.assertEquals( before, after )
-            self.master.delete( batchjob.jobStoreID )
+            self.master.delete( job.jobStoreID )
 
         def testZeroLengthFiles( self ):
-            batchjob = self.master.create( "1", 2, 3, 4, 0)
-            nullFile = self.master.writeFile( batchjob.jobStoreID, '/dev/null' )
+            job = self.master.create( "1", 2, 3, 4, 0)
+            nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
             with self.master.readFileStream( nullFile ) as f:
                 self.assertEquals( f.read( ), "" )
-            with self.master.writeFileStream( batchjob.jobStoreID ) as ( f, nullStream ):
+            with self.master.writeFileStream( job.jobStoreID ) as ( f, nullStream ):
                 pass
             with self.master.readFileStream( nullStream ) as f:
                 self.assertEquals( f.read( ), "" )
-            self.master.delete( batchjob.jobStoreID )
+            self.master.delete( job.jobStoreID )
 
 class FileJobStoreTest( hidden.AbstractJobStoreTest ):
     def createJobStore( self, config=None ):
