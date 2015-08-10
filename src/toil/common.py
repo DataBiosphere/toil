@@ -416,10 +416,10 @@ def setupToil(options, userScript=None, create=False):
     """
     if create == True or options.useExistingOptions:
         #Creating the config object
-    verifyToilOptions(options)
-    config = createConfig(options)
-    batchSystemClass, kwargs = loadBatchSystemClass(config)
-    addBatchSystemConfigOptions(config, batchSystemClass, options)
+        verifyToilOptions(options)
+        config = createConfig(options)
+        batchSystemClass, kwargs = loadBatchSystemClass(config)
+        addBatchSystemConfigOptions(config, batchSystemClass, options)
         #Load the jobStore
         jobStore = loadJobStore(config.attrib["job_store"], config=config, create=create)
     else:
@@ -433,6 +433,7 @@ def setupToil(options, userScript=None, create=False):
         and batchSystemClass.supportsHotDeployment()):
         kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
         # TODO: toil distribution
+
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:
         serialiseEnvironment(jobStore)
