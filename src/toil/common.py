@@ -219,13 +219,13 @@ def createConfig(options):
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
     config.attrib["job_time"] = str(float(options.jobTime))
-    config.attrib["max_log_file_size"] = human2bytes(options.maxLogFileSize)
-    config.attrib["default_memory"] = human2bytes(options.defaultMemory)
+    config.attrib["max_log_file_size"] = str(human2bytes(str(options.maxLogFileSize)))
+    config.attrib["default_memory"] = str(human2bytes(str(options.defaultMemory)))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["default_disk"] = human2bytes(options.defaultDisk)
+    config.attrib["default_disk"] = str(human2bytes(str(options.defaultDisk)))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
-    config.attrib["max_memory"] = human2bytes(options.maxMemory)
-    config.attrib["max_disk"] = human2bytes(options.maxDisk)
+    config.attrib["max_memory"] = str(human2bytes(str(options.maxMemory)))
+    config.attrib["max_disk"] = str(human2bytes(str(options.maxDisk)))
     config.attrib["scale"] = str(float(options.scale))
     if options.bigBatchSystem is not None:
         config.attrib["big_batch_system"] = options.bigBatchSystem
