@@ -69,15 +69,15 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
     
     Results have the following structure.. (thanks Mark D!)
     
-    int status;    /* Batchjob status - wait() return format. 0 is good. */
+    int status;    /* Job status - wait() return format. 0 is good. */
     char *host;    /* Machine job ran on. */
-    char *jobId;    /* Batchjob queuing system job ID */
-    char *exe;    /* Batchjob executable file (no path) */
+    char *jobId;    /* Job queuing system job ID */
+    char *exe;    /* Job executable file (no path) */
     int usrTicks;    /* 'User' CPU time in ticks. */
     int sysTicks;    /* 'System' CPU time in ticks. */
-    unsigned submitTime;    /* Batchjob submission time in seconds since 1/1/1970 */
-    unsigned startTime;    /* Batchjob start time in seconds since 1/1/1970 */
-    unsigned endTime;    /* Batchjob end time in seconds since 1/1/1970 */
+    unsigned submitTime;    /* Job submission time in seconds since 1/1/1970 */
+    unsigned startTime;    /* Job start time in seconds since 1/1/1970 */
+    unsigned endTime;    /* Job end time in seconds since 1/1/1970 */
     char *user;    /* User who ran job */
     char *errFile;    /* Location of stderr file on host */
     
@@ -170,7 +170,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         return jobID
     
     def killBatchJobs(self, jobIDs):
-        """Kills the given jobs, represented as Batchjob ids, then checks they are dead by checking
+        """Kills the given jobs, represented as Job ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
         while True:

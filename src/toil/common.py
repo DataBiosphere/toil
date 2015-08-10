@@ -350,7 +350,7 @@ def loadJobStore( jobStoreString, config=None ):
         jobStoreName, jobStoreArgs = jobStoreString.split( ':', 1 )
     except ValueError:
         raise RuntimeError(
-            'Batchjob store string must either be a path starting in . or / or a contain at least one '
+            'Job store string must either be a path starting in . or / or a contain at least one '
             'colon separating the name of the job store implementation from an initialization '
             'string specific to that job store. If a path starting in . or / is passed, the file '
             'job store will be used for backwards compatibility.' )

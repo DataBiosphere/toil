@@ -118,7 +118,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             if jobID not in self.getIssuedBatchJobIDs():
                 self.killSet.remove(jobID)
                 localSet.remove(jobID)
-                log.debug("Batchjob %s already finished", jobID)
+                log.debug("Job %s already finished", jobID)
             else:
                 taskId = mesos_pb2.TaskID()
                 taskId.value = str(jobID)
@@ -167,7 +167,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
-        log.debug("Batchjob updated with code {}".format(retcode))
+        log.debug("Job updated with code {}".format(retcode))
         return i
 
     def getWaitDuration(self):

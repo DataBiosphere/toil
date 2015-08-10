@@ -215,7 +215,7 @@ class JobBatcher:
             else:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
             timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
-            logger.warn("Batchjob store ID %s with batch system id %s is missing for the %i time",
+            logger.warn("Job store ID %s with batch system id %s is missing for the %i time",
                         jobStoreID, str(jobBatchSystemID), timesMissing)
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
@@ -262,9 +262,9 @@ class JobBatcher:
         for predecessorJob in self.toilState.successorJobStoreIDToPredecessorJobs.pop(jobStoreID):
             self.toilState.successorCounts[predecessorJob] -= 1
             assert self.toilState.successorCounts[predecessorJob] >= 0
-            if self.toilState.successorCounts[predecessorJob] == 0: #Batchjob is done
+            if self.toilState.successorCounts[predecessorJob] == 0: #Job is done
                 self.toilState.successorCounts.pop(predecessorJob)
-                logger.debug("Batchjob %s has all its successors run successfully", \
+                logger.debug("Job %s has all its successors run successfully", \
                              predecessorJob.jobStoreID)
                 assert predecessorJob not in self.toilState.updatedJobs
                 self.toilState.updatedJobs.add(predecessorJob) #Now we know
@@ -374,12 +374,12 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu, job.disk)
                         else:
                             totalFailedJobs += 1
-                            logger.warn("Batchjob: %s is completely failed", job.jobStoreID)
+                            logger.warn("Job: %s is completely failed", job.jobStoreID)
 
                     #There exist successors to run
                     elif len(job.stack) > 0:
                         assert len(job.stack[-1]) > 0
-                        logger.debug("Batchjob: %s has %i successors to schedule",
+                        logger.debug("Job: %s has %i successors to schedule",
                                      job.jobStoreID, len(job.stack[-1]))
                         #Record the number of successors that must be completed before
                         #the job can be considered again
@@ -424,10 +424,10 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                                                 int(config.attrib["default_memory"]),
                                                 int(config.attrib["default_cpu"]),
                                                 int(config.attrib["default_disk"]))
-                            logger.debug("Batchjob: %s is empty, we are scheduling to clean it up", job.jobStoreID)
+                            logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:
                             totalFailedJobs += 1
-                            logger.warn("Batchjob: %s is empty but completely failed - something is very wrong", job.jobStoreID)
+                            logger.warn("Job: %s is empty but completely failed - something is very wrong", job.jobStoreID)
 
                 toilState.updatedJobs = set() #We've considered them all, so reset
 

@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-"""Test Batchjob class
-"""
 
 import unittest
 import os

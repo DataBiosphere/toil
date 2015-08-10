@@ -35,7 +35,7 @@ def main():
     parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [more options]", "%prog 0.1")
     
     parser.add_option("--toil", dest="toil",
-                      help="Batchjob store path. Can also be specified as the single argument to the script.")
+                      help="Job store path. Can also be specified as the single argument to the script.")
     
     options, args = parseBasicOptions(parser)
     

@@ -232,7 +232,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return jobID
 
     def killBatchJobs(self, jobIDs):
-        """Kills the given jobs, represented as Batchjob ids, then checks they are dead by checking
+        """Kills the given jobs, represented as Job ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
         for jobID in jobIDs:

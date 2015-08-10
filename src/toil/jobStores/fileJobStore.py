@@ -233,7 +233,7 @@ class FileJobStore(AbstractJobStore):
     
     def _getJobFileName(self, jobStoreID):
         """
-        :rtype : string, string is the file containing the serialised Batchjob.Batchjob instance
+        :rtype : string, string is the file containing the serialised JobWrapper instance
         for the given job.
         """
         return os.path.join(self._getAbsPath(jobStoreID), "job")

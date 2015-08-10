@@ -64,7 +64,7 @@ If the script was run with the **--stats** option then **toilStats** can be run 
 ```
 Batch System: singleMachine
 Default CPU: 1  Default Memory: 2097152K
-Batchjob Time: 0.50  Max CPUs: 9.22337e+18  Max Threads: 4
+Job Time: 0.50  Max CPUs: 9.22337e+18  Max Threads: 4
 Total Clock: 0.09  Total Runtime: 7.60
 Slave
     Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 

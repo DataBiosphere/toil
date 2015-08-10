@@ -775,7 +775,7 @@ def skip( _ ): return None
 
 class AWSJob( JobWrapper ):
     """
-    A Batchjob that can be converted to and from a SimpleDB Item
+    A Job that can be converted to and from a SimpleDB Item
     """
     fromItemTransform = defaultdict( lambda: passThrough,
                                      predecessorNumber=int,
