@@ -242,8 +242,9 @@ def createConfig(options):
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
     if options.sseKey:
+        config.attrib["sse_key"] = options.sseKey
         with open(options.sseKey) as f:
-            config.attrib["sse_key"] = f.readline()
+            assert(len(f.readline()) == 32)
     return config
 
 
