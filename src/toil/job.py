@@ -30,6 +30,7 @@ import tempfile
 import uuid
 import time
 from toil.resource import ModuleDescriptor
+from bd2k.util.humanize import human2bytes
 
 try:
     import cPickle 
@@ -59,9 +60,9 @@ class Job(object):
         Memory is the maximum number of bytes of memory the job will
         require to run. Cpu is the number of cores required. 
         """
-        self.memory = memory
+        self.memory = human2bytes(str(memory))
         self.cpu = cpu
-        self.disk = disk
+        self.disk = human2bytes(str(disk))
         #Private class variables
         
         #See Job.addChild
