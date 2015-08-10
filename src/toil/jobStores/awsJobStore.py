@@ -28,6 +28,7 @@ from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger( __name__ )
 
+
 # FIXME: Command length is currently limited to 1024 characters
 
 # NB: Number of messages per job is limited to 256-x, 1024 bytes each, with x being the number of
@@ -47,14 +48,8 @@ class AWSJobStore( AbstractJobStore ):
     field of a job will be stored as a multivalued attribute.
     """
 
-    # FIXME: Eliminate after consolidating behaviour with FileJobStore
-
-    resetJobInLoadState = True
-    """Whether to reset the messages, remainingRetryCount and children attributes of a job when
-    it is loaded by loadToilState."""
-
-    def fileExists(self, jobStoreFileID ):
-        return bool(self.versions.get_item(item_name=jobStoreFileID, consistent_read=True))
+    def fileExists( self, jobStoreFileID ):
+        return bool( self.versions.get_item( item_name=jobStoreFileID, consistent_read=True ) )
 
     def jobs( self ):
         for attempt in retry_sdb( ):
@@ -62,23 +57,22 @@ class AWSJobStore( AbstractJobStore ):
                 result = list( self.jobDomain.select(
                     query="select * from `{domain}` ".format( domain=self.jobDomain.name ),
                     consistent_read=True ) )
-        jobList = []
         for jobItem in result:
-            yield AWSJob.fromItem(jobItem)
+            yield AWSJob.fromItem( jobItem )
 
-    def create( self, command, memory, cpu, disk,updateID=None,
+    def create( self, command, memory, cpu, disk, updateID=None,
                 predecessorNumber=0 ):
         jobStoreID = self._newJobID( )
         log.debug( "Creating job %s for '%s'",
                    jobStoreID, '<no command>' if command is None else command )
         job = AWSJob( jobStoreID=jobStoreID,
-                             command=command, memory=memory, cpu=cpu, disk=disk,
-                             remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
-                             updateID=updateID, predecessorNumber=predecessorNumber)
+                      command=command, memory=memory, cpu=cpu, disk=disk,
+                      remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
+                      updateID=updateID, predecessorNumber=predecessorNumber )
         for attempt in retry_sdb( ):
             with attempt:
                 assert self.jobDomain.put_attributes( item_name=jobStoreID,
-                                                 attributes=job.toItem( ) )
+                                                      attributes=job.toItem( ) )
         return job
 
     def __init__( self, region, namePrefix, config=None, create=False ):
@@ -100,10 +94,12 @@ class AWSJobStore( AbstractJobStore ):
         self.stats = None
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
-        #TODO: This needs fixing
-        self.checkJobStoreCreation(create, False, region + " " + namePrefix)
-        self.jobDomain = self._getOrCreateDomain( 'jobs', create )
-        self.versions = self._getOrCreateDomain( 'versions', create )
+
+        def creationCheck( exists ):
+            self._checkJobStoreCreation( create, exists, region + " " + namePrefix )
+
+        self.jobDomain = self._getOrCreateDomain( 'jobs', creationCheck )
+        self.versions = self._getOrCreateDomain( 'versions', creationCheck )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
         super( AWSJobStore, self ).__init__( config=config )
@@ -112,20 +108,21 @@ class AWSJobStore( AbstractJobStore ):
         for attempt in retry_sdb( ):
             with attempt:
                 return bool( self.jobDomain.get_attributes( item_name=jobStoreID,
-                                                       attribute_name=[ ],
-                                                       consistent_read=True ) )
-    def getPublicUrl( self,  jobStoreFileID):
+                                                            attribute_name=[ ],
+                                                            consistent_read=True ) )
+
+    def getPublicUrl( self, jobStoreFileID ):
         """
         For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
         Create url, check if valid, return.
         """
-        key = self.files.get_key( key_name=jobStoreFileID)
-        return key.generate_url(expires_in=3600) # one hour
+        key = self.files.get_key( key_name=jobStoreFileID )
+        return key.generate_url( expires_in=3600 )  # one hour
 
-    def getSharedPublicUrl(self, FileName):
+    def getSharedPublicUrl( self, FileName ):
         jobStoreFileID = self._newFileID( FileName )
-        return self.getPublicUrl(jobStoreFileID)
+        return self.getPublicUrl( jobStoreFileID )
 
     def load( self, jobStoreID ):
         # TODO: check if mentioning individual attributes is faster than using *
@@ -134,11 +131,11 @@ class AWSJobStore( AbstractJobStore ):
                 result = list( self.jobDomain.select(
                     query="select * from `{domain}` "
                           "where itemName() = '{jobStoreID}'".format( domain=self.jobDomain.name,
-                                                                   jobStoreID=jobStoreID ),
+                                                                      jobStoreID=jobStoreID ),
                     consistent_read=True ) )
-        if len(result)!=1:
-            raise NoSuchJobException(jobStoreID)
-        job = AWSJob.fromItem(result[0])
+        if len( result ) != 1:
+            raise NoSuchJobException( jobStoreID )
+        job = AWSJob.fromItem( result[ 0 ] )
         if job is None:
             raise NoSuchJobException( jobStoreID )
         log.debug( "Loaded job %s", jobStoreID )
@@ -149,7 +146,7 @@ class AWSJobStore( AbstractJobStore ):
         for attempt in retry_sdb( ):
             with attempt:
                 assert self.jobDomain.put_attributes( item_name=job.jobStoreID,
-                                                 attributes=job.toItem( ) )
+                                                      attributes=job.toItem( ) )
 
     def delete( self, jobStoreID ):
         # remove job and replace with jobStoreId.
@@ -173,7 +170,7 @@ class AWSJobStore( AbstractJobStore ):
                     self.files.delete_key( key_name=item.name,
                                            version_id=item[ 'version' ] )
                 else:
-                    self.files.delete_key( key_name=item.name)
+                    self.files.delete_key( key_name=item.name )
 
     def writeFile( self, jobStoreID, localFilePath ):
         jobStoreFileID = self._newFileID( )
@@ -264,7 +261,7 @@ class AWSJobStore( AbstractJobStore ):
                         self.versions.delete_attributes( jobStoreFileID,
                                                          expected_values=[ 'version', version ] )
                     else:
-                        self.versions.delete_attributes( jobStoreFileID)
+                        self.versions.delete_attributes( jobStoreFileID )
 
             bucket.delete_key( key_name=jobStoreFileID, version_id=version )
             if version:
@@ -272,7 +269,7 @@ class AWSJobStore( AbstractJobStore ):
             else:
                 log.debug( "Deleted unversioned file %s", jobStoreFileID )
         else:
-            log.debug( "File %s does not exist", jobStoreFileID)
+            log.debug( "File %s does not exist", jobStoreFileID )
 
     def getEmptyFileStoreID( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
@@ -369,17 +366,31 @@ class AWSJobStore( AbstractJobStore ):
             else:
                 raise
 
-    def _getOrCreateDomain( self, domain_name, create=False ):
+    def _getOrCreateDomain( self, domain_name, creation_check ):
         """
+        Return the boto Domain object representing the SDB domain with the given name. If the
+        domain does not exist it will be created unless the given callback prevents that by
+        raising an exception.
+
+        :param domain_name: the unqualified name of the domain to be created
+
+        :param creation_check: a callback that is invoked with True if the domain already exists,
+        False if it is missing. If the callback wants to prevent the creation of a missing
+        domain, it should raise an exception.
+
         :rtype : Domain
         """
         domain_name = self.namePrefix + self.nameSeparator + domain_name
         for i in itertools.count( ):
             try:
-                return self.db.get_domain( domain_name )
+                domain = self.db.get_domain( domain_name )
+                if i == 0:
+                    creation_check( True )
+                return domain
             except SDBResponseError as e:
                 if e.error_code == 'NoSuchDomain':
-                    if i == 0 and create:
+                    if i == 0:
+                        creation_check( False )
                         self.db.create_domain( domain_name )
                     else:
                         log.warn( "Creation of '%s' still pending, retrying in 5s" % domain_name )
@@ -395,7 +406,7 @@ class AWSJobStore( AbstractJobStore ):
         if sharedFileName is None:
             return str( uuid.uuid4( ) )
         else:
-            return str( uuid.uuid5( self.sharedFileJobID, str(sharedFileName) ) )
+            return str( uuid.uuid5( self.sharedFileJobID, str( sharedFileName ) ) )
 
     def _getFileVersionAndBucket( self, jobStoreFileID ):
         """
@@ -452,7 +463,8 @@ class AWSJobStore( AbstractJobStore ):
                     version = upload.complete_upload( ).version_id
         key = self.files.get_key( jobStoreFileID )
         assert key.size == file_size
-        assert self._fileSizeAndTime( localFilePath ) == (file_size, file_time) #why do this? No one can touch the file while it is uploaded?
+        assert self._fileSizeAndTime( localFilePath ) == (
+        file_size, file_time)  # why do this? No one can touch the file while it is uploaded?
         return version
 
     @contextmanager
@@ -630,6 +642,7 @@ def fromNoneable( v ):
 
 sort_prefix_length = 3
 
+
 def toSet( vs ):
     """
     :param vs: list[str] | str
@@ -652,7 +665,7 @@ def toSet( vs ):
     set([])
 
     """
-    return set(vs) if vs else set()
+    return set( vs ) if vs else set( )
 
 
 def fromSet( vs ):
@@ -693,13 +706,14 @@ def fromSet( vs ):
     if len( vs ) == 0:
         return ""
     elif len( vs ) == 1:
-        v = vs.pop()
+        v = vs.pop( )
         assert isinstance( v, basestring ) and v
         return v
     else:
         assert len( vs ) <= 256
         assert all( isinstance( v, basestring ) and v for v in vs )
-        return list(vs)
+        return list( vs )
+
 
 def toList( vs ):
     """
@@ -793,7 +807,7 @@ class AWSJob( JobWrapper ):
                                      cpu=float,
                                      updateID=str,
                                      command=toNoneable,
-                                     stack=lambda v:map( literal_eval, toList( v )),
+                                     stack=lambda v: map( literal_eval, toList( v ) ),
                                      jobsToDelete=toList,
                                      predecessorsFinished=toSet,
                                      remainingRetryCount=int,
@@ -821,9 +835,9 @@ class AWSJob( JobWrapper ):
                                    stack=lambda v: fromList( map( repr, v ) ),
                                    logJobStoreFileID=fromNoneable,
                                    predecessorsFinished=fromSet,
-                                   jobsToDelete=fromList ,
+                                   jobsToDelete=fromList,
                                    predecessorNumber=str,
-                                   remainingRetryCount=str)
+                                   remainingRetryCount=str )
 
     def toItem( self, parentJobStoreID=None ):
         """
@@ -834,6 +848,7 @@ class AWSJob( JobWrapper ):
             item[ 'parentJobStoreID' ] = parentJobStoreID
         item = ((k, self.toItemTransform[ k ]( v )) for k, v in item.iteritems( ))
         return { k: v for k, v in item if v is not None }
+
 
 # FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
 # FIXME: ... between that code and this is the name of the exception.

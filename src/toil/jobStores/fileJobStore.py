@@ -26,14 +26,14 @@ class FileJobStore(AbstractJobStore):
         :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
         :param create: If True create the jobStore. 
         :type create: Boolean
-        :exception RuntimeError: if create=True and the jobStore already exists or
+        :raise RuntimeError: if create=True and the jobStore already exists or
         create=False and the jobStore does not already exist. 
         """
         #This is root directory in which everything in the store is kept
         self.jobStoreDir = absSymPath(jobStoreDir)
         logger.info("Jobstore directory is: %s", self.jobStoreDir)
         #Safety checks for existing jobStore
-        self.checkJobStoreCreation(create, os.path.exists(self.jobStoreDir), self.jobStoreDir)
+        self._checkJobStoreCreation(create, os.path.exists(self.jobStoreDir), self.jobStoreDir)
         #Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
         #Creation of jobStore, if necessary

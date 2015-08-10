@@ -48,14 +48,17 @@ class AbstractJobStore( object ):
         return self.__config
     
     @staticmethod
-    def checkJobStoreCreation(create, exists, jobStoreString):
+    def _checkJobStoreCreation(create, exists, jobStoreString):
         """
-        Consistency checks which will result in exceptions
-        if we attempt to overwrite an existing jobStore.
+        Consistency checks which will result in exceptions if we attempt to overwrite an existing
+        jobStore.
+
         :type create: boolean
+
         :type exists: boolean
-        :exception JobStoreCreationException: 
-        Thrown if create=True and exists=True or create=False and exists=False
+
+        :raise JobStoreCreationException:  Thrown if create=True and exists=True or create=False
+                                           and exists=False
         """
         if create and exists:
             raise JobStoreCreationException("The job store '%s' already exists. " 
