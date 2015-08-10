@@ -16,22 +16,25 @@ class NoSuchFileException( Exception ):
     def __init__( self, fileJobStoreID ):
         super( NoSuchFileException, self ).__init__( "The file '%s' does not exist" % fileJobStoreID )
 
+class JobStoreCreationException( Exception ):
+    def __init__( self, message ):
+        super( JobStoreCreationException, self ).__init__( message )
+
 class AbstractJobStore( object ):
     """ 
     Represents the physical storage for the jobs and associated files in a toil.
     """
     __metaclass__ = ABCMeta
 
-    def __init__( self, config=None ):
+    def __init__( self, config=None):
         """
-        FIXME: describe purpose and post-condition
-
         :param config: If config is not None then the
         given configuration object will be written to the shared file "config.xml" which can
         later be retrieved using the readSharedFileStream. If this file already exists
         it will be overwritten. If config is None, 
         the shared file "config.xml" is assumed to exist and is retrieved. 
         """
+        #Now get on with reading or writing the config
         if config is None:
             with self.readSharedFileStream( "config.xml" ) as fileHandle:
                 self.__config = ET.parse( fileHandle ).getroot( )
@@ -43,6 +46,24 @@ class AbstractJobStore( object ):
     @property
     def config( self ):
         return self.__config
+    
+    @staticmethod
+    def checkJobStoreCreation(create, exists, jobStoreString):
+        """
+        Consistency checks which will result in exceptions
+        if we attempt to overwrite an existing jobStore.
+        :type create: boolean
+        :type exists: boolean
+        :exception JobStoreCreationException: 
+        Thrown if create=True and exists=True or create=False and exists=False
+        """
+        if create and exists:
+            raise JobStoreCreationException("The job store '%s' already exists. " 
+                               "Use --restart or toilRestart to resume this jobStore, "
+                               "else remove it to start from scratch" % jobStoreString)
+        if not create and not exists:
+            raise JobStoreCreationException("The job store '%s' does not exist, so there "
+                                "is nothing to restart." % jobStoreString)
     
     @abstractmethod
     def deleteJobStore( self ):
@@ -57,6 +78,7 @@ class AbstractJobStore( object ):
         """
         Function to cleanup the state of a jobStore after a restart.
         Fixes jobs that might have been partially updated.
+        Resets the try counts.
         """
         #Collate any jobs that were in the process of being created/deleted
         jobsToDelete = set()
@@ -64,13 +86,13 @@ class AbstractJobStore( object ):
             for updateID in batchjob.jobsToDelete:
                 jobsToDelete.add(updateID)
             
-        #Delete the jobs that should be delete
+        #Delete the jobs that should be deleted
         if len(jobsToDelete) > 0:
             for batchjob in self.jobs():
                 if batchjob.updateID in jobsToDelete:
                     self.delete(batchjob.jobStoreID)
         
-        #Cleanup the state of each batchjob
+        #Cleanup the state of each jobWrapper
         for batchjob in self.jobs():
             changed = False #Flag to indicate if we need to update the batchjob
             #on disk
@@ -83,7 +105,7 @@ class AbstractJobStore( object ):
             #those jobs from the stack (this cleans up the case that the batchjob
             #had successors to run, but had not been updated to reflect this)
             while len(batchjob.stack) > 0:
-                jobs = [ command[0] for command in batchjob.stack[-1] if self.exists(command[0]) ]
+                jobs = [ command for command in batchjob.stack[-1] if self.exists(command[0]) ]
                 if len(jobs) < len(batchjob.stack[-1]):
                     changed = True
                     if len(jobs) > 0:
@@ -93,6 +115,11 @@ class AbstractJobStore( object ):
                         batchjob.stack.pop()
                 else:
                     break
+                
+            #Reset the retry count of the job 
+            if batchjob.remainingRetryCount < int(self.config.attrib["try_count"]):
+                batchjob.remainingRetryCount = int(self.config.attrib["try_count"]) 
+                changed = True
                           
             #This cleans the old log file which may 
             #have been left if the batchjob is being retried after a batchjob failure.

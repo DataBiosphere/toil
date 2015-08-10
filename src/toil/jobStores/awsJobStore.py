@@ -81,7 +81,15 @@ class AWSJobStore( AbstractJobStore ):
                                                  attributes=batchjob.toItem( ) )
         return batchjob
 
-    def __init__( self, region, namePrefix, config=None ):
+    def __init__( self, region, namePrefix, config=None, create=False ):
+        """
+        TODO: Document region and namePrefix
+        
+        :param create: If True create the jobStore. 
+        :type create: Boolean
+        :exception RuntimeError: if create=True and the jobStore already exists or
+        create=False and the jobStore does not already exist. 
+        """
         log.debug( "Instantiating %s for region %s and name prefix '%s'",
                    self.__class__, region, namePrefix )
         self.region = region
@@ -92,7 +100,8 @@ class AWSJobStore( AbstractJobStore ):
         self.stats = None
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
-        create = config is not None
+        #TODO: This needs fixing
+        self.checkJobStoreCreation(create, False, region + " " + namePrefix)
         self.jobDomain = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
@@ -261,7 +270,7 @@ class AWSJobStore( AbstractJobStore ):
             if version:
                 log.debug( "Deleted version %s of file %s", version, jobStoreFileID )
             else:
-                log.debug( "Deleted unversioned file %s", version, jobStoreFileID )
+                log.debug( "Deleted unversioned file %s", jobStoreFileID )
         else:
             log.debug( "File %s does not exist", jobStoreFileID)
 

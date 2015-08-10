@@ -29,10 +29,12 @@ from optparse import OptionParser
 from toil.leader import mainLoop
 from toil.common import addOptions, setupToil
 from toil.lib.bioio import setLoggingFromOptions
-
+from toil.job import Job
+import logging
+logger = logging.getLogger( __name__ )
 
 def main():
-    """Restarts a toil.
+    """Restarts a toil workflow.
     """
     
     ##########################################
@@ -60,12 +62,10 @@ def main():
     ##########################################  
         
     setLoggingFromOptions(options)
+    options.restart = True
     with setupToil(options) as (config, batchSystem, jobStore):
         jobStore.clean()
-        if "rootJob" not in config.attrib:
-            print "There is no root batchjob in the toil from which to start, exiting"
-            sys.exit(0)
-        return mainLoop(config, batchSystem, jobStore, jobStore.load(config.attrib["rootJob"]))
+        return mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore))
     
 def _test():
     import doctest      

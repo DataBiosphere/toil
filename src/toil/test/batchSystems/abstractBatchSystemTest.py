@@ -132,7 +132,6 @@ class hidden:
             config.attrib["try_count"] = str(2)
             config.attrib["max_job_duration"] = str(1)
             config.attrib["batch_system"] = None
-            config.attrib["job_time"] = str(1)
             config.attrib["max_log_file_size"] = str(1)
             config.attrib["default_memory"] = str(1)
             config.attrib["default_cpu"] = str(1)

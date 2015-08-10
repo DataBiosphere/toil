@@ -63,6 +63,7 @@ class AbstractBatchSystem:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
+        
     def issueBatchJob(self, command, memory, cpu, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
@@ -71,7 +72,6 @@ class AbstractBatchSystem:
         """
         raise NotImplementedError('Abstract method: issueBatchJob')
 
-    
     def killBatchJobs(self, jobIDs):
         """Kills the given batchjob IDs.
         """

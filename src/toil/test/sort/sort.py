@@ -106,10 +106,7 @@ def main():
         raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
-    i = Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N)), options)
-    
-    if i:
-        raise RuntimeError("The toil contained %i failed jobs" % i)
+    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N)), options)
 
 if __name__ == '__main__':
     main()

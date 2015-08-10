@@ -170,12 +170,6 @@ class JobBatcher:
         Wait for the batchjob to die then we pass the batchjob to processFinishedJob.
         """
         maxJobDuration = float(self.config.attrib["max_job_duration"])
-        idealJobTime = float(self.config.attrib["job_time"])
-        if maxJobDuration < idealJobTime * 10:
-            logger.warn("The max batchjob duration is less than 10 times the ideal the batchjob time, so I'm setting it "
-                        "to the ideal batchjob time, sorry, but I don't want to crash your jobs "
-                        "because of limitations in toil ")
-            maxJobDuration = idealJobTime * 10
         jobsToKill = []
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
@@ -296,13 +290,14 @@ class ToilState( object ):
         """
         Traverses tree of jobs from the root batchjob (rootJob) building the
         ToilState class.
-        """
+        """            
         if batchjob.command != None or len(batchjob.stack) == 0: #If the batchjob has a command
             #or is ready to be deleted it is ready to be processed
             self.updatedJobs.add(batchjob)
         else: #There exist successors
             self.successorCounts[batchjob] = len(batchjob.stack[-1])
-            for successorJobStoreID in batchjob.stack[-1]:
+            for successorJobStoreTuple in batchjob.stack[-1]:
+                successorJobStoreID = successorJobStoreTuple[0]
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
                     #Given that the successor batchjob does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
