@@ -270,7 +270,7 @@ def loadBatchSystemClass(config, key="batch_system"):
         batchSystemClass = GridengineBatchSystem
         logger.info('Using the grid engine machine batch system')
     elif batchSystemName == 'acid_test' or batchSystemName == 'acidTest':
-        # The chance that a batchjob does not complete after 32 goes in one in 4 billion, so you need a lot of jobs
+        # The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs
         # before this becomes probable
         config.attrib['try_count'] = str(32)
         batchSystemClass = SingleMachineBatchSystem

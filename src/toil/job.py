@@ -97,7 +97,7 @@ class Job(object):
         A check is made that will result in a runtime error if you attempt to do this.
         Allowing PromisedJobReturnValue instances to be returned does not work because
         the mechanism to pass the promise uses a jobStoreFileID that will be deleted once
-        the current batchjob and its descendants have been completed. This is similar to
+        the current job and its descendants have been completed. This is similar to
         scope rules in a language like C, where returning a reference to memory allocated
         on the stack within a function will produce an undefined reference. 
         Disallowing this also avoids nested promises (PromisedJobReturnValue
@@ -125,7 +125,7 @@ class Job(object):
         successors of the job have been run.
         
         :rtype : An instance of PromisedJobReturnValue which will be replaced
-        with the return value from the service.start() in any successor of the batchjob.
+        with the return value from the service.start() in any successor of the job.
         """
         jobService = ServiceJob(service)
         self._services.append(jobService)
@@ -345,7 +345,7 @@ class Job(object):
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 jobStore.clean()
                 if "rootJob" not in config.attrib: #No jobs have yet been run
-                    # Setup the first batchjob.
+                    # Setup the first job.
                     rootJob = job._serialiseFirstJob(jobStore)
                 else:
                     rootJob = jobStore.load(config.attrib["rootJob"])
@@ -417,7 +417,7 @@ class Job(object):
             """
             Similar to writeGlobalFile, but returns a context manager yielding a 
             tuple of 1) a file handle which can be written to and 2) the ID of 
-            the resulting file in the batchjob store. The yielded file handle does
+            the resulting file in the job store. The yielded file handle does
             not need to and should not be closed explicitly.
             """
             return self.jobStore.writeFileStream(self.batchjob.jobStoreID)
@@ -537,7 +537,7 @@ class Job(object):
     def _createEmptyJobForJob(self, jobStore, updateID=None, command=None,
                                  predecessorNumber=0):
         """
-        Create an empty batchjob for the job.
+        Create an empty job for the job.
         """
         return jobStore.create(command=command,
                                memory=(self.memory if self.memory != sys.maxint 
@@ -550,10 +550,10 @@ class Job(object):
         
     def _makeJobWrappers(self, jobStore, jobsToUUIDs, jobsToJobs, predecessor, rootJob):
         """
-        Creates a batchjob for each job in the job graph, recursively.
+        Creates a job for each job in the job graph, recursively.
         """
         if self not in jobsToJobs:
-            #The batchjob for the job
+            #The job for the job
             assert predecessor in self._predecessors
             batchjob = self._createEmptyJobForJob(jobStore, jobsToUUIDs[self],
                                                 predecessorNumber=len(self._predecessors))
@@ -575,7 +575,7 @@ class Job(object):
             self._followOns = []
             self._services = []
             self._predecessors = set()
-            #The pickled job is "run" as the command of the batchjob, see worker
+            #The pickled job is "run" as the command of the job, see worker
             #for the mechanism which unpickles the job and executes the Job.run
             #method.
             fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
@@ -583,14 +583,14 @@ class Job(object):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             jobClassName = self.__class__.__name__
             batchjob.command = ' '.join( ('scriptTree', fileStoreID, jobClassName) + self.userModule)
-            #Update the status of the batchjob on disk
+            #Update the status of the job on disk
             jobStore.update(batchjob)
         else:
-            #Lookup the already created batchjob
+            #Lookup the already created job
             batchjob = jobsToJobs[self]
             assert batchjob.predecessorNumber > 1
         
-        #The return is a tuple stored within the batchjob.stack of the jobs to run.
+        #The return is a tuple stored within the job.stack of the jobs to run.
         #The tuple is jobStoreID, memory, cpu, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
@@ -608,7 +608,7 @@ class Job(object):
         jobsToUUIDs = self._getHashOfJobsToUUIDs({})
         #Set the jobs to delete
         batchjob.jobsToDelete = list(jobsToUUIDs.values())
-        #Update the batchjob on disk. The jobs to delete is a record of what to
+        #Update the job on disk. The jobs to delete is a record of what to
         #remove if the update goes wrong
         jobStore.update(batchjob)
         #Create the jobs for followOns/children
@@ -626,14 +626,14 @@ class Job(object):
         
     def _serialiseFirstJob(self, jobStore):
         """
-        Serialises the root job. Returns the wrapping batchjob.
+        Serialises the root job. Returns the wrapping job.
         """
         #Pickles the job within a shared file in the jobStore called
         #"firstJob"
         sharedJobFile = "firstJob"
         with jobStore.writeSharedFileStream(sharedJobFile) as f:
             cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
-        #Make the first batchjob
+        #Make the first job
         jobClassName = self.__class__.__name__
         command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
         batchjob = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
@@ -642,7 +642,7 @@ class Job(object):
         jobStore.config.attrib["rootJob"] = batchjob.jobStoreID
         with jobStore.writeSharedFileStream("config.xml") as f:
             ET.ElementTree( jobStore.config ).write(f)
-        #Return the first batchjob
+        #Return the first job
         return batchjob
 
     ####################################################

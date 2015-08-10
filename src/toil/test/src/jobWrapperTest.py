@@ -31,7 +31,7 @@ class JobWrapperTest(ToilTest):
     
     def testJob(self):       
         """
-        Tests functions of a batchjob.
+        Tests functions of a job.
         """ 
     
         command = "by your command"

@@ -79,7 +79,7 @@ def bsub(bsubline):
 def getjobexitcode(lsfJobID):
         batchjob, task = lsfJobID
         
-        #first try bjobs to find out batchjob state
+        #first try bjobs to find out job state
         args = ["bjobs", "-l", str(batchjob)]
         logger.info("Checking batchjob exit code for batchjob via bjobs: " + str(batchjob))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
@@ -131,7 +131,7 @@ class Worker(Thread):
         
     def run(self):
         while True:
-            # Load new batchjob ids:
+            # Load new job ids:
             while not self.newJobsQueue.empty():
                 self.currentjobs.append(self.newJobsQueue.get())
 
@@ -143,7 +143,7 @@ class Worker(Thread):
                 self.boss.lsfJobIDs[jobID] = (lsfJobID, None)
                 self.runningjobs.add((lsfJobID, None))
 
-            # Test known batchjob list
+            # Test known job list
             for lsfJobID in list(self.runningjobs):
                 exit = getjobexitcode(lsfJobID)
                 if exit is not None:
@@ -159,7 +159,7 @@ class LSFBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.lsfResultsFile = getParasolResultsFileName(config.attrib["job_store"])
-        #Reset the batchjob queue and results (initially, we do this again once we've killed the jobs)
+        #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
         self.lsfResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()
@@ -198,7 +198,7 @@ class LSFBatchSystem(AbstractBatchSystem):
              return str(batchjob) + "." + str(task)
     
     def killBatchJobs(self, jobIDs):
-        """Kills the given batchjob IDs.
+        """Kills the given job IDs.
         """
         for jobID in jobIDs:
             logger.info("DEL: " + str(self.getLsfID(jobID)))

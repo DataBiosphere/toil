@@ -45,7 +45,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Written to when mesos kills tasks, as directed by toil
         self.killedSet = set()
 
-        # Dictionary of queues, which toil assigns jobs to. Each queue represents a batchjob type,
+        # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
         # defined by resource usage
         self.jobQueueList = defaultdict(list)
 
@@ -82,10 +82,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def issueBatchJob(self, command, memory, cpu, disk):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
-        the number of bytes the batchjob needs to run in and cpu is the number of cpus needed for the batchjob and error-file
+        the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
         is the path of the file to place any std-err/std-out in.
         """
-        # puts batchjob into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
+        # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cpu, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -105,7 +105,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def killBatchJobs(self, jobIDs):
         """
-        Kills the given batchjob IDs.
+        Kills the given job IDs.
         """
         localSet = set()
         if self.driver is None:
@@ -159,7 +159,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def getUpdatedBatchJob(self, maxWait):
         """
-        Gets a batchjob that has updated its status, according to the batchjob manager. Max wait gives the number of seconds to
+        Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
         pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
         """
         i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
@@ -355,7 +355,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _createTask(self, jt_job, offer):
         """
-        Build the Mesos task object from the toil batchjob here to avoid further cluttering resourceOffers
+        Build the Mesos task object from the toil job here to avoid further cluttering resourceOffers
         """
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(jt_job.jobID)

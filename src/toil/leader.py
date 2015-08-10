@@ -99,7 +99,7 @@ class JobBatcher:
 
     def issueJob(self, jobStoreID, memory, cpu, disk):
         """
-        Add a batchjob to the queue of jobs
+        Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
@@ -127,7 +127,7 @@ class JobBatcher:
 
     def getJob(self, jobBatchSystemID):
         """
-        Gets the batchjob file associated the a given id
+        Gets the job file associated the a given id
         """
         return self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID]
 
@@ -145,7 +145,7 @@ class JobBatcher:
 
     def removeJobID(self, jobBatchSystemID):
         """
-        Removes a batchjob from the jobBatcher.
+        Removes a job from the jobBatcher.
         """
         assert jobBatchSystemID in self.jobBatchSystemIDToJobStoreIDHash
         self.jobsIssued -= 1
@@ -165,9 +165,9 @@ class JobBatcher:
 
     def reissueOverLongJobs(self):
         """
-        Check each issued batchjob - if it is running for longer than desirable
+        Check each issued job - if it is running for longer than desirable
         issue a kill instruction.
-        Wait for the batchjob to die then we pass the batchjob to processFinishedJob.
+        Wait for the job to die then we pass the job to processFinishedJob.
         """
         maxJobDuration = float(self.config.attrib["max_job_duration"])
         idealJobTime = float(self.config.attrib["job_time"])
@@ -192,10 +192,10 @@ class JobBatcher:
     
     def reissueMissingJobs(self, killAfterNTimesMissing=3):
         """
-        Check all the current batchjob ids are in the list of currently running batch system jobs.
-        If a batchjob is missing, we mark it as so, if it is missing for a number of runs of
-        this function (say 10).. then we try deleting the batchjob (though its probably lost), we wait
-        then we pass the batchjob to processFinishedJob.
+        Check all the current job ids are in the list of currently running batch system jobs.
+        If a job is missing, we mark it as so, if it is missing for a number of runs of
+        this function (say 10).. then we try deleting the job (though its probably lost), we wait
+        then we pass the job to processFinishedJob.
         """
         runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(self.getJobIDs())
@@ -226,7 +226,7 @@ class JobBatcher:
 
     def processFinishedJob(self, jobBatchSystemID, resultStatus):
         """
-        Function reads a processed batchjob file and updates it state.
+        Function reads a processed job file and updates it state.
         """    
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
@@ -241,9 +241,9 @@ class JobBatcher:
                     logger.warn("No log file is present, despite batchjob failing: %s", jobStoreID)
                 batchjob.setupJobAfterFailure(self.config)
             self.toilState.updatedJobs.add(batchjob) #Now we know the
-            #batchjob is done we can add it to the list of updated batchjob files
+            #job is done we can add it to the list of updated job files
             logger.debug("Added batchjob: %s to active jobs", jobStoreID)
-        else:  #The batchjob is done
+        else:  #The job is done
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
                             "batchjob %s seems to have finished and been removed", jobStoreID)
@@ -251,10 +251,10 @@ class JobBatcher:
             
     def _updatePredecessorStatus(self, jobStoreID):
         """
-        Update status of a predecessor for finished successor batchjob.
+        Update status of a predecessor for finished successor job.
         """
         if jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
-            #We have reach the root batchjob
+            #We have reach the root job
             assert len(self.toilState.updatedJobs) == 0
             assert len(self.toilState.successorJobStoreIDToPredecessorJobs) == 0
             assert len(self.toilState.successorCounts) == 0
@@ -268,7 +268,7 @@ class JobBatcher:
                              predecessorJob.jobStoreID)
                 assert predecessorJob not in self.toilState.updatedJobs
                 self.toilState.updatedJobs.add(predecessorJob) #Now we know
-                #the batchjob is done we can add it to the list of updated batchjob files
+                #the job is done we can add it to the list of updated job files
 
 ##########################################
 #Class to represent the state of the toil in memory. Loads this
@@ -294,17 +294,17 @@ class ToilState( object ):
 
     def _buildToilState(self, batchjob, jobStore):
         """
-        Traverses tree of jobs from the root batchjob (rootJob) building the
+        Traverses tree of jobs from the root job (rootJob) building the
         ToilState class.
         """
-        if batchjob.command != None or len(batchjob.stack) == 0: #If the batchjob has a command
+        if batchjob.command != None or len(batchjob.stack) == 0: #If the job has a command
             #or is ready to be deleted it is ready to be processed
             self.updatedJobs.add(batchjob)
         else: #There exist successors
             self.successorCounts[batchjob] = len(batchjob.stack[-1])
             for successorJobStoreID in batchjob.stack[-1]:
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
-                    #Given that the successor batchjob does not yet point back at a
+                    #Given that the successor job does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [batchjob]
@@ -352,7 +352,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         #The main loop in which jobs are scheduled/processed
         ##########################################
 
-        #Sets up the timing of the batchjob rescuing method
+        #Sets up the timing of the job rescuing method
         timeSinceJobsLastRescued = time.time()
         #Number of jobs that can not be completed successful after exhausting retries
         totalFailedJobs = 0
@@ -368,7 +368,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                              len(toilState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
 
                 for batchjob in toilState.updatedJobs:
-                    #If the batchjob has a command it must be run before any successors
+                    #If the job has a command it must be run before any successors
                     if batchjob.command != None:
                         if batchjob.remainingRetryCount > 0:
                             jobBatcher.issueJob(batchjob.jobStoreID, batchjob.memory, batchjob.cpu, batchjob.disk)
@@ -382,7 +382,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         logger.debug("Batchjob: %s has %i successors to schedule",
                                      batchjob.jobStoreID, len(batchjob.stack[-1]))
                         #Record the number of successors that must be completed before
-                        #the batchjob can be considered again
+                        #the job can be considered again
                         assert batchjob not in toilState.successorCounts
                         toilState.successorCounts[batchjob] = len(batchjob.stack[-1])
                         #List of successors to schedule
@@ -394,7 +394,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                                 toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(batchjob)
-                            #Case that the batchjob has multiple predecessors
+                            #Case that the job has multiple predecessors
                             if predecessorID != None:
                                 #Load the wrapped job
                                 job2 = jobStore.load(successorJobStoreID)
@@ -403,7 +403,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                                 #Checkpoint
                                 jobStore.update(job2)
                                 #If the jobs predecessors have all not all completed then
-                                #ignore the batchjob
+                                #ignore the job
                                 assert len(job2.predecessorsFinished) >= 1
                                 assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                                 if len(job2.predecessorsFinished) < job2.predecessorNumber:
@@ -411,7 +411,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                             successors.append((successorJobStoreID, memory, cpu, disk))
                         jobBatcher.issueJobs(successors)
 
-                    #There are no remaining tasks to schedule within the batchjob, but
+                    #There are no remaining tasks to schedule within the job, but
                     #we schedule it anyway to allow it to be deleted.
 
                     #TODO: An alternative would be simple delete it here and add it to the
@@ -440,7 +440,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 break
 
             ##########################################
-            #Gather any new, updated batchjob from the batch system
+            #Gather any new, updated job from the batch system
             ##########################################
 
             #Asks the batch system what jobs have been completed,
@@ -467,14 +467,14 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 ##########################################
 
                 #In the case that there is nothing happening
-                #(no updated batchjob to gather for 10 seconds)
+                #(no updated job to gather for 10 seconds)
                 #check if their are any jobs that have run too long
                 #(see JobBatcher.reissueOverLongJobs) or which
                 #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
                 if (time.time() - timeSinceJobsLastRescued >=
                     float(config.attrib["rescue_jobs_frequency"])): #We only
                     #rescue jobs every N seconds, and when we have
-                    #apparently exhausted the current batchjob supply
+                    #apparently exhausted the current job supply
                     jobBatcher.reissueOverLongJobs()
                     logger.info("Reissued any over long jobs")
 

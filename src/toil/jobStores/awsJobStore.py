@@ -30,7 +30,7 @@ log = logging.getLogger( __name__ )
 
 # FIXME: Command length is currently limited to 1024 characters
 
-# NB: Number of messages per batchjob is limited to 256-x, 1024 bytes each, with x being the number of
+# NB: Number of messages per job is limited to 256-x, 1024 bytes each, with x being the number of
 # other attributes in the item
 
 # FIXME: enforce SimpleDB limits early
@@ -38,13 +38,13 @@ log = logging.getLogger( __name__ )
 
 class AWSJobStore( AbstractJobStore ):
     """
-    A batchjob store that uses Amazon's S3 for file storage and SimpleDB for storing batchjob info and
+    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
     enforcing strong consistency on the S3 file storage. The schema in SimpleDB is as follows:
 
-    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this batchjob store was
-    constructed with. Each item in that domain uses the batchjob store batchjob ID (jobStoreID) as the item
-    name. The command, memory and cpu fields of a batchjob will be stored as attributes. The messages
-    field of a batchjob will be stored as a multivalued attribute.
+    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this job store was
+    constructed with. Each item in that domain uses the job store job ID (jobStoreID) as the item
+    name. The command, memory and cpu fields of a job will be stored as attributes. The messages
+    field of a job will be stored as a multivalued attribute.
     """
 
     # FIXME: Eliminate after consolidating behaviour with FileJobStore
@@ -143,7 +143,7 @@ class AWSJobStore( AbstractJobStore ):
                                                  attributes=batchjob.toItem( ) )
 
     def delete( self, jobStoreID ):
-        # remove batchjob and replace with jobStoreId.
+        # remove job and replace with jobStoreId.
         log.debug( "Deleting batchjob %s", jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
@@ -379,7 +379,7 @@ class AWSJobStore( AbstractJobStore ):
     def _newJobID( self ):
         return str( uuid.uuid4( ) )
 
-    # A dummy batchjob ID under which all shared files are stored.
+    # A dummy job ID under which all shared files are stored.
     sharedFileJobID = uuid.UUID( '891f7db6-e4d9-4221-a58e-ab6cc4395f94' )
 
     def _newFileID( self, sharedFileName=None ):
@@ -527,7 +527,7 @@ class AWSJobStore( AbstractJobStore ):
 
         :param bucketName: the name of the S3 bucket the file was placed in
 
-        :param jobStoreID: the ID of the batchjob owning the file, only allowed for first version of
+        :param jobStoreID: the ID of the job owning the file, only allowed for first version of
                            file or when file is registered without content
 
         :param newVersion: the file's new version or None if the file is to be registered without

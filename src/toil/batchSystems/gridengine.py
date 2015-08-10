@@ -144,7 +144,7 @@ class Worker(Thread):
         while not self.killQueue.empty():
             killList.append(self.killQueue.get())
 
-        # Do the dirty batchjob
+        # Do the dirty job
         for jobID in list(killList):
             if jobID in self.runningJobs:
                 process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
@@ -168,7 +168,7 @@ class Worker(Thread):
                 time.sleep(5)
 
     def createJobs(self):
-        # Load new batchjob ids:
+        # Load new job ids:
         while not self.newJobsQueue.empty():
             self.waitingJobs.append(self.newJobsQueue.get())
 
@@ -202,7 +202,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
         self.gridengineResultsFile = getParasolResultsFileName(config.attrib["job_store"])
-        #Reset the batchjob queue and results (initially, we do this again once we've killed the jobs)
+        #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         self.gridengineResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()

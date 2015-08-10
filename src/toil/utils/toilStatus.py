@@ -75,7 +75,7 @@ def main():
     assert options.toil != None
     
     ##########################################
-    #Survey the status of the batchjob and report.
+    #Survey the status of the job and report.
     ##########################################  
     
     jobStore = loadJobStore(options.toil)

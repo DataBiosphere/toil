@@ -730,7 +730,7 @@ def cacheAvailable(options):
 """
 
 def main():
-    """ Reports stats on the batchjob-tree, use with --stats option to toil.
+    """ Reports stats on the job-tree, use with --stats option to toil.
     """
 
     parser = getBasicOptionParser(
