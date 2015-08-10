@@ -32,7 +32,7 @@ Once toil is installed, running a toil script is performed by executing the scri
 
 Which in this case uses the parasol batch system, and INFO level logging and where foo is the file to sort and bar/toil is the location of a directory (which should not already exist) from which the batch will be managed. Details of the toil options are described below; the stats option is used to gather statistics about the jobs in a run.
 
-The script will return a zero exit value if the toil system is successfully able to run to completion, else it will create an exception. If the script fails because a batchjob failed then the log file information of the batchjob will be reported to std error.
+The script will return a zero exit value if the toil system is successfully able to run to completion, else it will create an exception. If the script fails because a job failed then the log file information of the job will be reported to std error.
 The toil directory (here 'bar/toil') is not automatically deleted regardless of success or failure, and contains a record of the jobs run, which can be enquired about using the **toilStatus** command. e.g.
 
 <code>[]$toilStatus bar/toil --verbose</code>
@@ -43,7 +43,7 @@ ntly in toil: toil
 There are no failed jobs to report
 ```
 
-If a batchjob failed, this provides a convenient way to reprint the error. The following are the important options to **toilStatus**:
+If a job failed, this provides a convenient way to reprint the error. The following are the important options to **toilStatus**:
 
     --toil=TOIL     Directory containing the jobtree. The toil location can also be specified as the argument to the script. default=./toil
     --verbose             Print loads of information, particularly all the log
@@ -51,7 +51,7 @@ If a batchjob failed, this provides a convenient way to reprint the error. The f
     --failIfNotComplete   Return exit value of 1 if toil jobs not all
                         completed. default=False
 
-If a batchjob in the script failed or the system goes down, you may wish to retry the batchjob after fixing the error. This can be achieved by restarting the script with the **toilRun** command which will restart an existing toil.
+If a job in the script failed or the system goes down, you may wish to retry the job after fixing the error. This can be achieved by restarting the script with the **toilRun** command which will restart an existing toil.
 
 <code>[]$ toilRun --toil bar/toil --logLevel INFO</code>
 
@@ -136,20 +136,20 @@ The important arguments to **toilStats** are:
    Options to specify the location of the toil and turn on stats
     collation about the performance of jobs.
 
-    --toil=TOIL   Directory in which to place batchjob management files and
+    --toil=TOIL   Directory in which to place job management files and
                         the global accessed temporary file directories(this
                         needs to be globally accessible by all machines
                         running jobs). If you pass an existing directory it
                         will check if it's a valid existing jobtree, then try
                         and restart the jobs in it. The default=./toil
-    --stats             Records statistics about the batchjob-tree to be used by
+    --stats             Records statistics about the job-tree to be used by
                         toilStats. default=False
 
    Options for specifying the batch system, and arguments to the
     batch system/big batch system (see below).
 
     --batchSystem=BATCHSYSTEM
-                        The type of batch system to run the batchjob(s) with,
+                        The type of batch system to run the job(s) with,
                         currently can be
                         'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'.
                         default=singleMachine
@@ -167,11 +167,11 @@ The important arguments to **toilStats** are:
     memory/cpu requested from the batch system.
 
     --defaultMemory=DEFAULTMEMORY
-                        The default amount of memory to request for a batchjob (in
+                        The default amount of memory to request for a job (in
                         bytes), by default is 2^31 = 2 gigabytes,
                         default=2147483648
     --defaultCpu=DEFAULTCPU
-                        The default the number of cpus to dedicate a batchjob.
+                        The default the number of cpus to dedicate a job.
                         default=1
     --maxCpus=MAXCPUS   The maximum number of cpus to request from the batch
                         system at any one time. default=9223372036854775807
@@ -183,12 +183,12 @@ The important arguments to **toilStats** are:
     batch systems have issues!).
 
     --retryCount=RETRYCOUNT
-                        Number of times to retry a failing batchjob before giving
-                        up and labeling batchjob failed. default=0
+                        Number of times to retry a failing job before giving
+                        up and labeling job failed. default=0
     --maxJobDuration=MAXJOBDURATION
-                        Maximum runtime of a batchjob (in seconds) before we kill
+                        Maximum runtime of a job (in seconds) before we kill
                         it (this is a lower bound, and the actual time before
-                        killing the batchjob may be longer).
+                        killing the job may be longer).
                         default=9223372036854775807
     --rescueJobsFrequency=RESCUEJOBSFREQUENCY
                         Period of time to wait (in seconds) between checking
@@ -229,7 +229,7 @@ The important arguments to **toilStats** are:
                         in series on a single node/core of the cluster.
                         default=30
     --maxLogFileSize=MAXLOGFILESIZE
-                        The maximum size of a batchjob log file to keep (in bytes),
+                        The maximum size of a job log file to keep (in bytes),
                         log files larger than this will be truncated to the
                         last X bytes. Default is 50 kilobytes, default=50120
     --command=COMMAND   The command to run (which will generate subsequent
@@ -245,12 +245,12 @@ other jobs in a simple way.
 
 The basic pattern provided by toil is as follows:
 
-1. You have a batchjob running on your cluster which requires further parallelisation.
+1. You have a job running on your cluster which requires further parallelisation.
 2. You create a list of jobs to perform this parallelisation. These are the 'child' jobs of your process, we call them collectively the 'children'.
-3. You create a 'follow-on' batchjob, to be performed after all the children have successfully completed. This batchjob is responsible for cleaning up the input files created for the children and doing any further processing. Children should not cleanup files created by parents, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
-4. You end your current batchjob successfully.
+3. You create a 'follow-on' job, to be performed after all the children have successfully completed. This job is responsible for cleaning up the input files created for the children and doing any further processing. Children should not cleanup files created by parents, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
+4. You end your current job successfully.
 5. The batch system runs the children. These jobs may in turn have children and follow-on jobs.
-6. Upon completion of all the children (and children's children and follow-ons, collectively descendants) the follow-on batchjob is run. The follow-on batchjob may create more children.
+6. Upon completion of all the children (and children's children and follow-ons, collectively descendants) the follow-on job is run. The follow-on job may create more children.
 
 ##scriptTree
 ScriptTree provides a Python interface to toil, and is now the only way to interface with toil (previously you could manipulate XML files, but I've removed that functionality as I improved the underlying system).
@@ -265,7 +265,7 @@ This inherited template pattern has the following advantages:
 
 The best way to learn how to use script tree is to look at an example. The following is taken from (an old version of) <code>toil.test.sort.scriptTreeTest_Sort.py</code> which provides a complete script for performing a parallel merge sort.
 
-Below is the first 'Job' of this script inherited from the base class 'toil.scriptTree.Job'. Its batchjob is to setup the merge sort.
+Below is the first 'Job' of this script inherited from the base class 'toil.scriptTree.Job'. Its job is to setup the merge sort.
 
 ```python
 class Setup(Job):
@@ -285,15 +285,15 @@ class Setup(Job):
 The constructor (**__init__()**) assigns some variables to the class. When invoking the constructor of the base class (which should be the first thing the job does), you can optionally pass time (in seconds), memory (in bytes) and cpu parameters. The time parameter is your estimate of how long the job will run - UPDATE: IT IS CURRENTLY UNUSED BY THE SCHEDULAR. The memory and cpu parameters allow you to guarantee resources for a job.
 
 The run method is where the variables assigned by the constructor are used and where in general actual work is done.
-Aside from doing the specific work of the job (in this case creating a temporary file to hold some intermediate output), the run method is also where children and a follow-on batchjob are created, using **addChildJob()** and **setFollowOnJob()**. A batchjob may have arbitrary numbers of children, but one or zero follow-on jobs.
+Aside from doing the specific work of the job (in this case creating a temporary file to hold some intermediate output), the run method is also where children and a follow-on job are created, using **addChildJob()** and **setFollowOnJob()**. A job may have arbitrary numbers of children, but one or zero follow-on jobs.
 
 Jobs are also provided with two temporary file directories called **localTempDir** and **globalTempDir**, which can be accessed with the methods **getLocalTempDir()** and **getGlobalTempDir()**, respectively. The **localTempDir** is the path to a temporary directory that is local to the machine on which the job is being executed and that will exist only for the length of the run method. It is useful for storing interim results that are computed during runtime. All files in this directory are guaranteed to be removed once the run method has finished - even if your job crashes.
 
-A batchjob can either be created as a follow-on, or it can be the very first batchjob, or it can be created as a child of another batchjob. Let a batchjob not created as a follow-on be called a 'founder'. Each founder batchjob may have a follow-on batchjob. If it has a follow-on batchjob, this follow-on batchjob may in turn have a follow-on, etc. Thus each founder batchjob defines a chain of follow-ons.  Let a founder batchjob and its maximal sequence of follow-ons be called a 'chain'. Let the last follow-on batchjob in a chain be called the chain's 'closer'. For each chain of jobs a temporary directory, **globalTempDir**, is created immediately prior to calling the founder job's run method, this directory and its contents then persist until the completion of closer job's run method. Thus the **globalTempDir** is a scratch directory in which temporary results can be stored on disk between job jobs in a chain. Furthermore, files created in this directory can be passed to the children of job jobs in the chain, allowing results to be transmitted from a job batchjob to its children.
+A job can either be created as a follow-on, or it can be the very first job, or it can be created as a child of another job. Let a job not created as a follow-on be called a 'founder'. Each founder job may have a follow-on job. If it has a follow-on job, this follow-on job may in turn have a follow-on, etc. Thus each founder job defines a chain of follow-ons.  Let a founder job and its maximal sequence of follow-ons be called a 'chain'. Let the last follow-on job in a chain be called the chain's 'closer'. For each chain of jobs a temporary directory, **globalTempDir**, is created immediately prior to calling the founder job's run method, this directory and its contents then persist until the completion of closer job's run method. Thus the **globalTempDir** is a scratch directory in which temporary results can be stored on disk between job jobs in a chain. Furthermore, files created in this directory can be passed to the children of job jobs in the chain, allowing results to be transmitted from a job job to its children.
 
 ##Making Functions into Jobs
 
-To avoid the need to create a Job class for every batchjob, I've added the ability to wrap functions, hence the code for the setup function described above becomes:
+To avoid the need to create a Job class for every job, I've added the ability to wrap functions, hence the code for the setup function described above becomes:
 
 ```
 def setup(job, inputFile, N):
@@ -373,24 +373,24 @@ One final important detail, the lines:
 reload the objects in the module, such that their module names will be absolute (this is necessary for the serialization that is used). Jobs in other classes that are imported do not need to be reloaded in this way.
 
 ##Atomicity
-toil and scriptTree are designed to be robust, so that individuals jobs (jobs) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until toil knows your children have been completed okay you can not assume that your Job has been completed. To ensure that your pipeline can be restarted after a failure ensure that every batchjob (job):
+toil and scriptTree are designed to be robust, so that individuals jobs (jobs) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until toil knows your children have been completed okay you can not assume that your Job has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (job):
          
 1. **Never cleans up / alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
-2. Can be re-run from just its input files any number of times. A batchjob should only depend on its input, and it should be possible to run the batchjob as many times as desired, essentially until news of its completion is successfully transmitted to the jobtree master process.
+2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the jobtree master process.
 
-    These two properties are the key to batchjob atomicity. Additionally, you'll find it much easier if a batchjob:
+    These two properties are the key to job atomicity. Additionally, you'll find it much easier if a job:
 
 3. Only creates temp files in the two provided temporary file directories. This ensures we don't soil the cluster's disks.
 4. Logs sensibly, so that error messages can be transmitted back to the master and the pipeline can be successfully debugged.
 
 ##Environment
-toil replicates the environment in which toil or scriptTree is invoked and provides this environment to all the jobs/jobs. This ensures uniformity of the environment variables for every batchjob.
+toil replicates the environment in which toil or scriptTree is invoked and provides this environment to all the jobs/jobs. This ensures uniformity of the environment variables for every job.
 
 ##FAQ's:
 
 * _How robust is toil to failures of nodes and/or the master?_
 
-    Toil checkpoints its state on disk, so that it or the batchjob manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
+    Toil checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
 
 * _How scaleable?_
 
@@ -406,5 +406,5 @@ toil replicates the environment in which toil or scriptTree is invoked and provi
 
 * _Why am I getting the error "ImportError: No module named etree.ElementTree"?_
 
-    The version of python in your path is less than 2.5. When toil spawns a new batchjob it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
+    The version of python in your path is less than 2.5. When toil spawns a new job it will use the python found in your PATH. Make sure that the first python in your PATH points to a python version greater than or equal to 2.5 but less than 3.0
 
