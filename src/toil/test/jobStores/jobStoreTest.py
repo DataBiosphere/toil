@@ -16,24 +16,8 @@ from toil.test import ToilTest
 
 logger = logging.getLogger( __name__ )
 
+
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
-
-def urlIsValid(url):
-    def httpUrl(url):
-        try:
-            exists = False
-            f = urllib2.urlopen(urllib2.Request(url))
-            exists = True
-        except:
-            pass
-        return exists
-
-    prefix, path = url.split(':',1)
-    if prefix == 'file':
-        return os.path.exists(path)
-    else:
-        return httpUrl(url)
-
 
 class hidden:
     """
@@ -41,20 +25,17 @@ class hidden:
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
+
     class AbstractJobStoreTest( ToilTest ):
         __metaclass__ = ABCMeta
 
-        default_try_count = 1
-
-        maxDiff = None
-
         def _dummyConfig( self ):
             config = Element( "config" )
-            config.attrib[ "try_count" ] = str( self.default_try_count )
+            config.attrib[ "try_count" ] = "1"
             return config
 
         @abstractmethod
-        def createJobStore( self, config=None ):
+        def _createJobStore( self, config=None, create=False ):
             """
             :rtype: AbstractJobStore
             """
@@ -64,7 +45,7 @@ class hidden:
             super( hidden.AbstractJobStoreTest, self ).setUp( )
             self.namePrefix = str( uuid.uuid4( ) )
             config = self._dummyConfig( )
-            self.master = self.createJobStore( config )
+            self.master = self._createJobStore( config, create=True )
 
         def tearDown( self ):
             self.master.deleteJobStore( )
@@ -84,21 +65,21 @@ class hidden:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
+            jobOnMaster = master.create( "master1", 12, 34, 35, "foo" )
             self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
-            self.assertEquals(jobOnMaster.command, "master1")
-            self.assertEquals(jobOnMaster.memory, 12)
-            self.assertEquals(jobOnMaster.cpu, 34)
-            self.assertEquals(jobOnMaster.disk, 35)
-            self.assertEquals(jobOnMaster.updateID, "foo")
-            self.assertEquals(jobOnMaster.stack, [])
-            self.assertEquals(jobOnMaster.predecessorNumber, 0)
-            self.assertEquals(jobOnMaster.predecessorsFinished, set())
-            self.assertEquals(jobOnMaster.logJobStoreFileID, None)
+            self.assertEquals( jobOnMaster.command, "master1" )
+            self.assertEquals( jobOnMaster.memory, 12 )
+            self.assertEquals( jobOnMaster.cpu, 34 )
+            self.assertEquals( jobOnMaster.disk, 35 )
+            self.assertEquals( jobOnMaster.updateID, "foo" )
+            self.assertEquals( jobOnMaster.stack, [ ] )
+            self.assertEquals( jobOnMaster.predecessorNumber, 0 )
+            self.assertEquals( jobOnMaster.predecessorsFinished, set( ) )
+            self.assertEquals( jobOnMaster.logJobStoreFileID, None )
 
             # Create a second instance of the job store, simulating a worker ...
             #
-            worker = self.createJobStore( )
+            worker = self._createJobStore( )
             # ... and load the parent job there.
             jobOnWorker = worker.load( jobOnMaster.jobStoreID )
             self.assertEquals( jobOnMaster, jobOnWorker )
@@ -111,17 +92,18 @@ class hidden:
             # If things go wrong during the update, this list of jobs to delete
             # is used to fix the state 
             jobOnWorker.jobsToDelete = [ "1", "2" ]
-            worker.update(jobOnWorker)
-            #Check jobs to delete persisted
-            self.assertEquals(master.load(jobOnWorker.jobStoreID).jobsToDelete, [ "1", "2" ])
-            #Create children
-            child1 = worker.create( "child1", 23, 45, 46, "1", 1)
-            child2 = worker.create( "child2", 34, 56, 57, "2", 1)
-            #Update parent
-            jobOnWorker.stack.append(((child1.jobStoreID, 23, 45, 46, 1), (child2.jobStoreID, 34, 56, 57, 1)))
-            jobOnWorker.jobsToDelete = []
-            worker.update(jobOnWorker)
-            
+            worker.update( jobOnWorker )
+            # Check jobs to delete persisted
+            self.assertEquals( master.load( jobOnWorker.jobStoreID ).jobsToDelete, [ "1", "2" ] )
+            # Create children
+            child1 = worker.create( "child1", 23, 45, 46, "1", 1 )
+            child2 = worker.create( "child2", 34, 56, 57, "2", 1 )
+            # Update parent
+            jobOnWorker.stack.append(
+                ((child1.jobStoreID, 23, 45, 46, 1), (child2.jobStoreID, 34, 56, 57, 1)) )
+            jobOnWorker.jobsToDelete = [ ]
+            worker.update( jobOnWorker )
+
             # Check equivalence between master and worker
             #
             self.assertNotEquals( jobOnWorker, jobOnMaster )
@@ -129,12 +111,13 @@ class hidden:
             jobOnMaster = master.load( jobOnMaster.jobStoreID )
             self.assertEquals( jobOnWorker, jobOnMaster )
             # Load children on master an check equivalence
-            self.assertEquals(master.load(child1.jobStoreID), child1)
-            self.assertEquals(master.load(child2.jobStoreID), child2)
-            
+            self.assertEquals( master.load( child1.jobStoreID ), child1 )
+            self.assertEquals( master.load( child2.jobStoreID ), child2 )
+
             # Test changing and persisting job state across multiple jobs
             #
-            childJobs = [ worker.load( childCommand[ 0 ] ) for childCommand in jobOnMaster.stack[-1] ]
+            childJobs = [ worker.load( childCommand[ 0 ] ) for childCommand in
+                jobOnMaster.stack[ -1 ] ]
             for childJob in childJobs:
                 childJob.logJobStoreFileID = str( uuid.uuid4( ) )
                 childJob.remainingRetryCount = 66
@@ -143,35 +126,35 @@ class hidden:
                 worker.update( childJob )
             for childJob in childJobs:
                 self.assertEquals( master.load( childJob.jobStoreID ), childJob )
-                self.assertEquals( worker.load( childJob.jobStoreID ), childJob )    
+                self.assertEquals( worker.load( childJob.jobStoreID ), childJob )
 
-            # Test job iterator
-            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(worker.jobs()))
-            self.assertEquals(set(childJobs + [ jobOnMaster ]), set(master.jobs()))
+                # Test job iterator
+            self.assertEquals( set( childJobs + [ jobOnMaster ] ), set( worker.jobs( ) ) )
+            self.assertEquals( set( childJobs + [ jobOnMaster ] ), set( master.jobs( ) ) )
 
             # Test job deletions
             #
-            
-            #First delete parent, this should have no effect on the children
-            self.assertTrue(master.exists(jobOnMaster.jobStoreID))
-            self.assertTrue(worker.exists(jobOnMaster.jobStoreID))
+
+            # First delete parent, this should have no effect on the children
+            self.assertTrue( master.exists( jobOnMaster.jobStoreID ) )
+            self.assertTrue( worker.exists( jobOnMaster.jobStoreID ) )
             master.delete( jobOnMaster.jobStoreID )
-            self.assertFalse(master.exists(jobOnMaster.jobStoreID))
-            self.assertFalse(worker.exists(jobOnMaster.jobStoreID))
-            
+            self.assertFalse( master.exists( jobOnMaster.jobStoreID ) )
+            self.assertFalse( worker.exists( jobOnMaster.jobStoreID ) )
+
             for childJob in childJobs:
-                self.assertTrue(master.exists(childJob.jobStoreID))
-                self.assertTrue(worker.exists(childJob.jobStoreID))
+                self.assertTrue( master.exists( childJob.jobStoreID ) )
+                self.assertTrue( worker.exists( childJob.jobStoreID ) )
                 master.delete( childJob.jobStoreID )
-                self.assertFalse(master.exists(childJob.jobStoreID))
-                self.assertFalse(worker.exists(childJob.jobStoreID))
+                self.assertFalse( master.exists( childJob.jobStoreID ) )
+                self.assertFalse( worker.exists( childJob.jobStoreID ) )
                 self.assertRaises( NoSuchJobException, worker.load, childJob.jobStoreID )
                 self.assertRaises( NoSuchJobException, master.load, childJob.jobStoreID )
-            
+
             # Test job iterator now has no jobs
             #
-            self.assertEquals(set(), set(worker.jobs()))
-            self.assertEquals(set(), set(master.jobs()))
+            self.assertEquals( set( ), set( worker.jobs( ) ) )
+            self.assertEquals( set( ), set( master.jobs( ) ) )
 
             # Test shared files: Write shared file on master, ...
             #
@@ -184,30 +167,27 @@ class hidden:
             with master.readSharedFileStream( "foo" ) as f:
                 self.assertEquals( "bar", f.read( ) )
 
-            #FIXME: TEST GETURL HERE.
-            sharedUrl = master.getSharedPublicUrl("foo")
-            self.assertTrue(urlIsValid(sharedUrl))
+            self.assertUrl( master.getSharedPublicUrl( "foo" ) )
 
             # Test per-job files: Create empty file on master, ...
             #
-            
-            #First recreate job
-            jobOnMaster = master.create( "master1", 12, 34, 35, "foo")
-            
+
+            # First recreate job
+            jobOnMaster = master.create( "master1", 12, 34, 35, "foo" )
+
             fileOne = worker.getEmptyFileStoreID( jobOnMaster.jobStoreID )
-            
+
             # Check file exists
-            self.assertTrue(worker.fileExists(fileOne))
-            self.assertTrue(master.fileExists(fileOne))
-            
+            self.assertTrue( worker.fileExists( fileOne ) )
+            self.assertTrue( master.fileExists( fileOne ) )
+
             # ... write to the file on worker, ...
             with worker.updateFileStream( fileOne ) as f:
                 f.write( "one" )
             # ... read the file as a stream on the master, ....
 
             # test regular file urls
-            regUrl = master.getPublicUrl(fileOne)
-            self.assertTrue(urlIsValid(regUrl))
+            self.assertUrl( master.getPublicUrl( fileOne ) )
 
             with master.readFileStream( fileOne ) as f:
                 self.assertEquals( f.read( ), "one" )
@@ -236,7 +216,7 @@ class hidden:
             finally:
                 os.unlink( path )
             # Create a third file to test the last remaining method.
-            with worker.writeFileStream( jobOnMaster.jobStoreID ) as ( f, fileThree ):
+            with worker.writeFileStream( jobOnMaster.jobStoreID ) as (f, fileThree):
                 f.write( "three" )
             with master.readFileStream( fileThree ) as f:
                 self.assertEquals( f.read( ), "three" )
@@ -244,25 +224,25 @@ class hidden:
             worker.deleteFile( fileOne )
 
             # Check the file is gone
-            self.assertTrue(not worker.fileExists(fileOne))
-            self.assertTrue(not master.fileExists(fileOne))
+            self.assertTrue( not worker.fileExists( fileOne ) )
+            self.assertTrue( not master.fileExists( fileOne ) )
 
             # Test stats and logging
-            testRead = []
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==0)
+            testRead = [ ]
+            files = master.readStatsAndLogging( testRead.append )
+            self.assertTrue( files == 0 )
 
-            master.writeStatsAndLogging("abc")
+            master.writeStatsAndLogging( "abc" )
 
-            files=master.readStatsAndLogging(testRead.append)
-            assert len(testRead)==1
-            self.assertTrue(files==1)
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==0)
-            master.writeStatsAndLogging("abc")
-            master.writeStatsAndLogging("abc")
-            files=master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files==2)
+            files = master.readStatsAndLogging( testRead.append )
+            assert len( testRead ) == 1
+            self.assertTrue( files == 1 )
+            files = master.readStatsAndLogging( testRead.append )
+            self.assertTrue( files == 0 )
+            master.writeStatsAndLogging( "abc" )
+            master.writeStatsAndLogging( "abc" )
+            files = master.readStatsAndLogging( testRead.append )
+            self.assertTrue( files == 2 )
             # Delete parent and its associated files
             #
             master.delete( jobOnMaster.jobStoreID )
@@ -286,11 +266,11 @@ class hidden:
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
             self.assertEquals( partSize % bufSize, 0 )
-            job = self.master.create( "1", 2, 3, 4, 0)
+            job = self.master.create( "1", 2, 3, 4, 0 )
 
             # Test file/stream ending on part boundary and within a part
             #
-            for partsPerFile in ( 1, 2.33 ):
+            for partsPerFile in (1, 2.33):
                 checksum = hashlib.md5( )
                 checksumQueue = Queue( 2 )
 
@@ -307,8 +287,8 @@ class hidden:
                 checksumThread = Thread( target=checksumThreadFn )
                 checksumThread.start( )
                 try:
-                    with open(random_device) as readable:
-                        with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
+                    with open( random_device ) as readable:
+                        with self.master.writeFileStream( job.jobStoreID ) as (writable, fileId):
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
                                 checksumQueue.put( buf )
@@ -335,7 +315,7 @@ class hidden:
                 fh, path = tempfile.mkstemp( )
                 try:
                     with os.fdopen( fh, 'r+' ) as writable:
-                        with open(random_device) as readable:
+                        with open( random_device ) as readable:
                             for i in range( int( partSize * partsPerFile / bufSize ) ):
                                 buf = readable.read( bufSize )
                                 writable.write( buf )
@@ -358,25 +338,35 @@ class hidden:
             self.master.delete( job.jobStoreID )
 
         def testZeroLengthFiles( self ):
-            job = self.master.create( "1", 2, 3, 4, 0)
+            job = self.master.create( "1", 2, 3, 4, 0 )
             nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
             with self.master.readFileStream( nullFile ) as f:
                 self.assertEquals( f.read( ), "" )
-            with self.master.writeFileStream( job.jobStoreID ) as ( f, nullStream ):
+            with self.master.writeFileStream( job.jobStoreID ) as (f, nullStream):
                 pass
             with self.master.readFileStream( nullStream ) as f:
                 self.assertEquals( f.read( ), "" )
             self.master.delete( job.jobStoreID )
 
+        def assertUrl( self, url ):
+            prefix, path = url.split( ':', 1 )
+            if prefix == 'file':
+                self.assertTrue( os.path.exists( path ) )
+            else:
+                try:
+                    urllib2.urlopen( urllib2.Request( url ) )
+                except:
+                    self.fail( )
+
+
 class FileJobStoreTest( hidden.AbstractJobStoreTest ):
-    def createJobStore( self, config=None ):
-        return FileJobStore( self.namePrefix, config, create=True )
+    def _createJobStore( self, config=None, create=False ):
+        return FileJobStore( self.namePrefix, config=config, create=create )
 
 
 class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
     testRegion = "us-west-2"
 
-    def createJobStore( self, config=None ):
+    def _createJobStore( self, config=None, create=False ):
         AWSJobStore._s3_part_size = 5 * 1024 * 1024
-        return AWSJobStore(self.testRegion, self.namePrefix , config, create=True )
-
+        return AWSJobStore( self.testRegion, self.namePrefix, config=config, create=create )
