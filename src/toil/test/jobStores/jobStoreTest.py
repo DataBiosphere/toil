@@ -370,7 +370,7 @@ class hidden:
 
 class FileJobStoreTest( hidden.AbstractJobStoreTest ):
     def createJobStore( self, config=None ):
-        return FileJobStore( self.namePrefix, config )
+        return FileJobStore( self.namePrefix, config, create=True )
 
 
 class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
@@ -378,5 +378,5 @@ class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
 
     def createJobStore( self, config=None ):
         AWSJobStore._s3_part_size = 5 * 1024 * 1024
-        return AWSJobStore(self.testRegion, self.namePrefix , config )
+        return AWSJobStore(self.testRegion, self.namePrefix , config, create=True )
 
