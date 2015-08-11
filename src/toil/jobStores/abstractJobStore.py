@@ -30,13 +30,13 @@ class AbstractJobStore( object ):
         given configuration object will be written to the shared file "config.xml" which can
         later be retrieved using the readSharedFileStream. If this file already exists
         it will be overwritten. If config is None, 
-        the shared file "config.xml" is assumed to exist and is retrieved. 
+        the shared file "config.xml" is assumed to exist and is retrieved.
         """
         if config is None:
-            with self.readSharedFileStream( "config.xml" ) as fileHandle:
+            with self.readSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
                 self.__config = ET.parse( fileHandle ).getroot( )
         else:
-            with self.writeSharedFileStream( "config.xml" ) as fileHandle:
+            with self.writeSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
                 ET.ElementTree( config ).write( fileHandle )
             self.__config = config
 
@@ -295,7 +295,7 @@ class AbstractJobStore( object ):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream( self, sharedFileName ):
+    def writeSharedFileStream( self, sharedFileName, isProtected=True ):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.
@@ -310,7 +310,7 @@ class AbstractJobStore( object ):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream( self, sharedFileName ):
+    def readSharedFileStream( self, sharedFileName, isProtected=True ):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
