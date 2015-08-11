@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import urllib2
-import tempfile
 from threading import Thread
 import tempfile
 import uuid
@@ -15,7 +14,7 @@ from toil.jobStores.awsJobStore import AWSJobStore
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
@@ -27,40 +26,32 @@ class hidden:
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractJobStoreTest( ToilTest ):
+    class AbstractJobStoreTest(ToilTest):
         __metaclass__ = ABCMeta
 
-        def _dummyConfig( self ):
-            config = Element( "config" )
-            config.attrib[ "try_count" ] = "1"
-            return config
-
-        def _encryptedConfig(self):
-            config = self._dummyConfig()
-            sse_key = tempfile.mkdtemp() + "keyFile"
-            with open(sse_key, 'w') as f:
-                f.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-            config.attrib["sse_key"] = sse_key
+        def _createConfig(self):
+            config = Element("config")
+            config.attrib["try_count"] = "1"
             return config
 
         @abstractmethod
-        def _createJobStore( self, config=None, create=False ):
+        def _createJobStore(self, config=None, create=False):
             """
             :rtype: AbstractJobStore
             """
-            raise NotImplementedError( )
+            raise NotImplementedError()
 
-        def setUp( self ):
-            super( hidden.AbstractJobStoreTest, self ).setUp( )
-            self.namePrefix = str( uuid.uuid4( ) )
-            config = self._dummyConfig( )
-            self.master = self._createJobStore( config, create=True )
+        def setUp(self):
+            super(hidden.AbstractJobStoreTest, self).setUp()
+            self.namePrefix = str(uuid.uuid4())
+            self.config = self._createConfig()
+            self.master = self._createJobStore(self.config, create=True)
 
-        def tearDown( self ):
-            self.master.deleteJobStore( )
-            super( hidden.AbstractJobStoreTest, self ).tearDown( )
+        def tearDown(self):
+            self.master.deleteJobStore()
+            super(hidden.AbstractJobStoreTest, self).tearDown()
 
-        def test( self ):
+        def test(self):
             """
             This is a front-to-back test of the "happy" path in a job store, i.e. covering things
             that occur in the dat to day life of a job store. The purist might insist that this be
@@ -68,14 +59,6 @@ class hidden:
             """
             master = self.master
 
-            self.jobStoreRunThrough(master)
-
-        def testSSE( self ):
-            config=self._encryptedConfig()
-            jobStore = self.createJobStore(config)
-            self.jobStoreRunThrough(jobStore, config=config)
-
-        def jobStoreRunThrough(self, master, config=None):
             # Test initial state
             #
             self.assertFalse(master.exists("foo"))
@@ -96,7 +79,7 @@ class hidden:
 
             # Create a second instance of the job store, simulating a worker ...
             #
-            worker = self._createJobStore(config=config)
+            worker = self._createJobStore(config=self.config)
             # ... and load the parent job there.
             jobOnWorker = worker.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnMaster, jobOnWorker)
@@ -263,7 +246,7 @@ class hidden:
 
             # TODO: Test stats methods
 
-        def testMultipartUploads( self ):
+        def testMultipartUploads(self):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
@@ -273,108 +256,130 @@ class hidden:
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
             partSize = AWSJobStore._s3_part_size
-            self.assertEquals( partSize % bufSize, 0 )
-            job = self.master.create( "1", 2, 3, 4, 0)
+            self.assertEquals(partSize % bufSize, 0)
+            job = self.master.create("1", 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
             #
-            for partsPerFile in ( 1, 2.33 ):
-                checksum = hashlib.md5( )
-                checksumQueue = Queue( 2 )
+            for partsPerFile in (1, 2.33):
+                checksum = hashlib.md5()
+                checksumQueue = Queue(2)
 
                 # FIXME: Having a separate thread is probably overkill here
 
-                def checksumThreadFn( ):
+                def checksumThreadFn():
                     while True:
-                        _buf = checksumQueue.get( )
+                        _buf = checksumQueue.get()
                         if _buf is None: break
-                        checksum.update( _buf )
+                        checksum.update(_buf)
 
                 # Multipart upload from stream
                 #
-                checksumThread = Thread( target=checksumThreadFn )
-                checksumThread.start( )
+                checksumThread = Thread(target=checksumThreadFn)
+                checksumThread.start()
                 try:
                     with open(random_device) as readable:
-                        with self.master.writeFileStream( job.jobStoreID ) as ( writable, fileId ):
-                            for i in range( int( partSize * partsPerFile / bufSize ) ):
-                                buf = readable.read( bufSize )
-                                checksumQueue.put( buf )
-                                writable.write( buf )
+                        with self.master.writeFileStream(job.jobStoreID) as (writable, fileId):
+                            for i in range(int(partSize * partsPerFile / bufSize)):
+                                buf = readable.read(bufSize)
+                                checksumQueue.put(buf)
+                                writable.write(buf)
                 finally:
-                    checksumQueue.put( None )
-                    checksumThread.join( )
-                before = checksum.hexdigest( )
+                    checksumQueue.put(None)
+                    checksumThread.join()
+                before = checksum.hexdigest()
 
                 # Verify
                 #
-                checksum = hashlib.md5( )
-                with self.master.readFileStream( fileId ) as readable:
+                checksum = hashlib.md5()
+                with self.master.readFileStream(fileId) as readable:
                     while True:
-                        buf = readable.read( bufSize )
+                        buf = readable.read(bufSize)
                         if not buf: break
-                        checksum.update( buf )
-                after = checksum.hexdigest( )
-                self.assertEquals( before, after )
+                        checksum.update(buf)
+                after = checksum.hexdigest()
+                self.assertEquals(before, after)
 
                 # Multi-part upload from file
                 #
-                checksum = hashlib.md5( )
-                fh, path = tempfile.mkstemp( )
+                checksum = hashlib.md5()
+                fh, path = tempfile.mkstemp()
                 try:
-                    with os.fdopen( fh, 'r+' ) as writable:
+                    with os.fdopen(fh, 'r+') as writable:
                         with open(random_device) as readable:
-                            for i in range( int( partSize * partsPerFile / bufSize ) ):
-                                buf = readable.read( bufSize )
-                                writable.write( buf )
-                                checksum.update( buf )
-                    fileId = self.master.writeFile( job.jobStoreID, path )
+                            for i in range(int(partSize * partsPerFile / bufSize)):
+                                buf = readable.read(bufSize)
+                                writable.write(buf)
+                                checksum.update(buf)
+                    fileId = self.master.writeFile(job.jobStoreID, path)
                 finally:
-                    os.unlink( path )
-                before = checksum.hexdigest( )
+                    os.unlink(path)
+                before = checksum.hexdigest()
 
                 # Verify
                 #
-                checksum = hashlib.md5( )
-                with self.master.readFileStream( fileId ) as readable:
+                checksum = hashlib.md5()
+                with self.master.readFileStream(fileId) as readable:
                     while True:
-                        buf = readable.read( bufSize )
+                        buf = readable.read(bufSize)
                         if not buf: break
-                        checksum.update( buf )
-                after = checksum.hexdigest( )
-                self.assertEquals( before, after )
-            self.master.delete( job.jobStoreID )
+                        checksum.update(buf)
+                after = checksum.hexdigest()
+                self.assertEquals(before, after)
+            self.master.delete(job.jobStoreID)
 
-        def testZeroLengthFiles( self ):
-            job = self.master.create( "1", 2, 3, 4, 0)
-            nullFile = self.master.writeFile( job.jobStoreID, '/dev/null' )
-            with self.master.readFileStream( nullFile ) as f:
-                self.assertEquals( f.read( ), "" )
-            with self.master.writeFileStream( job.jobStoreID ) as ( f, nullStream ):
+        def testZeroLengthFiles(self):
+            job = self.master.create("1", 2, 3, 4, 0)
+            nullFile = self.master.writeFile(job.jobStoreID, '/dev/null')
+            with self.master.readFileStream(nullFile) as f:
+                self.assertEquals(f.read(), "")
+            with self.master.writeFileStream(job.jobStoreID) as (f, nullStream):
                 pass
-            with self.master.readFileStream( nullStream ) as f:
-                self.assertEquals( f.read( ), "" )
-            self.master.delete( job.jobStoreID )
+            with self.master.readFileStream(nullStream) as f:
+                self.assertEquals(f.read(), "")
+            self.master.delete(job.jobStoreID)
 
-        def assertUrl( self, url ):
-            prefix, path = url.split( ':', 1 )
+        def assertUrl(self, url):
+            prefix, path = url.split(':', 1)
             if prefix == 'file':
-                self.assertTrue( os.path.exists( path ) )
+                self.assertTrue(os.path.exists(path))
             else:
                 try:
-                    urllib2.urlopen( urllib2.Request( url ) )
+                    urllib2.urlopen(urllib2.Request(url))
                 except:
-                    self.fail( )
+                    self.fail()
+
+    class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
+        __metaclass__ = ABCMeta
+        """
+        A mixin test case that creates a job store that encrypts files stored within it
+        """
+
+        def _createConfig(self):
+            config = super(hidden.AbstractEncryptedJobStoreTest, self)._createConfig()
+            sse_key = tempfile.mkdtemp() + "keyFile"
+            with open(sse_key, 'w') as f:
+                f.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            config.attrib["sse_key"] = sse_key
+            return config
 
 
-class FileJobStoreTest( hidden.AbstractJobStoreTest ):
-    def _createJobStore( self, config=None, create=False ):
-        return FileJobStore( self.namePrefix, config=config, create=create )
+class FileJobStoreTest(hidden.AbstractJobStoreTest):
+    def _createJobStore(self, config=None, create=False):
+        return FileJobStore(self.namePrefix, config=config, create=create)
 
 
-class AWSJobStoreTest( hidden.AbstractJobStoreTest ):
+class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = "us-west-2"
 
-    def _createJobStore( self, config=None, create=False ):
+    def _createJobStore(self, config=None, create=False):
         AWSJobStore._s3_part_size = 5 * 1024 * 1024
-        return AWSJobStore( self.testRegion, self.namePrefix, config=config, create=create )
+        return AWSJobStore(self.testRegion, self.namePrefix, config=config, create=create)
+
+
+class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+    pass
+
+
+class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+    pass
