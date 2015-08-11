@@ -163,9 +163,9 @@ class AWSJobStore( AbstractJobStore ):
             log.debug( "Deleting %d file(s) associated with batchjob %s", len( items ), jobStoreID )
             for attempt in retry_sdb( ):
                 with attempt:
-                    loops = int(math.ceil(len(items)/batch_delete_limit))
+                    loops = int(math.ceil(float(len(items))/batch_delete_limit))
                     for loop in range(0,loops):
-                        self.versions.batch_delete_attributes( { item.name: None for item in items[:batch_delete_limit] } )
+                        self.versions.batch_delete_attributes( { item.name: None for item in items[loop*batch_delete_limit:(loop+1)*batch_delete_limit] } )
             for item in items:
                 if 'version' in item:
                     self.files.delete_key( key_name=item.name,
@@ -623,13 +623,10 @@ class AWSJob( BatchJob ):
         """
         chunkedJob = item.items()
         chunkedJob.sort()
-        log.critical(chunkedJob)
         if len(chunkedJob)==1:
             wholeJobString = chunkedJob[0][1] #first element of list = tuple, second element of tuple = serialized job
         else:
             wholeJobString = ''.join(item[1] for item in chunkedJob)
-        log.critical(wholeJobString)
-        log.critical(len(wholeJobString))
         return cPickle.loads(bz2.decompress(b64decode(wholeJobString)))
 
     def toItem( self, parentJobStoreID=None ):
@@ -638,7 +635,6 @@ class AWSJob( BatchJob ):
         """
         item = {}
         serializedAndEncodedJob = b64encode(bz2.compress(cPickle.dumps(self)))
-        log.critical(len(serializedAndEncodedJob))
         # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
         jobChunks = [serializedAndEncodedJob[i:i+1024] for i in range(0, len(serializedAndEncodedJob), 1024)]
         for attributeOrder,chunk in enumerate(jobChunks):
