@@ -27,6 +27,7 @@ import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 
+from bd2k.util.humanize import human2bytes
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -218,13 +219,13 @@ def createConfig(options):
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
     config.attrib["job_time"] = str(float(options.jobTime))
-    config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
-    config.attrib["default_memory"] = str(int(options.defaultMemory))
+    config.attrib["max_log_file_size"] = str(human2bytes(str(options.maxLogFileSize)))
+    config.attrib["default_memory"] = str(human2bytes(str(options.defaultMemory)))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["default_disk"] = str(int(options.defaultDisk))
+    config.attrib["default_disk"] = str(human2bytes(str(options.defaultDisk)))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
-    config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_disk"] = str(int(options.maxDisk))
+    config.attrib["max_memory"] = str(human2bytes(str(options.maxMemory)))
+    config.attrib["max_disk"] = str(human2bytes(str(options.maxDisk)))
     config.attrib["scale"] = str(float(options.scale))
     if options.bigBatchSystem is not None:
         config.attrib["big_batch_system"] = options.bigBatchSystem

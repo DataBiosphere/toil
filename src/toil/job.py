@@ -30,6 +30,7 @@ import tempfile
 import uuid
 import time
 from toil.resource import ModuleDescriptor
+from bd2k.util.humanize import human2bytes
 
 try:
     import cPickle 
@@ -59,9 +60,12 @@ class Job(object):
         Memory is the maximum number of bytes of memory the job will
         require to run. Cpu is the number of cores required. 
         """
-        self.memory = memory
         self.cpu = cpu
-        self.disk = disk
+        # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1
+        # larger than sys.maxint. We later assume that any value here not equal to sys.maxint must be the user's value
+        # so it is passed to the batch system, which cannot allocate that many resources.
+        self.memory = human2bytes(str(memory)) if memory!=sys.maxint else sys.maxint
+        self.disk = human2bytes(str(disk)) if disk!=sys.maxint else sys.maxint
         #Private class variables
         
         #See Job.addChild
