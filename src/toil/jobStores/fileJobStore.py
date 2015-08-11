@@ -190,13 +190,15 @@ class FileJobStore(AbstractJobStore):
     ##########################################  
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName):
+    def writeSharedFileStream(self, sharedFileName, isProtected=True):
+        # the isProtected parameter has no effect on the fileStore, but is needed on the awsJobStore
         assert self._validateSharedFileName( sharedFileName )
         with open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' ) as f:
             yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, isProtected=True):
+        # the isProtected parameter has no effect on the fileStore, but is needed on the awsJobStore
         assert self._validateSharedFileName( sharedFileName )
         with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
             yield f

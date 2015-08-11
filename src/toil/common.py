@@ -27,6 +27,7 @@ import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 
+from bd2k.util.humanize import human2bytes
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -91,6 +92,11 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
                      "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
+
+    addOptionFn("--sseKey", dest="sseKey", default=None,
+            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
+                 "not be used if this flag is not passed.")
+
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by toilStats. default=%s" % defaultStr)
 
@@ -247,13 +253,13 @@ def createConfig(options):
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
-    config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
-    config.attrib["default_memory"] = str(int(options.defaultMemory))
+    config.attrib["max_log_file_size"] = str(human2bytes(str(options.maxLogFileSize)))
+    config.attrib["default_memory"] = str(human2bytes(str(options.defaultMemory)))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["default_disk"] = str(int(options.defaultDisk))
+    config.attrib["default_disk"] = str(human2bytes(str(options.defaultDisk)))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
-    config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_disk"] = str(int(options.maxDisk))
+    config.attrib["max_memory"] = str(human2bytes(str(options.maxMemory)))
+    config.attrib["max_disk"] = str(human2bytes(str(options.maxDisk)))
     config.attrib["scale"] = str(float(options.scale))
     if options.bigBatchSystem is not None:
         config.attrib["big_batch_system"] = options.bigBatchSystem
@@ -265,6 +271,10 @@ def createConfig(options):
         config.attrib["stats"] = ""
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
+    if options.sseKey:
+        config.attrib["sse_key"] = options.sseKey
+        with open(options.sseKey) as f:
+            assert(len(f.readline()) == 32)
     return config
 
 
@@ -417,10 +427,10 @@ def setupToil(options, userScript=None, create=False):
     """
     if create == True or options.useExistingOptions:
         #Creating the config object
-        verifyToilOptions(options)
-        config = createConfig(options)
-        batchSystemClass, kwargs = loadBatchSystemClass(config)
-        addBatchSystemConfigOptions(config, batchSystemClass, options)
+    verifyToilOptions(options)
+    config = createConfig(options)
+    batchSystemClass, kwargs = loadBatchSystemClass(config)
+    addBatchSystemConfigOptions(config, batchSystemClass, options)
         #Load the jobStore
         jobStore = loadJobStore(config.attrib["job_store"], config=config, create=create)
     else:
