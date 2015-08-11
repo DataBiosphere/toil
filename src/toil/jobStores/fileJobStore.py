@@ -266,7 +266,7 @@ class FileJobStore(AbstractJobStore):
         Raises a NoSuchJobException if the jobStoreID does not exist.
         """
         if not self.exists(jobStoreID):
-            raise NoSuchJobException("JobStoreID %s does not exist" % jobStoreID)
+            raise NoSuchJobException(jobStoreID)
     
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
