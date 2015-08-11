@@ -7,6 +7,8 @@ import os
 import re
 from threading import Thread
 import uuid
+import base64
+import hashlib
 
 # noinspection PyUnresolvedReferences
 from boto.sdb.domain import Domain
@@ -30,7 +32,11 @@ log = logging.getLogger( __name__ )
 
 # FIXME: Command length is currently limited to 1024 characters
 
+# FIXME: Passing in both headers and validate=False caused BotoClientError: When providing 'validate=False', no other
+# params are allowed. Solution, validate=False was removed completely, but could potentially be passed if not encrypting
+
 # NB: Number of messages per job is limited to 256-x, 1024 bytes each, with x being the number of
+
 # other attributes in the item
 
 # FIXME: enforce SimpleDB limits early
@@ -92,12 +98,16 @@ class AWSJobStore( AbstractJobStore ):
         self.stats = None
         self.db = self._connectSimpleDB( )
         self.s3 = self._connectS3( )
+        self.sseKey = None
         create = config is not None
         self.jobDomain = self._getOrCreateDomain( 'jobs', create )
         self.versions = self._getOrCreateDomain( 'versions', create )
         self.files = self._getOrCreateBucket( 'files', create, versioning=True )
         self.stats = self._getOrCreateBucket( 'stats', create, versioning=True )
         super( AWSJobStore, self ).__init__( config=config )
+        if 'sse_key' in self.config.attrib:
+            with open(self.config.attrib["sse_key"]) as f:
+                self.sseKey=f.readline()
 
     def exists( self, jobStoreID ):
         for attempt in retry_sdb( ):
@@ -105,11 +115,12 @@ class AWSJobStore( AbstractJobStore ):
                 return bool( self.jobDomain.get_attributes( item_name=jobStoreID,
                                                        attribute_name=[ ],
                                                        consistent_read=True ) )
-    def getPublicUrl( self,  jobStoreFileID):
+    def getPublicUrl( self, jobStoreFileID):
         """
         For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
         Create url, check if valid, return.
+        Encrypted file urls are currently not supported
         """
         key = self.files.get_key( key_name=jobStoreFileID)
         return key.generate_url(expires_in=3600) # one hour
@@ -186,11 +197,11 @@ class AWSJobStore( AbstractJobStore ):
                    firstVersion, jobStoreFileID, jobStoreID )
 
     @contextmanager
-    def writeSharedFileStream( self, sharedFileName ):
+    def writeSharedFileStream( self, sharedFileName, isProtected=True ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         oldVersion = self._getFileVersion( jobStoreFileID )
-        with self._uploadStream( jobStoreFileID, self.files ) as (writable, key):
+        with self._uploadStream( jobStoreFileID, self.files, encrypted=isProtected ) as (writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str( self.sharedFileJobID ) if oldVersion is None else None
@@ -236,14 +247,14 @@ class AWSJobStore( AbstractJobStore ):
             yield readable
 
     @contextmanager
-    def readSharedFileStream( self, sharedFileName ):
+    def readSharedFileStream( self, sharedFileName, isProtected=True ):
         assert self._validateSharedFileName( sharedFileName )
         jobStoreFileID = self._newFileID( sharedFileName )
         version = self._getFileVersion( jobStoreFileID )
         if version is None: raise NoSuchFileException( jobStoreFileID )
         log.debug( "Read version %s from shared file %s (%s)",
                    version, sharedFileName, jobStoreFileID )
-        with self._downloadStream( jobStoreFileID, version, self.files ) as readable:
+        with self._downloadStream( jobStoreFileID, version, self.files, encrypted=isProtected ) as readable:
             yield readable
 
     def deleteFile( self, jobStoreFileID ):
@@ -417,14 +428,16 @@ class AWSJobStore( AbstractJobStore ):
 
     def _upload( self, jobStoreFileID, localFilePath ):
         file_size, file_time = self._fileSizeAndTime( localFilePath )
+        headers = {}
+        self.__add_encryption_headers( headers )
         if file_size <= self._s3_part_size:
             key = self.files.new_key( key_name=jobStoreFileID )
             key.name = jobStoreFileID
-            key.set_contents_from_filename( localFilePath )
+            key.set_contents_from_filename( localFilePath, headers=headers)
             version = key.version_id
         else:
             with open( localFilePath, 'rb' ) as f:
-                upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID )
+                upload = self.files.initiate_multipart_upload( key_name=jobStoreFileID, headers=headers)
                 try:
                     start = 0
                     part_num = itertools.count( )
@@ -441,21 +454,24 @@ class AWSJobStore( AbstractJobStore ):
                     raise
                 else:
                     version = upload.complete_upload( ).version_id
-        key = self.files.get_key( jobStoreFileID )
+        key = self.files.get_key( jobStoreFileID, headers=headers )
         assert key.size == file_size
         assert self._fileSizeAndTime( localFilePath ) == (file_size, file_time) #why do this? No one can touch the file while it is uploaded?
         return version
 
     @contextmanager
-    def _uploadStream( self, jobStoreFileID, bucket, multipart=True ):
+    def _uploadStream( self, jobStoreFileID, bucket, multipart=True, encrypted=True ):
         key = bucket.new_key( key_name=jobStoreFileID )
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe( )
+        headers = {}
+        if encrypted:
+            self.__add_encryption_headers( headers )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def reader( ):
                     try:
-                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID )
+                        upload = bucket.initiate_multipart_upload( key_name=jobStoreFileID, headers=headers )
                         try:
                             for part_num in itertools.count( ):
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -467,7 +483,7 @@ class AWSJobStore( AbstractJobStore ):
                                 if len( buf ) == 0 and part_num > 0: break
                                 upload.upload_part_from_file( fp=StringIO( buf ),
                                                               # S3 part numbers are 1-based
-                                                              part_num=part_num + 1 )
+                                                              part_num=part_num + 1, headers=headers )
                                 if len( buf ) == 0: break
                         except:
                             upload.cancel_upload( )
@@ -481,7 +497,7 @@ class AWSJobStore( AbstractJobStore ):
                     log.debug( "Using single part upload" )
                     try:
                         buf = StringIO( readable.read( ) )
-                        assert key.set_contents_from_file( fp=buf ) == buf.len
+                        assert key.set_contents_from_file( fp=buf, headers=headers ) == buf.len
                     except:
                         log.exception( "Exception in simple reader thread" )
 
@@ -496,17 +512,22 @@ class AWSJobStore( AbstractJobStore ):
             assert key.version_id is not None
 
     def _download( self, jobStoreFileID, localFilePath, version ):
-        key = self.files.get_key( jobStoreFileID, validate=False )
-        key.get_contents_to_filename( localFilePath, version_id=version )
+        headers = {}
+        self.__add_encryption_headers( headers )
+        key = self.files.get_key( jobStoreFileID, headers=headers )
+        key.get_contents_to_filename( localFilePath, version_id=version, headers=headers )
 
     @contextmanager
-    def _downloadStream( self, jobStoreFileID, version, bucket ):
-        key = bucket.get_key( jobStoreFileID, validate=False )
+    def _downloadStream( self, jobStoreFileID, version, bucket, encrypted=True ):
+        headers = {}
+        if encrypted:
+            self.__add_encryption_headers( headers )
+        key = bucket.get_key( jobStoreFileID, headers=headers)
         readable_fh, writable_fh = os.pipe( )
         with os.fdopen( readable_fh, 'r' ) as readable:
             with os.fdopen( writable_fh, 'w' ) as writable:
                 def writer( ):
-                    key.get_contents_to_file( writable, version_id=version )
+                    key.get_contents_to_file( writable, headers=headers, version_id=version)
                     # This close() will send EOF to the reading end and ultimately cause the
                     # yield to return. It also makes the implict .close() done by the enclosing
                     # "with" context redundant but that should be ok since .close() on file
@@ -585,6 +606,10 @@ class AWSJobStore( AbstractJobStore ):
         status = bucket.get_versioning_status( )
         return bool( status ) and self.versionings[ status[ 'Versioning' ] ]
 
+    def __add_encryption_headers( self, headers ):
+        if self.sseKey is not None:
+            self._add_encryption_headers( self.sseKey, headers )
+
     def deleteJobStore( self ):
         for bucket in (self.files, self.stats):
             if bucket is not None:
@@ -601,6 +626,14 @@ class AWSJobStore( AbstractJobStore ):
             if domain is not None:
                 domain.delete( )
 
+    @staticmethod
+    def _add_encryption_headers( sse_key, headers ):
+        assert len( sse_key ) == 32
+        encoded_sse_key = base64.b64encode( sse_key )
+        encoded_sse_key_md5 = base64.b64encode( hashlib.md5( sse_key ).digest( ) )
+        headers[ 'x-amz-server-side-encryption-customer-algorithm' ] = 'AES256'
+        headers[ 'x-amz-server-side-encryption-customer-key' ] = encoded_sse_key
+        headers[ 'x-amz-server-side-encryption-customer-key-md5' ] = encoded_sse_key_md5
 
 # Boto converts all attribute values to strings by default, so an attribute value of None would
 # becomes 'None' in SimpleDB. To truly represent attribute values of None, we'd have to always

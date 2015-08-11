@@ -85,6 +85,11 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
                      "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
+
+    addOptionFn("--sseKey", dest="sseKey", default=None,
+            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
+                 "not be used if this flag is not passed.")
+
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by toilStats. default=%s" % defaultStr)
 
@@ -237,6 +242,10 @@ def createConfig(options):
         config.attrib["stats"] = ""
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
+    if options.sseKey:
+        config.attrib["sse_key"] = options.sseKey
+        with open(options.sseKey) as f:
+            assert(len(f.readline()) == 32)
     return config
 
 

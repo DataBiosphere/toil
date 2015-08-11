@@ -643,8 +643,9 @@ class Job(object):
         jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
         #Set the config rootJob attrib
         assert "rootJob" not in jobStore.config.attrib
+
         jobStore.config.attrib["rootJob"] = jobWrapper.jobStoreID
-        with jobStore.writeSharedFileStream("config.xml") as f:
+        with jobStore.writeSharedFileStream("config.xml", isProtected=False) as f:
             ET.ElementTree( jobStore.config ).write(f)
         #Return the first job
         return jobWrapper
