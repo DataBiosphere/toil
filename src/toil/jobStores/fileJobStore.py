@@ -11,7 +11,7 @@ import tempfile
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
-from toil.batchJob import BatchJob
+from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
 
@@ -44,19 +44,19 @@ class FileJobStore(AbstractJobStore):
     
     def create(self, command, memory, cpu, disk, updateID=None,
                predecessorNumber=0):
-        #The absolute path to the batchjob directory.
-        absJobDir = tempfile.mkdtemp(prefix="batchjob", dir=self._getTempSharedDir())
-        #Sub directory to put temporary files associated with the batchjob in
+        #The absolute path to the job directory.
+        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
+        #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
-        #Make the batchjob
-        batchjob = BatchJob(command=command, memory=memory, cpu=cpu, disk=disk,
+        #Make the job
+        job = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,
                   predecessorNumber=predecessorNumber)
-        #Write batchjob file to disk
-        self.update(batchjob)
-        return batchjob
+        #Write job file to disk
+        self.update(job)
+        return job
     
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
@@ -78,31 +78,31 @@ class FileJobStore(AbstractJobStore):
 
     def load(self, jobStoreID):
         self._checkJobStoreId(jobStoreID)
-        #Load a valid version of the batchjob
+        #Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            batchjob = BatchJob.fromDict(pickler.load(fileHandle))
+            job = JobWrapper.fromDict(pickler.load(fileHandle))
         #The following cleans up any issues resulting from the failure of the 
-        #batchjob during writing by the batch system.
+        #job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
-            logger.warn("There was a .new file for the batchjob: %s", jobStoreID)
+            logger.warn("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
-            batchjob.setupJobAfterFailure(self.config)
-        return batchjob
+            job.setupJobAfterFailure(self.config)
+        return job
     
-    def update(self, batchjob):
-        #The batchjob is serialised to a file suffixed by ".new"
+    def update(self, job):
+        #The job is serialised to a file suffixed by ".new"
         #The file is then moved to its correct path.
         #Atomicity guarantees use the fact the underlying file systems "move"
         #function is atomic. 
-        with open(self._getJobFileName(batchjob.jobStoreID) + ".new", 'w') as f:
-            pickler.dump(batchjob.toDict(), f)
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
+            pickler.dump(job.toDict(), f)
         #This should be atomic for the file system
-        os.rename(self._getJobFileName(batchjob.jobStoreID) + ".new", self._getJobFileName(batchjob.jobStoreID))
+        os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
     
     def delete(self, jobStoreID):
-        #The jobStoreID is the relative path to the directory containing the batchjob,
-        #removing this directory deletes the batchjob.
+        #The jobStoreID is the relative path to the directory containing the job,
+        #removing this directory deletes the job.
         if self.exists(jobStoreID):
             shutil.rmtree(self._getAbsPath(jobStoreID))
  
@@ -110,7 +110,7 @@ class FileJobStore(AbstractJobStore):
         #Walk through list of temporary directories searching for jobs
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
-                if i.startswith( 'batchjob' ):
+                if i.startswith( 'job' ):
                     yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
  
     ##########################################
@@ -233,15 +233,15 @@ class FileJobStore(AbstractJobStore):
     
     def _getJobFileName(self, jobStoreID):
         """
-        :rtype : string, string is the file containing the serialised Batchjob.Batchjob instance
-        for the given batchjob.
+        :rtype : string, string is the file containing the serialised JobWrapper instance
+        for the given job.
         """
-        return os.path.join(self._getAbsPath(jobStoreID), "batchjob")
+        return os.path.join(self._getAbsPath(jobStoreID), "job")
 
     def _getJobTempFile(self, jobStoreID):
         """
         :rtype : file-descriptor, string, string is absolute path to a temporary file within
-        the given batchjob's (referenced by jobStoreID's) temporary file directory. The file-descriptor
+        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
         is integer pointing to open operating system file handle. Should be closed using os.close()
         after writing some material to the file.
         """

@@ -28,13 +28,13 @@ import time
 
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
-from toil.batchJob import BatchJob
+from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger( __name__ )
 
 # FIXME: Command length is currently limited to 1024 characters
 
-# NB: Number of messages per batchjob is limited to 256-x, 1024 bytes each, with x being the number of
+# NB: Number of messages per job is limited to 256-x, 1024 bytes each, with x being the number of
 # other attributes in the item
 
 # FIXME: enforce SimpleDB limits early
@@ -42,19 +42,19 @@ log = logging.getLogger( __name__ )
 
 class AWSJobStore( AbstractJobStore ):
     """
-    A batchjob store that uses Amazon's S3 for file storage and SimpleDB for storing batchjob info and
+    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
     enforcing strong consistency on the S3 file storage. The schema in SimpleDB is as follows:
 
-    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this batchjob store was
-    constructed with. Each item in that domain uses the batchjob store batchjob ID (jobStoreID) as the item
-    name. The command, memory and cpu fields of a batchjob will be stored as attributes. The messages
-    field of a batchjob will be stored as a multivalued attribute.
+    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this job store was
+    constructed with. Each item in that domain uses the job store job ID (jobStoreID) as the item
+    name. The command, memory and cpu fields of a job will be stored as attributes. The messages
+    field of a job will be stored as a multivalued attribute.
     """
 
     # FIXME: Eliminate after consolidating behaviour with FileJobStore
 
     resetJobInLoadState = True
-    """Whether to reset the messages, remainingRetryCount and children attributes of a batchjob when
+    """Whether to reset the messages, remainingRetryCount and children attributes of a job when
     it is loaded by loadToilState."""
 
     def fileExists(self, jobStoreFileID ):
@@ -73,17 +73,17 @@ class AWSJobStore( AbstractJobStore ):
     def create( self, command, memory, cpu, disk,updateID=None,
                 predecessorNumber=0 ):
         jobStoreID = self._newJobID( )
-        log.debug( "Creating batchjob %s for '%s'",
+        log.debug( "Creating job %s for '%s'",
                    jobStoreID, '<no command>' if command is None else command )
-        batchjob = AWSJob( jobStoreID=jobStoreID,
+        job = AWSJob( jobStoreID=jobStoreID,
                              command=command, memory=memory, cpu=cpu, disk=disk,
                              remainingRetryCount=self._defaultTryCount( ), logJobStoreFileID=None,
                              updateID=updateID, predecessorNumber=predecessorNumber)
         for attempt in retry_sdb( ):
             with attempt:
                 assert self.jobDomain.put_attributes( item_name=jobStoreID,
-                                                 attributes=batchjob.toItem( ) )
-        return batchjob
+                                                 attributes=job.toItem( ) )
+        return job
 
     def __init__( self, region, namePrefix, config=None ):
         log.debug( "Instantiating %s for region %s and name prefix '%s'",
@@ -133,23 +133,23 @@ class AWSJobStore( AbstractJobStore ):
                     consistent_read=True ) )
         if len(result)!=1:
             raise NoSuchJobException(jobStoreID)
-        batchjob = AWSJob.fromItem(result[0])
-        if batchjob is None:
+        job = AWSJob.fromItem(result[0])
+        if job is None:
             raise NoSuchJobException( jobStoreID )
-        log.debug( "Loaded batchjob %s", jobStoreID )
-        return batchjob
+        log.debug( "Loaded job %s", jobStoreID )
+        return job
 
-    def update( self, batchjob ):
-        log.debug( "Updating batchjob %s", batchjob.jobStoreID )
+    def update( self, job ):
+        log.debug( "Updating job %s", job.jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
-                assert self.jobDomain.put_attributes( item_name=batchjob.jobStoreID,
-                                                 attributes=batchjob.toItem( ) )
+                assert self.jobDomain.put_attributes( item_name=job.jobStoreID,
+                                                 attributes=job.toItem( ) )
 
     def delete( self, jobStoreID ):
         batch_delete_limit=25
-        # remove batchjob and replace with jobStoreId.
-        log.debug( "Deleting batchjob %s", jobStoreID )
+        # remove job and replace with jobStoreId.
+        log.debug( "Deleting job %s", jobStoreID )
         for attempt in retry_sdb( ):
             with attempt:
                 self.jobDomain.delete_attributes( item_name=jobStoreID )
@@ -160,7 +160,7 @@ class AWSJobStore( AbstractJobStore ):
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True ) )
         if items:
-            log.debug( "Deleting %d file(s) associated with batchjob %s", len( items ), jobStoreID )
+            log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
             for attempt in retry_sdb( ):
                 with attempt:
                     loops = int(math.ceil(float(len(items))/batch_delete_limit))
@@ -177,7 +177,7 @@ class AWSJobStore( AbstractJobStore ):
         jobStoreFileID = self._newFileID( )
         firstVersion = self._upload( jobStoreFileID, localFilePath )
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion )
-        log.debug( "Wrote initial version %s of file %s for batchjob %s from path '%s'",
+        log.debug( "Wrote initial version %s of file %s for job %s from path '%s'",
                    firstVersion, jobStoreFileID, jobStoreID, localFilePath )
         return jobStoreFileID
 
@@ -189,7 +189,7 @@ class AWSJobStore( AbstractJobStore ):
         firstVersion = key.version_id
         assert firstVersion is not None
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion )
-        log.debug( "Wrote initial version %s of file %s for batchjob %s",
+        log.debug( "Wrote initial version %s of file %s for job %s",
                    firstVersion, jobStoreFileID, jobStoreID )
 
     @contextmanager
@@ -275,7 +275,7 @@ class AWSJobStore( AbstractJobStore ):
     def getEmptyFileStoreID( self, jobStoreID ):
         jobStoreFileID = self._newFileID( )
         self._registerFile( jobStoreFileID, jobStoreID=jobStoreID )
-        log.debug( "Registered empty file %s for batchjob %s", jobStoreFileID, jobStoreID )
+        log.debug( "Registered empty file %s for job %s", jobStoreFileID, jobStoreID )
         return jobStoreFileID
 
     def writeStatsAndLogging( self, statsAndLoggingString ):
@@ -386,7 +386,7 @@ class AWSJobStore( AbstractJobStore ):
     def _newJobID( self ):
         return str( uuid.uuid4( ) )
 
-    # A dummy batchjob ID under which all shared files are stored.
+    # A dummy job ID under which all shared files are stored.
     sharedFileJobID = uuid.UUID( '891f7db6-e4d9-4221-a58e-ab6cc4395f94' )
 
     def _newFileID( self, sharedFileName=None ):
@@ -534,7 +534,7 @@ class AWSJobStore( AbstractJobStore ):
 
         :param bucketName: the name of the S3 bucket the file was placed in
 
-        :param jobStoreID: the ID of the batchjob owning the file, only allowed for first version of
+        :param jobStoreID: the ID of the job owning the file, only allowed for first version of
                            file or when file is registered without content
 
         :param newVersion: the file's new version or None if the file is to be registered without
@@ -610,9 +610,9 @@ class AWSJobStore( AbstractJobStore ):
 
 
 
-class AWSJob( BatchJob ):
+class AWSJob( JobWrapper ):
     """
-    A Batchjob that can be converted to and from a SimpleDB Item
+    A Job that can be converted to and from a SimpleDB Item
     """
 
     @classmethod

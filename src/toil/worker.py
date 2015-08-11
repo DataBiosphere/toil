@@ -125,10 +125,10 @@ def main():
     config = jobStore.config
 
     ##########################################
-    #Load the environment for the batchjob
+    #Load the environment for the job
     ##########################################
     
-    #First load the environment for the batchjob.
+    #First load the environment for the job.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = cPickle.load(fileHandle)
     for i in environment:
@@ -143,6 +143,8 @@ def main():
     setLogLevel(config.attrib["log_level"])
 
     tempRootDir = config.attrib.get('work_dir')
+    if tempRootDir is not None and not os.path.exists(tempRootDir):
+        raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
 
     ##########################################
     #Setup the temporary directories.
@@ -215,32 +217,32 @@ def main():
             nextOpenDescriptor()))
     
         ##########################################
-        #Load the batchjob
+        #Load the job
         ##########################################
         
-        batchjob = jobStore.load(jobStoreID)
-        logger.debug("Parsed batchjob")
+        job = jobStore.load(jobStoreID)
+        logger.debug("Parsed job")
         
         ##########################################
-        #Cleanup from any earlier invocation of the batchjob
+        #Cleanup from any earlier invocation of the job
         ##########################################
         
-        if batchjob.command == None:
-            while len(batchjob.stack) > 0:
-                jobs = batchjob.stack[-1]
+        if job.command == None:
+            while len(job.stack) > 0:
+                jobs = job.stack[-1]
                 #If the jobs still exist they have not been run, so break
                 if jobStore.exists(jobs[0][0]):
                     break
                 #However, if they are gone then we can remove them from the stack.
                 #This is the only way to flush successors that have previously been run
                 #, as jobs are, as far as possible, read only in the leader.
-                batchjob.stack.pop()
+                job.stack.pop()
                 
                 
         #This cleans the old log file which may 
-        #have been left if the batchjob is being retried after a batchjob failure.
-        if batchjob.logJobStoreFileID != None:
-            batchjob.clearLogFile(jobStore)
+        #have been left if the job is being retried after a job failure.
+        if job.logJobStoreFileID != None:
+            job.clearLogFile(jobStore)
     
         ##########################################
         #Setup the stats, if requested
@@ -256,16 +258,16 @@ def main():
         startTime = time.time() 
         while True:
             ##########################################
-            #Run the batchjob, if there is one
+            #Run the job, if there is one
             ##########################################
             
-            if batchjob.command != None:
-                if batchjob.command[:11] == "scriptTree ":
+            if job.command != None:
+                if job.command[:11] == "scriptTree ":
                     #Make a temporary file directory for the job
                     localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a job command
-                    messages = loadJob(batchjob.command, jobStore)._execute(batchjob=batchjob,
+                    messages = loadJob(job.command, jobStore)._execute( jobWrapper=job,
                                     stats=stats, localTempDir=localTempDir, 
                                     jobStore=jobStore)
                     
@@ -273,30 +275,30 @@ def main():
                     shutil.rmtree(localTempDir)
     
                 else: #Is another command (running outside of jobs may be deprecated)
-                    system(batchjob.command)
+                    system(job.command)
                     messages = []
             else:
                 #The command may be none, in which case
-                #the batchjob is just a shell ready to be deleted
-                assert len(batchjob.stack) == 0
+                #the job is just a shell ready to be deleted
+                assert len(job.stack) == 0
                 messages = []
                 break
             
             ##########################################
-            #Establish if we can run another batchjob within the worker
+            #Establish if we can run another job within the worker
             ##########################################
             
             #Exceeded the amount of time the worker is allowed to run for so quit
             if time.time() - startTime > float(config.attrib["job_time"]):
-                logger.debug("We are breaking because the maximum time the batchjob should run for has been exceeded")
+                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
                 break
 
             #No more jobs to run so quit
-            if len(batchjob.stack) == 0:
+            if len(job.stack) == 0:
                 break
             
             #Get the next set of jobs to run
-            jobs = batchjob.stack[-1]
+            jobs = job.stack[-1]
             assert len(jobs) > 0
             
             #If there are 2 or more jobs to run in parallel we quit
@@ -305,35 +307,35 @@ def main():
                             " it's got %i children", len(jobs)-1)
                 break
             
-            #We check the requirements of the batchjob to see if we can run it
+            #We check the requirements of the job to see if we can run it
             #within the current worker
             successorJobStoreID, successorMemory, successorCpu, successorsDisk, successorPredecessorID = jobs[0]
-            if successorMemory > batchjob.memory:
-                logger.debug("We need more memory for the next batchjob, so finishing")
+            if successorMemory > job.memory:
+                logger.debug("We need more memory for the next job, so finishing")
                 break
-            if successorCpu > batchjob.cpu:
-                logger.debug("We need more cpus for the next batchjob, so finishing")
+            if successorCpu > job.cpu:
+                logger.debug("We need more cpus for the next job, so finishing")
                 break
-            if successorsDisk > batchjob.disk:
-                logger.debug("We need more disk for the next batchjob, so finishing")
+            if successorsDisk > job.disk:
+                logger.debug("We need more disk for the next job, so finishing")
                 break
             if successorPredecessorID != None: 
-                logger.debug("The batchjob has multiple predecessors, we must return to the leader.")
+                logger.debug("The job has multiple predecessors, we must return to the leader.")
                 break
           
             ##########################################
-            #We have a single successor batchjob.
-            #We load the successor batchjob and transplant its command and stack
-            #into the current batchjob so that it can be run
-            #as if it were a command that were part of the current batchjob.
-            #We can then delete the successor batchjob in the jobStore, as it is
-            #wholly incorporated into the current batchjob.
+            #We have a single successor job.
+            #We load the successor job and transplant its command and stack
+            #into the current job so that it can be run
+            #as if it were a command that were part of the current job.
+            #We can then delete the successor job in the jobStore, as it is
+            #wholly incorporated into the current job.
             ##########################################
             
-            #Remove the successor batchjob
-            batchjob.stack.pop()
+            #Remove the successor job
+            job.stack.pop()
             
-            #Load the successor batchjob
+            #Load the successor job
             successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
             assert successorJob.memory == successorMemory
@@ -343,18 +345,18 @@ def main():
             assert successorJob.command != None
             assert successorJobStoreID == successorJob.jobStoreID
             
-            #Transplant the command and stack to the current batchjob
-            batchjob.command = successorJob.command
-            batchjob.stack += successorJob.stack
-            assert batchjob.memory >= successorJob.memory
-            assert batchjob.cpu >= successorJob.cpu
+            #Transplant the command and stack to the current job
+            job.command = successorJob.command
+            job.stack += successorJob.stack
+            assert job.memory >= successorJob.memory
+            assert job.cpu >= successorJob.cpu
             
-            #Checkpoint the batchjob and delete the successorJob
-            batchjob.jobsToDelete = [ successorJob.jobStoreID ]
-            jobStore.update(batchjob)
+            #Checkpoint the job and delete the successorJob
+            job.jobsToDelete = [ successorJob.jobStoreID ]
+            jobStore.update(job)
             jobStore.delete(successorJob.jobStoreID)
             
-            logger.debug("Starting the next batchjob")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
@@ -383,9 +385,9 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed batchjob on host %s", socket.gethostname())
-        batchjob = jobStore.load(jobStoreID)
-        batchjob.setupJobAfterFailure(config)
+        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
+        job = jobStore.load(jobStoreID)
+        job.setupJobAfterFailure(config)
         workerFailed = True
 
     ##########################################
@@ -419,17 +421,17 @@ def main():
     #Copy back the log file to the global dir, if needed
     if workerFailed:
         truncateFile(tempWorkerLogPath)
-        batchjob.setLogFile(tempWorkerLogPath, jobStore)
+        job.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
-        jobStore.update(batchjob)
+        jobStore.update(job)
 
     #Remove the temp dir
     shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and batchjob.command == None and len(batchjob.stack) == 0:
-        #We can now safely get rid of the batchjob
-        jobStore.delete(batchjob.jobStoreID)
+    if (not workerFailed) and job.command == None and len(job.stack) == 0:
+        #We can now safely get rid of the job
+        jobStore.delete(job.jobStoreID)
        
 if __name__ == '__main__':
     logging.basicConfig()
