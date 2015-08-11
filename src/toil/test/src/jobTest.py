@@ -45,6 +45,7 @@ class JobTest(ToilTest):
         
         #Create the runner for the workflow.
         options = Job.Runner.getDefaultOptions()
+        options.toil = self._getTestJobStorePath()
         options.logLevel = "INFO"
         #Run the workflow, the return value being the number of failed jobs
         self.assertEquals(Job.Runner.startToil(A, options), 0)
