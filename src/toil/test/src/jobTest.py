@@ -6,6 +6,7 @@ from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException
 from toil.test import ToilTest
 
+
 class JobTest(ToilTest):
     """
     Tests testing the job class
@@ -154,7 +155,8 @@ class JobTest(ToilTest):
         Randomly generate test input then check that the ordering of the running
         respected the constraints.
         """
-        for test in xrange(30): 
+        jobStore = self._getTestJobStorePath( )
+        for test in xrange(30):
             #Temporary file
             outFile = getTempFile(rootDir=os.getcwd())
             #Make a random DAG for the set of child edges
@@ -171,6 +173,7 @@ class JobTest(ToilTest):
             rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile)
             #Run the job  graph
             options = Job.Runner.getDefaultOptions()
+            options.toil = "%s.%i" % ( jobStore, test)
             failedJobs = Job.Runner.startToil(rootJob, options)
             self.assertEquals(failedJobs, 0)
             #Get the ordering add the implied ordering to the graph
@@ -190,7 +193,7 @@ class JobTest(ToilTest):
             self.assertTrue(self.isAcyclic(adjacencyList))
             #Cleanup
             os.remove(outFile)
-            
+
     @staticmethod
     def getRandomEdge(nodeNumber):
         assert nodeNumber > 1

@@ -1,8 +1,10 @@
 import logging
 import os
 import shlex
+import tempfile
 import unittest
 import sys
+import uuid
 
 from toil.common import toilPackageDirPath
 from toil.lib.bioio import getBasicOptionParser, parseSuiteTestOptions
@@ -12,7 +14,8 @@ log = logging.getLogger(__name__)
 
 class ToilTest(unittest.TestCase):
     """
-    A common base class for our tests. Please have every test case directly or indirectly inherit this one.
+    A common base class for our tests. Please have every test case directly or indirectly inherit
+    this one.
     """
 
     orig_sys_argv = None
@@ -41,5 +44,8 @@ class ToilTest(unittest.TestCase):
     def tearDown(self):
         super(ToilTest, self).tearDown()
         log.info("Tearing down down %s", self.id())
+
+    def _getTestJobStorePath( self ):
+        return os.path.join( tempfile.gettempdir( ), str( uuid.uuid4( ) ) )
 
 
