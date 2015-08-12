@@ -476,8 +476,8 @@ class AWSJobStore(AbstractJobStore):
                     version = upload.complete_upload().version_id
         key = self.files.get_key(jobStoreFileID, headers=headers)
         assert key.size == file_size
-        assert self._fileSizeAndTime(localFilePath) == (
-            file_size, file_time)  # why do this? No one can touch the file while it is uploaded?
+        # Make resonably sure that the file wasn't touched during the upload
+        assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
         return version
 
     @contextmanager
