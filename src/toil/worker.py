@@ -288,11 +288,6 @@ def main():
             #Establish if we can run another job within the worker
             ##########################################
             
-            #Exceeded the amount of time the worker is allowed to run for so quit
-            if time.time() - startTime > float(config.attrib["job_time"]):
-                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
-                break
-
             #No more jobs to run so quit
             if len(job.stack) == 0:
                 break
