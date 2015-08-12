@@ -173,9 +173,10 @@ class AWSJobStore( AbstractJobStore ):
             log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
             for attempt in retry_sdb( ):
                 with attempt:
-                    loops = int(math.ceil(float(len(items))/batch_delete_limit))
-                    for loop in range(0,loops):
-                        self.versions.batch_delete_attributes( { item.name: None for item in items[loop*batch_delete_limit:(loop+1)*batch_delete_limit] } )
+                    batch_deletable_jobs = [items[i:i+batch_delete_limit] for i in range(0, len(items), batch_delete_limit)]
+                    for batch in batch_deletable_jobs:
+                        self.versions.batch_delete_attributes( { item.name: None for item in batch } )
+
             for item in items:
                 if 'version' in item:
                     self.files.delete_key( key_name=item.name,
