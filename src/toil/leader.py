@@ -170,12 +170,6 @@ class JobBatcher:
         Wait for the job to die then we pass the job to processFinishedJob.
         """
         maxJobDuration = float(self.config.attrib["max_job_duration"])
-        idealJobTime = float(self.config.attrib["job_time"])
-        if maxJobDuration < idealJobTime * 10:
-            logger.warn("The max job duration is less than 10 times the ideal the job time, so I'm setting it "
-                        "to the ideal job time, sorry, but I don't want to crash your jobs "
-                        "because of limitations in toil ")
-            maxJobDuration = idealJobTime * 10
         jobsToKill = []
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
@@ -292,28 +286,28 @@ class ToilState( object ):
         ##Algorithm to build this information
         self._buildToilState(rootJob, jobStore)
 
-    def _buildToilState(self, jobWrapper, jobStore):
+    def _buildToilState(self, job, jobStore):
         """
         Traverses tree of jobs from the root job (rootJob) building the
         ToilState class.
         """
-        if jobWrapper.command != None or len(jobWrapper.stack) == 0: #If the job has a command
+        if job.command != None or len(job.stack) == 0: #If the job has a command
             #or is ready to be deleted it is ready to be processed
-            self.updatedJobs.add(jobWrapper)
+            self.updatedJobs.add(job)
         else: #There exist successors
-            self.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
-            for successorJobStoreID in jobWrapper.stack[-1]:
+            self.successorCounts[job] = len(job.stack[-1])
+            for successorJobStoreTuple in job.stack[-1]:
+                successorJobStoreID = successorJobStoreTuple[0]
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
                     #Given that the successor job does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
-                    self._buildToilState(jobStore.load(successorJobStoreID),
-                                            jobStore)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [job]
+                    self._buildToilState(jobStore.load(successorJobStoreID), jobStore)
                 else:
                     #We have already looked at the successor, so we don't recurse, 
                     #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
 
 def mainLoop(config, batchSystem, jobStore, rootJob):
     """

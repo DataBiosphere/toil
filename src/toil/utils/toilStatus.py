@@ -30,6 +30,8 @@ from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
+from toil.leader import ToilState
+from toil.job import Job, JobException
 
 logger = logging.getLogger( __name__ )
 
@@ -79,18 +81,22 @@ def main():
     ##########################################  
     
     jobStore = loadJobStore(options.toil)
-    config = jobStore.config
-    toilState = jobStore.loadToilState() #This initialises the object toil.toilState used to track the active toil
+    try:
+        rootJob = Job._loadRootJob(jobStore)
+    except JobException:
+        print "The root job of the jobStore is not present, the toil workflow has probably completed okay"
+        sys.exit(0)
+    
+    toilState = ToilState(jobStore, rootJob )
     
     failedJobs = [ job for job in toilState.updatedJobs | \
-                  set(toilState.childCounts.keys()) \
+                  set(toilState.successorCounts.keys()) \
                   if job.remainingRetryCount == 0 ]
     
-    print "There are %i active jobs, %i parent jobs with children, \
-    %i totally failed jobs and %i empty jobs (i.e. finished but not cleaned up) \
-    currently in toil: %s" % \
-    (len(toilState.updatedJobs), len(toilState.childCounts),
-     len(failedJobs), len(toilState.shellJobs), options.toil)
+    print "There are %i active jobs, %i parent jobs with children, and \
+    %i totally failed jobs currently in toil: %s" % \
+    (len(toilState.updatedJobs), len(toilState.successorCounts),
+     len(failedJobs), options.toil)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:
@@ -102,7 +108,7 @@ def main():
         if len(failedJobs) == 0:
             print "There are no failed jobs to report"   
     
-    if (len(toilState.updatedJobs) + len(toilState.childCounts)) != 0 and \
+    if (len(toilState.updatedJobs) + len(toilState.successorCounts)) != 0 and \
         options.failIfNotComplete:
         sys.exit(1)
     
