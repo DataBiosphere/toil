@@ -8,6 +8,7 @@ from threading import Thread
 import tempfile
 import uuid
 from xml.etree.cElementTree import Element
+import shutil
 
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from toil.jobStores.awsJobStore import AWSJobStore
@@ -98,7 +99,9 @@ class hidden:
             child1 = worker.create("child1", 23, 45, 46, "1", 1)
             child2 = worker.create("child2", 34, 56, 57, "2", 1)
             # Update parent
-            jobOnWorker.stack.append(((child1.jobStoreID, 23, 45, 46, 1), (child2.jobStoreID, 34, 56, 57, 1)))
+            jobOnWorker.stack.append((
+                (child1.jobStoreID, 23, 45, 46, 1),
+                (child2.jobStoreID, 34, 56, 57, 1)))
             jobOnWorker.jobsToDelete = []
             worker.update(jobOnWorker)
 
@@ -202,8 +205,6 @@ class hidden:
                 master.updateFile(fileOne, path)
                 with worker.readFileStream(fileOne) as f:
                     self.assertEquals(f.read(), "two")
-
-
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
@@ -270,7 +271,8 @@ class hidden:
                 def checksumThreadFn():
                     while True:
                         _buf = checksumQueue.get()
-                        if _buf is None: break
+                        if _buf is None:
+                            break
                         checksum.update(_buf)
 
                 # Multipart upload from stream
@@ -295,7 +297,8 @@ class hidden:
                 with self.master.readFileStream(fileId) as readable:
                     while True:
                         buf = readable.read(bufSize)
-                        if not buf: break
+                        if not buf:
+                            break
                         checksum.update(buf)
                 after = checksum.hexdigest()
                 self.assertEquals(before, after)
@@ -322,7 +325,8 @@ class hidden:
                 with self.master.readFileStream(fileId) as readable:
                     while True:
                         buf = readable.read(bufSize)
-                        if not buf: break
+                        if not buf:
+                            break
                         checksum.update(buf)
                 after = checksum.hexdigest()
                 self.assertEquals(before, after)
@@ -350,17 +354,25 @@ class hidden:
                     self.fail()
 
     class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
-        __metaclass__ = ABCMeta
         """
         A mixin test case that creates a job store that encrypts files stored within it
         """
+        __metaclass__ = ABCMeta
+
+        def setUp(self):
+            self.sseKeyDir = tempfile.mkdtemp()
+            super(hidden.AbstractEncryptedJobStoreTest, self).setUp()
+
+        def tearDown(self):
+            super(hidden.AbstractEncryptedJobStoreTest, self).tearDown()
+            shutil.rmtree(self.sseKeyDir)
 
         def _createConfig(self):
             config = super(hidden.AbstractEncryptedJobStoreTest, self)._createConfig()
-            sse_key = tempfile.mkdtemp() + "keyFile"
-            with open(sse_key, 'w') as f:
-                f.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-            config.attrib["sse_key"] = sse_key
+            sseKeyFile = os.path.join(self.sseKeyDir, "keyFile")
+            with open(sseKeyFile, 'w') as f:
+                f.write("01234567890123456789012345678901")
+            config.attrib["sse_key"] = sseKeyFile
             return config
 
 
