@@ -269,6 +269,18 @@ class hidden:
             # TODO: Who deletes the shared files?
             # TODO: Test stats methods
 
+        def testDelete( self ):
+            """
+            Intended for the AWSJobStore, doesn't hurt to run on other job stores.
+            """
+            job = self.master.create( "1", 2, 3, 4, 0)
+            file_list = []
+            for file in xrange(0,30):
+                 file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
+            self.master.delete(job.jobStoreID)
+            for file in file_list:
+                self.assertRaises(NoSuchFileException, self.master.readFileStream(file).__enter__)
+
         def testMultipartUploads( self ):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
