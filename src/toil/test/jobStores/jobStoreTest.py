@@ -247,12 +247,14 @@ class hidden:
 
             # TODO: Test stats methods
 
-        def testDelete( self ):
+        def testFileDeletion( self ):
             """
-            Intended for the AWSJobStore, doesn't hurt to run on other job stores.
+            Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt running it on the
+            other job stores.
             """
             job = self.master.create( "1", 2, 3, 4, 0)
             file_list = []
+            # FIXME: tie 30 to batch limit in AWSJobStore
             for file in xrange(0,30):
                  file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
             self.master.delete(job.jobStoreID)
