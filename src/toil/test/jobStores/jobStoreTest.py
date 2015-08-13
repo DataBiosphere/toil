@@ -246,6 +246,20 @@ class hidden:
 
             # TODO: Test stats methods
 
+        def testFileDeletion( self ):
+            """
+            Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt running it on the
+            other job stores.
+            """
+            job = self.master.create( "1", 2, 3, 4, 0)
+            file_list = []
+            # FIXME: tie 30 to batch limit in AWSJobStore
+            for file in xrange(0,30):
+                 file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
+            self.master.delete(job.jobStoreID)
+            for file in file_list:
+                self.assertRaises(NoSuchFileException, self.master.readFileStream(file).__enter__)
+
         partSize = 5 * 1024 * 1024
 
         def testMultipartUploads(self):

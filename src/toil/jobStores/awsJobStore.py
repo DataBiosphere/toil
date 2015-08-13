@@ -6,7 +6,10 @@ import logging
 import os
 import re
 from threading import Thread
+import math
 import uuid
+import bz2
+import cPickle
 import base64
 import hashlib
 
@@ -44,13 +47,12 @@ log = logging.getLogger(__name__)
 
 class AWSJobStore(AbstractJobStore):
     """
-    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
-    enforcing strong consistency on the S3 file storage. The schema in SimpleDB is as follows:
-
-    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this job store was
-    constructed with. Each item in that domain uses the job store job ID (jobStoreID) as the item
-    name. The command, memory and cpu fields of a job will be stored as attributes. The messages
-    field of a job will be stored as a multivalued attribute.
+    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and enforcing strong
+    consistency on the S3 file storage. There will be SDB domains for jobs and versions and versioned S3 buckets for
+    files and stats. The content of files and stats are stored as keys on the respective bucket while the latest
+    version of a key is stored in the versions SDB domain. Job objects are pickled, compressed, partitioned into
+    chunks of 1024 bytes and each chunk is stored as a an attribute of the SDB item representing the job. UUIDs are
+    used to identify jobs and files.
     """
 
     def fileExists(self, jobStoreFileID):
@@ -158,7 +160,9 @@ class AWSJobStore(AbstractJobStore):
                 assert self.jobDomain.put_attributes(item_name=job.jobStoreID,
                                                      attributes=job.toItem())
 
-    def delete(self, jobStoreID):
+    items_per_batch_delete=25
+
+    def delete( self, jobStoreID ):
         # remove job and replace with jobStoreId.
         log.debug("Deleting job %s", jobStoreID)
         for attempt in retry_sdb():
@@ -171,10 +175,13 @@ class AWSJobStore(AbstractJobStore):
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True))
         if items:
-            log.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
-            for attempt in retry_sdb():
-                with attempt:
-                    self.versions.batch_delete_attributes({item.name: None for item in items})
+            log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
+            n = self.items_per_batch_delete
+            batches = [items[i:i+n] for i in range(0, len(items), n)]
+            for batch in batches:
+                for attempt in retry_sdb( ):
+                    with attempt:
+                        self.versions.batch_delete_attributes( { item.name: None for item in batch } )
             for item in items:
                 if 'version' in item:
                     self.files.delete_key(key_name=item.name,
@@ -475,6 +482,7 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     version = upload.complete_upload().version_id
         key = self.files.get_key(jobStoreFileID, headers=headers)
+
         assert key.size == file_size
         # Make resonably sure that the file wasn't touched during the upload
         assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
@@ -657,195 +665,10 @@ class AWSJobStore(AbstractJobStore):
         headers['x-amz-server-side-encryption-customer-key-md5'] = encoded_sse_key_md5
 
 
-# Boto converts all attribute values to strings by default, so an attribute value of None would
-# becomes 'None' in SimpleDB. To truly represent attribute values of None, we'd have to always
-# call delete_attributes in addition to put_attributes but there is no way to do that atomically.
-# Instead we map None to the empty string and vice versa. The same applies to empty iterables.
-# The empty iterable is a no-op for put_attributes, so we map that to '' instead. This means that
-# we can't serialize [''] or '' because the former would be deserialized as [] and the latter as
-# None.
-
-def toNoneable(v):
-    return v if v else None
-
-
-def fromNoneable(v):
-    assert v != ""
-    return '' if v is None else v
-
-
-sort_prefix_length = 3
-
-
-def toSet(vs):
-    """
-    :param vs: list[str] | str
-    :return: set(str) | set()
-
-    Lists returned by simpleDB is not guaranteed to be in their original order, but because we are converting them
-    to sets, the loss of order is not a problem.
-
-    >>> toSet(["x", "y", "z"])
-    set(['y', 'x', 'z'])
-
-    Instead of a set, a single String can also be returned by SimpleDB.
-
-    >>> toSet("x")
-    set(['x'])
-
-    An empty set is serialized as ""
-
-    >>> toSet("")
-    set([])
-
-    """
-    return set(vs) if vs else set()
-
-
-def fromSet(vs):
-    """
-    :type vs: set(str)
-    :rtype str|list[str]
-
-    Empty set becomes empty string
-
-    >>> fromSet(set())
-    ''
-
-    Singleton set becomes its sole element
-
-    >>> fromSet({'x'})
-    'x'
-
-    Set elements are unordered, so sort_prefixes used in fromList are not needed here.
-
-    >>> fromSet({'x','y'})
-    ['y', 'x']
-
-    Only sets with non-empty strings are allowed
-
-    >>> fromSet(set(['']))
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    >>> fromSet({'x',''})
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    >>> fromSet({'x',1})
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    """
-    if len(vs) == 0:
-        return ""
-    elif len(vs) == 1:
-        v = vs.pop()
-        assert isinstance(v, basestring) and v
-        return v
-    else:
-        assert len(vs) <= 256
-        assert all(isinstance(v, basestring) and v for v in vs)
-        return list(vs)
-
-
-def toList(vs):
-    """
-    :param vs: list[str] | str
-    :return: list[str] | []
-
-    Lists are not guaranteed to be in their original order, so they are sorted based on a prefixed string.
-
-    >>> toList(["000x", "001y", "002z"])
-    ['x', 'y', 'z']
-
-    Instead of a List of length 1, a single String will be returned by SimpleDB.
-    A single element is can only have 1 order, no need to sort.
-
-    >>> toList("x")
-    ['x']
-
-    An empty list is serialized as ""
-
-    >>> toList("")
-    []
-
-    """
-    if isinstance(vs, basestring):
-        return [vs] if vs else []
-    else:
-        return [v[sort_prefix_length:] for v in sorted(vs)]
-
-
-def fromList(vs):
-    """
-    :type vs: list[str]
-    :rtype str|list[str]
-
-    Empty lists becomes empty string
-
-    >>> fromList([])
-    ''
-
-    Singleton list becomes its sole element
-
-    >>> fromList(['x'])
-    'x'
-
-    Lists elements are prefixed with their position because lists don't retain their order in SDB
-
-    >>> fromList(['x','y'])
-    ['000x', '001y']
-
-    Only lists with non-empty strings are allowed
-
-    >>> fromList([''])
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    >>> fromList(['x',''])
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    >>> fromList(['x',1])
-    Traceback (most recent call last):
-    ...
-    AssertionError
-    """
-    if len(vs) == 0:
-        return ''
-    elif len(vs) == 1:
-        v = vs[0]
-        assert isinstance(v, basestring) and v
-        return v
-    else:
-        assert len(vs) <= 256
-        assert all(isinstance(v, basestring) and v for v in vs)
-        return [str(i).zfill(sort_prefix_length) + v for i, v in enumerate(vs)]
-
-
-def passThrough(v): return v
-
-
-def skip(_): return None
-
-
 class AWSJob(JobWrapper):
     """
     A Job that can be converted to and from a SimpleDB Item
     """
-    fromItemTransform = defaultdict(lambda: passThrough,
-                                    predecessorNumber=int,
-                                    memory=float,
-                                    disk=float,
-                                    cpu=float,
-                                    updateID=str,
-                                    command=toNoneable,
-                                    stack=lambda v: map(literal_eval, toList(v)),
-                                    jobsToDelete=toList,
-                                    predecessorsFinished=toSet,
-                                    remainingRetryCount=int,
-                                    logJobStoreFileID=toNoneable)
 
     @classmethod
     def fromItem(cls, item, jobStoreID=None):
@@ -853,36 +676,25 @@ class AWSJob(JobWrapper):
         :type item: Item
         :rtype: AWSJob
         """
-        if jobStoreID is None: jobStoreID = item.name
-        try:
-            del item['parentJobStoreID']
-        except KeyError:
-            pass
-        item = {k: cls.fromItemTransform[k](v) for k, v in item.iteritems()}
-        return cls(jobStoreID=jobStoreID, **item)
+        chunkedJob = item.items()
+        chunkedJob.sort()
+        if len(chunkedJob)==1:
+            wholeJobString = chunkedJob[0][1] #first element of list = tuple, second element of tuple = serialized job
+        else:
+            wholeJobString = ''.join(item[1] for item in chunkedJob)
+        return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
 
-    toItemTransform = defaultdict(lambda: passThrough,
-                                  command=fromNoneable,
-                                  jobStoreID=skip,
-                                  updateID=str,
-                                  children=skip,
-                                  stack=lambda v: fromList(map(repr, v)),
-                                  logJobStoreFileID=fromNoneable,
-                                  predecessorsFinished=fromSet,
-                                  jobsToDelete=fromList,
-                                  predecessorNumber=str,
-                                  remainingRetryCount=str)
-
-    def toItem(self, parentJobStoreID=None):
+    def toItem( self, parentJobStoreID=None ):
         """
         :rtype: Item
         """
-        item = self.toDict()
-        if parentJobStoreID is not None:
-            item['parentJobStoreID'] = parentJobStoreID
-        item = ((k, self.toItemTransform[k](v)) for k, v in item.iteritems())
-        return {k: v for k, v in item if v is not None}
-
+        item = {}
+        serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
+        # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
+        jobChunks = [serializedAndEncodedJob[i:i+1024] for i in range(0, len(serializedAndEncodedJob), 1024)]
+        for attributeOrder,chunk in enumerate(jobChunks):
+            item[str(attributeOrder).zfill(3)] = chunk
+        return item
 
 # FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
 # FIXME: ... between that code and this is the name of the exception.
