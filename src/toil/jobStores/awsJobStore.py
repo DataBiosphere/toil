@@ -47,13 +47,12 @@ log = logging.getLogger(__name__)
 
 class AWSJobStore(AbstractJobStore):
     """
-    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
-    enforcing strong consistency on the S3 file storage. The schema in SimpleDB is as follows:
-
-    Jobs are stored in the "xyz.jobs" domain where xyz is the name prefix this job store was
-    constructed with. Each item in that domain uses the job store job ID (jobStoreID) as the item
-    name. The command, memory and cpu fields of a job will be stored as attributes. The messages
-    field of a job will be stored as a multivalued attribute.
+    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and enforcing strong
+    consistency on the S3 file storage. There will be SDB domains for jobs and versions and versioned S3 buckets for
+    files and stats. The content of files and stats are stored as keys on the respective bucket while the latest
+    version of a key is stored in the versions SDB domain. Job objects are pickled, compressed, partitioned into
+    chunks of 1024 bytes and each chunk is stored as a an attribute of the SDB item representing the job. UUIDs are
+    used to identify jobs and files.
     """
 
     def fileExists(self, jobStoreFileID):
@@ -161,8 +160,9 @@ class AWSJobStore(AbstractJobStore):
                 assert self.jobDomain.put_attributes(item_name=job.jobStoreID,
                                                      attributes=job.toItem())
 
+    items_per_batch_delete=25
+
     def delete( self, jobStoreID ):
-        batch_delete_limit=25
         # remove job and replace with jobStoreId.
         log.debug("Deleting job %s", jobStoreID)
         for attempt in retry_sdb():
@@ -176,12 +176,12 @@ class AWSJobStore(AbstractJobStore):
                     consistent_read=True))
         if items:
             log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
-            batch_deletable_jobs = [items[i:i+batch_delete_limit] for i in range(0, len(items), batch_delete_limit)]
-            for batch in batch_deletable_jobs:
+            n = self.items_per_batch_delete
+            batches = [items[i:i+n] for i in range(0, len(items), n)]
+            for batch in batches:
                 for attempt in retry_sdb( ):
                     with attempt:
                         self.versions.batch_delete_attributes( { item.name: None for item in batch } )
-
             for item in items:
                 if 'version' in item:
                     self.files.delete_key(key_name=item.name,
