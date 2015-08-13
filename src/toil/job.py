@@ -358,14 +358,6 @@ class Job(object):
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
         
-        @staticmethod
-        def cleanup(options):
-            """
-            Removes the jobStore backing the toil.
-            """
-            with setupToil(options) as (config, batchSystem, jobStore):
-                jobStore.deleteJobStore()
-            
     class FileStore:
         """
         Class used to manage temporary files and log messages, 

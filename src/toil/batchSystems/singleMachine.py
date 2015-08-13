@@ -171,7 +171,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 value = self.cpuSemaphore._Semaphore__value
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
-        logger.info('Exiting worker thread normally.')
+        logger.debug('Exiting worker thread normally.')
 
     # FIXME: Remove or fix badWorker to be compliant with new thread management.
 
