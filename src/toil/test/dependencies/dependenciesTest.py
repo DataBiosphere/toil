@@ -1,20 +1,5 @@
 #!/usr/bin/env python
 
-""" Test program designed to catch two bugs encountered when developing
-progressive cactus:
-1) spawning a daemon process causes indefinite toil hangs
-2) toil does not properly parallelize jobs in certain types of
-recursions
-
-If jobs get hung up until the daemon process
-finsishes, that would be a case of bug 1).  If jobs do not
-get issued in parallel (ie the begin UP does not happen
-concurrently for the leaves of the comb tree), then that is
-a case of bug 2).  This is now verified if a log file is 
-specified (--logFile [path] option)
-
---Glenn Hickey
-"""
 
 import unittest
 import os
@@ -23,82 +8,110 @@ import shutil
 import time
 import math
 import datetime
+
 from toil.job import Job
 from toil.test import ToilTest
 
+
 class DependenciesTest(ToilTest):
+    """
+    Test program designed to catch two bugs encountered when developing progressive cactus:
+
+    1) spawning a daemon process causes indefinite toil hangs
+
+    2) toil does not properly parallelize jobs in certain types of recursions
+
+    If jobs get hung up until the daemon process finsishes, that would be a case of bug 1).  If
+    jobs do not get issued in parallel (ie the begin UP does not happen concurrently for the
+    leaves of the comb tree), then that is a case of bug 2).  This is now verified if a log file
+    is specified (--logFile [path] option)
+
+    --Glenn Hickey
+    """
+
+
     def setUp(self):
-        super( DependenciesTest, self).setUp()
-        self.toilDir = os.path.join(os.getcwd(), "testToil") #A directory for the jobtree to be created in
-        self.tempDir = tempfile.mkdtemp(prefix="tempDir", dir=os.getcwd())
-        
+        super(DependenciesTest, self).setUp()
+        # A directory for the jobtree to be created in
+        self.toilDir = os.path.join(os.getcwd(), 'testToil')
+        self.tempDir = tempfile.mkdtemp(prefix='tempDir', dir=os.getcwd())
+
+
     def tearDown(self):
-        super( DependenciesTest, self).tearDown( )
+        super(DependenciesTest, self).tearDown()
         if os.path.exists(self.toilDir):
             shutil.rmtree(self.toilDir)
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
-   
-    # only done in singleMachine for now.  Experts can run manually on other systems if they choose
-    if False:
-        def testDependencies(self, batchSystem="singleMachine"):
-            def fn(tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime):
-                """
-                Function runs the dependencies test
-                """
-                startTime = datetime.datetime.now()
 
-                if os.path.exists(self.toilDir):
-                    shutil.rmtree(self.toilDir)
 
-                logFd, logName = tempfile.mkstemp(prefix="log", dir=self.tempDir)
+    # FIXME: test methods can't have parameters, AFAIK (Hannes)
 
-                #Switch out the tree with the topology
-                if tree == "star":
-                    tree = starTree(size)
-                elif tree == "balanced":
-                    tree = balancedTree()
-                elif tree == "fly":
-                    tree = flyTree()
-                else:
-                    tree = combTree(size)
+    @unittest.expectedFailure
+    def testDependencies(self, batchSystem="singleMachine"):
+        """
+        Only done in singleMachine for now.  Experts can run manually on other systems if they so choose.
+        """
 
-                options = Job.Runner.getDefaultOptions()
-                options.toil = self.toilDir
-                options.maxThreads=maxThreads
-                options.batchSystem=batchSystem
-                options.logFile = logName
-                options.maxCpus = maxCpus
+        def fn(tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime):
+            """
+            Function runs the dependencies test
+            """
+            startTime = datetime.datetime.now()
 
-                baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(cpusPerJob))
-                i = Job.Runner.startToil(baseJob, options)
+            if os.path.exists(self.toilDir):
+                shutil.rmtree(self.toilDir)
 
-                checkLog(logName, maxCpus, maxThreads, cpusPerJob, sleepTime)
+            logFd, logName = tempfile.mkstemp(prefix="log", dir=self.tempDir)
 
-                self.assertEquals(i, 0)
+            # Switch out the tree with the topology
+            if tree == "star":
+                tree = starTree(size)
+            elif tree == "balanced":
+                tree = balancedTree()
+            elif tree == "fly":
+                tree = flyTree()
+            else:
+                tree = combTree(size)
 
-                os.close(logFd)
-        
-            fn("comb", 10, 100, 100, 1, 10)
-            fn("comb", 200, 100, 100, 20, 10)
+            options = Job.Runner.getDefaultOptions()
+            options.toil = self.toilDir
+            options.maxThreads = maxThreads
+            options.batchSystem = batchSystem
+            options.logFile = logName
+            options.maxCpus = maxCpus
 
-            fn("fly", 10, 8, 100, 1, 10)
-            fn("fly", 10, 8, 100, 2, 10)
+            baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(cpusPerJob))
+            i = Job.Runner.startToil(baseJob, options)
 
-            fn("balanced", 5, 10, 100, 1, 10)
-            fn("balanced", 5, 10, 100, 3, 10)
+            checkLog(logName, maxCpus, maxThreads, cpusPerJob, sleepTime)
+
+            self.assertEquals(i, 0)
+
+            os.close(logFd)
+
+        fn("comb", 10, 100, 100, 1, 10)
+        fn("comb", 200, 100, 100, 20, 10)
+
+        fn("fly", 10, 8, 100, 1, 10)
+        fn("fly", 10, 8, 100, 2, 10)
+
+        fn("balanced", 5, 10, 100, 1, 10)
+        fn("balanced", 5, 10, 100, 3, 10)
+
 
 ###############################################
-#Classes/functions for testing dependencies
+# Classes/functions for testing dependencies
 ###############################################    
 
 def writeLog(fileStore, msg, startTime):
-    timeStamp = str(datetime.datetime.now() - startTime)       
+    timeStamp = str(datetime.datetime.now() - startTime)
     fileStore.logToMaster("%s %s" % (timeStamp, msg))
+
 
 def balancedTree():
     t = dict()
-    t["Anc00"] = [1,2]
+    t["Anc00"] = [1, 2]
     t[1] = [11, 12]
     t[2] = [21, 22]
     t[11] = [111, 112]
@@ -131,25 +144,28 @@ def balancedTree():
     t[2222] = []
     return t
 
-def starTree(n = 10):
+
+def starTree(n=10):
     t = dict()
-    t["Anc00"] = range(1,n)
-    for i in range(1,n):
+    t["Anc00"] = range(1, n)
+    for i in range(1, n):
         t[i] = []
     return t
 
+
 # odd numbers are leaves
-def combTree(n = 100):
+def combTree(n=100):
     t = dict()
-    for i in range(0,n):
+    for i in range(0, n):
         if i % 2 == 0:
-            t[i] = [i+1, i+2]
+            t[i] = [i + 1, i + 2]
         else:
             t[i] = []
-        t[i+1] = []
-        t[i+2] = []
+        t[i + 1] = []
+        t[i + 2] = []
     t["Anc00"] = t[0]
     return t
+
 
 # dependencies of the internal nodes of the fly12 tree
 # note that 2, 5, 8 and 10 have no dependencies
@@ -168,6 +184,7 @@ def flyTree():
     t["Anc10"] = []
     return t
 
+
 class FirstJob(Job):
     def __init__(self, tree, event, sleepTime, startTime, cpu):
         Job.__init__(self, cpu=cpu)
@@ -184,13 +201,15 @@ class FirstJob(Job):
 
         self.addFollowOn(LastJob())
 
+
 class LastJob(Job):
     def __init__(self):
         Job.__init__(self)
 
     def run(self, fileStore):
         time.sleep(1)
-    
+
+
 class DownJob(Job):
     def __init__(self, tree, event, sleepTime, startTime, cpu):
         Job.__init__(self, cpu=cpu)
@@ -213,7 +232,8 @@ class DownJob(Job):
             self.addFollowOn(UpJob(self.tree, self.event,
                                    self.sleepTime, self.startTime, self.cpu))
         return 0
-    
+
+
 class UpJob(Job):
     def __init__(self, tree, event, sleepTime, startTime, cpu):
         Job.__init__(self, cpu=cpu)
@@ -222,7 +242,7 @@ class UpJob(Job):
         self.sleepTime = sleepTime
         self.startTime = startTime
         self.cpu = cpu
-    
+
     """
     def spawnDaemon(self, command):
         ""
@@ -236,8 +256,9 @@ class UpJob(Job):
         writeLog(fileStore, "begin UP: %s" % self.event, self.startTime)
 
         time.sleep(self.sleepTime)
-        #self.spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))
+        # self.spawnDaemon("sleep %s" % str(int(self.sleepTime) * 10))
         writeLog(fileStore, "end UP: %s" % self.event, self.startTime)
+
 
 # let k = maxThreads.  we make sure that jobs are fired in batches of k
 # so the first k jobs all happen within epsilon time of each other,
@@ -246,7 +267,7 @@ class UpJob(Job):
 def checkLog(logFile, maxCpus, maxThreads, cpusPerJob, sleepTime):
     epsilon = float(sleepTime) / 2.0
     alpha = sleepTime * 2.0
-    logFile = open(logFile, "r")    
+    logFile = open(logFile, "r")
     stamps = []
     for logLine in logFile:
         if "begin UP" in logLine:
@@ -255,11 +276,11 @@ def checkLog(logFile, maxCpus, maxThreads, cpusPerJob, sleepTime):
             timeString = chunks[9]
             timeObj = datetime.datetime.strptime(timeString, "%H:%M:%S.%f")
             timeStamp = timeObj.hour * 3600. + timeObj.minute * 60. + \
-            timeObj.second + timeObj.microsecond / 1000000.
+                        timeObj.second + timeObj.microsecond / 1000000.
             stamps.append(timeStamp)
-    
+
     stamps.sort()
-    
+
     maxThreads = int(maxThreads)
     maxCpus = int(maxCpus)
     maxConcurrentJobs = min(maxThreads, maxCpus)
@@ -271,19 +292,20 @@ def checkLog(logFile, maxCpus, maxThreads, cpusPerJob, sleepTime):
     if cpusPerJob > cpusPerThread:
         threadsPerJob = math.ceil(cpusPerJob / cpusPerThread)
     maxConcurrentJobs = int(maxConcurrentJobs / threadsPerJob)
-    #print "Info on jobs", cpusPerThread, cpusPerJob, threadsPerJob, maxConcurrentJobs
+    # print "Info on jobs", cpusPerThread, cpusPerJob, threadsPerJob, maxConcurrentJobs
     assert maxConcurrentJobs >= 1
-    for i in range(1,len(stamps)):
-        delta = stamps[i] - stamps[i-1]
+    for i in range(1, len(stamps)):
+        delta = stamps[i] - stamps[i - 1]
         if i % maxConcurrentJobs != 0:
             if delta > epsilon:
                 raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" %
-                             (i, delta, epsilon))
+                                   (i, delta, epsilon))
         elif delta > alpha:
             raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" %
-                             (i, delta, alpha))
-            
+                               (i, delta, alpha))
+
     logFile.close()
+
 
 if __name__ == '__main__':
     unittest.main()

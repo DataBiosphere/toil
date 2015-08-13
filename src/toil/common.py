@@ -170,6 +170,12 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency",
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. (default is set by the batch system)"))
+    addOptionFn("--clean", dest="clean", choices=['always', 'onError','never', 'onSuccess'], default=None,
+                      help=("Determines the deletion of the jobStore upon completion of the program. "
+                            "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
+                            "information from the jobStore upon completion so the jobStore will never be deleted with"
+                            "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
+                            "Default is never if stats collection is enabled, and onSuccess otherwise"))
 
     #TODO - remove this crap
     addOptionFn = addGroupFn("toil big batch system options",
@@ -261,20 +267,32 @@ def createConfig(options):
     config.attrib["max_memory"] = str(human2bytes(str(options.maxMemory)))
     config.attrib["max_disk"] = str(human2bytes(str(options.maxDisk)))
     config.attrib["scale"] = str(float(options.scale))
+    config.attrib["clean"] = options.clean
     if options.bigBatchSystem is not None:
         config.attrib["big_batch_system"] = options.bigBatchSystem
         config.attrib["big_memory_threshold"] = str(int(options.bigMemoryThreshold))
         config.attrib["big_cpu_threshold"] = str(int(options.bigCpuThreshold))
         config.attrib["big_max_cpus"] = str(int(options.bigMaxCpus))
         config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
-    if options.stats:
-        config.attrib["stats"] = ""
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
     if options.sseKey:
         config.attrib["sse_key"] = options.sseKey
         with open(options.sseKey) as f:
             assert(len(f.readline()) == 32)
+    if options.stats:
+        config.attrib["stats"] = ""
+        if config.attrib["clean"] is None:
+            # clean hasn't been set explicitly and we are using stats, so we set to the appropriate default
+            config.attrib["clean"]="never"
+        elif config.attrib["clean"]!='never':
+            # clean has been set to a value that contradicts the --stats option
+            raise RuntimeError("Contradicting options passed: Clean flag is set to %s despite the stats flag requiring "
+                               "the jobStore to be intact at the end of the run. Set clean to \'never\'"
+                               % config.attrib["clean"])
+    else:
+        if config.attrib["clean"] is None:
+            config.attrib["clean"] = "onSuccess"
     return config
 
 
