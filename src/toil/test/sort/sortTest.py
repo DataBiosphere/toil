@@ -15,7 +15,7 @@ from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test.sort.sort import setup
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws, needs_mesos
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 
 log = logging.getLogger(__name__)
@@ -107,13 +107,15 @@ class SortTest(ToilTest, MesosTestSupport):
             with open(tempSortFile, 'r') as fileHandle:
                 l2 = fileHandle.readlines()
                 checkEqual(l, l2)
-
+    @needs_aws
     def testToilSortOnAWS(self):
         """Tests scriptTree/toil by sorting a file in parallel.
         """
         self.toilSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                           lines=100, N=100)
 
+    @needs_aws
+    @needs_mesos
     def testScriptTree_SortSimpleOnAWSWithMesos(self):
         self._startMesos()
         try:

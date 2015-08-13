@@ -1,8 +1,5 @@
-# 4-13-15
-# John Vivian
-
 """
-'Hello World' script for Toil
+A simple user script for Toil
 """
 
 from optparse import OptionParser
