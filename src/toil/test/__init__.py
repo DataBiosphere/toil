@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 import logging
 import os
 import shlex
@@ -45,7 +46,38 @@ class ToilTest(unittest.TestCase):
         super(ToilTest, self).tearDown()
         log.info("Tearing down down %s", self.id())
 
-    def _getTestJobStorePath( self ):
-        return os.path.join( tempfile.gettempdir( ), str( uuid.uuid4( ) ) )
+    def _getTestJobStorePath(self):
+        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
 
 
+def needs_aws(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if AWS usable.
+    """
+    try:
+        # noinspection PyUnresolvedReferences
+        import boto
+    except ImportError:
+        return unittest.skip("Skipping test. Install and configure Boto to include this test.")(test_item)
+    except:
+        raise
+    else:
+        if os.path.exists(os.path.expanduser('~/.boto')):
+            return test_item
+        else:
+            return unittest.skip("Skipping test. Create ~/.boto to include this test.")(test_item)
+
+
+def needs_mesos(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if the Mesos is installed and configured.
+    """
+    try:
+        # noinspection PyUnresolvedReferences
+        import mesos.native
+    except ImportError:
+        return unittest.skip("Skipping test. Install Mesos to include this test.")(test_item)
+    except:
+        raise
+    else:
+        return test_item
