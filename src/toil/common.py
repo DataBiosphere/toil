@@ -279,7 +279,7 @@ def createConfig(options):
     if options.sseKey:
         config.attrib["sse_key"] = options.sseKey
         with open(options.sseKey) as f:
-            assert(len(f.readline()) == 32)
+            assert(len(f.readline().rstrip()) == 32)
     if options.stats:
         config.attrib["stats"] = ""
         if config.attrib["clean"] is None:

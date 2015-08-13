@@ -113,7 +113,7 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).__init__(config=config)
         if 'sse_key' in self.config.attrib:
             with open(self.config.attrib["sse_key"]) as f:
-                self.sseKey = f.readline()
+                self.sseKey = f.readline().rstrip()
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
