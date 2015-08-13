@@ -27,6 +27,7 @@ import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 
+from bd2k.util.humanize import human2bytes
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -73,25 +74,53 @@ def toilPackageDirPath():
 
 
 def _addOptions(addGroupFn, defaultStr):
+    #
+    #Core options
+    #
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
     location of the toil and turn on stats collation about the performance of jobs.")
+    #TODO - specify how this works when path is AWS
     addOptionFn("--toil", dest="toil", default="./toil",
                       help=("Store in which to place job management files \
                       and the global accessed temporary files"
-                            "(If this is a file path this needs to be globally accessible by all machines running jobs).\n"
-                            "If you pass an existing directory it will check if it's a valid existing "
-                            "jobtree, then try and restart the jobs in it. The default=%s" % defaultStr))
+                            "(If this is a file path this needs to be globally accessible "
+                            "by all machines running jobs).\n"
+                            "If the store already exists and restart is false an"
+                            " ExistingJobStoreException exception will be thrown."
+                            " The default=%s" % defaultStr))
+    #TODO - specify what the default is (is it the value of the TMPDIR variable) / specify what happens when this is not set
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
                      "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
+
+    addOptionFn("--sseKey", dest="sseKey", default=None,
+            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
+                 "not be used if this flag is not passed.")
+
     addOptionFn("--stats", dest="stats", action="store_true", default=False,
                       help="Records statistics about the job-tree to be used by toilStats. default=%s" % defaultStr)
 
+    #
+    #Restarting the workflow options
+    #
+    addOptionFn = addGroupFn("toil options for restarting an existing workflow",
+                             "Allows the restart of an existing workflow")
+    addOptionFn("--restart", dest="restart", default=False, action="store_true",
+                help="If --restart is specified then will attempt to restart existing workflow " 
+                "at the location pointed to by the --toil option. Will raise an exception if the workflow does not exist")
+    addOptionFn("--useExistingOptions", dest="useExistingOptions", default=False, action="store_true",
+                help="If restarting an existing workflow this option will use the options used during "
+                "the previous run. Other options specified will be ignored (e.g. logging, batch system, etc.).")
+    
+    #
+    #Batch system options
+    #
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default="singleMachine", #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf/mesos/badmesos'. default=%s" % defaultStr))
+    #TODO - what the fuck is this?
     addOptionFn("--scale", dest="scale", default=1,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
                       "Used in singleMachine batch system. default=%s" % defaultStr))
@@ -100,15 +129,21 @@ def _addOptions(addGroupFn, defaultStr):
     addOptionFn("--parasolCommand", dest="parasolCommand", default="parasol",
                       help="The command to run the parasol program default=%s" % defaultStr)
 
+    #
+    #Resource requirements
+    #
     addOptionFn = addGroupFn("toil options for cpu/memory requirements",
                              "The options to specify default cpu/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cpu requested from the batch system.")
+    #TODO - allow memory to be specified in other units, e.g. megabytes, gigabytes, etc.
     addOptionFn("--defaultMemory", dest="defaultMemory", default=2147483648,
                       help=("The default amount of memory to request for a job (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % defaultStr))
+    #TODO - change "Cpus" to "cores" through out.
     addOptionFn("--defaultCpu", dest="defaultCpu", default=1,
                       help="The number of cpus to dedicate a job. default=%s" % defaultStr)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=2147483648,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % defaultStr)
+    #TODO - change "Cpus" to "cores" through out.
     addOptionFn("--maxCpus", dest="maxCpus", default=sys.maxint,
                       help=("The maximum number of cpus to request from the batch system at any "
                             "one time. default=%s" % defaultStr))
@@ -119,6 +154,9 @@ def _addOptions(addGroupFn, defaultStr):
                       help=("The maximum amount of disk space to request from the batch \
                       system at any one time. default=%s" % defaultStr))
 
+    #
+    #Retrying/rescuing jobs
+    #
     addOptionFn = addGroupFn("toil options for rescuing/killing/restarting jobs", \
             "The options for jobs that either run too long/fail or get lost \
             (some batch systems have issues!)")
@@ -138,6 +176,8 @@ def _addOptions(addGroupFn, defaultStr):
                             "information from the jobStore upon completion so the jobStore will never be deleted with"
                             "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
                             "Default is never if stats collection is enabled, and onSuccess otherwise"))
+
+    #TODO - remove this crap
     addOptionFn = addGroupFn("toil big batch system options",
                              "toil can employ a secondary batch system for running large memory/cpu jobs using the following arguments:")
     addOptionFn("--bigBatchSystem", dest="bigBatchSystem", default=None, #detectQueueSystem(),
@@ -154,18 +194,14 @@ def _addOptions(addGroupFn, defaultStr):
                       help=("The maximum amount of memory to request from the big batch system at any one time. "
                       "default=%s" % defaultStr))
 
+    #
+    #Misc options
+    #
     addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
-    addOptionFn("--jobTime", dest="jobTime", default=30,
-                      help=("The approximate time (in seconds) that you'd like a list of child "
-                            "jobs to be run serially before being parallelized. "
-                            "This parameter allows one to avoid over parallelizing tiny jobs, and "
-                            "therefore paying significant scheduling overhead, by running tiny "
-                            "jobs in series on a single node/core of the cluster. default=%s" % defaultStr))
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=50120,
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % defaultStr))
-
 
 def addOptions(parser):
     """
@@ -217,19 +253,19 @@ def createConfig(options):
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
     config.attrib["master_ip"] = options.masterIP
+    # FIXME: It could start with file:.
     config.attrib["job_store"] = os.path.abspath(options.toil) if options.toil.startswith('.') else options.toil
     config.attrib["parasol_command"] = options.parasolCommand
     config.attrib["try_count"] = str(int(options.retryCount) + 1)
     config.attrib["max_job_duration"] = str(float(options.maxJobDuration))
     config.attrib["batch_system"] = options.batchSystem
-    config.attrib["job_time"] = str(float(options.jobTime))
-    config.attrib["max_log_file_size"] = str(int(options.maxLogFileSize))
-    config.attrib["default_memory"] = str(int(options.defaultMemory))
+    config.attrib["max_log_file_size"] = str(human2bytes(str(options.maxLogFileSize)))
+    config.attrib["default_memory"] = str(human2bytes(str(options.defaultMemory)))
     config.attrib["default_cpu"] = str(int(options.defaultCpu))
-    config.attrib["default_disk"] = str(int(options.defaultDisk))
+    config.attrib["default_disk"] = str(human2bytes(str(options.defaultDisk)))
     config.attrib["max_cpus"] = str(int(options.maxCpus))
-    config.attrib["max_memory"] = str(int(options.maxMemory))
-    config.attrib["max_disk"] = str(int(options.maxDisk))
+    config.attrib["max_memory"] = str(human2bytes(str(options.maxMemory)))
+    config.attrib["max_disk"] = str(human2bytes(str(options.maxDisk)))
     config.attrib["scale"] = str(float(options.scale))
     config.attrib["clean"] = options.clean
     if options.bigBatchSystem is not None:
@@ -240,6 +276,10 @@ def createConfig(options):
         config.attrib["big_max_memory"] = str(int(options.bigMaxMemory))
     if options.workDir:
         config.attrib["work_dir"] = options.workDir
+    if options.sseKey:
+        config.attrib["sse_key"] = options.sseKey
+        with open(options.sseKey) as f:
+            assert(len(f.readline()) == 32)
     if options.stats:
         config.attrib["stats"] = ""
         if config.attrib["clean"] is None:
@@ -351,12 +391,13 @@ def addBatchSystemConfigOptions(config, batchSystemClass, options):
         else options.rescueJobsFrequency))
 
 
-def loadJobStore( jobStoreString, config=None ):
+def loadJobStore( jobStoreString, config=None, create=False ):
     """
     Loads a jobStore.
 
     :param jobStoreString: see exception message below
     :param config: see AbstractJobStore.__init__
+    :param create: Should be True if the jobStore is to be created, else False.
     :return: an instance of a concrete subclass of AbstractJobStore
     :rtype : jobStores.abstractJobStore.AbstractJobStore
     """
@@ -374,12 +415,11 @@ def loadJobStore( jobStoreString, config=None ):
 
     if jobStoreName == 'file':
         from toil.jobStores.fileJobStore import FileJobStore
-
-        return FileJobStore( jobStoreArgs, config=config )
+        return FileJobStore( jobStoreArgs, config=config, create=create )
     elif jobStoreName == 'aws':
         from toil.jobStores.awsJobStore import AWSJobStore
         region, namePrefix = jobStoreArgs.split( ':', 1 )
-        return AWSJobStore( region, namePrefix, config=config )
+        return AWSJobStore( region, namePrefix, config=config, create=create )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 
@@ -395,22 +435,34 @@ def serialiseEnvironment(jobStore):
 
 
 @contextmanager
-def setupToil(options, userScript=None):
+def setupToil(options, userScript=None, create=False):
     """
     Creates the data-structures needed for running a toil.
 
     :type userScript: toil.resource.ModuleDescriptor
+    :param create: If create is True the workflow will be created for the first time
+    else it will be reloaded
     """
-    verifyToilOptions(options)
-    config = createConfig(options)
-    batchSystemClass, kwargs = loadBatchSystemClass(config)
-    addBatchSystemConfigOptions(config, batchSystemClass, options)
-    jobStore = loadJobStore(config.attrib["job_store"], config=config)
+    if create == True or options.useExistingOptions:
+        #Creating the config object
+        verifyToilOptions(options)
+        config = createConfig(options)
+        batchSystemClass, kwargs = loadBatchSystemClass(config)
+        addBatchSystemConfigOptions(config, batchSystemClass, options)
+        #Load the jobStore
+        jobStore = loadJobStore(config.attrib["job_store"], config=config, create=create)
+    else:
+        #Reload the workflow
+        jobStore = loadJobStore(options.toil, create=False)
+        config = jobStore.config
+        batchSystemClass, kwargs = loadBatchSystemClass(config)
+    
     if (userScript is not None
         and not userScript.belongsToToil
         and batchSystemClass.supportsHotDeployment()):
         kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
         # TODO: toil distribution
+
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:
         serialiseEnvironment(jobStore)

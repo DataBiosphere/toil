@@ -13,18 +13,18 @@ class JobWrapperTest(ToilTest):
     
     def setUp(self):
         super( JobWrapperTest, self ).setUp( )
-        self.testToil = os.path.join(os.getcwd(), "testJobDir")
+        self.jobStorePath = self._getTestJobStorePath()
         parser = OptionParser()
         Job.Runner.addToilOptions(parser)
         options, args = parser.parse_args()
-        options.toil = self.testToil
-        self.contextManager = setupToil(options)
-        config, batchSystem, jobStore = self.contextManager.__enter__()
-        self.jobStore = jobStore
-        
+        options.toil = self.jobStorePath
+        self.contextManager = setupToil(options,create=True)
+        config, batchSystem, self.jobStore = self.contextManager.__enter__()
+
     def tearDown(self):
         self.contextManager.__exit__(None, None, None)
-        system("rm -rf %s" % self.testToil)
+        self.jobStore.deleteJobStore()
+        self.assertFalse(os.path.exists(self.jobStorePath))
         super( JobWrapperTest, self ).tearDown( )
     
     def testJob(self):       

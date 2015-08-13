@@ -19,7 +19,6 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
-from collections import namedtuple
 import os
 import sys
 import importlib
@@ -30,6 +29,7 @@ import tempfile
 import uuid
 import time
 from toil.resource import ModuleDescriptor
+from bd2k.util.humanize import human2bytes
 
 try:
     import cPickle 
@@ -43,6 +43,10 @@ from toil.lib.bioio import (setLoggingFromOptions,
                                getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from toil.common import setupToil, addOptions
 from toil.leader import mainLoop
+
+class JobException( Exception ):
+    def __init__( self, message ):
+        super( JobException, self ).__init__( message )
 
 class Job(object):
     """
@@ -59,9 +63,12 @@ class Job(object):
         Memory is the maximum number of bytes of memory the job will
         require to run. Cpu is the number of cores required. 
         """
-        self.memory = memory
         self.cpu = cpu
-        self.disk = disk
+        # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1
+        # larger than sys.maxint. We later assume that any value here not equal to sys.maxint must be the user's value
+        # so it is passed to the batch system, which cannot allocate that many resources.
+        self.memory = human2bytes(str(memory)) if memory!=sys.maxint else sys.maxint
+        self.disk = human2bytes(str(disk)) if disk!=sys.maxint else sys.maxint
         #Private class variables
         
         #See Job.addChild
@@ -336,19 +343,19 @@ class Job(object):
         @staticmethod
         def startToil(job, options):
             """
-            Runs the toil using the given options (see Job.Runner.getDefaultOptions
-            and Job.Runner.addToilOptions) starting with this job.
-            
-            Raises an exception if the given toil already exists.
+            Runs the toil workflow using the given options 
+            (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) 
+            starting with this job.
             """
             setLoggingFromOptions(options)
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
-                jobStore.clean()
-                if "rootJob" not in config.attrib: #No jobs have yet been run
-                    # Setup the first job.
-                    rootJob = job._serialiseFirstJob(jobStore)
+            with setupToil(options, userScript=job.getUserScript(), 
+                           create=not options.restart) as (config, batchSystem, jobStore):
+                if options.restart:
+                    jobStore.clean() #This cleans up any half written jobs after a restart
+                    rootJob = job._loadRootJob(jobStore)
                 else:
-                    rootJob = jobStore.load(config.attrib["rootJob"])
+                    #Setup the first wrapper.
+                    rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
         
         @staticmethod
@@ -637,13 +644,23 @@ class Job(object):
         jobClassName = self.__class__.__name__
         command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
         jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
-        #Set the config rootJob attrib
-        assert "rootJob" not in jobStore.config.attrib
-        jobStore.config.attrib["rootJob"] = jobWrapper.jobStoreID
-        with jobStore.writeSharedFileStream("config.xml") as f:
-            ET.ElementTree( jobStore.config ).write(f)
-        #Return the first job
+        #Store the name of the first job in a file in case of restart
+        with jobStore.writeSharedFileStream("rootJobStoreID") as f:
+            f.write(jobWrapper.jobStoreID)
+        #Return the first job wrapper
         return jobWrapper
+
+    @staticmethod      
+    def _loadRootJob(jobStore):
+        """
+        Loads the root job.
+        :throws JobException: If root job is not in the job store. 
+        """
+        with jobStore.readSharedFileStream("rootJobStoreID") as f: #Load the root job
+            rootJobID = f.read()
+        if not jobStore.exists(rootJobID):
+            raise JobException("No root job (%s) left in toil workflow (workflow has finished successfully?)" % rootJobID)
+        return jobStore.load(rootJobID)
 
     ####################################################
     #Functions to pass Job.run return values to the

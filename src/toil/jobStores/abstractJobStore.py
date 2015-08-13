@@ -16,6 +16,10 @@ class NoSuchFileException( Exception ):
     def __init__( self, fileJobStoreID ):
         super( NoSuchFileException, self ).__init__( "The file '%s' does not exist" % fileJobStoreID )
 
+class JobStoreCreationException( Exception ):
+    def __init__( self, message ):
+        super( JobStoreCreationException, self ).__init__( message )
+
 class AbstractJobStore( object ):
     """ 
     Represents the physical storage for the jobs and associated files in a toil.
@@ -24,25 +28,45 @@ class AbstractJobStore( object ):
 
     def __init__( self, config=None ):
         """
-        FIXME: describe purpose and post-condition
-
         :param config: If config is not None then the
         given configuration object will be written to the shared file "config.xml" which can
         later be retrieved using the readSharedFileStream. If this file already exists
         it will be overwritten. If config is None, 
-        the shared file "config.xml" is assumed to exist and is retrieved. 
+        the shared file "config.xml" is assumed to exist and is retrieved.
         """
+        #Now get on with reading or writing the config
         if config is None:
-            with self.readSharedFileStream( "config.xml" ) as fileHandle:
+            with self.readSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
                 self.__config = ET.parse( fileHandle ).getroot( )
         else:
-            with self.writeSharedFileStream( "config.xml" ) as fileHandle:
+            with self.writeSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
                 ET.ElementTree( config ).write( fileHandle )
             self.__config = config
 
     @property
     def config( self ):
         return self.__config
+    
+    @staticmethod
+    def _checkJobStoreCreation(create, exists, jobStoreString):
+        """
+        Consistency checks which will result in exceptions if we attempt to overwrite an existing
+        jobStore.
+
+        :type create: boolean
+
+        :type exists: boolean
+
+        :raise JobStoreCreationException:  Thrown if create=True and exists=True or create=False
+                                           and exists=False
+        """
+        if create and exists:
+            raise JobStoreCreationException("The job store '%s' already exists. " 
+                               "Use --restart or toilRestart to resume this jobStore, "
+                               "else remove it to start from scratch" % jobStoreString)
+        if not create and not exists:
+            raise JobStoreCreationException("The job store '%s' does not exist, so there "
+                                "is nothing to restart." % jobStoreString)
     
     @abstractmethod
     def deleteJobStore( self ):
@@ -57,6 +81,7 @@ class AbstractJobStore( object ):
         """
         Function to cleanup the state of a jobStore after a restart.
         Fixes jobs that might have been partially updated.
+        Resets the try counts.
         """
         #Collate any jobs that were in the process of being created/deleted
         jobsToDelete = set()
@@ -64,7 +89,7 @@ class AbstractJobStore( object ):
             for updateID in job.jobsToDelete:
                 jobsToDelete.add(updateID)
             
-        #Delete the jobs that should be delete
+        #Delete the jobs that should be deleted
         if len(jobsToDelete) > 0:
             for job in self.jobs():
                 if job.updateID in jobsToDelete:
@@ -83,7 +108,7 @@ class AbstractJobStore( object ):
             #those jobs from the stack (this cleans up the case that the job
             #had successors to run, but had not been updated to reflect this)
             while len(job.stack) > 0:
-                jobs = [ command[0] for command in job.stack[-1] if self.exists(command[0]) ]
+                jobs = [ command for command in job.stack[-1] if self.exists(command[0]) ]
                 if len(jobs) < len(job.stack[-1]):
                     changed = True
                     if len(jobs) > 0:
@@ -93,6 +118,11 @@ class AbstractJobStore( object ):
                         job.stack.pop()
                 else:
                     break
+                          
+            #Reset the retry count of the job 
+            if job.remainingRetryCount < int(self.config.attrib["try_count"]):
+                job.remainingRetryCount = int(self.config.attrib["try_count"])
+                changed = True
                           
             #This cleans the old log file which may 
             #have been left if the job is being retried after a job failure.
@@ -295,7 +325,7 @@ class AbstractJobStore( object ):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream( self, sharedFileName ):
+    def writeSharedFileStream( self, sharedFileName, isProtected=True ):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.
@@ -310,7 +340,7 @@ class AbstractJobStore( object ):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream( self, sharedFileName ):
+    def readSharedFileStream( self, sharedFileName, isProtected=True ):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.

@@ -7,7 +7,7 @@ setup(
     author='Benedict Paten',
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
-    install_requires=[ ],
+    install_requires=['bd2k-python-lib>=1.7.dev1'],
     extras_require={
         'mesos': [
             'mesos.interface==0.22.0',

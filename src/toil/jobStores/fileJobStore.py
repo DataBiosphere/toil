@@ -20,14 +20,26 @@ class FileJobStore(AbstractJobStore):
     of functions see AbstractJobStore.
     """
 
-    def __init__(self, jobStoreDir, config=None):
+    def __init__(self, jobStoreDir, config=None, create=False):
+        """
+        :param jobStoreDir: Place to create jobStore
+        :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
+        :param create: If True create the jobStore. 
+        :type create: Boolean
+        :raise RuntimeError: if create=True and the jobStore already exists or
+        create=False and the jobStore does not already exist. 
+        """
         #This is root directory in which everything in the store is kept
         self.jobStoreDir = absSymPath(jobStoreDir)
         logger.info("Jobstore directory is: %s", self.jobStoreDir)
+        #Safety checks for existing jobStore
+        self._checkJobStoreCreation(create, os.path.exists(self.jobStoreDir), self.jobStoreDir)
+        #Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
-        if not os.path.exists(self.jobStoreDir):
+        #Creation of jobStore, if necessary
+        if create:
             os.mkdir(self.jobStoreDir)
-            os.mkdir(self.tempFilesDir)
+            os.mkdir(self.tempFilesDir)  
         #Parameters for creating temporary files
         self.validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
         self.levels = 2
@@ -178,13 +190,15 @@ class FileJobStore(AbstractJobStore):
     ##########################################  
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName):
+    def writeSharedFileStream(self, sharedFileName, isProtected=True):
+        # the isProtected parameter has no effect on the fileStore, but is needed on the awsJobStore
         assert self._validateSharedFileName( sharedFileName )
         with open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' ) as f:
             yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, isProtected=True):
+        # the isProtected parameter has no effect on the fileStore, but is needed on the awsJobStore
         assert self._validateSharedFileName( sharedFileName )
         with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
             yield f
@@ -254,7 +268,7 @@ class FileJobStore(AbstractJobStore):
         Raises a NoSuchJobException if the jobStoreID does not exist.
         """
         if not self.exists(jobStoreID):
-            raise NoSuchJobException("JobStoreID %s does not exist" % jobStoreID)
+            raise NoSuchJobException(jobStoreID)
     
     def _checkJobStoreFileID(self, jobStoreFileID):
         """

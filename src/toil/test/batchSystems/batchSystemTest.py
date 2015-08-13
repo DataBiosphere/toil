@@ -8,11 +8,10 @@ import time
 import multiprocessing
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_mesos
 
 log = logging.getLogger(__name__)
 
@@ -132,7 +131,6 @@ class hidden:
             config.attrib["try_count"] = str(2)
             config.attrib["max_job_duration"] = str(1)
             config.attrib["batch_system"] = None
-            config.attrib["job_time"] = str(1)
             config.attrib["max_log_file_size"] = str(1)
             config.attrib["default_memory"] = str(1)
             config.attrib["default_cpu"] = str(1)
@@ -158,13 +156,14 @@ class hidden:
         def tearDownClass(cls):
             shutil.rmtree(cls.tempDir)
 
-
+@needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
     Tests against the Mesos batch system
     """
 
     def createBatchSystem(self):
+        from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
         return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, maxDisk=1001,masterIP='127.0.0.1:5050')
 

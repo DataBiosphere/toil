@@ -1,15 +1,37 @@
 python=/usr/bin/env python2.7
 pip=/usr/bin/env pip2.7
 
-all: sdist develop
+define help
+
+Supported targets: 'develop', 'sdist', 'clean', 'test' or 'pypi'.
+
+The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to ensure that develop
+mode installs support for extras. Consult setup.py for a list of supported extras. For example, to install Mesos and
+AWS support run
+
+make develop extras=[mesos,aws]
+
+The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not implemented yet).
+
+The 'clean' target undoes the effect of 'develop' and 'sdist'.
+
+The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
+
+make test tests=toil.test.src.jobTest.JobTest
+
+The 'pypi' target deploys the current commit of Toil to PyPI after enforcing that the working copy and the index are
+clean.
+
+endef
+
+export help
+
+all:
+	@echo "$$help"
 
 clean: _develop _sdist
 
-# Override this on the command line if you don't want to use any of these extras. Note that doing
-# so will currently cause some unit tests to fail because they don't intelligently detect which
-# extras were requested.
-#
-extras=[aws,mesos]
+extras=
 
 # Inside a virtualenv, we can't use pip with --user (http://stackoverflow.com/questions/1871549).
 #
@@ -20,6 +42,7 @@ develop:
 
 _develop:
 	- $(pip) uninstall -y toil
+	- rm -rf src/*.egg-info
 
 sdist:
 	$(python) setup.py sdist
@@ -27,15 +50,11 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-# Override this on the command line to run a particular test, e.g.
-#
-# make test tests=toil.test.src.jobTest.JobTest
-#
 tests=discover -s src -p "*Test.py"
 testLength=SHORT
 testLogLevel=INFO
 
-test: develop
+test:
 	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) -m unittest $(tests)
 
 # Override this to the empty string if you want to deploy a potentially dirty working copy to PyPI

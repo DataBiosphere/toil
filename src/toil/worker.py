@@ -143,6 +143,8 @@ def main():
     setLogLevel(config.attrib["log_level"])
 
     tempRootDir = config.attrib.get('work_dir')
+    if tempRootDir is not None and not os.path.exists(tempRootDir):
+        raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
 
     ##########################################
     #Setup the temporary directories.
@@ -286,11 +288,6 @@ def main():
             #Establish if we can run another job within the worker
             ##########################################
             
-            #Exceeded the amount of time the worker is allowed to run for so quit
-            if time.time() - startTime > float(config.attrib["job_time"]):
-                logger.debug("We are breaking because the maximum time the job should run for has been exceeded")
-                break
-
             #No more jobs to run so quit
             if len(job.stack) == 0:
                 break
