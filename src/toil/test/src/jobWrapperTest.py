@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import
 import unittest
 import os
 from toil.lib.bioio import system

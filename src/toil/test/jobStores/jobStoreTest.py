@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
