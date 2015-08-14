@@ -22,4 +22,5 @@ setup(
             'toilStatus = toil.utils.toilStatus:main',
             'toilStats = toil.utils.toilStats:main',
             'toilRestarts = toil.utils.toilRestarts:main',
-            'multijob = toil.batchSystems.multijob:main' ] } )
+            'multijob = toil.batchSystems.multijob:main',
+            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]'] } )
