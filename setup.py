@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='toil',
-    version='3.0.3.dev6',
+    version='3.0.4',
     description='Pipeline management software for clusters.',
     author='Benedict Paten',
     author_email='benedict@soe.usc.edu',
