@@ -19,6 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+from __future__ import absolute_import
 import logging
 import multiprocessing
 import os
@@ -171,7 +172,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 value = self.cpuSemaphore._Semaphore__value
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
-        logger.info('Exiting worker thread normally.')
+        logger.debug('Exiting worker thread normally.')
 
     # FIXME: Remove or fix badWorker to be compliant with new thread management.
 

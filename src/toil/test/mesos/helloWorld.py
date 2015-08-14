@@ -1,10 +1,8 @@
-# 4-13-15
-# John Vivian
-
 """
-'Hello World' script for Toil
+A simple user script for Toil
 """
 
+from __future__ import absolute_import
 from optparse import OptionParser
 import os
 from toil.job import Job

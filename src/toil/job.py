@@ -19,6 +19,7 @@
 #LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
+from __future__ import absolute_import
 import os
 import sys
 import importlib
@@ -358,14 +359,6 @@ class Job(object):
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
         
-        @staticmethod
-        def cleanup(options):
-            """
-            Removes the jobStore backing the toil.
-            """
-            with setupToil(options) as (config, batchSystem, jobStore):
-                jobStore.deleteJobStore()
-            
     class FileStore:
         """
         Class used to manage temporary files and log messages, 

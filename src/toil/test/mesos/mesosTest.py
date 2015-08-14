@@ -1,19 +1,19 @@
+from __future__ import absolute_import
 import tempfile
 import shutil
 import os
 import subprocess
 import threading
-import unittest
-from time import sleep
 
 from toil.lib.bioio import getLogLevelString
 from toil.test.mesos.stress import main as stressMain
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_mesos
 from toil.batchSystems.mesos.test import MesosTestSupport
 
 lock = threading.Lock()
 numCores = 2
 
+@needs_mesos
 class MesosTest( ToilTest, MesosTestSupport ):
 
     @classmethod
@@ -56,4 +56,3 @@ class MesosTest( ToilTest, MesosTestSupport ):
         # the second argument is the number of jobs. BadExecutor fails odd tasks, so certain numbers of tasks
         # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
-

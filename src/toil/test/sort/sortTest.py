@@ -2,6 +2,7 @@
 """Tests the scriptTree toil-script compiler.
 """
 
+from __future__ import absolute_import
 import unittest
 import os
 import random
@@ -10,12 +11,12 @@ import logging
 import shutil
 import tempfile
 
-from toil.job import Job, JobException
+from toil.job import Job
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test.sort.sort import setup
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws, needs_mesos
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 
 log = logging.getLogger(__name__)
@@ -99,8 +100,8 @@ class SortTest(ToilTest, MesosTestSupport):
             try:
                 Job.Runner.startToil(firstJob, options)
                 self.fail()
-            except JobException:
-                pass
+            except JobStoreCreationException as e:
+                self.assertTrue(e.message.endswith('there is nothing to restart.'))
 
             # Now check the file is properly sorted..
             # Now get the sorted file
@@ -108,12 +109,15 @@ class SortTest(ToilTest, MesosTestSupport):
                 l2 = fileHandle.readlines()
                 checkEqual(l, l2)
 
+    @needs_aws
     def testToilSortOnAWS(self):
         """Tests scriptTree/toil by sorting a file in parallel.
         """
         self.toilSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                           lines=100, N=100)
 
+    @needs_aws
+    @needs_mesos
     def testScriptTree_SortSimpleOnAWSWithMesos(self):
         self._startMesos()
         try:
@@ -126,7 +130,8 @@ class SortTest(ToilTest, MesosTestSupport):
             self._stopMesos()
 
     def testToilSort(self):
-        """Tests scriptTree/toil by sorting a file in parallel.
+        """
+        Tests scriptTree/toil by sorting a file in parallel.
         """
         self.toilSortTest()
 

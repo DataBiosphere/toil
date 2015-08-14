@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from collections import namedtuple
 
 TaskData = namedtuple('TaskData', (
@@ -27,4 +28,3 @@ ToilJob = namedtuple('ToilJob', (
     'userScript',
     # The resource object representing the toil source tarball
     'toilDistribution'))
-

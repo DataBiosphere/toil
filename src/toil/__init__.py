@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 use_multiprocessing = True
 
 if use_multiprocessing:

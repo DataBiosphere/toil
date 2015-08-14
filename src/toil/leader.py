@@ -23,6 +23,7 @@
 """
 The leader script (of the leader/worker pair) for running jobs.
 """
+from __future__ import absolute_import
 import logging
 import sys
 import os.path
@@ -492,5 +493,8 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         stopStatsAndLoggingAggregatorProcess.put(True)
         worker.join()
         logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
+        clean = config.attrib["clean"]
+        if clean=="always" or clean == "onError" and totalFailedJobs>0 or clean == "onSuccess" and totalFailedJobs==0:
+            jobStore.deleteJobStore()
 
     return totalFailedJobs #Returns number of failed jobs

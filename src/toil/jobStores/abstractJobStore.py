@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 import re

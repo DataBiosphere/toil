@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
@@ -11,9 +12,8 @@ from xml.etree.cElementTree import Element
 import shutil
 
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
-from toil.jobStores.awsJobStore import AWSJobStore
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws, needs_mesos
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +247,22 @@ class hidden:
 
             # TODO: Test stats methods
 
+        def testFileDeletion( self ):
+            """
+            Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt running it on the
+            other job stores.
+            """
+            job = self.master.create( "1", 2, 3, 4, 0)
+            file_list = []
+            # FIXME: tie 30 to batch limit in AWSJobStore
+            for file in xrange(0,30):
+                 file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
+            self.master.delete(job.jobStoreID)
+            for file in file_list:
+                self.assertRaises(NoSuchFileException, self.master.readFileStream(file).__enter__)
+
+        partSize = 5 * 1024 * 1024
+
         def testMultipartUploads(self):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
@@ -256,8 +272,7 @@ class hidden:
             random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
-            partSize = AWSJobStore._s3_part_size
-            self.assertEquals(partSize % bufSize, 0)
+            self.assertEquals(self.partSize % bufSize, 0)
             job = self.master.create("1", 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
@@ -282,7 +297,7 @@ class hidden:
                 try:
                     with open(random_device) as readable:
                         with self.master.writeFileStream(job.jobStoreID) as (writable, fileId):
-                            for i in range(int(partSize * partsPerFile / bufSize)):
+                            for i in range(int(self.partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 checksumQueue.put(buf)
                                 writable.write(buf)
@@ -310,7 +325,7 @@ class hidden:
                 try:
                     with os.fdopen(fh, 'r+') as writable:
                         with open(random_device) as readable:
-                            for i in range(int(partSize * partsPerFile / bufSize)):
+                            for i in range(int(self.partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
                                 checksum.update(buf)
@@ -375,17 +390,18 @@ class hidden:
             config.attrib["sse_key"] = sseKeyFile
             return config
 
-
 class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None, create=False):
         return FileJobStore(self.namePrefix, config=config, create=create)
 
 
+@needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = "us-west-2"
 
     def _createJobStore(self, config=None, create=False):
-        AWSJobStore._s3_part_size = 5 * 1024 * 1024
+        from toil.jobStores.awsJobStore import AWSJobStore
+        AWSJobStore._s3_part_size = self.partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config, create=create)
 
 
@@ -393,5 +409,6 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobSto
     pass
 
 
+@needs_aws
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
