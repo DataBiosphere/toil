@@ -22,6 +22,7 @@
 
 """Reports the state of your given toil.
 """
+from __future__ import absolute_import
 import logging
 
 import sys

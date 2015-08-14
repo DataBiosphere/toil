@@ -2,6 +2,7 @@
 """Tests the scriptTree toil-script compiler.
 """
 
+from __future__ import absolute_import
 import unittest
 import os
 import random

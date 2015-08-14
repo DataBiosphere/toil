@@ -2,6 +2,7 @@
 
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
+from __future__ import absolute_import
 from optparse import OptionParser
 import os
 import random

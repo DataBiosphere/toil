@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 import tempfile
 import shutil
 import os
@@ -55,4 +56,3 @@ class MesosTest( ToilTest, MesosTestSupport ):
         # the second argument is the number of jobs. BadExecutor fails odd tasks, so certain numbers of tasks
         # may never finish because of the "Despite" bug/feature
         self.__do_test_stress( True, 2 )
-

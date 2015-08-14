@@ -23,6 +23,7 @@
 """A script to setup and run a hierarchical run of cluster jobs.
 """
 
+from __future__ import absolute_import
 import sys
 from optparse import OptionParser
 

@@ -23,6 +23,7 @@
 """
 The leader script (of the leader/worker pair) for running jobs.
 """
+from __future__ import absolute_import
 import logging
 import sys
 import os.path

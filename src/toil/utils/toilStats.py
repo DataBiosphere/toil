@@ -22,6 +22,7 @@
 
 """ Reports the state of your given jobtree.
 """
+from __future__ import absolute_import
 import logging
 import sys
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
