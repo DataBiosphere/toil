@@ -41,7 +41,11 @@ extras=
 #
 __user=$(shell python -c 'import sys; print "" if hasattr(sys, "real_prefix") else "--user"')
 
-develop:
+check_user_base_on_path:
+	@echo "\033[0;32mChecking if Python's user-specific bin directory is on the PATH ...\033[0m"
+	@test -z "$(__user)" || python -c 'import site,sys,os;sys.exit(0 if os.path.join(site.USER_BASE,"bin") in os.environ["PATH"] else 1)'
+
+develop: check_user_base_on_path
 	$(pip) install $(__user) -e .$(extras)
 
 _develop:
