@@ -200,8 +200,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             executorInfo.command.value = scriptPath(BadMesosExecutor)
             executorInfo.executor_id.value = "badExecutor"
         else:
-            # Installed via a setup.py entry point
-            executorInfo.command.value = "mesos-toil-executor"
+            # The production executor is installed via a setup.py entry point.
+            executorInfo.command.value = "toil-mesos-executor"
             executorInfo.executor_id.value = "toilExecutor"
         executorInfo.name = "Test Executor (Python)"
         executorInfo.source = "python_test"
