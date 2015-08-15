@@ -137,6 +137,7 @@ class Job(object):
         """
         jobService = ServiceJob(service)
         self._services.append(jobService)
+        jobService._addPredecessor(self)
         return jobService.rv()
     
     def addFollowOn(self, followOnJob):
@@ -274,7 +275,7 @@ class Job(object):
         """
         rootJobs = self.getRootJobs()
         if len(rootJobs) != 1:
-            raise JobGraphDeadlockException("Graph does not contain exactly one root jobs: %s" % rootJobs)
+            raise JobGraphDeadlockException("Graph does not contain exactly one root job: %s" % rootJobs)
     
     def checkJobGraphAcylic(self):
         """

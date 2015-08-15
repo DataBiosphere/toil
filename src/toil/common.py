@@ -28,7 +28,6 @@ import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 
-from bd2k.util.humanize import human2bytes
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -250,6 +249,7 @@ def createConfig(options):
     
     TODO: Make the config object a proper class
     """
+    from bd2k.util.humanize import human2bytes
     logger.info("Starting to create the toil setup for the first time")
     config = ET.Element("config")
     config.attrib["log_level"] = getLogLevelString()
