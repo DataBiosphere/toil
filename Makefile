@@ -78,7 +78,7 @@ check_running_on_jenkins:
 pypi: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
 	&& echo "Not on master branch, silently skipping deployment to PyPI." \
-	|| $(python) setup.py egg_info --tag-build=.build$$BUILD_NUMBER register sdist bdist_egg upload
+	|| $(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
