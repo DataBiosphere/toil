@@ -76,7 +76,11 @@ check_running_on_jenkins:
 	@test -n "$$BUILD_NUMBER" || ( echo "\033[0;31mThis target should only be invoked on Jenkins.\033[0m" ; false )
 
 pypi: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info --tag-build=dev$$BUILD_NUMBER register sdist bdist_egg upload
+	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
+	&& echo "Not on master branch, silently skipping deployment to PyPI." \
+	|| $(python) setup.py egg_info --tag-build=build$$BUILD_NUMBER register sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info register sdist bdist_egg upload
+	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
+	&& echo "Not on master branch, silently skipping deployment to PyPI." \
+	|| $(python) setup.py egg_info register sdist bdist_egg upload
