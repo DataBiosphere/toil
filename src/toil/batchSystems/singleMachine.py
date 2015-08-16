@@ -53,7 +53,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert self.maxMemory >= 1
         # The scale allows the user to apply a factor to each task's CPU requirement, thereby squeezing more tasks
         # onto each core (scale < 1) or stretching tasks over more cores (scale > 1).
-        self.scale = float(config.attrib['scale'])
+        self.scale = config.scale
         # The minimal fractional CPU. Tasks with a smaller CPU requirement will be rounded up to this value. One
         # important invariant of this class is that each worker thread represents a CPU requirement of minCpu,
         # meaning that we can never run more than numCores / minCpu jobs concurrently. With minCpu set to .1,

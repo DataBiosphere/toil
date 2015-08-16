@@ -7,7 +7,7 @@ import tempfile
 from xml.etree import ElementTree
 import time
 import multiprocessing
-
+from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -125,6 +125,8 @@ class hidden:
 
         @staticmethod
         def _createDummyConfig():
+            config = Config()
+            """
             config = ElementTree.Element("config")
             config.attrib["log_level"] = 'DEBUG'
             config.attrib["job_store"] = '.'
@@ -138,6 +140,7 @@ class hidden:
             config.attrib["max_cpus"] = str(1)
             config.attrib["max_memory"] = str(1)
             config.attrib["scale"] = str(1)
+            """
             return config
 
         def wait_for_jobs(self, numJobs=1, wait_for_completion=False):

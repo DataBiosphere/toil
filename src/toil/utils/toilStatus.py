@@ -68,20 +68,20 @@ def main():
     
     assert len(args) <= 1 #Only toil may be specified as argument
     if len(args) == 1: #Allow toil directory as arg
-        options.toil = args[0]
+        options.jobStore = args[0]
     
     ##########################################
     #Do some checks.
     ##########################################
     
     logger.info("Checking if we have files for toil")
-    assert options.toil != None
+    assert options.jobStore != None
     
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = loadJobStore(options.toil)
+    jobStore = loadJobStore(options.jobStore)
     try:
         rootJob = Job._loadRootJob(jobStore)
     except JobException:
@@ -95,9 +95,9 @@ def main():
                   if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, and \
-    %i totally failed jobs currently in toil: %s" % \
+    %i totally failed jobs currently in toil workflow: %s" % \
     (len(toilState.updatedJobs), len(toilState.successorCounts),
-     len(failedJobs), options.toil)
+     len(failedJobs), options.jobStore)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:

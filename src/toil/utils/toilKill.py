@@ -35,7 +35,7 @@ logger = logging.getLogger( __name__ )
 def main():
     parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [more options]", "%prog 0.1")
     
-    parser.add_option("--toil", dest="toil",
+    parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.")
     
     options, args = parseBasicOptions(parser)
@@ -46,13 +46,15 @@ def main():
     
     assert len(args) <= 1 #Only toil may be specified as argument
     if len(args) == 1: #Allow toil directory as arg
-        options.toil = args[0]
+        options.jobStore = args[0]
         
     logger.info("Parsed arguments")
-    assert options.toil != None #The toil should not be null
-    jobStore = loadJobStore(options.toil)
+    if options.jobStore == None:
+        parser.error("Specify --jobStore")
+
+    jobStore = loadJobStore(options.jobStore)
     
-    logger.info("Starting routine to kill running jobs in the toil: %s" % options.toil)
+    logger.info("Starting routine to kill running jobs in the toil workflow: %s" % options.jobStore)
     ####This behaviour is now broken
     batchSystem = loadBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.

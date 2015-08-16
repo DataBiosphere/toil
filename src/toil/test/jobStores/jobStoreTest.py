@@ -394,7 +394,6 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None, create=False):
         return FileJobStore(self.namePrefix, config=config, create=create)
 
-
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = "us-west-2"
@@ -404,10 +403,8 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         AWSJobStore._s3_part_size = self.partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config, create=create)
 
-
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
-
 
 @needs_aws
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):

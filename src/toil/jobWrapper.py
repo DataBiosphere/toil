@@ -75,8 +75,8 @@ class JobWrapper( object ):
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
-        if self.memory < float(config.attrib["default_memory"]):
-            self.memory = float(config.attrib["default_memory"])
+        if self.memory < config.defaultMemory:
+            self.memory = config.defaultMemory
             logger.warn("We have increased the default memory of the failed job to %s bytes",
                         self.memory)
 

@@ -141,9 +141,9 @@ def main():
             if e != '':
                 sys.path.append(e)
 
-    setLogLevel(config.attrib["log_level"])
+    setLogLevel(config.logLevel)
 
-    tempRootDir = config.attrib.get('work_dir')
+    tempRootDir = config.workDir
     if tempRootDir is not None and not os.path.exists(tempRootDir):
         raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
 
@@ -249,7 +249,7 @@ def main():
         #Setup the stats, if requested
         ##########################################
         
-        if config.attrib.has_key("stats"):
+        if config.stats:
             startTime = time.time()
             startClock = getTotalCpuTime()
             stats = ET.Element("worker")
