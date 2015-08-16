@@ -137,7 +137,6 @@ class Job(object):
         """
         jobService = ServiceJob(service)
         self._services.append(jobService)
-        jobService._addPredecessor(self)
         return jobService.rv()
     
     def addFollowOn(self, followOnJob):
@@ -856,6 +855,8 @@ class Job(object):
         #Run the job, first cleanup then run.
         fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir)
         returnValues = self.run(fileStore)
+        #Modify job graph to run any services correctly
+        self._modifyJobGraphForServices(fileStore)
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
@@ -863,8 +864,6 @@ class Job(object):
         self._setFileIDsForPromisedValues(jobStore, jobWrapper.jobStoreID, set())
         #Store the return values for any promised return value
         self._setReturnValuesForPromises(self, returnValues, jobStore)
-        #Modify job graph to run any services correctly
-        self._modifyJobGraphForServices(fileStore)
         #Turn the graph into a graph of jobs in the jobStore
         self._serialiseJobGraph(jobWrapper, jobStore)
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
