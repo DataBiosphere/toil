@@ -47,7 +47,7 @@ class DependenciesTest(ToilTest):
 
 
     # FIXME: test methods can't have parameters, AFAIK (Hannes)
-
+    @unittest.expectedFailure
     def testDependencies(self, batchSystem="singleMachine"):
         """
         Only done in singleMachine for now.  Experts can run manually on other systems if they so choose.

@@ -33,7 +33,7 @@ from toil.common import loadJobStore, loadBatchSystem
 logger = logging.getLogger( __name__ )
 
 def main():
-    parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [more options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobStore] JOB_TREE_DIR [more options]", "%prog 0.1")
     
     parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.")

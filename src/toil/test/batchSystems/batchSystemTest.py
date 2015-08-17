@@ -4,11 +4,9 @@ import logging
 import os
 import shutil
 import tempfile
-from xml.etree import ElementTree
 import time
 import multiprocessing
 from toil.common import Config
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources

@@ -145,7 +145,7 @@ def setLoggingFromOptions(options):
 
 def system(command):
     logger.debug("Running the command: %s" % command)
-    sts = subprocess.call(command, shell=True, bufsize=-1, stdout=sys.stdout, stderr=sys.stderr)
+    sts = subprocess.call(command, shell=True, bufsize=-1) #, stdout=sys.stdout, stderr=sys.stderr)
     if sts != 0:
         raise subprocess.CalledProcessError(sts, command)
     return sts

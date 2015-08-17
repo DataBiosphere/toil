@@ -44,9 +44,9 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
     
-    parser.add_option("--toil", dest="toil",
+    parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.\
                        default=%default", default='./toil')
     

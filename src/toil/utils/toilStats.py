@@ -95,7 +95,7 @@ def initializeOptions(parser):
     ##########################################
     # Construct the arguments.
     ##########################################
-    parser.add_option("--toil", dest="toil", default='./toil',
+    parser.add_option("--jobStore", dest="jobStore", default='./toil',
                       help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
@@ -733,7 +733,7 @@ def main():
     """
 
     parser = getBasicOptionParser(
-        "usage: %prog [--toil] JOB_TREE_DIR [options]", "%prog 0.1")
+        "usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
