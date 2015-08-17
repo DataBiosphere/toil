@@ -280,7 +280,9 @@ def createConfig(options):
     if options.sseKey:
         config.attrib["sse_key"] = options.sseKey
         with open(options.sseKey) as f:
-            assert(len(f.readline().rstrip()) == 32)
+            length = len(f.read())
+            if(length!=32):
+                raise RuntimeError("key file is %d bytes long, should be 32" % length)
     if options.stats:
         config.attrib["stats"] = ""
         if config.attrib["clean"] is None:
