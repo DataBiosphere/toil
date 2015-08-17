@@ -61,7 +61,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
         contentHash = hashlib.md5( )
         # noinspection PyProtectedMember
         with subcls._load( leaderPath ) as src:
-            with jobStore.writeSharedFileStream( pathHash ) as dst:
+            with jobStore.writeSharedFileStream( pathHash, isProtected=False) as dst:
                 userScript = src.read( )
                 contentHash.update( userScript )
                 dst.write( userScript )
