@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='toil',
-    version='3.0.3.dev6',
+    version='3.0.6a1',
     description='Pipeline management software for clusters.',
     author='Benedict Paten',
     author_email='benedict@soe.usc.edu',
@@ -22,4 +22,5 @@ setup(
             'toilStatus = toil.utils.toilStatus:main',
             'toilStats = toil.utils.toilStats:main',
             'toilRestarts = toil.utils.toilRestarts:main',
-            'multijob = toil.batchSystems.multijob:main' ] } )
+            'multijob = toil.batchSystems.multijob:main',
+            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]'] } )

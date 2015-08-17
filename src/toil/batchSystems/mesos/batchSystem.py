@@ -189,9 +189,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         Creates and returns an ExecutorInfo instance representing either the regular or the "bad" test executor.
         """
 
-        # FIXME: This isn't going to work since toil might be installed in a different location on the slaves.
-        # FIXME: ... setup.py should install the executor as an entry point which will place it on PATH
-
         def scriptPath(executorClass):
             path = sys.modules[executorClass.__module__].__file__
             if path.endswith('.pyc'):
@@ -203,7 +200,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             executorInfo.command.value = scriptPath(BadMesosExecutor)
             executorInfo.executor_id.value = "badExecutor"
         else:
-            executorInfo.command.value = scriptPath(MesosExecutor)
+            # The production executor is installed via a setup.py entry point.
+            executorInfo.command.value = "toil-mesos-executor"
             executorInfo.executor_id.value = "toilExecutor"
         executorInfo.name = "Test Executor (Python)"
         executorInfo.source = "python_test"

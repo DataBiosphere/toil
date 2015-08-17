@@ -149,7 +149,7 @@ class MesosExecutor(mesos.interface.Executor):
         log.debug("Received message from framework: {}".format(message))
 
 
-def main(executorClass):
+def main(executorClass=MesosExecutor):
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
     executor = executorClass()
@@ -160,4 +160,4 @@ def main(executorClass):
 
 
 if __name__ == "__main__":
-    main(MesosExecutor)
+    main()

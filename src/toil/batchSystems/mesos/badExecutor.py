@@ -21,22 +21,24 @@ import logging
 
 from toil.batchSystems.mesos.executor import MesosExecutor, main
 
+log = logging.getLogger(__name__)
 
-log = logging.getLogger( __name__ )
 
 class BadMesosExecutor(MesosExecutor):
-
     i = itertools.count()
+
+    # FIXME: The overridden method does not exist (#234)
 
     def _callCommand(self, command, taskID):
         if self.i.next() % 2 == 0:
-            result = super(BadMesosExecutor, self)._callCommand(command,taskID)
+            result = super(BadMesosExecutor, self)._callCommand(command, taskID)
             if result != 0:
-                log.debug("Command {} actually failed with {}".format(command,result))
+                log.debug("Command {} actually failed with {}".format(command, result))
             return result
         else:
             log.debug("Mimic failure of command: {}".format(command))
             return 1
 
+
 if __name__ == "__main__":
-    main( BadMesosExecutor )
+    main(executorClass=BadMesosExecutor)
