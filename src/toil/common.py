@@ -27,31 +27,13 @@ import cPickle
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, system, absSymPath
+from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.lsf import LSFBatchSystem
 
 logger = logging.getLogger( __name__ )
-
-def gridEngineIsInstalled():
-    """
-    Returns True if grid-engine is installed, else False.
-    """
-    try:
-        return system("qstat -help") == 0
-    except CalledProcessError:
-        return False
-
-def parasolIsInstalled():
-    """
-    Returns True if parasol is installed, else False.
-    """
-    try:
-        return system("parasol status") == 0
-    except CalledProcessError:
-        return False
 
 def toilPackageDirPath():
     """

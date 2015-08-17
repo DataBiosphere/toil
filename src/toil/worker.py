@@ -107,7 +107,7 @@ def main():
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.lib.bioio import getTempDirectory
-    from toil.lib.bioio import makeSubDir
+    from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
     from toil.common import loadJobStore
     
@@ -265,7 +265,7 @@ def main():
             if job.command != None:
                 if job.command[:11] == "scriptTree ":
                     #Make a temporary file directory for the job
-                    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a job command
                     messages = loadJob(job.command, jobStore)._execute( jobWrapper=job,

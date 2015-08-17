@@ -20,9 +20,6 @@ import subprocess
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
 
-# TODO: looks like this can be removed
-
-DEFAULT_DISTANCE = 0.001
 
 defaultLogLevel = logging.INFO
 
@@ -145,48 +142,10 @@ def setLoggingFromOptions(options):
 
 def system(command):
     logger.debug("Running the command: %s" % command)
-    sts = subprocess.call(command, shell=True, bufsize=-1, stdout=sys.stdout, stderr=sys.stderr)
+    sts = subprocess.call(command, shell=True, bufsize=-1) #, stdout=sys.stdout, stderr=sys.stderr)
     if sts != 0:
         raise subprocess.CalledProcessError(sts, command)
     return sts
-
-def popen(command, tempFile):
-    """Runs a command and captures standard out in the given temp file.
-    """
-    fileHandle = open(tempFile, 'w')
-    logger.debug("Running the command: %s" % command)
-    sts = subprocess.call(command, shell=True, stdout=fileHandle, stderr=sys.stderr, bufsize=-1)
-    fileHandle.close()
-    if sts != 0:
-        raise RuntimeError("Command: %s exited with non-zero status %i" % (command, sts))
-    return sts
-
-def popenCatch(command, stdinString=None):
-    """Runs a command and return standard out.
-    """
-    logger.debug("Running the command: %s" % command)
-    if stdinString != None:
-        process = subprocess.Popen(command, shell=True,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
-        output, nothing = process.communicate(stdinString)
-    else:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
-        output, nothing = process.communicate() #process.stdout.read().strip()
-    sts = process.wait()
-    if sts != 0:
-        raise RuntimeError("Command: %s with stdin string '%s' exited with non-zero status %i" % (command, stdinString, sts))
-    return output #process.stdout.read().strip()
-
-def popenPush(command, stdinString=None):
-    if stdinString == None:
-        system(command)
-    else:
-        process = subprocess.Popen(command, shell=True,
-                                   stdin=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
-        process.communicate(stdinString)
-        sts = process.wait()
-        if sts != 0:
-            raise RuntimeError("Command: %s with stdin string '%s' exited with non-zero status %i" % (command, stdinString, sts))
 
 def getTotalCpuTimeAndMemoryUsage():
     """Gives the total cpu time and memory usage of itself and its children.
@@ -275,24 +234,6 @@ class TestStatus:
         return os.environ["SON_TRACE_DATASETS"]
     getPathToDataSets = staticmethod(getPathToDataSets)
 
-def saveInputs(savedInputsDir, listOfFilesAndDirsToSave):
-    """Copies the list of files to a directory created in the save inputs dir,
-    and returns the name of this directory.
-    """
-    logger.info("Saving the inputs: %s to the directory: %s" % (" ".join(listOfFilesAndDirsToSave), savedInputsDir))
-    assert os.path.isdir(savedInputsDir)
-    #savedInputsDir = getTempDirectory(saveInputsDir)
-    createdFiles = []
-    for fileName in listOfFilesAndDirsToSave:
-        if os.path.isfile(fileName):
-            copiedFileName = os.path.join(savedInputsDir, os.path.split(fileName)[-1])
-            system("cp %s %s" % (fileName, copiedFileName))
-        else:
-            copiedFileName = os.path.join(savedInputsDir, os.path.split(fileName)[-1]) + ".tar"
-            system("tar -cf %s %s" % (copiedFileName, fileName))
-        createdFiles.append(copiedFileName)
-    return createdFiles
-
 def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", parser=None):
     if parser is None:
         parser = OptionParser(usage=usage, version=version)
@@ -349,26 +290,13 @@ def parseSuiteTestOptions(parser=None):
 
     return options, args
 
-def nameValue(name, value, valueType=str, quotes=False):
-    """Little function to make it easier to make name value strings for commands.
-    """
-    if valueType == bool:
-        if value:
-            return "--%s" % name
-        return ""
-    if value is None:
-        return ""
-    if quotes:
-        return "--%s '%s'" % (name, valueType(value))
-    return "--%s %s" % (name, valueType(value))
-
 def getRandomAlphaNumericString(length=10):
     """Returns a random alpha numeric string of the given length.
     """
     return "".join([ random.choice('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') for i in xrange(0, length) ])
 
-def makeSubDir(dirName):
-    """Makes a given subdirectory if it doesn't already exist, making sure it us public.
+def makePublicDir(dirName):
+    """Makes a given subdirectory if it doesn't already exist, making sure it is public.
     """
     if not os.path.exists(dirName):
         os.mkdir(dirName)
@@ -414,43 +342,6 @@ def getTempDirectory(rootDir=None):
         os.mkdir(tmpDir)
         os.chmod(tmpDir, 0777) #Ensure everyone has access to the file.
         return tmpDir
-
-    
-#########################################################
-#########################################################
-#########################################################
-#Generic file functions
-#########################################################
-#########################################################
-#########################################################
-
-def catFiles(filesToCat, catFile):
-    """Cats a bunch of files into one file. Ensures a no more than maxCat files
-    are concatenated at each step.
-    """
-    if len(filesToCat) == 0: #We must handle this case or the cat call will hang waiting for input
-        open(catFile, 'w').close()
-        return
-    maxCat = 25
-    system("cat %s > %s" % (" ".join(filesToCat[:maxCat]), catFile))
-    filesToCat = filesToCat[maxCat:]
-    while len(filesToCat) > 0:
-        system("cat %s >> %s" % (" ".join(filesToCat[:maxCat]), catFile))
-        filesToCat = filesToCat[maxCat:]
-
-def prettyXml(elem):
-    """ Return a pretty-printed XML string for the ElementTree Element.
-    """
-    roughString = ET.tostring(elem, "utf-8")
-    reparsed = minidom.parseString(roughString)
-    return reparsed.toprettyxml(indent="  ")
-
-def isNewer(firstFile, secondFile):
-    """Returns True if the first file was modified more recently than the second file (used os.path.getctime)
-    """
-    assert os.path.exists(firstFile)
-    assert os.path.exists(secondFile)
-    return os.path.getctime(firstFile) > os.path.getctime(secondFile)
 
 def main():
     pass
