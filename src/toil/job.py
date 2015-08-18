@@ -931,7 +931,7 @@ class FunctionWrappingJob(Job):
         disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
-        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
+        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
