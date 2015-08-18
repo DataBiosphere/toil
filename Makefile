@@ -58,12 +58,11 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-tests=discover -s src -p "*Test.py"
 testLength=SHORT
 testLogLevel=INFO
 
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) -m unittest $(tests)
+	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) setup.py test
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
