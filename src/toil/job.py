@@ -585,7 +585,8 @@ class Job(object):
             with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             jobClassName = self.__class__.__name__
-            jobWrapper.command = ' '.join( ('scriptTree', fileStoreID, jobClassName) + self.userModule)
+            jobWrapper.command = ' '.join( ('scriptTree', fileStoreID, jobClassName)
+                                           + self.userModule.globalize())
             #Update the status of the job on disk
             jobStore.update(jobWrapper)
         else:
@@ -638,7 +639,7 @@ class Job(object):
             cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
         #Make the first job
         jobClassName = self.__class__.__name__
-        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
+        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule.globalize()
         jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
         #Store the name of the first job in a file in case of restart
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:

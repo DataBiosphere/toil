@@ -113,16 +113,18 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
             assert self.pathHash == pathHash
             return self
 
-    def download( self ):
+    def download( self, callback=None ):
         """
         Downloads this resource from its URL to a file on the local system. This method should
         only be invoked on a worker node after the node was setup for accessing resources via
         prepareSystem().
         """
         dirPath = self.localDirPath
-        if not os.path.exists( dirPath ):
+        if os.path.exists( dirPath ):
             tempDirPath = mkdtemp( dir=os.path.dirname( dirPath ), prefix=self.contentHash + "-" )
             self._save( tempDirPath )
+            if callback is not None:
+                callback( tempDirPath )
             try:
                 os.rename( tempDirPath, dirPath )
             except OSError as e:
@@ -298,10 +300,7 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
         """
         True if this module is part of the Toil distribution
         """
-        # FIXME: Forcing this to False for now to give this code more exposure but once we
-        # FIXME: hot-deploy toil itself it should be used to shortcut hot-deployment for user
-        # FIXME: scripts inside the toil distribution.
-        return False and self.name.startswith( 'toil.' )
+        return self.name.startswith( 'toil.' )
 
     @property
     def filePath( self ):
@@ -333,9 +332,28 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
             log.warn( "Can't localize module %r", self )
             return self
         else:
-            resource.download( )
+            def stash( tmpDirPath ):
+                # Save the original dirPath such that we can restore it in globalize()
+                with open( os.path.join( tmpDirPath, '.dirPath', 'w' ) ) as f:
+                    f.write( self.dirPath )
+
+            resource.download( callback=stash )
             return self.__class__( dirPath=resource.localDirPath, name=self.name,
                                    extension=self.extension )
+
+    def globalize( self ):
+        try:
+            with open( os.path.join( self.dirPath, '.dirPath' ) ) as f:
+                dirPath = f.read( )
+        except IOError as e:
+            if e.errno == errno.ENOENT:
+                log.warn( "Can't globalize module %r.", self )
+                return self
+            else:
+                raise
+        else:
+            return self.__class__( dirPath=dirPath, name=self.name, extension=self.extension )
+
 
     @property
     def _resourcePath( self ):
