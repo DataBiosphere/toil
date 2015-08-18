@@ -120,7 +120,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
         prepareSystem().
         """
         dirPath = self.localDirPath
-        if os.path.exists( dirPath ):
+        if not os.path.exists( dirPath ):
             tempDirPath = mkdtemp( dir=os.path.dirname( dirPath ), prefix=self.contentHash + "-" )
             self._save( tempDirPath )
             if callback is not None:
@@ -334,7 +334,7 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
         else:
             def stash( tmpDirPath ):
                 # Save the original dirPath such that we can restore it in globalize()
-                with open( os.path.join( tmpDirPath, '.dirPath', 'w' ) ) as f:
+                with open( os.path.join( tmpDirPath, '.dirPath' ), 'w' ) as f:
                     f.write( self.dirPath )
 
             resource.download( callback=stash )
