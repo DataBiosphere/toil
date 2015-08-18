@@ -61,7 +61,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
         contentHash = hashlib.md5( )
         # noinspection PyProtectedMember
         with subcls._load( leaderPath ) as src:
-            with jobStore.writeSharedFileStream( pathHash, isProtected=False) as dst:
+            with jobStore.writeSharedFileStream( pathHash, isProtected=False ) as dst:
                 userScript = src.read( )
                 contentHash.update( userScript )
                 dst.write( userScript )
@@ -334,8 +334,8 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
         else:
             def stash( tmpDirPath ):
                 # Save the original dirPath such that we can restore it in globalize()
-                with open( os.path.join( tmpDirPath, '.dirPath' ), 'w' ) as f:
-                    f.write( self.dirPath )
+                with open( os.path.join( tmpDirPath, '.original' ), 'w' ) as f:
+                    f.write( json.dumps( self ) )
 
             resource.download( callback=stash )
             return self.__class__( dirPath=resource.localDirPath, name=self.name,
@@ -343,17 +343,14 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
 
     def globalize( self ):
         try:
-            with open( os.path.join( self.dirPath, '.dirPath' ) ) as f:
-                dirPath = f.read( )
+            with open( os.path.join( self.dirPath, '.original' ) ) as f:
+                return self.__class__( *json.loads( f.read( ) ) )
         except IOError as e:
             if e.errno == errno.ENOENT:
                 log.warn( "Can't globalize module %r.", self )
                 return self
             else:
                 raise
-        else:
-            return self.__class__( dirPath=dirPath, name=self.name, extension=self.extension )
-
 
     @property
     def _resourcePath( self ):
