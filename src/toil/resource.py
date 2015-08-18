@@ -294,10 +294,6 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
                 assert dirPathTail == package
         return cls( dirPath=os.path.sep.join( dirPath ), name=moduleName, extension=extension )
 
-    @classmethod
-    def forDirPath( cls, userModuleDirPath, userModuleName ):
-        pass
-
     @property
     def belongsToToil( self ):
         """
