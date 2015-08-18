@@ -48,11 +48,6 @@ class hidden:
             """
             raise NotImplementedError
 
-        def setUp(self):
-            super(hidden.AbstractBatchSystemTest, self).setUp()
-            self.batchSystem = self.createBatchSystem()
-            self.tempDir = tempfile.mkdtemp()
-
         config = None
         tempDir = None
 
@@ -61,6 +56,20 @@ class hidden:
             super(hidden.AbstractBatchSystemTest, cls).setUpClass()
             cls.config = cls._createDummyConfig()
             cls.tempDir = tempfile.mkdtemp()
+
+        @classmethod
+        def tearDownClass( cls ):
+            shutil.rmtree(cls.tempDir)
+            super( hidden.AbstractBatchSystemTest, cls ).tearDownClass( )
+
+        def setUp(self):
+            super(hidden.AbstractBatchSystemTest, self).setUp()
+            self.batchSystem = self.createBatchSystem()
+            self.tempDir = tempfile.mkdtemp()
+
+        def tearDown( self ):
+            self.batchSystem.shutdown()
+            super( hidden.AbstractBatchSystemTest, self ).tearDown( )
 
         def testAvailableCores(self):
             self.assertTrue(multiprocessing.cpu_count() >= numCores)
@@ -151,13 +160,6 @@ class hidden:
                     time.sleep(0.1)
                     # pass updates too quickly (~24e6 iter/sec), which is why I'm using time.sleep(0.1):
 
-        def tearDown(self):
-            self.batchSystem.shutdown()
-
-        @classmethod
-        def tearDownClass(cls):
-            shutil.rmtree(cls.tempDir)
-
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -170,9 +172,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, maxDisk=1001,masterIP='127.0.0.1:5050')
 
     def tearDown(self):
-        super(MesosBatchSystemTest, self).tearDown()
         self._stopMesos()
-        self.batchSystem.shutdown()
+        super(MesosBatchSystemTest, self).tearDown()
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
