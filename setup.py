@@ -8,7 +8,7 @@ setup(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[ 'bd2k-python-lib>=1.7.dev1' ],
-    tests_require=[ 'mock' ],
+    tests_require=[ 'mock==1.0.1' ],
     test_suite = 'toil',
     extras_require={
         'mesos': [
