@@ -10,35 +10,38 @@ from toil.test.mesos.stress import main as stressMain
 from toil.test import ToilTest, needs_mesos
 from toil.batchSystems.mesos.test import MesosTestSupport
 
-lock = threading.Lock()
+lock = threading.Lock( )
 numCores = 2
+
 
 @needs_mesos
 class MesosTest( ToilTest, MesosTestSupport ):
+    """
+    FIXME: Describe what this test is supposed to do
+    """
 
     @classmethod
     def setUpClass( cls ):
         super( MesosTest, cls ).setUpClass( )
-        shutil.rmtree('/tmp/mesos', ignore_errors=True)
+        shutil.rmtree( '/tmp/mesos', ignore_errors=True )
 
     def setUp( self ):
-        # shutil.rmtree("/tmp/mesos/")
-        self._startMesos(numCores)
-        self.startDir = os.getcwd( )
+        super( MesosTest, self ).setUp( )
+        self._startMesos( numCores )
         self.tempDir = tempfile.mkdtemp( )
         print "Using %s for files and directories created by this test run" % self.tempDir
         os.chdir( self.tempDir )
 
     def tearDown( self ):
-        self._stopMesos()
-        os.chdir( self.startDir )
+        self._stopMesos( )
         shutil.rmtree( self.tempDir )
+        super( MesosTest, self ).tearDown( )
 
     def test_hello_world( self ):
-        dir = os.path.dirname( os.path.abspath( __file__ ) )
-        subprocess.check_call( "python {dir}/helloWorld.py "
+        dirPath = os.path.dirname( os.path.abspath( __file__ ) )
+        subprocess.check_call( "python {dirPath}/helloWorld.py "
                                "--batchSystem=mesos "
-                               "--logLevel={logLevel}".format( dir=dir,
+                               "--logLevel={logLevel}".format( dirPath=dirPath,
                                                                logLevel=getLogLevelString( ) ),
                                shell=True )
 
