@@ -7,7 +7,8 @@ setup(
     author='Benedict Paten',
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
-    install_requires=['bd2k-python-lib>=1.7.dev1'],
+    install_requires=[ 'bd2k-python-lib>=1.7.dev1' ],
+    tests_require=[ 'mock' ],
     extras_require={
         'mesos': [
             'mesos.interface==0.22.0',
@@ -23,4 +24,4 @@ setup(
             'toilStats = toil.utils.toilStats:main',
             'toilRestarts = toil.utils.toilRestarts:main',
             'multijob = toil.batchSystems.multijob:main',
-            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]'] } )
+            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]' ] } )
