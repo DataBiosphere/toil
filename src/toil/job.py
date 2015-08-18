@@ -81,7 +81,9 @@ class Job(object):
         #A follow-on, service or child of a job A, is a "successor" of A, if B
         #is a successor of A, then A is a predecessor of B. 
         self._predecessors = set()
-        #Variables used for serialisation
+        # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
+        # defining the class self is an instance of, which may be a subclass of Job that may be
+        # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Job.rv()
         self._rvs = {}

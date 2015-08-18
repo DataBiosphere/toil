@@ -144,8 +144,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
     @property
     def localDirPath( self ):
         """
-        The path to the directory containing the resource on the worker. For directory resources
-        this is the same as the localPath property.
+        The path to the directory containing the resource on the worker.
         """
         rootDirPath = os.environ[ self.rootDirPathEnvName ]
         return os.path.join( rootDirPath, self.contentHash )
@@ -278,7 +277,7 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
         """
         Return an instance of this class representing the module of the given name. If the given
         module name is "__main__", it will be translated to the actual file name of the top-level
-        script without the .py or .pyc extension. This method expects that the module with the
+        script without the .py or .pyc extension. This method assumes that the module with the
         specified name has already been loaded.
         """
         module = sys.modules[ moduleName ]
