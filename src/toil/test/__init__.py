@@ -19,6 +19,7 @@ import tempfile
 import unittest
 import shutil
 import re
+import subprocess
 
 from bd2k.util.files import mkdir_p
 
@@ -165,6 +166,20 @@ def needs_mesos(test_item):
         import mesos.native
     except ImportError:
         return unittest.skip("Skipping test. Install Mesos to include this test.")(test_item)
+    except:
+        raise
+    else:
+        return test_item
+
+
+def needs_parasol(test_item):
+    """
+    Use as decorator so tests are only run if Parasol is installed.
+    """
+    try:
+        subprocess.Popen("parasol")
+    except OSError:
+        return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
     except:
         raise
     else:

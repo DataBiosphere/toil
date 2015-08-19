@@ -19,11 +19,14 @@ import shutil
 import tempfile
 import time
 import multiprocessing
+
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
+from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.test import ToilTest, needs_mesos
+from toil.test import ToilTest, needs_mesos, needs_parasol
 
 log = logging.getLogger(__name__)
 
@@ -69,20 +72,23 @@ class hidden:
             super(hidden.AbstractBatchSystemTest, cls).setUpClass()
             cls.config = cls._createDummyConfig()
             cls.tempDir = tempfile.mkdtemp()
+            if not os.path.exists(cls.config.jobStore):
+                os.mkdir(cls.config.jobStore)
 
         @classmethod
-        def tearDownClass( cls ):
+        def tearDownClass(cls):
             shutil.rmtree(cls.tempDir)
-            super( hidden.AbstractBatchSystemTest, cls ).tearDownClass( )
+            shutil.rmtree(cls.config.jobStore)
+            super(hidden.AbstractBatchSystemTest, cls).tearDownClass()
 
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
             self.batchSystem = self.createBatchSystem()
             self.tempDir = tempfile.mkdtemp()
 
-        def tearDown( self ):
+        def tearDown(self):
             self.batchSystem.shutdown()
-            super( hidden.AbstractBatchSystemTest, self ).tearDown( )
+            super(hidden.AbstractBatchSystemTest, self).tearDown()
 
         def testAvailableCores(self):
             self.assertTrue(multiprocessing.cpu_count() >= numCores)
@@ -96,32 +102,48 @@ class hidden:
             self.assertTrue(os.path.exists(test_path))
 
         def testCheckResourceRequest(self):
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=1000, cores=200, disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cores=200,disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=100, cores=1,disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cores=1,disk=1002)
-            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=None, cores=1,disk=1000)
-            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=10, cores=None,disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
+                              memory=1000, cores=200, disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
+                              memory=5, cores=200, disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
+                              memory=2e9, cores=1, disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
+                              memory=5, cores=1, disk=1002)
+            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=None,
+                              cores=1, disk=1000)
+            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=10,
+                              cores=None, disk=1000)
             self.batchSystem.checkResourceRequest(memory=10, cores=1, disk=100)
 
         def testGetIssuedJobIDs(self):
-            self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob, disk=1000)
-            self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob, disk=1000)
-            self.assertEqual({0, 1}, set(self.batchSystem.getIssuedBatchJobIDs()))
+            issuedIDs = []
+            issuedIDs.append(
+                self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob,
+                                               disk=1000))
+            issuedIDs.append(
+                self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob,
+                                               disk=1000))
+            self.assertEqual(set(issuedIDs), set(self.batchSystem.getIssuedBatchJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueBatchJob('sleep 100', memory=10, cores=.1, disk=1000)
-            self.batchSystem.issueBatchJob('sleep 100', memory=10, cores=.1, disk=1000)
+            issuedIDs = []
+            issuedIDs.append(
+                self.batchSystem.issueBatchJob('sleep 100', memory=100e6, cores=1, disk=1000))
+            issuedIDs.append(
+                self.batchSystem.issueBatchJob('sleep 100', memory=100e6, cores=1, disk=1000))
             self.wait_for_jobs(numJobs=2)
-            # Assert that jobs were correctly labeled by JobID
-            self.assertEqual({0, 1}, set(self.batchSystem.getRunningBatchJobIDs().keys()))
+            # Assert that the issued jobs are running
+            self.assertEqual(set(issuedIDs), set(self.batchSystem.getRunningBatchJobIDs().keys()))
+            log.info("running jobs: %s" % self.batchSystem.getRunningBatchJobIDs().keys())
             # Assert that the length of the job was recorded
-            self.assertTrue(len([t for t in self.batchSystem.getRunningBatchJobIDs().values() if t > 0]) == 2)
-            self.batchSystem.killBatchJobs([0, 1])
+            self.assertTrue(
+                len([t for t in self.batchSystem.getRunningBatchJobIDs().values() if t > 0]) == 2)
+            self.batchSystem.killBatchJobs(issuedIDs)
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            jobID = self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=.1, disk=1000)
+            jobID = self.batchSystem.issueBatchJob(jobCommand, memory=100e6, cores=1, disk=1000)
             self.wait_for_jobs()
             # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killBatchJobs([jobID])
@@ -132,9 +154,12 @@ class hidden:
         def testGetUpdatedJob(self):
             delay = 1
             jobCommand = 'sleep %i' % delay
+            issuedIDs = []
             for i in range(numJobs):
-                self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=numCoresPerJob, disk=1000)
-            jobs = set((i, 0) for i in range(numJobs))
+                issuedIDs.append(
+                    self.batchSystem.issueBatchJob(jobCommand, memory=100e6, cores=numCoresPerJob,
+                                                   disk=1000))
+            jobs = set((issuedIDs[i], 0) for i in range(numJobs))
             self.wait_for_jobs(numJobs=numJobs, wait_for_completion=True)
             for i in range(numJobs):
                 jobs.remove(self.batchSystem.getUpdatedBatchJob(delay * 2))
@@ -150,7 +175,7 @@ class hidden:
             config = ElementTree.Element("config")
             config.attrib["log_level"] = 'DEBUG'
             config.attrib["job_store"] = '.'
-            config.attrib["parasol_command"] = None
+            config.attrib["parasol_command"] = 'parasol'
             config.attrib["try_count"] = str(2)
             config.attrib["max_job_duration"] = str(1)
             config.attrib["batch_system"] = None
@@ -173,6 +198,7 @@ class hidden:
                     time.sleep(0.1)
                     # pass updates too quickly (~24e6 iter/sec), which is why I'm using time.sleep(0.1):
 
+
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -182,7 +208,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
-        return MesosBatchSystem(config=self.config, maxCores=numCores, maxMemory=20, maxDisk=1001,masterIP='127.0.0.1:5050')
+        return MesosBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9, maxDisk=1001,
+                                masterIP='127.0.0.1:5050')
 
     def tearDown(self):
         self._stopMesos()
@@ -191,4 +218,33 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCores=numCores, maxMemory=50, maxDisk=1001)
+        return SingleMachineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
+                                        maxDisk=1001)
+
+
+@needs_parasol
+class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
+    """
+    Tests the Parasol batch system
+    """
+
+    def testIssueJob(self):
+        # TODO
+        # parasol treats 'touch test.txt; sleep 1' as one
+        # command with the arguments 'test.txt;', 'sleep', and '1'
+        # For now, override the test
+        test_path = os.path.join(self.tempDir, 'test.txt')
+        jobCommand = 'touch {}'.format(test_path)
+        self.batchSystem.issueBatchJob(jobCommand, memory=100e6, cores=1, disk=1000)
+        self.wait_for_jobs(wait_for_completion=True)
+        self.assertTrue(os.path.exists(test_path))
+
+    def createBatchSystem(self):
+        self._startParasol(numCores)
+        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
+                                  maxDisk=1001)
+
+    def tearDown(self):
+        self._stopParasol()
+        super(ParasolBatchSystemTest, self).tearDown()
+        self.batchSystem.shutdown()

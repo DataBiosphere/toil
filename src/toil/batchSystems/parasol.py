@@ -93,8 +93,8 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
     """
-    def __init__(self, config, maxCores, maxMemory):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk) #Call the parent constructor
         if maxMemory != sys.maxint:
             logger.warn("A max memory has been specified for the parasol batch system class of %i, but currently "
                         "this batchsystem interface does not support such limiting" % maxMemory)
@@ -128,12 +128,13 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.usedCpus = 0
         self.jobIDsToCpu = {}
          
-    def issueBatchJob(self, command, memory, cores):
+    def issueBatchJob(self, command, memory, cores, disk):
         """Issues parasol with job commands.
         """
-        self.checkResourceRequest(memory, cores)
+        self.checkResourceRequest(memory, cores, disk)
         pattern = re.compile("your job ([0-9]+).*")
-        parasolCommand = "%s -verbose -ram=%i -cores=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cores, self.parasolResultsFile, command)
+        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cores, self.parasolResultsFile, command)
+
         #Deal with the cpus
         self.usedCpus += cores
         while True: #Process finished results with no wait
@@ -222,6 +223,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         making it expensive. 
         """
         return 5400 #Once every 90 minutes
+    def shutdown(self):
+        pass
         
 def main():
     pass
