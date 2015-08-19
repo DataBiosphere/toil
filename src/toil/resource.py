@@ -264,12 +264,17 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
     - extension, the file extension of the file containing the module, including the leading period.
 
     >>> import toil.resource
-    >>> ModuleDescriptor.forModule(toil.resource.__name__) # doctest: +ELLIPSIS
-    ModuleDescriptor(dirPath='/.../src', name='toil.resource', extension='.pyc')
+    >>> ModuleDescriptor.forModule('toil.resource') # doctest: +ELLIPSIS
+    ModuleDescriptor(dirPath='/.../src', name='toil.resource', extension='.py')
+
+    Note that the above test only succeeds on py.test. To run with doctest or an IDE you may have
+    to change the assertion to .pyc.
+
     >>> import subprocess, tempfile, os
     >>> fh,path = tempfile.mkstemp(prefix='foo', suffix='.py')
     >>> with os.fdopen(fh,'w') as f:
-    ...     f.write('from toil.resource import ModuleDescriptor; print ModuleDescriptor.forModule(__name__)')
+    ...     f.write('from toil.resource import ModuleDescriptor\\n'
+    ...             'print ModuleDescriptor.forModule(__name__)')
     >>> subprocess.check_output([ 'python', path ]) # doctest: +ELLIPSIS
     "ModuleDescriptor(dirPath='/...', name='foo...', extension='.py')\\n"
     """

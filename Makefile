@@ -3,7 +3,7 @@ pip=/usr/bin/env pip2.7
 
 define help
 
-Supported targets: 'develop', 'sdist', 'clean', 'test' or 'pypi'.
+Supported targets: 'develop', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
  ensure that develop mode installs support for extras. Consult setup.py for a list of supported
@@ -23,8 +23,8 @@ make test tests=toil.test.src.jobTest.JobTest
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
 
-The 'pypi_stable' is like 'pypi' except that it doesn't tag the build as an unstable build. IOW,
-it publishes a stable release.
+The 'pypi_stable' target is like 'pypi' except that it doesn't tag the build as an unstable build.
+IOW, it publishes a stable release.
 
 endef
 
@@ -62,7 +62,8 @@ testLength=SHORT
 testLogLevel=INFO
 
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) setup.py test
+	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
+	$(python) setup.py test -a src
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
