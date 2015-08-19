@@ -62,7 +62,8 @@ testLength=SHORT
 testLogLevel=INFO
 
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) setup.py test
+	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
+	$(python) setup.py test -a src
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
