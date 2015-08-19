@@ -81,7 +81,9 @@ class Job(object):
         #A follow-on, service or child of a job A, is a "successor" of A, if B
         #is a successor of A, then A is a predecessor of B. 
         self._predecessors = set()
-        #Variables used for serialisation
+        # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
+        # defining the class self is an instance of, which may be a subclass of Job that may be
+        # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Job.rv()
         self._rvs = {}
@@ -583,7 +585,8 @@ class Job(object):
             with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             jobClassName = self.__class__.__name__
-            jobWrapper.command = ' '.join( ('scriptTree', fileStoreID, jobClassName) + self.userModule)
+            jobWrapper.command = ' '.join( ('scriptTree', fileStoreID, jobClassName)
+                                           + self.userModule.globalize())
             #Update the status of the job on disk
             jobStore.update(jobWrapper)
         else:
@@ -636,7 +639,7 @@ class Job(object):
             cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
         #Make the first job
         jobClassName = self.__class__.__name__
-        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule
+        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule.globalize()
         jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
         #Store the name of the first job in a file in case of restart
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:
@@ -928,7 +931,7 @@ class FunctionWrappingJob(Job):
         disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
-        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__)
+        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
