@@ -64,13 +64,12 @@ def needs_aws(test_item):
     else:
         dot_boto_path = os.path.expanduser('~/.boto')
         hv_uuid_path = '/sys/hypervisor/uuid'
-        hv_uuid = 'ec289d54-ccbe-d270-3890-b584e201ef4a'
-        if os.path.exists(dot_boto_path) \
-                or os.path.exists(hv_uuid_path) \
-                        and open(hv_uuid_path).read().startswith(hv_uuid):
+        if os.path.exists( dot_boto_path ) \
+                or os.path.exists( hv_uuid_path ) \
+                        and open( hv_uuid_path ).read( ).startswith( 'ec2' ):
             return test_item
         else:
-            return unittest.skip("Skipping test. Create ~/.boto to include this test.")(test_item)
+            return unittest.skip( "Skipping test. Create ~/.boto to include this test." )( test_item)
 
 
 def needs_mesos(test_item):
