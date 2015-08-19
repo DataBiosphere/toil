@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2015 Benedict Paten (benedictpaten@gmail.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#!/usr/bin/env python
 
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
