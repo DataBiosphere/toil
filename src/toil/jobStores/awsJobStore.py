@@ -114,7 +114,7 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).__init__(config=config)
         if self.config.sseKey != None:
             with open(self.config.sseKey) as f:
-                self.sseKey = f.readline().rstrip()
+                self.sseKey = f.read()
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():

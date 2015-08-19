@@ -61,7 +61,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
         contentHash = hashlib.md5( )
         # noinspection PyProtectedMember
         with subcls._load( leaderPath ) as src:
-            with jobStore.writeSharedFileStream( pathHash ) as dst:
+            with jobStore.writeSharedFileStream( pathHash, isProtected=False ) as dst:
                 userScript = src.read( )
                 contentHash.update( userScript )
                 dst.write( userScript )
@@ -113,7 +113,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
             assert self.pathHash == pathHash
             return self
 
-    def download( self ):
+    def download( self, callback=None ):
         """
         Downloads this resource from its URL to a file on the local system. This method should
         only be invoked on a worker node after the node was setup for accessing resources via
@@ -123,6 +123,8 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
         if not os.path.exists( dirPath ):
             tempDirPath = mkdtemp( dir=os.path.dirname( dirPath ), prefix=self.contentHash + "-" )
             self._save( tempDirPath )
+            if callback is not None:
+                callback( tempDirPath )
             try:
                 os.rename( tempDirPath, dirPath )
             except OSError as e:
@@ -144,8 +146,7 @@ class Resource( namedtuple( 'Resource', ('name', 'pathHash', 'url', 'contentHash
     @property
     def localDirPath( self ):
         """
-        The path to the directory containing the resource on the worker. For directory resources
-        this is the same as the localPath property.
+        The path to the directory containing the resource on the worker.
         """
         rootDirPath = os.environ[ self.rootDirPathEnvName ]
         return os.path.join( rootDirPath, self.contentHash )
@@ -263,12 +264,17 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
     - extension, the file extension of the file containing the module, including the leading period.
 
     >>> import toil.resource
-    >>> ModuleDescriptor.forModule(toil.resource.__name__) # doctest: +ELLIPSIS
-    ModuleDescriptor(dirPath='/.../src', name='toil.resource', extension='.pyc')
+    >>> ModuleDescriptor.forModule('toil.resource') # doctest: +ELLIPSIS
+    ModuleDescriptor(dirPath='/.../src', name='toil.resource', extension='.py')
+
+    Note that the above test only succeeds on py.test. To run with doctest or an IDE you may have
+    to change the assertion to .pyc.
+
     >>> import subprocess, tempfile, os
     >>> fh,path = tempfile.mkstemp(prefix='foo', suffix='.py')
     >>> with os.fdopen(fh,'w') as f:
-    ...     f.write('from toil.resource import ModuleDescriptor; print ModuleDescriptor.forModule(__name__)')
+    ...     f.write('from toil.resource import ModuleDescriptor\\n'
+    ...             'print ModuleDescriptor.forModule(__name__)')
     >>> subprocess.check_output([ 'python', path ]) # doctest: +ELLIPSIS
     "ModuleDescriptor(dirPath='/...', name='foo...', extension='.py')\\n"
     """
@@ -278,7 +284,7 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
         """
         Return an instance of this class representing the module of the given name. If the given
         module name is "__main__", it will be translated to the actual file name of the top-level
-        script without the .py or .pyc extension. This method expects that the module with the
+        script without the .py or .pyc extension. This method assumes that the module with the
         specified name has already been loaded.
         """
         module = sys.modules[ moduleName ]
@@ -294,19 +300,12 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
                 assert dirPathTail == package
         return cls( dirPath=os.path.sep.join( dirPath ), name=moduleName, extension=extension )
 
-    @classmethod
-    def forDirPath( cls, userModuleDirPath, userModuleName ):
-        pass
-
     @property
     def belongsToToil( self ):
         """
         True if this module is part of the Toil distribution
         """
-        # FIXME: Forcing this to False for now to give this code more exposure but once we
-        # FIXME: hot-deploy toil itself it should be used to shortcut hot-deployment for user
-        # FIXME: scripts inside the toil distribution.
-        return False and self.name.startswith( 'toil.' )
+        return self.name.startswith( 'toil.' )
 
     @property
     def filePath( self ):
@@ -338,9 +337,25 @@ class ModuleDescriptor( namedtuple( 'ModuleDescriptor', ('dirPath', 'name', 'ext
             log.warn( "Can't localize module %r", self )
             return self
         else:
-            resource.download( )
+            def stash( tmpDirPath ):
+                # Save the original dirPath such that we can restore it in globalize()
+                with open( os.path.join( tmpDirPath, '.original' ), 'w' ) as f:
+                    f.write( json.dumps( self ) )
+
+            resource.download( callback=stash )
             return self.__class__( dirPath=resource.localDirPath, name=self.name,
                                    extension=self.extension )
+
+    def globalize( self ):
+        try:
+            with open( os.path.join( self.dirPath, '.original' ) ) as f:
+                return self.__class__( *json.loads( f.read( ) ) )
+        except IOError as e:
+            if e.errno == errno.ENOENT:
+                log.warn( "Can't globalize module %r.", self )
+                return self
+            else:
+                raise
 
     @property
     def _resourcePath( self ):

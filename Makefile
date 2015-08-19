@@ -3,7 +3,7 @@ pip=/usr/bin/env pip2.7
 
 define help
 
-Supported targets: 'develop', 'sdist', 'clean', 'test' or 'pypi'.
+Supported targets: 'develop', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
  ensure that develop mode installs support for extras. Consult setup.py for a list of supported
@@ -23,8 +23,8 @@ make test tests=toil.test.src.jobTest.JobTest
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
 
-The 'pypi_stable' is like 'pypi' except that it doesn't tag the build as an unstable build. IOW,
-it publishes a stable release.
+The 'pypi_stable' target is like 'pypi' except that it doesn't tag the build as an unstable build.
+IOW, it publishes a stable release.
 
 endef
 
@@ -58,12 +58,12 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-tests=discover -s src -p "*Test.py"
 testLength=SHORT
 testLogLevel=INFO
 
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" $(python) -m unittest $(tests)
+	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
+	$(python) setup.py test -a src
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
@@ -79,6 +79,9 @@ pypi: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
 	&& echo "Not on master branch, silently skipping deployment to PyPI." \
 	|| $(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
+
+force_pypi: check_clean_working_copy check_running_on_jenkins
+	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
