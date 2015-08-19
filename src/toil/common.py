@@ -52,7 +52,7 @@ class Config(object):
     """
     def __init__(self):
         #Core options
-        self.jobStore = "./toil"
+        self.jobStore = os.path.abspath("./toil")
         self.logLevel = getLogLevelString()
         self.workDir = None
         self.stats = False

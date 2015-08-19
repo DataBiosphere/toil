@@ -27,7 +27,7 @@ import logging
 import sys
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
-
+import os
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
@@ -95,7 +95,7 @@ def initializeOptions(parser):
     ##########################################
     # Construct the arguments.
     ##########################################
-    parser.add_option("--jobStore", dest="jobStore", default='./toil',
+    parser.add_option("--jobStore", dest="jobStore", default=os.path.abspath("./toil"),
                       help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")

@@ -24,7 +24,7 @@
 """
 from __future__ import absolute_import
 import logging
-
+import os
 import sys
 
 from toil.lib.bioio import logStream
@@ -48,7 +48,7 @@ def main():
     
     parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.\
-                       default=%default", default='./toil')
+                       default=%default", default=os.path.abspath("./toil"))
     
     parser.add_option("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
