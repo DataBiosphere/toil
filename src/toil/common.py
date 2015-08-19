@@ -410,4 +410,5 @@ def setupToil(options, userScript=None):
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, jobStore)
     finally:
+        logger.debug('Shutting down batch system')
         batchSystem.shutdown()

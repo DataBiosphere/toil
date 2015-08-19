@@ -18,6 +18,7 @@ import logging
 import os
 import subprocess
 import time
+import math
 from Queue import Queue
 from threading import Thread
 
@@ -39,9 +40,9 @@ class MemoryString:
 
     def __str__(self):
         if self.unit != 'B':
-            return str(val) + unit
+            return str(self.val) + self.unit
         else:
-            return str(val)
+            return str(self.val)
 
     def byteVal(self):
         if self.unit == 'B':
@@ -60,13 +61,13 @@ def prepareQsub(cpu, mem):
     qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd", "-o", "/dev/null", "-e", "/dev/null", "-v",
                      "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]]
     reqline = list()
-    if cpu is not None:
-        reqline.append("p="+str(cpu))
     if mem is not None:
         reqline.append("vf="+str(mem/ 1024)+"K")
         reqline.append("h_vmem="+str(mem/ 1024)+"K")
     if len(reqline) > 0:
         qsubline.extend(["-hard","-l", ",".join(reqline)])
+    if cpu is not None:
+        qsubline.extend(["-pe", "smp", str(int(math.ceil(cpu)))])
     return qsubline
 
 def qsub(qsubline):
@@ -110,7 +111,7 @@ class Worker(Thread):
         stdout, stderr = process.communicate()
         
         for currline in stdout.split('\n'):
-            items = curline.strip().split()
+            items = currline.strip().split()
             if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
                 jobstart = " ".join(items[5:7])
                 jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
@@ -171,14 +172,18 @@ class Worker(Thread):
         while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCpus):
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             qsubline = prepareQsub(cpu, memory) + [command]
+            logger.debug('qsubline: {}'.format(qsubline))
             sgeJobID = qsub(qsubline)
+            logger.debug('sgeJobID: {}'.format(sgeJobID))
             self.sgeJobIDs[jobID] = (sgeJobID, None)
             self.runningJobs.add(jobID)
             self.allocatedCpus[jobID] = cpu
 
     def checkOnJobs(self):
+        logger.debug('List of runningJobs: {}'.format(self.runningJobs))
         for jobID in list(self.runningJobs):
             exit = getjobexitcode(self.sgeJobIDs[jobID])
+            logger.debug('Exit status: {}'.format(exit))
             if exit is not None:
                 self.updatedJobsQueue.put((jobID, exit))
                 self.forgetJob(jobID)
@@ -194,8 +199,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
     """The interface for gridengine.
     """
     
-    def __init__(self, config, maxCores, maxMemory):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         self.gridengineResultsFile = getParasolResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -216,8 +221,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close() #Close the results file, cos were done.
 
-    def issueBatchJob(self, command, memory, cores):
-        self.checkResourceRequest(memory, cores)
+    def issueBatchJob(self, command, memory, cores, disk):
+        self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
 
@@ -236,7 +241,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         killList = set(jobIDs)
         while len(killList) > 0:
             while True:
-                i = self.getFromQueueSafely(self.killedJobsQueue, maxWait)
+                i = self.killedJobsQueue.get()
                 if i is not None:
                     killList.remove(jobID)
                     self.currentjobs.remove(jobID)
@@ -255,14 +260,20 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return self.worker.getRunningJobIDs()
     
     def getUpdatedBatchJob(self, maxWait):
-        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
+        i = self.updatedJobsQueue.get()
         if i == None:
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
         self.currentjobs.remove(jobID)
         return i
-    
+
+    def shutdown(self):
+        """
+        Because the gridEngine Worker is a daemon thread this fn is unnecessary
+        """
+        pass
+
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)
         """
