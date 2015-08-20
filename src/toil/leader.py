@@ -98,17 +98,17 @@ class JobBatcher:
         self.workerPath = os.path.join(toilPackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
-    def issueJob(self, jobStoreID, memory, core, disk):
+    def issueJob(self, jobStoreID, memory, cores, disk):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, core, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cores: %i, disk: %i, and memory: %i",
-                     jobStoreID, str(jobBatchSystemID), core, disk, memory)
+                     jobStoreID, str(jobBatchSystemID), cores, disk, memory)
 
     def issueJobs(self, jobs):
         """
