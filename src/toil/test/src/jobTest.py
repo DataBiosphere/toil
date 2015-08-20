@@ -30,11 +30,11 @@ class JobTest(ToilTest):
 
             # Create the jobs
             A = Job.wrapFn(f, "A", outFile)
-            B = Job.wrapFn(f, A.rv(0), outFile)
-            C = Job.wrapFn(f, B.rv(0), outFile)
-            D = Job.wrapFn(f, C.rv(0), outFile)
-            E = Job.wrapFn(f, D.rv(0), outFile)
-            F = Job.wrapFn(f, E.rv(0), outFile)
+            B = Job.wrapFn(f, A.rv(), outFile)
+            C = Job.wrapFn(f, B.rv(), outFile)
+            D = Job.wrapFn(f, C.rv(), outFile)
+            E = Job.wrapFn(f, D.rv(), outFile)
+            F = Job.wrapFn(f, E.rv(), outFile)
 
             # Connect them into a workflow
             A.addChild(B)

@@ -40,13 +40,13 @@ def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         tempFileStoreID1 = job.fileStore.getEmptyFileStoreID()
         tempFileStoreID2 = job.fileStore.getEmptyFileStoreID()
         #The use of rv here is for testing purposes
-        #The rv(0) of the first child job is tempFileStoreID1,
-        #similarly rv(0) of the second child is tempFileStoreID2
+        #The rv() of the first child job is tempFileStoreID1,
+        #similarly rv() of the second child is tempFileStoreID2
         job.addFollowOnJobFn(up,
                                    job.addChildJobFn(down, inputFile, fileStart,
-                                                           midPoint+1, N, tempFileStoreID1).rv(0),
+                                                           midPoint+1, N, tempFileStoreID1).rv(),
                                    job.addChildJobFn(down, inputFile, midPoint+1,
-                                                           fileEnd, N, tempFileStoreID2).rv(0), #Add one to avoid the newline
+                                                           fileEnd, N, tempFileStoreID2).rv(), #Add one to avoid the newline
                                    outputFileStoreID)                
     else:
         #We can sort this bit of the file
