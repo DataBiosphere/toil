@@ -73,7 +73,7 @@ class AbstractJobStore( object ):
         """
         if create and exists:
             raise JobStoreCreationException("The job store '%s' already exists. " 
-                               "Use --restart or toilRestart to resume this jobStore, "
+                               "Use --restart or 'toil restart' to resume this jobStore, "
                                "else remove it to start from scratch" % jobStoreString)
         if not create and not exists:
             raise JobStoreCreationException("The job store '%s' does not exist, so there "

@@ -175,7 +175,7 @@ def _addOptions(addGroupFn, config):
                 help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
                      "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
     addOptionFn("--stats", dest="stats", action="store_true", default=None,
-                      help="Records statistics about the toil workflow to be used by toilStats.")
+                      help="Records statistics about the toil workflow to be used by 'toil stats'.")
     addOptionFn("--clean", dest="clean", choices=['always', 'onError','never', 'onSuccess'], default=None,
                       help=("Determines the deletion of the jobStore upon completion of the program. "
                             "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "

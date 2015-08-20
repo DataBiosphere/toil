@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,6 +62,3 @@ def main():
 def _test():
     import doctest
     return doctest.testmod()
-
-if __name__ == '__main__':
-    main()
