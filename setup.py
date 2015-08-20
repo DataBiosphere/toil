@@ -22,11 +22,7 @@ kwargs = dict(
     packages=find_packages( 'src', exclude=[ '*.test' ] ),
     entry_points={
         'console_scripts': [
-            'toilKill = toil.utils.toilKill:main',
-            'toilStatus = toil.utils.toilStatus:main',
-            'toilStats = toil.utils.toilStats:main',
-            'toilRestart = toil.utils.toilRestart:main',
-            'multijob = toil.batchSystems.multijob:main',
+            'toil = toil.utils.toilMain:main',
             'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]' ] } )
 
 from setuptools.command.test import test as TestCommand
