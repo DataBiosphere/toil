@@ -145,7 +145,7 @@ class Config(object):
         setOption("maxDisk", h2b, iC(1))
         
         #Retrying/rescuing jobs
-        setOption("retryCount", int, iC(1))
+        setOption("retryCount", int, iC(0))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
         
