@@ -51,14 +51,14 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= 1
         assert self.maxMemory >= 1
-        # The scale allows the user to apply a factor to each task's CPU requirement, thereby squeezing more tasks
+        # The scale allows the user to apply a factor to each task's cores requirement, thereby squeezing more tasks
         # onto each core (scale < 1) or stretching tasks over more cores (scale > 1).
         self.scale = config.scale
-        # The minimal fractional CPU. Tasks with a smaller CPU requirement will be rounded up to this value. One
+        # The minimal fractional CPU. Tasks with a smaller cores requirement will be rounded up to this value. One
         # important invariant of this class is that each worker thread represents a CPU requirement of minCores,
         # meaning that we can never run more than numCores / minCores jobs concurrently. With minCores set to .1,
         # a task with cores=1 will occupy 10 workers. One of these workers will be blocked on the Popen.wait() call for
-        # the worker.py child process, the others will be blocked on the acquiring the CPU semaphore.
+        # the worker.py child process, the others will be blocked on the acquiring the core semaphore.
         self.minCores = 0.1
         # Number of worker threads that will be started
         self.numWorkers = int(self.maxCores / self.minCores)

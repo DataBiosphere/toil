@@ -62,12 +62,12 @@ class MemoryString:
     def __cmp__(self, other):
         return cmp(self.bytes, other.bytes)
 
-def prepareQsub(cpu, mem):
+def prepareQsub(cores, mem):
     qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd", "-o", "/dev/null", "-e", "/dev/null", "-v",
                      "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]]
     reqline = list()
-    if cpu is not None:
-        reqline.append("p="+str(cpu))
+    if cores is not None:
+        reqline.append("p="+str(cores))
     if mem is not None:
         reqline.append("vf="+str(mem/ 1024)+"K")
         reqline.append("h_vmem="+str(mem/ 1024)+"K")
@@ -106,7 +106,7 @@ class Worker(Thread):
         self.waitingJobs = list()
         self.runningJobs = set()
         self.boss = boss
-        self.allocatedCpus = dict()
+        self.allocatedCores = dict()
         self.sgeJobIDs = dict()
 
     def getRunningJobIDs(self):
@@ -136,7 +136,7 @@ class Worker(Thread):
 
     def forgetJob(self, jobID):
         self.runningJobs.remove(jobID)
-        del self.allocatedCpus[jobID]
+        del self.allocatedCores[jobID]
         del self.sgeJobIDs[jobID]
 
     def killJobs(self):
@@ -174,13 +174,13 @@ class Worker(Thread):
             self.waitingJobs.append(self.newJobsQueue.get())
 
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCpus):
-            jobID, cpu, memory, command = self.waitingJobs.pop(0)
-            qsubline = prepareQsub(cpu, memory) + [command]
+        while len(self.waitingJobs) > 0 and sum(self.allocatedCores.values()) < int(self.boss.maxCores):
+            jobID, cores, memory, command = self.waitingJobs.pop(0)
+            qsubline = prepareQsub(cores, memory) + [command]
             sgeJobID = qsub(qsubline)
             self.sgeJobIDs[jobID] = (sgeJobID, None)
             self.runningJobs.add(jobID)
-            self.allocatedCpus[jobID] = cpu
+            self.allocatedCores[jobID] = cores
 
     def checkOnJobs(self):
         for jobID in list(self.runningJobs):
@@ -287,31 +287,31 @@ class GridengineBatchSystem(AbstractBatchSystem):
         line = p.stdout.readline()
         items = line.strip().split()
         num_columns = len(items)
-        cpu_index = None
+        core_index = None
         mem_index = None        
         for i in range(num_columns):
                 if items[i] == 'NCPU':
-                        cpu_index = i
+                        core_index = i
                 elif items[i] == 'MEMTOT':
                         mem_index = i
 
-        if cpu_index is None or mem_index is None:
+        if core_index is None or mem_index is None:
                 RuntimeError("qhost command does not return NCPU or MEMTOT columns")
 
         p.stdout.readline()
 
-        self.maxCPU = 0
+        self.maxCores = 0
         self.maxMEM = MemoryString("0")
         for line in p.stdout:
                 items = line.strip().split()
                 if len(items) < num_columns:
                         RuntimeError("qhost output has a varying number of columns")
-                if items[cpu_index] != '-' and items[cpu_index] > self.maxCPU:
-                        self.maxCPU = items[cpu_index]
+                if items[core_index] != '-' and items[core_index] > self.maxCPU:
+                        self.maxCores = items[core_index]
                 if items[mem_index] != '-' and MemoryString(items[mem_index]) > self.maxMEM:
                         self.maxMEM = MemoryString(items[mem_index])
 
-        if self.maxCPU is 0 or self.maxMEM is 0:
+        if self.maxCores is 0 or self.maxMEM is 0:
                 RuntimeError("qhost returns null NCPU or MEMTOT info")
                 
         

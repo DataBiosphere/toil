@@ -64,7 +64,7 @@ class Job(object):
         This method must be called by any overiding constructor.
         
         Memory is the maximum number of bytes of memory the job will
-        require to run. Cpu is the number of cores required. 
+        require to run. Cores is the number of CPU cores required.
         """
         self.cores = cores
         # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1

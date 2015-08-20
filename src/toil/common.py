@@ -217,14 +217,12 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--defaultMemory", dest="defaultMemory", default=None,
                       help=("The default amount of memory to request for a job (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
-    #TODO - change "Cpus" to "cores" through out.
     addOptionFn("--defaultCores", dest="defaultCores", default=None,
-                      help="The number of cpus to dedicate a job. default=%s" % config.defaultCores)
+                      help="The number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
-    #TODO - change "Cpus" to "cores" through out.
     addOptionFn("--maxCores", dest="maxCores", default=None,
-                      help=("The maximum number of cpus to request from the batch system at any "
+                      help=("The maximum number of cpu cores to request from the batch system at any "
                             "one time. default=%s" % config.maxCores))
     addOptionFn("--maxMemory", dest="maxMemory", default=None,
                       help=("The maximum amount of memory to request from the batch \

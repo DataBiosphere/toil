@@ -59,7 +59,7 @@ class AbstractBatchSystem:
         assert disk is not None
         assert cores is not None
         if cores > self.maxCores:
-            raise InsufficientSystemResources('CPUs', cores, self.maxCores)
+            raise InsufficientSystemResources('cores', cores, self.maxCores)
         if memory > self.maxMemory:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
         if disk > self.maxDisk:
@@ -68,7 +68,7 @@ class AbstractBatchSystem:
     def issueBatchJob(self, command, memory, cores, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cores is the number of cpus needed for
+        the number of bytes the job needs to run in and cores is the number of cpu cores needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
         """
         raise NotImplementedError('Abstract method: issueBatchJob')

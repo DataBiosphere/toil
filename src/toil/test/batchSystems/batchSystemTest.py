@@ -23,7 +23,7 @@ numCores = 2
 #
 numJobs = 2
 
-# How much CPU to allocate for a particular job
+# How many cores to allocate for a particular job
 #
 numCoresPerJob = (numCores) / numJobs
 

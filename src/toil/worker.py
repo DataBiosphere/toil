@@ -310,7 +310,7 @@ def main():
                 logger.debug("We need more memory for the next job, so finishing")
                 break
             if successorCores > job.cores:
-                logger.debug("We need more cpus for the next job, so finishing")
+                logger.debug("We need more cores for the next job, so finishing")
                 break
             if successorsDisk > job.disk:
                 logger.debug("We need more disk for the next job, so finishing")

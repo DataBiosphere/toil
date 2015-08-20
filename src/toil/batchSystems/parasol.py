@@ -123,7 +123,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
             logger.warn("Could not flush the parasol batch %s" % self.parasolResultsFile)
         open(self.parasolResultsFile, 'w').close()
         logger.info("Reset the results queue")
-        #Stuff to allow max cpus to be work
+        #Stuff to allow max cores to be work
         self.outputQueue1 = Queue()
         self.outputQueue2 = Queue()
         #worker = Thread(target=getUpdatedJob, args=(self.parasolResultsFileHandle, self.outputQueue1, self.outputQueue2))
@@ -131,8 +131,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         worker = Process(target=getUpdatedJob, args=(self.parasolResultsFile, self.outputQueue1, self.outputQueue2))
         worker.daemon = True
         worker.start()
-        self.usedCpus = 0
-        self.jobIDsToCpu = {}
+        self.usedCores = 0
+        self.jobIDsToCores = {}
          
     def issueBatchJob(self, command, memory, cores):
         """Issues parasol with job commands.
@@ -140,19 +140,19 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.checkResourceRequest(memory, cores)
         pattern = re.compile("your job ([0-9]+).*")
         parasolCommand = "%s -verbose -ram=%i -cores=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cores, self.parasolResultsFile, command)
-        #Deal with the cpus
-        self.usedCpus += cores
+        #Deal with the cores
+        self.usedCores += cores
         while True: #Process finished results with no wait
             try:
                jobID = self.outputQueue1.get_nowait()
-               self.usedCpus -= self.jobIDsToCpu.pop(jobID)
-               assert self.usedCpus >= 0
+               self.usedCores -= self.jobIDsToCores.pop(jobID)
+               assert self.usedCores >= 0
                self.outputQueue1.task_done()
             except Empty:
                 break
-        while self.usedCpus > self.maxCores: #If we are still waiting
-            self.usedCpus -= self.jobIDsToCpu.pop(self.outputQueue1.get())
-            assert self.usedCpus >= 0
+        while self.usedCores > self.maxCores: #If we are still waiting
+            self.usedCores -= self.jobIDsToCores.pop(self.outputQueue1.get())
+            assert self.usedCores >= 0
             self.outputQueue1.task_done()
         #Now keep going
         while True:
@@ -165,7 +165,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 logger.info("We failed to properly add the job, we will try again after a sleep")
                 time.sleep(5)
         jobID = int(match.group(1))
-        self.jobIDsToCpu[jobID] = cores
+        self.jobIDsToCores[jobID] = cores
         logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
         logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID
