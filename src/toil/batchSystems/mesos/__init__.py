@@ -13,7 +13,7 @@ ResourceRequirement = namedtuple('ResourceRequirement', (
     # Number of bytes (!) needed for a task
     'memory',
     # Number of CPU cores needed for a task
-    'cpu',
+    'cores',
     # Number of bytes (!) needed for task on disk
     'disk'))
 

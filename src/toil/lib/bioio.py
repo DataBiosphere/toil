@@ -147,24 +147,24 @@ def system(command):
         raise subprocess.CalledProcessError(sts, command)
     return sts
 
-def getTotalCpuTimeAndMemoryUsage():
-    """Gives the total cpu time and memory usage of itself and its children.
+def getTotalCoreTimeAndMemoryUsage():
+    """Gives the total cores time and memory usage of itself and its children.
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-    totalCpuTime = me.ru_utime+me.ru_stime+childs.ru_utime+childs.ru_stime
+    totalCoreTime = me.ru_utime+me.ru_stime+childs.ru_utime+childs.ru_stime
     totalMemoryUsage = me.ru_maxrss+ me.ru_maxrss
-    return totalCpuTime, totalMemoryUsage
+    return totalCoreTime, totalMemoryUsage
 
-def getTotalCpuTime():
-    """Gives the total cpu time, including the children.
+def getTotalCoreTime():
+    """Gives the total cores time, including the children.
     """
-    return getTotalCpuTimeAndMemoryUsage()[0]
+    return getTotalCoreTimeAndMemoryUsage()[0]
 
 def getTotalMemoryUsage():
     """Gets the amount of memory used by the process and its children.
     """
-    return getTotalCpuTimeAndMemoryUsage()[1]
+    return getTotalCoreTimeAndMemoryUsage()[1]
 
 def absSymPath(path):
     """like os.path.abspath except it doesn't dereference symlinks

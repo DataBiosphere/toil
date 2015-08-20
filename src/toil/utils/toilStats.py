@@ -428,11 +428,11 @@ def reportPrettyData(root, worker, job, job_types, options):
     """ print the important bits out.
     """
     out_str = "Batch System: %s\n" % root.attrib["batch_system"]
-    out_str += ("Default CPU: %s  Default Memory: %s\n"
-                "Max CPUs: %s  Max Threads: %s\n" % (
-        reportNumber(get(root, "default_cpu"), options),
+    out_str += ("Default Cores: %s  Default Memory: %s\n"
+                "Max Cores: %s  Max Threads: %s\n" % (
+        reportNumber(get(root, "default_cores"), options),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
-        reportNumber(get(root, "max_cpus"), options),
+        reportNumber(get(root, "max_cores"), options),
         reportNumber(get(root, "max_threads"), options),
         ))
     out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
@@ -584,8 +584,8 @@ def processData(config, stats, options):
          "total_clock":stats.find("total_time").attrib["clock"],
          "batch_system":config.batchSystem,
          "default_memory":str(config.defaultMemory),
-         "default_cpu":str(config.defaultCpu),
-         "max_cpus":str(config.maxCpus)})
+         "default_cores":str(config.defaultCores),
+         "max_cores":str(config.maxCores)})
 
     # Add worker info
     workers = stats.findall("worker")

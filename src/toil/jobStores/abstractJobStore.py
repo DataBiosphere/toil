@@ -153,12 +153,12 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def create( self, command, memory, cpu, disk, updateID=None,
+    def create( self, command, memory, cores, disk, updateID=None,
                 predecessorNumber=0 ):
         """
         Creates a job, adding it to the store.
         
-        Command, memory, cpu, updateID, predecessorNumber 
+        Command, memory, cores, updateID, predecessorNumber
         are all arguments to the job's constructor.
 
         :rtype : toil.jobWrapper.JobWrapper

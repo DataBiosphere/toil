@@ -7,7 +7,7 @@ from optparse import OptionParser
 import os
 from toil.job import Job
 
-def hello_world(job, memory=100, cpu=0.5):
+def hello_world(job):
 
     with open('foo_bam.txt', 'w') as handle:
         handle.write('\nThis is a triumph...\n')
@@ -16,10 +16,10 @@ def hello_world(job, memory=100, cpu=0.5):
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
 
     # Spawn child
-    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cpu=0.5, disk=2000)
+    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk=2000)
 
 
-def hello_world_child(job, hw, memory=100, cpu=0.5):
+def hello_world_child(job, hw):
 
     path = job.fileStore.readGlobalFile(hw)
 
@@ -48,7 +48,7 @@ def main():
 
 
     # Launch first toil Job
-    i = Job.wrapJobFn(hello_world, memory=100, cpu=0.5, disk=2000)
+    i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk=2000)
     j = Job.Runner.startToil(i, options)
 
 

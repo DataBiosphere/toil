@@ -33,9 +33,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCpus, maxMemory, maxDisk, masterIP,
+    def __init__(self, config, maxCores, maxMemory, maxDisk, masterIP,
                  userScript=None, toilDistribution=None):
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         # The hot-deployed resources representing the user script and the toil distribution
         # respectively. Will be passed along in every Mesos task. See
         # toil.common.HotDeployedResource for details.
@@ -79,19 +79,19 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueBatchJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cores, disk):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cpu is the number of cpus needed for the job and error-file
+        the number of bytes the job needs to run in and cores is the number of cpus needed for the job and error-file
         is the path of the file to place any std-err/std-out in.
         """
         # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
-        self.checkResourceRequest(memory, cpu, disk)
+        self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
 
         job = ToilJob(jobID=jobID,
-                         resources=ResourceRequirement(memory=memory, cpu=cpu, disk=disk),
+                         resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
                          command=command,
                          userScript=self.userScript,
                          toilDistribution=self.toilDistribution)
@@ -253,9 +253,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _sortJobsByResourceReq(self):
         job_types = list(self.jobQueueList.keys())
-        # sorts from largest to smallest cpu usage
+        # sorts from largest to smallest cores usage
         # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
-        job_types.sort(key=lambda resourceRequirement: ResourceRequirement.cpu)
+        job_types.sort(key=lambda resourceRequirement: ResourceRequirement.cores)
         job_types.reverse()
         return job_types
 
@@ -265,17 +265,17 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             driver.declineOffer(offer.id)
 
     def _determineOfferResources(self, offer):
-        offerCpus = 0
+        offerCores = 0
         offerMem = 0
         offerStor = 0
         for resource in offer.resources:
             if resource.name == "cpus":
-                offerCpus += resource.scalar.value
+                offerCores += resource.scalar.value
             elif resource.name == "mem":
                 offerMem += resource.scalar.value
             elif resource.name == "disk":
                 offerStor += resource.scalar.value
-        return offerCpus, offerMem, offerStor
+        return offerCores, offerMem, offerStor
 
     def _prepareToRun(self, job_type, offer, index):
         jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
@@ -311,10 +311,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         for offer in offers:
             tasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCpus, offerMem, offerStor = self._determineOfferResources(offer)
+            offerCores, offerMem, offerStor = self._determineOfferResources(offer)
             log.debug("Received offer %s with cpus: %s, disk: %s, and mem: %s" \
-                      % (offer.id.value, offerCpus, offerStor, offerMem))
-            remainingCpus = offerCpus
+                      % (offer.id.value, offerCores, offerStor, offerMem))
+            remainingCores = offerCores
             remainingMem = offerMem
             remainingStor = offerStor
 
@@ -323,7 +323,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 # Because we are not removing from the list until outside of the while loop, we must decrement the
                 # number of jobs left to run ourselves to avoid infinite loop.
                 while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
-                                remainingCpus >= job_type.cpu and \
+                                remainingCores >= job_type.cores and \
                                 remainingStor >= self.__bytesToMB(job_type.disk) and \
                                 remainingMem >= self.__bytesToMB(job_type.memory):  # toil specifies mem in bytes.
 
@@ -333,7 +333,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                         tasks.append(task)
                         log.info("Preparing to launch Mesos task %s using offer %s..." % (
                             task.task_id.value, offer.id.value))
-                        remainingCpus -= job_type.cpu
+                        remainingCores -= job_type.cores
                         remainingMem -= self.__bytesToMB(job_type.memory)
                         remainingStor -= job_type.disk
                     nextToLaunchIndex += 1
@@ -346,7 +346,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.info("...launching Mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
-                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem*1000000, offerCpus, offerStor*1000000)))
+                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem*1000000, offerCores, offerStor*1000000)))
 
     def _createTask(self, jt_job, offer):
         """
@@ -365,7 +365,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         cpus = task.resources.add()
         cpus.name = "cpus"
         cpus.type = mesos_pb2.Value.SCALAR
-        cpus.scalar.value = jt_job.resources.cpu
+        cpus.scalar.value = jt_job.resources.cores
 
         disk = task.resources.add()
         disk.name = "disk"

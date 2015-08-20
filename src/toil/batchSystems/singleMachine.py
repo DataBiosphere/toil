@@ -43,25 +43,25 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     numCores = multiprocessing.cpu_count()
 
-    def __init__(self, config, maxCpus, maxMemory, maxDisk):
-        assert type(maxCpus) == int
-        if maxCpus > self.numCores:
-            logger.warn('Limiting maxCpus to CPU count of system (%i).', self.numCores)
-            maxCpus = self.numCores
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
-        assert self.maxCpus >= 1
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        assert type(maxCores) == int
+        if maxCores > self.numCores:
+            logger.warn('Limiting maxCores to CPU count of system (%i).', self.numCores)
+            maxCores = self.numCores
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        assert self.maxCores >= 1
         assert self.maxMemory >= 1
         # The scale allows the user to apply a factor to each task's CPU requirement, thereby squeezing more tasks
         # onto each core (scale < 1) or stretching tasks over more cores (scale > 1).
         self.scale = config.scale
         # The minimal fractional CPU. Tasks with a smaller CPU requirement will be rounded up to this value. One
-        # important invariant of this class is that each worker thread represents a CPU requirement of minCpu,
-        # meaning that we can never run more than numCores / minCpu jobs concurrently. With minCpu set to .1,
-        # a task with cpu=1 will occupy 10 workers. One of these workers will be blocked on the Popen.wait() call for
+        # important invariant of this class is that each worker thread represents a CPU requirement of minCores,
+        # meaning that we can never run more than numCores / minCores jobs concurrently. With minCores set to .1,
+        # a task with cores=1 will occupy 10 workers. One of these workers will be blocked on the Popen.wait() call for
         # the worker.py child process, the others will be blocked on the acquiring the CPU semaphore.
-        self.minCpu = 0.1
+        self.minCores = 0.1
         # Number of worker threads that will be started
-        self.numWorkers = int(self.maxCpus / self.minCpu)
+        self.numWorkers = int(self.maxCores / self.minCores)
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
         self.jobIndexLock = Lock()
@@ -75,11 +75,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.runningJobs = {}
         # The list of worker threads
         self.workerThreads = []
-        # A semaphore representing available CPU in units of minCpu
-        self.cpuSemaphore = Semaphore(self.numWorkers)
-        # A counter representing failed acquisitions of the semaphore, also in units of minCpu, and a lock to guard it
-        self.cpuOverflow = 0
-        self.cpuOverflowLock = Lock()
+        # A semaphore representing available CPU in units of minCores
+        self.coreSemaphore = Semaphore(self.numWorkers)
+        # A counter representing failed acquisitions of the semaphore, also in units of minCores, and a lock to guard it
+        self.coresOverflow = 0
+        self.coreOverflowLock = Lock()
         # A lock to work around the lack of thread-safety in Python's subprocess module
         self.popenLock = Lock()
         # A counter representing available memory in bytes
@@ -88,7 +88,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.memoryCondition = Condition()
         logger.info('Setting up the thread pool with %i workers, '
                     'given a minimum CPU fraction of %f '
-                    'and a maximum CPU value of %i.', self.numWorkers, self.minCpu, maxCpus)
+                    'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
         for i in xrange(self.numWorkers):
             worker = Thread(target=self.worker, args=(self.inputQueue,))
             self.workerThreads.append(worker)
@@ -102,9 +102,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None:
                 logger.debug('Received queue sentinel.')
                 break
-            jobCommand, jobID, jobCpu, jobMem, jobDisk = args
+            jobCommand, jobID,jobCores, jobMem, jobDisk = args
             try:
-                numThreads = int(jobCpu / self.minCpu)
+                numThreads = int(jobCores / self.minCores)
                 logger.debug('Acquiring %i bytes of memory from pool of %i.', jobMem, self.memoryPool)
                 self.memoryCondition.acquire()
                 while jobMem > self.memoryPool:
@@ -115,11 +115,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 self.memoryCondition.release()
 
                 try:
-                    logger.debug('Attempting to acquire %i threads for %i cpus submitted', numThreads, jobCpu)
+                    logger.debug('Attempting to acquire %i threads for %i cpus submitted', numThreads, jobCores)
                     numThreadsAcquired = 0
                     # Acquire first thread blockingly
                     logger.debug('Acquiring semaphore blockingly.')
-                    self.cpuSemaphore.acquire(blocking=True)
+                    self.coreSemaphore.acquire(blocking=True)
                     try:
                         numThreadsAcquired += 1
                         logger.debug('Semaphore acquired.')
@@ -130,9 +130,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                             # thereby effectively surrendering that thread to this job and not into the semaphore.
                             # That way we get to start a job with as many threads as are available, and later grab
                             # more as they become available.
-                            if not self.cpuSemaphore.acquire(blocking=False):
-                                with self.cpuOverflowLock:
-                                    self.cpuOverflow += 1
+                            if not self.coreSemaphore.acquire(blocking=False):
+                                with self.coreOverflowLock:
+                                    self.coresOverflow += 1
                             numThreadsAcquired += 1
 
                         logger.info("Executing command: '%s'.", jobCommand)
@@ -150,16 +150,16 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     finally:
                         logger.debug('Releasing %i threads.', numThreadsAcquired)
 
-                        with self.cpuOverflowLock:
-                            if self.cpuOverflow > 0:
-                                if self.cpuOverflow > numThreadsAcquired:
-                                    self.cpuOverflow -= numThreadsAcquired
+                        with self.coreOverflowLock:
+                            if self.coresOverflow > 0:
+                                if self.coresOverflow > numThreadsAcquired:
+                                    self.coresOverflow -= numThreadsAcquired
                                     numThreadsAcquired = 0
                                 else:
-                                    numThreadsAcquired -= self.cpuOverflow
-                                    self.cpuOverflow = 0
+                                    numThreadsAcquired -= self.coresOverflow
+                                    self.coresOverflow = 0
                         for i in xrange(numThreadsAcquired):
-                            self.cpuSemaphore.release()
+                            self.coreSemaphore.release()
                 finally:
                     logger.debug('Releasing %i memory back to pool', jobMem)
                     self.memoryCondition.acquire()
@@ -168,30 +168,30 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     self.memoryCondition.release()
             finally:
                 # noinspection PyProtectedMember
-                value = self.cpuSemaphore._Semaphore__value
-                logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
+                value = self.coreSemaphore._Semaphore__value
+                logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.coresOverflow)
                 self.outputQueue.put((jobID, 0))
         logger.debug('Exiting worker thread normally.')
 
-    def issueBatchJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cores, disk):
         """
         Adds the command and resources to a queue to be run.
         """
-        # Round cpu to minCpu and apply scale
-        cpu = math.ceil(cpu * self.scale / self.minCpu) * self.minCpu
-        assert cpu <= self.maxCpus, \
-            'job is requesting {} cpu, which is greater than {} available on the machine. Scale currently set ' \
-            'to {} consider adjusting job or scale.'.format(cpu, multiprocessing.cpu_count(), self.scale)
-        assert cpu >= self.minCpu
+        # Round cores to minCores and apply scale
+        cores = math.ceil(cores * self.scale / self.minCores) * self.minCores
+        assert cores <= self.maxCores, \
+            'job is requesting {} cores, which is greater than {} available on the machine. Scale currently set ' \
+            'to {} consider adjusting job or scale.'.format(cores, multiprocessing.cpu_count(), self.scale)
+        assert cores >= self.minCores
         assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(memory, self.maxMemory)
 
-        self.checkResourceRequest(memory, cpu, disk)
-        logger.debug("Issuing the command: %s with memory: %i, cpu: %i, disk: %i" % (command, memory, cpu, disk))
+        self.checkResourceRequest(memory, cores, disk)
+        logger.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (command, memory, cores, disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = command
-        self.inputQueue.put((command, jobID, cpu, memory, disk))
+        self.inputQueue.put((command, jobID, cores, memory, disk))
         return jobID
 
     def killBatchJobs(self, jobIDs):

@@ -53,7 +53,7 @@ class DependenciesTest(ToilTest):
         Only done in singleMachine for now.  Experts can run manually on other systems if they so choose.
         """
 
-        def fn(tree, maxCpus, maxThreads, size, cpusPerJob, sleepTime):
+        def fn(tree, maxCores, maxThreads, size, coresPerJob, sleepTime):
             """
             Function runs the dependencies test
             """
@@ -79,12 +79,12 @@ class DependenciesTest(ToilTest):
             options.maxThreads = maxThreads
             options.batchSystem = batchSystem
             options.logFile = logName
-            options.maxCpus = maxCpus
+            options.maxCores = maxCores
 
-            baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(cpusPerJob))
+            baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(coresPerJob))
             i = Job.Runner.startToil(baseJob, options)
 
-            checkLog(logName, maxCpus, maxThreads, cpusPerJob, sleepTime)
+            checkLog(logName, maxCores, maxThreads, coresPerJob, sleepTime)
 
             self.assertEquals(i, 0)
 
@@ -186,18 +186,18 @@ def flyTree():
 
 
 class FirstJob(Job):
-    def __init__(self, tree, event, sleepTime, startTime, cpu):
-        Job.__init__(self, cpu=cpu)
+    def __init__(self, tree, event, sleepTime, startTime, cores):
+        Job.__init__(self, cores=cores)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
-        self.cpu = cpu
+        self.cores = cores
 
     def run(self, fileStore):
         time.sleep(1)
         self.addChild(DownJob(self.tree, self.event,
-                              self.sleepTime, self.startTime, self.cpu))
+                              self.sleepTime, self.startTime, self.cores))
 
         self.addFollowOn(LastJob())
 
@@ -211,13 +211,13 @@ class LastJob(Job):
 
 
 class DownJob(Job):
-    def __init__(self, tree, event, sleepTime, startTime, cpu):
-        Job.__init__(self, cpu=cpu)
+    def __init__(self, tree, event, sleepTime, startTime, cores):
+        Job.__init__(self, cores=cores)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
-        self.cpu = cpu
+        self.cores = cores
 
     def run(self, fileStore):
         writeLog(fileStore, "begin Down: %s" % self.event, self.startTime)
@@ -226,22 +226,22 @@ class DownJob(Job):
             writeLog(fileStore, "add %s as child of %s" % (child, self.event),
                      self.startTime)
             self.addChild(DownJob(self.tree, child,
-                                  self.sleepTime, self.startTime, self.cpu))
+                                  self.sleepTime, self.startTime, self.cores))
 
         if len(children) == 0:
             self.addFollowOn(UpJob(self.tree, self.event,
-                                   self.sleepTime, self.startTime, self.cpu))
+                                   self.sleepTime, self.startTime, self.cores))
         return 0
 
 
 class UpJob(Job):
-    def __init__(self, tree, event, sleepTime, startTime, cpu):
-        Job.__init__(self, cpu=cpu)
+    def __init__(self, tree, event, sleepTime, startTime, cores):
+        Job.__init__(self, cores=cores)
         self.tree = tree
         self.event = event
         self.sleepTime = sleepTime
         self.startTime = startTime
-        self.cpu = cpu
+        self.cores = cores
 
     """
     def spawnDaemon(self, command):
@@ -264,7 +264,7 @@ class UpJob(Job):
 # so the first k jobs all happen within epsilon time of each other,
 # same for the next k jobs and so on.  we allow at most alpha time
 # between the different batches (ie between k+1 and k).  
-def checkLog(logFile, maxCpus, maxThreads, cpusPerJob, sleepTime):
+def checkLog(logFile, maxCores, maxThreads, coresPerJob, sleepTime):
     epsilon = float(sleepTime) / 2.0
     alpha = sleepTime * 2.0
     logFile = open(logFile, "r")
@@ -282,17 +282,17 @@ def checkLog(logFile, maxCpus, maxThreads, cpusPerJob, sleepTime):
     stamps.sort()
 
     maxThreads = int(maxThreads)
-    maxCpus = int(maxCpus)
-    maxConcurrentJobs = min(maxThreads, maxCpus)
-    cpusPerThread = float(maxCpus) / maxConcurrentJobs
-    cpusPerJob = int(cpusPerJob)
-    assert cpusPerJob >= 1
-    assert cpusPerThread >= 1
+    maxCores = int(maxCores)
+    maxConcurrentJobs = min(maxThreads, maxCores)
+    coresPerThread = float(maxCores) / maxConcurrentJobs
+    coresPerJob = int(coresPerJob)
+    assert coresPerJob >= 1
+    assert coresPerThread >= 1
     threadsPerJob = 1
-    if cpusPerJob > cpusPerThread:
-        threadsPerJob = math.ceil(cpusPerJob / cpusPerThread)
+    if coresPerJob > coresPerThread:
+        threadsPerJob = math.ceil(coresPerJob / coresPerThread)
     maxConcurrentJobs = int(maxConcurrentJobs / threadsPerJob)
-    # print "Info on jobs", cpusPerThread, cpusPerJob, threadsPerJob, maxConcurrentJobs
+    # print "Info on jobs", coresPerThread, coresPerJob, threadsPerJob, maxConcurrentJobs
     assert maxConcurrentJobs >= 1
     for i in range(1, len(stamps)):
         delta = stamps[i] - stamps[i - 1]

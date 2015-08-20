@@ -88,9 +88,9 @@ class MesosExecutor(mesos.interface.Executor):
 
     def _sendStats(self, driver):
         while True:
-            cpuUsage = str(psutil.cpu_percent())
+            coresUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s" % (cpuUsage, ramUsage))
+            driver.sendFrameworkMessage("cores percent: %s, ram usage: %s" % (coresUsage, ramUsage))
             log.debug("sent stats message")
             sleep(30)
 

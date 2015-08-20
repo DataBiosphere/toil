@@ -31,7 +31,7 @@ import time
 import xml.etree.cElementTree as ET
 
 from toil import Process, Queue
-from toil.lib.bioio import getTotalCpuTime, logStream
+from toil.lib.bioio import getTotalCoreTime, logStream
 from toil.common import toilPackageDirPath
 
 logger = logging.getLogger( __name__ )
@@ -47,7 +47,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
     """
     #Overall timing
     startTime = time.time()
-    startClock = getTotalCpuTime()
+    startClock = getTotalCoreTime()
 
     #Start off the stats file
     with jobStore.writeSharedFileStream("statsAndLogging.xml") as fileHandle:
@@ -77,7 +77,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
 
         #Finish the stats file
         fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
-                         (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
+                         (str(time.time() - startTime), str(getTotalCoreTime() - startClock)))
 
 ####################################################
 ##Following encapsulates interactions with the batch system class.
@@ -98,25 +98,25 @@ class JobBatcher:
         self.workerPath = os.path.join(toilPackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
-    def issueJob(self, jobStoreID, memory, cpu, disk):
+    def issueJob(self, jobStoreID, memory, core, disk):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cpu, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, core, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cpus: %i, disk: %i, and memory: %i",
-                     jobStoreID, str(jobBatchSystemID), cpu, disk, memory)
+                     jobStoreID, str(jobBatchSystemID), core, disk, memory)
 
     def issueJobs(self, jobs):
         """
         Add a list of jobs, each represented as a tuple of
-        (jobStoreID, memory, cpu, disk).
+        (jobStoreID, memory, cores, disk).
         """
-        for jobStoreID, memory, cpu, disk in jobs:
-            self.issueJob(jobStoreID, memory, cpu, disk)
+        for jobStoreID, memory, cores, disk in jobs:
+            self.issueJob(jobStoreID, memory, cores, disk)
 
     def getNumberOfJobsIssued(self):
         """
@@ -366,7 +366,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                     #If the job has a command it must be run before any successors
                     if job.command != None:
                         if job.remainingRetryCount > 0:
-                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu, job.disk)
+                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cores, job.disk)
                         else:
                             totalFailedJobs += 1
                             logger.warn("Job: %s is completely failed", job.jobStoreID)
@@ -384,7 +384,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         successors = []
                         #For each successor schedule if all predecessors have been
                         #completed
-                        for successorJobStoreID, memory, cpu, disk, predecessorID in job.stack.pop():
+                        for successorJobStoreID, memory, cores, disk, predecessorID in job.stack.pop():
                             #Build map from successor to predecessors.
                             if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                                 toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
@@ -403,7 +403,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                                 assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                                 if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                     continue
-                            successors.append((successorJobStoreID, memory, cpu, disk))
+                            successors.append((successorJobStoreID, memory, cores, disk))
                         jobBatcher.issueJobs(successors)
 
                     #There are no remaining tasks to schedule within the job, but
@@ -417,7 +417,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         if job.remainingRetryCount > 0:
                             jobBatcher.issueJob(job.jobStoreID,
                                                 config.defaultMemory,
-                                                config.defaultCpu,
+                                                config.defaultCores,
                                                 config.defaultDisk)
                             logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:

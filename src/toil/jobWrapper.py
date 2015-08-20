@@ -10,15 +10,15 @@ class JobWrapper( object ):
     scripts is persisted separately since it may be much bigger than the state managed by this
     class and should therefore only be held in memory for brief periods of time.
     """
-    def __init__( self, command, memory, cpu, disk,
+    def __init__( self, command, memory, cores, disk,
                   jobStoreID, remainingRetryCount, 
                   updateID, predecessorNumber,
                   jobsToDelete=None, predecessorsFinished=None, 
                   stack=None, logJobStoreFileID=None): 
-        #The command to be executed and its memory and cpu requirements.
+        #The command to be executed and its memory and cores requirements.
         self.command = command
         self.memory = memory #Max number of bytes used by the job
-        self.cpu = cpu #Number of cores to be used by the job
+        self.cores = cores #Number of cores to be used by the job
         self.disk = disk #Max number of bytes on disk space used by the job
         
         #The jobStoreID of the job. JobStore.load(jobStoreID) will return
@@ -54,7 +54,7 @@ class JobWrapper( object ):
         self.predecessorsFinished = predecessorsFinished or set()
         
         #The list of successor jobs to run. Successor jobs are stored
-        #as 5-tuples of the form (jobStoreId, memory, cpu, disk, predecessorNumber).
+        #as 5-tuples of the form (jobStoreId, memory, cores, disk, predecessorNumber).
         #Successor jobs are run in reverse order from the stack.
         self.stack = stack or []
         
