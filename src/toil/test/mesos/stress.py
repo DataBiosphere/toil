@@ -59,6 +59,7 @@ def main(numJobs, useBadExecutor=False):
     # Launch first toil Job
     i = LongTestJob( numJobs )
     j = Job.Runner.startToil(i,  options )
+    assert(j==0) # confirm that no jobs failed
 
 if __name__=="__main__":
     main(5, useBadExecutor=False)

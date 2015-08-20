@@ -159,7 +159,7 @@ class LSFBatchSystem(AbstractBatchSystem):
     """
     def __init__(self, config, maxCpus, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
-        self.lsfResultsFile = getParasolResultsFileName(config.attrib["job_store"])
+        self.lsfResultsFile = getParasolResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
         self.lsfResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence

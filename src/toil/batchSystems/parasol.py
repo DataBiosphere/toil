@@ -105,8 +105,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
             logger.warn("A max memory has been specified for the parasol batch system class of %i, but currently "
                         "this batchsystem interface does not support such limiting" % maxMemory)
         #Keep the name of the results file for the pstat2 command..
-        self.parasolCommand = config.attrib["parasol_command"]
-        self.parasolResultsFile = getParasolResultsFileName(config.attrib["job_store"])
+        self.parasolCommand = config.parasolCommand
+        self.parasolResultsFile = getParasolResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.queuePattern = re.compile("q\s+([0-9]+)")
         self.runningPattern = re.compile("r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")

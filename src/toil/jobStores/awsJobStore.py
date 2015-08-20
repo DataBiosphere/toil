@@ -83,14 +83,14 @@ class AWSJobStore(AbstractJobStore):
                                                      attributes=job.toItem())
         return job
 
-    def __init__(self, region, namePrefix, config=None, create=False):
+    def __init__(self, region, namePrefix, config=None):
         """
         TODO: Document region and namePrefix
         
         :param create: If True create the jobStore. 
         :type create: Boolean
-        :exception RuntimeError: if create=True and the jobStore already exists or
-        create=False and the jobStore does not already exist. 
+        :raise RuntimeError: if config != None and the jobStore already exists or
+        config == None and the jobStore does not already exists. 
         """
         log.debug("Instantiating %s for region %s and name prefix '%s'",
                   self.__class__, region, namePrefix)
@@ -105,15 +105,15 @@ class AWSJobStore(AbstractJobStore):
         self.sseKey = None
 
         def creationCheck(exists):
-            self._checkJobStoreCreation(create, exists, region + " " + namePrefix)
+            self._checkJobStoreCreation(config != None, exists, region + " " + namePrefix)
 
         self.jobDomain = self._getOrCreateDomain('jobs', creationCheck)
         self.versions = self._getOrCreateDomain('versions', creationCheck)
-        self.files = self._getOrCreateBucket('files', create, versioning=True)
-        self.stats = self._getOrCreateBucket('stats', create, versioning=True)
+        self.files = self._getOrCreateBucket('files', config != None, versioning=True)
+        self.stats = self._getOrCreateBucket('stats', config != None, versioning=True)
         super(AWSJobStore, self).__init__(config=config)
-        if 'sse_key' in self.config.attrib:
-            with open(self.config.attrib["sse_key"]) as f:
+        if self.config.sseKey != None:
+            with open(self.config.sseKey) as f:
                 self.sseKey = f.read()
 
     def exists(self, jobStoreID):

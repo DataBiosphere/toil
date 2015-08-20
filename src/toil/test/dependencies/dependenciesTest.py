@@ -47,7 +47,6 @@ class DependenciesTest(ToilTest):
 
 
     # FIXME: test methods can't have parameters, AFAIK (Hannes)
-
     @unittest.expectedFailure
     def testDependencies(self, batchSystem="singleMachine"):
         """
@@ -76,7 +75,7 @@ class DependenciesTest(ToilTest):
                 tree = combTree(size)
 
             options = Job.Runner.getDefaultOptions()
-            options.toil = self.toilDir
+            options.jobStore = self.toilDir
             options.maxThreads = maxThreads
             options.batchSystem = batchSystem
             options.logFile = logName

@@ -27,7 +27,7 @@ import logging
 import sys
 import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
 from xml.dom import minidom  # For making stuff pretty
-
+import os
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
@@ -95,7 +95,7 @@ def initializeOptions(parser):
     ##########################################
     # Construct the arguments.
     ##########################################
-    parser.add_option("--toil", dest="toil", default='./toil',
+    parser.add_option("--jobStore", dest="jobStore", default=os.path.abspath("./toil"),
                       help="Job store path. Can also be specified as the single argument to the script. Default=%default")
     parser.add_option("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
@@ -130,10 +130,10 @@ def checkOptions(options, args, parser):
         sys.exit(0)
     assert len(args) <= 1  # Only toil may be specified as argument
     if len(args) == 1:  # Allow toil directory as arg
-        options.toil = args[0]
+        options.jobStore = args[0]
     logger.info("Checking if we have files for toil")
-    if options.toil == None:
-        parser.error("Specify --toil")
+    if options.jobStore == None:
+        parser.error("Specify --jobStore")
     defaultCategories = ["time", "clock", "wait", "memory"]
     if options.categories is None:
         options.categories = defaultCategories
@@ -554,7 +554,7 @@ def getStats(options):
     """ Collect and return the stats and config data.
     """
     
-    jobStore = loadJobStore(options.toil)
+    jobStore = loadJobStore(options.jobStore)
     try:
         with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
             stats = ET.parse(fH).getroot() # Try parsing the whole file.
@@ -584,10 +584,10 @@ def processData(config, stats, options):
         "collated_stats",
         {"total_run_time":stats.find("total_time").attrib["time"],
          "total_clock":stats.find("total_time").attrib["clock"],
-         "batch_system":config.attrib["batch_system"],
-         "default_memory":config.attrib["default_memory"],
-         "default_cpu":config.attrib["default_cpu"],
-         "max_cpus":config.attrib["max_cpus"]})
+         "batch_system":config.batchSystem,
+         "default_memory":str(config.defaultMemory),
+         "default_cpu":str(config.defaultCpu),
+         "max_cpus":str(config.maxCpus)})
 
     # Add worker info
     workers = stats.findall("worker")
@@ -643,14 +643,14 @@ def getPreferredStatsCacheFileName(options):
     #Note you MUST check to see if the return value exists before using.
     
     null_file = getNullFile()
-    location_jt = getStatsCacheFileName(options.toil)
+    location_jt = getStatsCacheFileName(options.jobStore)
     location_local = os.path.abspath(os.path.join(os.getcwd(),
                                                   ".stats_cache.pickle"))
     # start by looking for the current directory cache.
     if os.path.exists(location_local):
         loc_file = open(location_local, "r")
         data, loc = cPickle.load(loc_file)
-        if getStatsFileName(options.toil) != loc:
+        if getStatsFileName(options.jobStore) != loc:
             # the local cache is from looking up a *different* toil
             location_local = null_file
     if os.path.exists(location_jt) and not os.path.exists(location_local):
@@ -686,14 +686,14 @@ def unpackData(options):
             return None
         finally:
             f.close()
-        if location == getStatsFileName(options.toil):
+        if location == getStatsFileName(options.jobStore):
             return data
     return None
 
 def packData(data, options):
     # packData stores all of the data in the appropriate pickle cache file.
-    stats_file = getStatsFileName(options.toil)
-    cache_file = getStatsCacheFileName(options.toil)
+    stats_file = getStatsFileName(options.jobStore)
+    cache_file = getStatsCacheFileName(options.jobStore)
     try:
         # try to write to the toil directory
         payload = (data, stats_file)
@@ -713,13 +713,13 @@ def packData(data, options):
 
 def cacheAvailable(options):
     # Check to see if a cache is available, return it.
-    if not os.path.exists(getStatsFileName(options.toil)):
+    if not os.path.exists(getStatsFileName(options.jobStore)):
         return None
     cache_file = getPreferredStatsCacheFileName(options)
     if not os.path.exists(cache_file):
         return None
     # check the modify times on the files, see if the cache should be recomputed
-    mtime_stats = os.path.getmtime(getStatsFileName(options.toil))
+    mtime_stats = os.path.getmtime(getStatsFileName(options.jobStore))
     mtime_cache = os.path.getmtime(cache_file)
     if mtime_stats > mtime_cache:
         # recompute cache
@@ -733,11 +733,11 @@ def main():
     """
 
     parser = getBasicOptionParser(
-        "usage: %prog [--toil] JOB_TREE_DIR [options]", "%prog 0.1")
+        "usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)
-    jobStore = loadJobStore(options.toil)
+    jobStore = loadJobStore(options.jobStore)
     #collatedStatsTag = cacheAvailable(options)
     #if collatedStatsTag is None:
     stats = getStats(options)

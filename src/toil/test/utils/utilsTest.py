@@ -5,7 +5,7 @@ import os
 from toil.lib.bioio import system
 from toil.lib.bioio import getTempDirectory
 from toil.lib.bioio import getTempFile
-from toil.test.sort.sortTest import makeFileToSort
+from toil.test.sort.sortTest import makeFileToSort, checkEqual
 from toil.common import toilPackageDirPath
 from toil.test import ToilTest
 import subprocess
@@ -34,10 +34,15 @@ class UtilsTest(ToilTest):
             N = 1000
             makeFileToSort(tempFile, lines, maxLineLength)
             
+            # First make our own sorted version
+            with open(tempFile, 'r') as fileHandle:
+                l = fileHandle.readlines()
+                l.sort()
+            
             #Get the sort command to run
             rootPath = os.path.join(toilPackageDirPath(), "test", "sort")
             toilCommandString = ("{rootPath}/sort.py "
-                   "--toil {toilDir} "
+                   "--jobStore {toilDir} "
                    "--logLevel=DEBUG "
                    "--fileToSort={tempFile} "
                    "--N {N} --stats "
@@ -68,7 +73,7 @@ class UtilsTest(ToilTest):
                 #Run the status command
                 rootPath = os.path.join(toilPackageDirPath(), "utils")
                 toilStatusString = ("{rootPath}/toilStatus.py "
-                       "--toil {toilDir} --failIfNotComplete".format(**locals()))
+                       "--jobStore {toilDir} --failIfNotComplete".format(**locals()))
                 try:
                     system(toilStatusString)
                     break
@@ -86,8 +91,13 @@ class UtilsTest(ToilTest):
             #Check we can run toilStats
             rootPath = os.path.join(toilPackageDirPath(), "utils")
             toilStatsString = ("{rootPath}/toilStats.py "
-                                "--toil {toilDir} --pretty".format(**locals()))
+                                "--jobStore {toilDir} --pretty".format(**locals()))
             system(toilStatsString)
+            
+            #Check the file is properly sorted
+            with open(tempFile, 'r') as fileHandle:
+                l2 = fileHandle.readlines()
+                checkEqual(l, l2)
             
             # Cleanup
             system("rm -rf %s" % tempDir)

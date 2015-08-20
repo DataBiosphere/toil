@@ -107,7 +107,7 @@ def main():
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.lib.bioio import getTempDirectory
-    from toil.lib.bioio import makeSubDir
+    from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
     from toil.common import loadJobStore
     
@@ -141,9 +141,9 @@ def main():
             if e != '':
                 sys.path.append(e)
 
-    setLogLevel(config.attrib["log_level"])
+    setLogLevel(config.logLevel)
 
-    tempRootDir = config.attrib.get('work_dir')
+    tempRootDir = config.workDir
     if tempRootDir is not None and not os.path.exists(tempRootDir):
         raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
 
@@ -249,7 +249,7 @@ def main():
         #Setup the stats, if requested
         ##########################################
         
-        if config.attrib.has_key("stats"):
+        if config.stats:
             startTime = time.time()
             startClock = getTotalCpuTime()
             stats = ET.Element("worker")
@@ -265,7 +265,7 @@ def main():
             if job.command != None:
                 if job.command[:11] == "scriptTree ":
                     #Make a temporary file directory for the job
-                    localTempDir = makeSubDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a job command
                     messages = loadJob(job.command, jobStore)._execute( jobWrapper=job,

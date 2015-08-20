@@ -24,7 +24,7 @@
 """
 from __future__ import absolute_import
 import logging
-
+import os
 import sys
 
 from toil.lib.bioio import logStream
@@ -44,11 +44,11 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog [--toil] JOB_TREE_DIR [options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
     
-    parser.add_option("--toil", dest="toil",
+    parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.\
-                       default=%default", default='./toil')
+                       default=%default", default=os.path.abspath("./toil"))
     
     parser.add_option("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
@@ -68,20 +68,20 @@ def main():
     
     assert len(args) <= 1 #Only toil may be specified as argument
     if len(args) == 1: #Allow toil directory as arg
-        options.toil = args[0]
+        options.jobStore = args[0]
     
     ##########################################
     #Do some checks.
     ##########################################
     
     logger.info("Checking if we have files for toil")
-    assert options.toil != None
+    assert options.jobStore != None
     
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = loadJobStore(options.toil)
+    jobStore = loadJobStore(options.jobStore)
     try:
         rootJob = Job._loadRootJob(jobStore)
     except JobException:
@@ -95,9 +95,9 @@ def main():
                   if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, and \
-    %i totally failed jobs currently in toil: %s" % \
+    %i totally failed jobs currently in toil workflow: %s" % \
     (len(toilState.updatedJobs), len(toilState.successorCounts),
-     len(failedJobs), options.toil)
+     len(failedJobs), options.jobStore)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:

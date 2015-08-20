@@ -11,7 +11,6 @@ class JobServiceTest(ToilTest):
     """
     Tests testing the Job.Service class
     """
-    @unittest.expectedFailure
     def testService(self):
         """
         Tests the creation of a Job.Service.
@@ -25,7 +24,7 @@ class JobServiceTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions()
             options.logLevel = "INFO"
-            options.toil = self._getTestJobStorePath()
+            options.jobStore = self._getTestJobStorePath()
             # Run the workflow, the return value being the number of failed jobs
             self.assertEquals(Job.Runner.startToil(t, options), 0)
             # Check output

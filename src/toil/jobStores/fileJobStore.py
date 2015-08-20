@@ -21,24 +21,22 @@ class FileJobStore(AbstractJobStore):
     of functions see AbstractJobStore.
     """
 
-    def __init__(self, jobStoreDir, config=None, create=False):
+    def __init__(self, jobStoreDir, config=None):
         """
         :param jobStoreDir: Place to create jobStore
         :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
-        :param create: If True create the jobStore. 
-        :type create: Boolean
-        :raise RuntimeError: if create=True and the jobStore already exists or
-        create=False and the jobStore does not already exist. 
+        :raise RuntimeError: if config != None and the jobStore already exists or
+        config == None and the jobStore does not already exists. 
         """
         #This is root directory in which everything in the store is kept
         self.jobStoreDir = absSymPath(jobStoreDir)
         logger.info("Jobstore directory is: %s", self.jobStoreDir)
         #Safety checks for existing jobStore
-        self._checkJobStoreCreation(create, os.path.exists(self.jobStoreDir), self.jobStoreDir)
+        self._checkJobStoreCreation(config != None, os.path.exists(self.jobStoreDir), self.jobStoreDir)
         #Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
         #Creation of jobStore, if necessary
-        if create:
+        if config != None:
             os.mkdir(self.jobStoreDir)
             os.mkdir(self.tempFilesDir)  
         #Parameters for creating temporary files

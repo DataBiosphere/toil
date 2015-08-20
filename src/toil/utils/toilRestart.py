@@ -56,7 +56,7 @@ def main():
     
     assert len(args) <= 1 #Only toil may be specified as argument
     if len(args) == 1: #Allow toil directory as arg
-        options.toil = args[0]
+        options.jobStore = args[0]
         
     ##########################################
     #Now run the toil construction/leader

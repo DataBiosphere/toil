@@ -90,7 +90,7 @@ class JobBatcher:
     def __init__(self, config, batchSystem, jobStore, toilState):
         self.config = config
         self.jobStore = jobStore
-        self.jobStoreString = config.attrib["job_store"]
+        self.jobStoreString = config.jobStore
         self.toilState = toilState
         self.jobBatchSystemIDToJobStoreIDHash = {}
         self.batchSystem = batchSystem
@@ -170,7 +170,7 @@ class JobBatcher:
         issue a kill instruction.
         Wait for the job to die then we pass the job to processFinishedJob.
         """
-        maxJobDuration = float(self.config.attrib["max_job_duration"])
+        maxJobDuration = self.config.maxJobDuration
         jobsToKill = []
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
@@ -416,9 +416,9 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                     else:
                         if job.remainingRetryCount > 0:
                             jobBatcher.issueJob(job.jobStoreID,
-                                                int(config.attrib["default_memory"]),
-                                                int(config.attrib["default_cpu"]),
-                                                int(config.attrib["default_disk"]))
+                                                config.defaultMemory,
+                                                config.defaultCpu,
+                                                config.defaultDisk)
                             logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:
                             totalFailedJobs += 1
@@ -467,7 +467,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 #(see JobBatcher.reissueOverLongJobs) or which
                 #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
                 if (time.time() - timeSinceJobsLastRescued >=
-                    float(config.attrib["rescue_jobs_frequency"])): #We only
+                    config.rescueJobsFrequency): #We only
                     #rescue jobs every N seconds, and when we have
                     #apparently exhausted the current job supply
                     jobBatcher.reissueOverLongJobs()
@@ -493,7 +493,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         stopStatsAndLoggingAggregatorProcess.put(True)
         worker.join()
         logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
-        clean = config.attrib["clean"]
+        clean = config.clean
         if clean=="always" or clean == "onError" and totalFailedJobs>0 or clean == "onSuccess" and totalFailedJobs==0:
             jobStore.deleteJobStore()
 

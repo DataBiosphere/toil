@@ -2,7 +2,10 @@ from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 import re
-import xml.etree.cElementTree as ET
+try:
+    import cPickle 
+except ImportError:
+    import pickle as cPickle
 
 class NoSuchJobException( Exception ):
     def __init__( self, jobStoreID ):
@@ -30,20 +33,27 @@ class AbstractJobStore( object ):
     def __init__( self, config=None ):
         """
         :param config: If config is not None then the
-        given configuration object will be written to the shared file "config.xml" which can
-        later be retrieved using the readSharedFileStream. If this file already exists
-        it will be overwritten. If config is None, 
-        the shared file "config.xml" is assumed to exist and is retrieved.
+        given configuration object will be written to the shared file "config.pickle" which can
+        later be retrieved using the readSharedFileStream. See writeConfigToStore. 
+        If this file already exists it will be overwritten. If config is None, 
+        the shared file "config.pickle" is assumed to exist and is retrieved. See loadConfigFromStore.
         """
         #Now get on with reading or writing the config
         if config is None:
-            with self.readSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
-                self.__config = ET.parse( fileHandle ).getroot( )
+            with self.readSharedFileStream( "config.pickle", isProtected=False ) as fileHandle:
+                self.__config = cPickle.load(fileHandle)
         else:
-            with self.writeSharedFileStream( "config.xml", isProtected=False ) as fileHandle:
-                ET.ElementTree( config ).write( fileHandle )
             self.__config = config
-
+            self.writeConfigToStore()
+            
+    def writeConfigToStore(self):
+        """
+        Re-writes the config attribute to the jobStore, so that its values can be retrieved 
+        if the jobStore is reloaded.
+        """
+        with self.writeSharedFileStream( "config.pickle", isProtected=False ) as fileHandle:
+            cPickle.dump(self.__config, fileHandle, cPickle.HIGHEST_PROTOCOL)
+    
     @property
     def config( self ):
         return self.__config
@@ -121,8 +131,8 @@ class AbstractJobStore( object ):
                     break
                           
             #Reset the retry count of the job 
-            if job.remainingRetryCount < int(self.config.attrib["try_count"]):
-                job.remainingRetryCount = int(self.config.attrib["try_count"])
+            if job.remainingRetryCount < self._defaultTryCount():
+                job.remainingRetryCount = self._defaultTryCount()
                 changed = True
                           
             #This cleans the old log file which may 
@@ -370,7 +380,7 @@ class AbstractJobStore( object ):
     ## Helper methods for subclasses
 
     def _defaultTryCount( self ):
-        return int( self.config.attrib[ "try_count" ] )
+        return int( self.config.retryCount+1 )
 
     @classmethod
     def _validateSharedFileName( cls, sharedFileName ):

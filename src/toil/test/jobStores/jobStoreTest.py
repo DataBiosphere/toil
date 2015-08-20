@@ -8,9 +8,8 @@ import urllib2
 from threading import Thread
 import tempfile
 import uuid
-from xml.etree.cElementTree import Element
 import shutil
-
+from toil.common import Config
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, needs_aws, needs_mesos
@@ -31,12 +30,10 @@ class hidden:
         __metaclass__ = ABCMeta
 
         def _createConfig(self):
-            config = Element("config")
-            config.attrib["try_count"] = "1"
-            return config
+            return Config()
 
         @abstractmethod
-        def _createJobStore(self, config=None, create=False):
+        def _createJobStore(self, config=None):
             """
             :rtype: AbstractJobStore
             """
@@ -46,7 +43,7 @@ class hidden:
             super(hidden.AbstractJobStoreTest, self).setUp()
             self.namePrefix = str(uuid.uuid4())
             self.config = self._createConfig()
-            self.master = self._createJobStore(self.config, create=True)
+            self.master = self._createJobStore(self.config)
 
         def tearDown(self):
             self.master.deleteJobStore()
@@ -80,7 +77,7 @@ class hidden:
 
             # Create a second instance of the job store, simulating a worker ...
             #
-            worker = self._createJobStore(config=self.config)
+            worker = self._createJobStore()
             # ... and load the parent job there.
             jobOnWorker = worker.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnMaster, jobOnWorker)
@@ -387,27 +384,25 @@ class hidden:
             sseKeyFile = os.path.join(self.sseKeyDir, "keyFile")
             with open(sseKeyFile, 'w') as f:
                 f.write("01234567890123456789012345678901")
-            config.attrib["sse_key"] = sseKeyFile
+            config.sseKey = sseKeyFile
+            #config.attrib["sse_key"] = sseKeyFile
             return config
 
 class FileJobStoreTest(hidden.AbstractJobStoreTest):
-    def _createJobStore(self, config=None, create=False):
-        return FileJobStore(self.namePrefix, config=config, create=create)
-
+    def _createJobStore(self, config=None):
+        return FileJobStore(self.namePrefix, config=config)
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = "us-west-2"
 
-    def _createJobStore(self, config=None, create=False):
+    def _createJobStore(self, config=None):
         from toil.jobStores.awsJobStore import AWSJobStore
         AWSJobStore._s3_part_size = self.partSize
-        return AWSJobStore(self.testRegion, self.namePrefix, config=config, create=create)
-
+        return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
-
 
 @needs_aws
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):

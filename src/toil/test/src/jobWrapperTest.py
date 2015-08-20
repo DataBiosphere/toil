@@ -18,8 +18,8 @@ class JobWrapperTest(ToilTest):
         parser = OptionParser()
         Job.Runner.addToilOptions(parser)
         options, args = parser.parse_args()
-        options.toil = self.jobStorePath
-        self.contextManager = setupToil(options,create=True)
+        options.jobStore = self.jobStorePath
+        self.contextManager = setupToil(options)
         config, batchSystem, self.jobStore = self.contextManager.__enter__()
 
     def tearDown(self):
