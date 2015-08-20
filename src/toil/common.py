@@ -200,7 +200,7 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=None, #detectQueueSystem(),
                       help=("The type of batch system to run the job(s) with, currently can be "
                             "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'/'mesos'/'badmesos'. default=%s" % config.batchSystem))
-    #TODO - what the fuck is this?
+    #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
