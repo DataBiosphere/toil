@@ -7,7 +7,6 @@ from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException
 from toil.test import ToilTest
 
-
 class JobTest(ToilTest):
     """
     Tests testing the job class
@@ -27,14 +26,16 @@ class JobTest(ToilTest):
         """
         outFile = getTempFile(rootDir=os.getcwd())
         try:
+            #Test function
+            g = lambda s : s + chr(ord(s[-1]) + 1)
 
             # Create the jobs
-            A = Job.wrapFn(f, "A", outFile)
-            B = Job.wrapFn(f, A.rv(), outFile)
-            C = Job.wrapFn(f, B.rv(), outFile)
-            D = Job.wrapFn(f, C.rv(), outFile)
-            E = Job.wrapFn(f, D.rv(), outFile)
-            F = Job.wrapFn(f, E.rv(), outFile)
+            A = Job.wrapFn(g, "A")
+            B = Job.wrapFn(g, A.rv())
+            C = Job.wrapFn(g, B.rv())
+            D = Job.wrapFn(g, C.rv())
+            E = Job.wrapFn(g, D.rv())
+            F = Job.wrapFn(self.f, E.rv(), outFile)
 
             # Connect them into a workflow
             A.addChild(B)
@@ -55,6 +56,20 @@ class JobTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
         finally:
             os.remove(outFile)
+            
+    @staticmethod
+    def f(string, outFile):
+        """
+        Used to test the pickling of class methods. 
+        
+        Function appends string to output file, then returns the 
+        next ascii character of the first character in the string, e.g.
+        if string is "AA" returns "B"
+        """
+        fH = open(outFile, 'a')
+        fH.write(string)
+        fH.close()
+        return chr(ord(string[0]) + 1)
 
     def testDeadlockDetection(self):
         """
@@ -316,7 +331,7 @@ class JobTest(ToilTest):
         Converts a DAG into a job graph. childEdges and followOnEdges are
         the lists of child and followOn edges.
         """
-        jobs = map(lambda i: Job.wrapFn(f, str(i) + " ", outFile), xrange(nodeNumber))
+        jobs = map(lambda i: Job.wrapFn(JobTest.f, str(i) + " ", outFile), xrange(nodeNumber))
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
         for fNode, tNode in followOnEdges:
@@ -347,17 +362,6 @@ class JobTest(ToilTest):
                 return False
         return True
 
-
-def f(string, outFile):
-    """
-    Function appends string to output file, then returns the 
-    next ascii character of the first character in the string, e.g.
-    if string is "AA" returns "B"
-    """
-    fH = open(outFile, 'a')
-    fH.write(string)
-    fH.close()
-    return chr(ord(string[0]) + 1)
 
 
 if __name__ == '__main__':

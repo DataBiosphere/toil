@@ -38,6 +38,13 @@ try:
     import cPickle 
 except ImportError:
     import pickle as cPickle
+  
+#Dill is used with pickle for serialising functions, including lambdas, nested functions, etc.
+try:
+    import dill
+except ImportError:
+    pass
+import pickle
     
 import logging
 logger = logging.getLogger( __name__ )
@@ -889,26 +896,25 @@ class FunctionWrappingJob(Job):
         disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
         Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
-        #If dill is installed pickle the user function directly
-        
+        self.userFunctionString = pickle.dumps(userFunction)
         #else use indirect method
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
-        self.userFunctionName = str(userFunction.__name__)
+        #self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
         
     def _getUserFunction(self):
-        #If dill is installed unpickle the user function directly
-        
-        userFunctionModule = self.userFunctionModule.localize()
-        if userFunctionModule.dirPath not in sys.path:
+        #userFunctionModule = self.userFunctionModule.localize()
+        #if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
-            sys.path.append(userFunctionModule.dirPath)
-        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+            #sys.path.append(userFunctionModule.dirPath)
+        #importlib.import_module(userFunctionModule.name)
+        #return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+        return pickle.loads(self.userFunctionString) #If dill is installed unpickle will work for a more general class of functions
+        #including lambda, etc. 
 
     def run(self,fileStore):
-        userFunction = self._getUserFunction( )
-        return userFunction(*self._args, **self._kwargs)
+        return self._getUserFunction( )(*self._args, **self._kwargs)
 
     def getUserScript(self):
         return self.userFunctionModule

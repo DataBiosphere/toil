@@ -1,12 +1,9 @@
 from __future__ import absolute_import
 
 import sys
-
 from mock import MagicMock, patch
-
 from toil.resource import ModuleDescriptor, Resource
 from toil.test import ToilTest
-
 
 class ResourceTest( ToilTest ):
     def test( self ):

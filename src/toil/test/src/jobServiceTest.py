@@ -6,7 +6,6 @@ from toil.lib.bioio import getTempFile
 from toil.job import Job
 from toil.test import ToilTest
 
-
 class JobServiceTest(ToilTest):
     """
     Tests testing the Job.Service class
@@ -31,7 +30,6 @@ class JobServiceTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "123")
         finally:
             os.remove(outFile)
-
 
 class TestService(Job.Service):
     def __init__(self, startString, stopString, outFile):

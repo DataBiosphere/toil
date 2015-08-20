@@ -4,8 +4,6 @@ import os
 from toil.lib.bioio import getTempFile
 from toil.job import Job as T
 from toil.test import ToilTest
-from toil.test.src.jobTest import f
-
 
 class JobEncapsulationTest(ToilTest):
     """
@@ -41,3 +39,16 @@ class JobEncapsulationTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
+
+def f(string, outFile):
+    """
+    Used to test the pickling of class methods. 
+    
+    Function appends string to output file, then returns the 
+    next ascii character of the first character in the string, e.g.
+    if string is "AA" returns "B"
+    """
+    fH = open(outFile, 'a')
+    fH.write(string)
+    fH.close()
+    return chr(ord(string[0]) + 1)
