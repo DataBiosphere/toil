@@ -15,8 +15,6 @@ from mesos.interface import mesos_pb2
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
-from toil.batchSystems.mesos.badExecutor import BadMesosExecutor
-from toil.batchSystems.mesos.executor import MesosExecutor
 
 log = logging.getLogger(__name__)
 
@@ -35,10 +33,12 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCpus, maxMemory, maxDisk, masterIP, useBadExecutor=False, userScript=None, toilDistribution=None):
+    def __init__(self, config, maxCpus, maxMemory, maxDisk, masterIP,
+                 userScript=None, toilDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory, maxDisk)
-        # The hot-deployed resources representing the user script and the toil distribution respectively. Will be
-        # passed along in every Mesos task. See toil.common.HotDeployedResource for details.
+        # The hot-deployed resources representing the user script and the toil distribution
+        # respectively. Will be passed along in every Mesos task. See
+        # toil.common.HotDeployedResource for details.
         self.userScript = userScript
         self.toilDistribution = toilDistribution
 
@@ -70,7 +70,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # FIXME: This comment makes no sense to me
 
         # Returns Mesos executor object, which is merged into Mesos tasks as they are built
-        self.executor = self.buildExecutor(bad=useBadExecutor)
+        self.executor = self.buildExecutor()
 
         self.nextJobID = 0
         self.lastReconciliation = time.time()
@@ -172,21 +172,22 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def getWaitDuration(self):
         """
-        Gets the period of time to wait (floating point, in seconds) between checking for missing/overlong jobs.
+        Gets the period of time to wait (floating point, in seconds) between checking for
+        missing/overlong jobs.
         """
         return self.reconciliationPeriod
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
         """
-        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2, making it expensive. We
-        allow this every 10 minutes..
+        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
+        making it expensive. We allow this every 10 minutes..
         """
         return 1800  # Half an hour
 
-    def buildExecutor(self, bad):
+    def buildExecutor(self):
         """
-        Creates and returns an ExecutorInfo instance representing either the regular or the "bad" test executor.
+        Creates and returns an ExecutorInfo instance representing our executor implementation.
         """
 
         def scriptPath(executorClass):
@@ -196,13 +197,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             return path
 
         executorInfo = mesos_pb2.ExecutorInfo()
-        if bad:
-            executorInfo.command.value = scriptPath(BadMesosExecutor)
-            executorInfo.executor_id.value = "badExecutor"
-        else:
-            # The production executor is installed via a setup.py entry point.
-            executorInfo.command.value = "toil-mesos-executor"
-            executorInfo.executor_id.value = "toilExecutor"
+        # The executor program is installed as a setuptools entry point by setup.py
+        executorInfo.command.value = "toil-mesos-executor"
+        executorInfo.executor_id.value = "toilExecutor"
         executorInfo.name = "Test Executor (Python)"
         executorInfo.source = "python_test"
         return executorInfo
