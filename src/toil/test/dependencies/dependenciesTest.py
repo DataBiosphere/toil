@@ -82,11 +82,9 @@ class DependenciesTest(ToilTest):
             options.maxCpus = maxCpus
 
             baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(cpusPerJob))
-            i = Job.Runner.startToil(baseJob, options)
+            Job.Runner.startToil(baseJob, options)
 
             checkLog(logName, maxCpus, maxThreads, cpusPerJob, sleepTime)
-
-            self.assertEquals(i, 0)
 
             os.close(logFd)
 

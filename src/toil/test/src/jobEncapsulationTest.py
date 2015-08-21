@@ -36,7 +36,7 @@ class JobEncapsulationTest(ToilTest):
             options.jobStore = self._getTestJobStorePath()
             options.logLevel = "INFO"
             # Run the workflow, the return value being the number of failed jobs
-            self.assertEquals(T.Runner.startToil(a, options), 0)
+            T.Runner.startToil(a, options)
             # Check output
             self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
