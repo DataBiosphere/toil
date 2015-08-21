@@ -220,7 +220,7 @@ class FileJobStore(AbstractJobStore):
                         with open(absTempFile, 'r') as fH:
                             statsAndLoggingCallBackFn(fH)
                         numberOfFilesProcessed += 1
-                    os.remove(absTempFile)
+                        os.remove(absTempFile)
         return numberOfFilesProcessed
     
     ##########################################

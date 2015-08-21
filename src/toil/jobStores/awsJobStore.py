@@ -1,13 +1,10 @@
 from __future__ import absolute_import
 from StringIO import StringIO
-from ast import literal_eval
-from collections import defaultdict
 from contextlib import contextmanager
 import logging
 import os
 import re
 from threading import Thread
-import math
 import uuid
 import bz2
 import cPickle
@@ -104,15 +101,17 @@ class AWSJobStore(AbstractJobStore):
         self.s3 = self._connectS3()
         self.sseKey = None
 
+        create = config is not None
+
         def creationCheck(exists):
-            self._checkJobStoreCreation(config != None, exists, region + " " + namePrefix)
+            self._checkJobStoreCreation(create, exists, region + " " + namePrefix)
 
         self.jobDomain = self._getOrCreateDomain('jobs', creationCheck)
-        self.versions = self._getOrCreateDomain('versions', creationCheck)
-        self.files = self._getOrCreateBucket('files', config != None, versioning=True)
-        self.stats = self._getOrCreateBucket('stats', config != None, versioning=True)
+        self.versions = self._getOrCreateDomain('versions')
+        self.files = self._getOrCreateBucket('files', create, versioning=True)
+        self.stats = self._getOrCreateBucket('stats', create, versioning=True)
         super(AWSJobStore, self).__init__(config=config)
-        if self.config.sseKey != None:
+        if self.config.sseKey is not None:
             with open(self.config.sseKey) as f:
                 self.sseKey = f.read()
 
@@ -161,9 +160,9 @@ class AWSJobStore(AbstractJobStore):
                 assert self.jobDomain.put_attributes(item_name=job.jobStoreID,
                                                      attributes=job.toItem())
 
-    items_per_batch_delete=25
+    items_per_batch_delete = 25
 
-    def delete( self, jobStoreID ):
+    def delete(self, jobStoreID):
         # remove job and replace with jobStoreId.
         log.debug("Deleting job %s", jobStoreID)
         for attempt in retry_sdb():
@@ -176,13 +175,13 @@ class AWSJobStore(AbstractJobStore):
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True))
         if items:
-            log.debug( "Deleting %d file(s) associated with job %s", len( items ), jobStoreID )
+            log.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
             n = self.items_per_batch_delete
-            batches = [items[i:i+n] for i in range(0, len(items), n)]
+            batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
-                for attempt in retry_sdb( ):
+                for attempt in retry_sdb():
                     with attempt:
-                        self.versions.batch_delete_attributes( { item.name: None for item in batch } )
+                        self.versions.batch_delete_attributes({item.name: None for item in batch})
             for item in items:
                 if 'version' in item:
                     self.files.delete_key(key_name=item.name,
@@ -384,7 +383,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 raise
 
-    def _getOrCreateDomain(self, domain_name, creation_check):
+    def _getOrCreateDomain(self, domain_name, creation_check=None):
         """
         Return the boto Domain object representing the SDB domain with the given name. If the
         domain does not exist it will be created unless the given callback prevents that by
@@ -392,27 +391,40 @@ class AWSJobStore(AbstractJobStore):
 
         :param domain_name: the unqualified name of the domain to be created
 
-        :param creation_check: a callback that is invoked with True if the domain already exists,
-        False if it is missing. If the callback wants to prevent the creation of a missing
-        domain, it should raise an exception.
+        :param creation_check: a callback that, if provided,  will be invoked with True if the
+        domain already exists, False if it is missing. If the callback wants to prevent the
+        creation of a missing domain, it should raise an exception.
 
         :rtype : Domain
         """
         domain_name = self.namePrefix + self.nameSeparator + domain_name
-        for i in itertools.count():
+        domain = self.__getDomain(domain_name, timeout_seconds=10)
+        if creation_check is not None:
+            creation_check(domain is not None)
+        self.db.create_domain(domain_name)
+        domain = self.__getDomain(domain_name, timeout_seconds=60)
+        if domain is None:
+            raise RuntimeError("Failed to lookup domain '%s' after creating it." % domain_name)
+        else:
+            return domain
+
+    def __getDomain(self, domain_name, timeout_seconds=60):
+        deadline = time.time() + timeout_seconds
+        sleep = 1.0
+        while True:
             try:
-                domain = self.db.get_domain(domain_name)
-                if i == 0:
-                    creation_check(True)
-                return domain
+                return self.db.get_domain(domain_name)
             except SDBResponseError as e:
                 if e.error_code == 'NoSuchDomain':
-                    if i == 0:
-                        creation_check(False)
-                        self.db.create_domain(domain_name)
+                    if time.time() < deadline:
+                        log.info(
+                            "Domain '%s' does not exist, retrying in %fs" % (domain_name, sleep))
+                        time.sleep(sleep)
+                        sleep *= 1.25
                     else:
-                        log.warn("Creation of '%s' still pending, retrying in 5s" % domain_name)
-                        time.sleep(5)
+                        return None
+                else:
+                    raise
 
     def _newJobID(self):
         return str(uuid.uuid4())
@@ -474,7 +486,7 @@ class AWSJobStore(AbstractJobStore):
                         upload.upload_part_from_file(fp=f,
                                                      part_num=next(part_num) + 1,
                                                      size=end - start,
-                                                     headers=headers )
+                                                     headers=headers)
                         start = end
                     assert f.tell() == file_size == start
                 except:
@@ -679,13 +691,13 @@ class AWSJob(JobWrapper):
         """
         chunkedJob = item.items()
         chunkedJob.sort()
-        if len(chunkedJob)==1:
+        if len(chunkedJob) == 1:
             wholeJobString = chunkedJob[0][1] #first element of list = tuple, second element of tuple = serialized job
         else:
             wholeJobString = ''.join(item[1] for item in chunkedJob)
         return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
 
-    def toItem( self, parentJobStoreID=None ):
+    def toItem(self, parentJobStoreID=None):
         """
         :rtype: Item
         """
@@ -693,7 +705,7 @@ class AWSJob(JobWrapper):
         serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
         # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
         jobChunks = [serializedAndEncodedJob[i:i+1024] for i in range(0, len(serializedAndEncodedJob), 1024)]
-        for attributeOrder,chunk in enumerate(jobChunks):
+        for attributeOrder, chunk in enumerate(jobChunks):
             item[str(attributeOrder).zfill(3)] = chunk
         return item
 
