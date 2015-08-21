@@ -78,7 +78,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         # A semaphore representing available CPU in units of minCores
         self.coreSemaphore = Semaphore(self.numWorkers)
         # A counter representing failed acquisitions of the semaphore, also in units of minCores, and a lock to guard it
-        self.coresOverflow = 0
+        self.coreOverflow = 0
         self.coreOverflowLock = Lock()
         # A lock to work around the lack of thread-safety in Python's subprocess module
         self.popenLock = Lock()
@@ -132,7 +132,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                             # more as they become available.
                             if not self.coreSemaphore.acquire(blocking=False):
                                 with self.coreOverflowLock:
-                                    self.coresOverflow += 1
+                                    self.coreOverflow += 1
                             numThreadsAcquired += 1
 
                         logger.info("Executing command: '%s'.", jobCommand)
@@ -151,13 +151,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                         logger.debug('Releasing %i threads.', numThreadsAcquired)
 
                         with self.coreOverflowLock:
-                            if self.coresOverflow > 0:
-                                if self.coresOverflow > numThreadsAcquired:
-                                    self.coresOverflow -= numThreadsAcquired
+                            if self.coreOverflow > 0:
+                                if self.coreOverflow > numThreadsAcquired:
+                                    self.coreOverflow -= numThreadsAcquired
                                     numThreadsAcquired = 0
                                 else:
-                                    numThreadsAcquired -= self.coresOverflow
-                                    self.coresOverflow = 0
+                                    numThreadsAcquired -= self.coreOverflow
+                                    self.coreOverflow = 0
                         for i in xrange(numThreadsAcquired):
                             self.coreSemaphore.release()
                 finally:
@@ -169,7 +169,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             finally:
                 # noinspection PyProtectedMember
                 value = self.coreSemaphore._Semaphore__value
-                logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.coresOverflow)
+                logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.coreOverflow)
                 self.outputQueue.put((jobID, 0))
         logger.debug('Exiting worker thread normally.')
 

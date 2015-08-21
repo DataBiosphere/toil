@@ -104,8 +104,8 @@ def main():
     
     #Now we can import all the necessary functions
     from toil.lib.bioio import setLogLevel
-    from toil.lib.bioio import getTotalCoreTime
-    from toil.lib.bioio import getTotalCoreTimeAndMemoryUsage
+    from toil.lib.bioio import getTotalCPUTime
+    from toil.lib.bioio import getTotalCPUTimeAndMemoryUsage
     from toil.lib.bioio import getTempDirectory
     from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
@@ -251,7 +251,7 @@ def main():
         
         if config.stats:
             startTime = time.time()
-            startClock = getTotalCoreTime()
+            startClock = getTotalCPUTime()
             stats = ET.Element("worker")
         else:
             stats = None
@@ -359,9 +359,9 @@ def main():
         ##########################################
 
         if stats != None:
-            totalCoreTime, totalMemoryUsage = getTotalCoreTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = getTotalCPUTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
-            stats.attrib["clock"] = str(totalCoreTime - startClock)
+            stats.attrib["clock"] = str(totalCPUTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
             m = ET.SubElement(stats, "messages")
             for message in messages:

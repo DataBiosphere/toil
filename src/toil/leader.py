@@ -31,7 +31,7 @@ import time
 import xml.etree.cElementTree as ET
 
 from toil import Process, Queue
-from toil.lib.bioio import getTotalCoreTime, logStream
+from toil.lib.bioio import getTotalCPUTime, logStream
 from toil.common import toilPackageDirPath
 
 logger = logging.getLogger( __name__ )
@@ -47,7 +47,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
     """
     #Overall timing
     startTime = time.time()
-    startClock = getTotalCoreTime()
+    startClock = getTotalCPUTime()
 
     #Start off the stats file
     with jobStore.writeSharedFileStream("statsAndLogging.xml") as fileHandle:
@@ -77,7 +77,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
 
         #Finish the stats file
         fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
-                         (str(time.time() - startTime), str(getTotalCoreTime() - startClock)))
+                         (str(time.time() - startTime), str(getTotalCPUTime() - startClock)))
 
 ####################################################
 ##Following encapsulates interactions with the batch system class.
