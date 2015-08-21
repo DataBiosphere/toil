@@ -50,17 +50,5 @@ class MesosTest(ToilTest, MesosTestSupport):
                                                              logLevel=getLogLevelString()),
                               shell=True)
 
-    def __do_test_stress(self, useBadExecutor, numJobs):
-        """
-        Set task number to number of files you wish to create. Actual number of jobs is jobs+2
-        Right now task is set to fail 1/2 tries. To change this, go to badExecutor launchTask method
-        """
-        stressMain(numJobs, useBadExecutor=useBadExecutor)
-
     def test_stress_good(self):
-        self.__do_test_stress(False, 2)
-
-    def test_stress_bad(self):
-        # the second argument is the number of jobs. BadExecutor fails odd tasks, so certain numbers of tasks
-        # may never finish because of the "Despite" bug/feature
-        self.__do_test_stress(True, 2)
+        stressMain(numJobs=2)

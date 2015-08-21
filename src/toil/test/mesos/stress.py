@@ -46,10 +46,10 @@ class HelloWorldFollowOn(Job):
     def run(self, fileStore):
         touchFile( fileStore)
 
-def main(numJobs, useBadExecutor=False):
+def main(numJobs):
     args = list( sys.argv )
-    args.append("--batchSystem=%s" % ( 'badmesos' if useBadExecutor else 'mesos' ))
-    args.append("--retryCount=3")
+    args.append('--batchSystem=mesos')
+    args.append('--retryCount=3')
 
     # Boilerplate -- startToil requires options
     parser = OptionParser()
@@ -62,4 +62,4 @@ def main(numJobs, useBadExecutor=False):
     assert(j==0) # confirm that no jobs failed
 
 if __name__=="__main__":
-    main(5, useBadExecutor=False)
+    main(numJobs=5)

@@ -197,9 +197,9 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
-    addOptionFn("--batchSystem", dest="batchSystem", default=None, #detectQueueSystem(),
-                      help=("The type of batch system to run the job(s) with, currently can be "
-                            "'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'/'mesos'/'badmesos'. default=%s" % config.batchSystem))
+    addOptionFn("--batchSystem", dest="batchSystem", default=None,
+                      help=("The type of batch system to run the job(s) with, currently can be one "
+                            "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
     #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
@@ -314,12 +314,6 @@ def loadBatchSystemClass(config):
     elif batchSystemName == 'gridengine' or batchSystemName == 'gridEngine':
         batchSystemClass = GridengineBatchSystem
         logger.info('Using the grid engine machine batch system')
-    elif batchSystemName == 'acid_test' or batchSystemName == 'acidTest':
-        # The chance that a job does not complete after 32 goes in one in 4 billion, so you need a lot of jobs
-        # before this becomes probable
-        config.retryCount = 32
-        batchSystemClass = SingleMachineBatchSystem
-        kwargs['badWorker'] = True
     elif batchSystemName == 'lsf' or batchSystemName == 'LSF':
         batchSystemClass = LSFBatchSystem
         logger.info('Using the lsf batch system')
@@ -327,12 +321,6 @@ def loadBatchSystemClass(config):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
         kwargs["masterIP"] = config.masterIP
-        logger.info('Using the mesos batch system')
-    elif batchSystemName == 'badmesos' or batchSystemName == 'badMesos':
-        from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
-        batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"] = config.masterIP
-        kwargs['useBadExecutor'] = True
         logger.info('Using the mesos batch system')
     else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)
