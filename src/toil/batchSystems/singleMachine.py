@@ -38,7 +38,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     numCores = multiprocessing.cpu_count()
 
-    def __init__(self, config, maxCpus, maxMemory, maxDisk, badWorker=False):
+    def __init__(self, config, maxCpus, maxMemory, maxDisk):
         assert type(maxCpus) == int
         if maxCpus > self.numCores:
             logger.warn('Limiting maxCpus to CPU count of system (%i).', self.numCores)
@@ -84,9 +84,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         logger.info('Setting up the thread pool with %i workers, '
                     'given a minimum CPU fraction of %f '
                     'and a maximum CPU value of %i.', self.numWorkers, self.minCpu, maxCpus)
-        self.workerFn = self.badWorker if badWorker else self.worker
         for i in xrange(self.numWorkers):
-            worker = Thread(target=self.workerFn, args=(self.inputQueue,))
+            worker = Thread(target=self.worker, args=(self.inputQueue,))
             self.workerThreads.append(worker)
             worker.start()
 
@@ -168,33 +167,6 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.cpuOverflow)
                 self.outputQueue.put((jobID, 0))
         logger.debug('Exiting worker thread normally.')
-
-    # FIXME: Remove or fix badWorker to be compliant with new thread management.
-
-    def badWorker(self, inputQueue, outputQueue):
-        """
-        This is used to test what happens if we fail and restart jobs
-        """
-        # Pipe the output to dev/null (it is caught by the worker and will be reported if there is an error)
-        fnull = open(os.devnull, 'w')
-        while True:
-            args = inputQueue.get()
-            # Case where we are reducing threads for max number of CPUs
-            if args is None:
-                inputQueue.task_done()
-                return
-            command, jobID, threadsToStart = args
-            # Run to first calculate the runtime..
-            process = subprocess.Popen(command, shell=True, stdout=fnull, stderr=fnull)
-            if random.choice((False, True)):
-                time.sleep(random.random())
-                process.kill()
-                process.wait()
-                outputQueue.put((jobID, 1, threadsToStart))
-            else:
-                process.wait()
-                outputQueue.put((jobID, process.returncode, threadsToStart))
-            inputQueue.task_done()
 
     def issueBatchJob(self, command, memory, cpu, disk):
         """
