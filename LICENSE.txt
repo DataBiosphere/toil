@@ -1,4 +1,6 @@
-Copyright (C) 2011-15 by Benedict Paten, Hannes Schmidt, John Vivian, 
+Copyright (C) 2011-15 by UCSC Computational Genomics Lab
+
+Contributors: Benedict Paten, Hannes Schmidt, John Vivian,
 Christopher Ketchum, Joel Armstrong and co-authors (benedictpaten@gmail.com)
 
 Licensed under the Apache License, Version 2.0 (the "License");
