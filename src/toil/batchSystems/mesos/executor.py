@@ -90,7 +90,7 @@ class MesosExecutor(mesos.interface.Executor):
         while True:
             coresUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("cores percent: %s, ram usage: %s" % (coresUsage, ramUsage))
+            driver.sendFrameworkMessage("CPU usage: %s, Memory usage: %s" % (coresUsage, ramUsage))
             log.debug("sent stats message")
             sleep(30)
 

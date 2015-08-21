@@ -148,7 +148,7 @@ def system(command):
     return sts
 
 def getTotalCPUTimeAndMemoryUsage():
-    """Gives the total cores time and memory usage of itself and its children.
+    """Gives the total cpu time and memory usage of itself and its children.
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -157,7 +157,7 @@ def getTotalCPUTimeAndMemoryUsage():
     return totalCPUTime, totalMemoryUsage
 
 def getTotalCPUTime():
-    """Gives the total cores time, including the children.
+    """Gives the total cpu time, including the children.
     """
     return getTotalCPUTimeAndMemoryUsage()[0]
 

@@ -477,7 +477,7 @@ class Job(object):
         __metaclass__ = ABCMeta
         def __init__(self, memory=sys.maxint, cores=sys.maxint):
             """
-            Memory and cores requirements are specified identically to the Job
+            Memory and core requirements are specified identically to the Job
             constructor.
             """
             self.memory = memory
