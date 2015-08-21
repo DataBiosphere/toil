@@ -206,17 +206,14 @@ def checkEqual(i, j):
         print "false", j
     assert i == j
 
-
 def loadFile(file):
     with open(file, 'r') as fileHandle:
         return fileHandle.readlines()
-
 
 def getRandomLine(maxLineLength):
     return "".join(
         [random.choice(['a', 'c', 't', 'g', "A", "C", "G", "T", "N", "X", "Y", "Z"]) for i in
          xrange(maxLineLength)]) + "\n"
-
 
 def makeFileToSort(fileName, lines=10, maxLineLength=10):
     with open(fileName, 'w') as fileHandle:
