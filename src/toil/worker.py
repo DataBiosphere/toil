@@ -104,8 +104,8 @@ def main():
     
     #Now we can import all the necessary functions
     from toil.lib.bioio import setLogLevel
-    from toil.lib.bioio import getTotalCPUTime
-    from toil.lib.bioio import getTotalCPUTimeAndMemoryUsage
+    from toil.lib.bioio import getTotalCpuTime
+    from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.lib.bioio import getTempDirectory
     from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
@@ -251,7 +251,7 @@ def main():
         
         if config.stats:
             startTime = time.time()
-            startClock = getTotalCPUTime()
+            startClock = getTotalCpuTime()
             stats = ET.Element("worker")
         else:
             stats = None
@@ -359,7 +359,7 @@ def main():
         ##########################################
 
         if stats != None:
-            totalCPUTime, totalMemoryUsage = getTotalCPUTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
             stats.attrib["clock"] = str(totalCPUTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)

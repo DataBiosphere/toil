@@ -43,7 +43,7 @@ import logging
 logger = logging.getLogger( __name__ )
 
 from toil.lib.bioio import (setLoggingFromOptions,
-                               getTotalCPUTimeAndMemoryUsage, getTotalCPUTime)
+                               getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from toil.common import setupToil, addOptions
 from toil.leader import mainLoop
 
@@ -811,7 +811,7 @@ class Job(object):
         """ 
         if stats != None:
             startTime = time.time()
-            startClock = getTotalCPUTime()
+            startClock = getTotalCpuTime()
         
         baseDir = os.getcwd()
         #Run the job, first cleanup then run.
@@ -835,7 +835,7 @@ class Job(object):
         if stats != None:
             stats = ET.SubElement(stats, "job")
             stats.attrib["time"] = str(time.time() - startTime)
-            totalCpuTime, totalMemoryUsage = getTotalCPUTimeAndMemoryUsage()
+            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
