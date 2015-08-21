@@ -837,7 +837,7 @@ class Job(object):
             stats.attrib["time"] = str(time.time() - startTime)
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["clock"] = str(totalCpuTime - startClock)
-            stats.attrib["class"] = ".".join((self.__class__.__name__,))
+            stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
         #Return any logToMaster logging messages
         return fileStore.loggingMessages
@@ -870,6 +870,12 @@ class Job(object):
                 "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
                 moduleName)
         return moduleDirPath, moduleName
+    
+    def _jobName(self):
+        """
+        :rtype : string, used as identifier of the job class in the stats report. 
+        """
+        return self.__class__.__name__
 
 class JobGraphDeadlockException( Exception ):
     def __init__( self, string ):
@@ -912,6 +918,9 @@ class FunctionWrappingJob(Job):
 
     def getUserScript(self):
         return self.userFunctionModule
+    
+    def _jobName(self):
+        return ".".join((self.__class__.__name__,self.userFunctionModule.name,self.userFunctionName))
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
     """
