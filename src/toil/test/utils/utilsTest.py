@@ -31,7 +31,7 @@ class UtilsTest(ToilTest):
             outputFile = getTempFile(rootDir=tempDir)
             toilDir = os.path.join(tempDir, "testToil")
             self.assertFalse(os.path.exists(toilDir))
-            lines = 10000
+            lines = 1000
             maxLineLength = 10
             N = 1000
             makeFileToSort(tempFile, lines, maxLineLength)
