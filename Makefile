@@ -77,7 +77,7 @@ testLogLevel=INFO
 
 test:
 	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
-	$(python) setup.py test -a src
+	$(python) setup.py test --pytest-args "src -vv"
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
