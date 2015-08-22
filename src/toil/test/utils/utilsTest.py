@@ -66,28 +66,34 @@ class UtilsTest(ToilTest):
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
         # Check that trying to run it in restart mode does not create the jobStore
         self.assertFalse(os.path.exists(self.toilDir))
+        
+        # Status command
+        rootPath = os.path.join(toilPackageDirPath(), "utils")
+        toilStatusCommandString = ("{rootPath}/toilMain.py status "
+                                   "--jobStore {self.toilDir} --failIfNotComplete".format(**locals()))
 
         # Run the script for the first time
-        system(toilCommandString)
+        try:
+            system(toilCommandString)
+            finished = True
+        except CalledProcessError: #This happens when the script fails due to having unfinished jobs
+            self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+            finished = False
         self.assertTrue(os.path.exists(self.toilDir))
 
         # Try running it without restart and check an exception is thrown
         self.assertRaises(CalledProcessError, system, toilCommandString)
 
         # Now restart it until done
-        while True:
-            # Run the status command
-            rootPath = os.path.join(toilPackageDirPath(), "utils")
-            toilStatusString = ("{rootPath}/toilMain.py status "
-                                "--jobStore {self.toilDir} --failIfNotComplete".format(**locals()))
+        while not finished:
             try:
-                system(toilStatusString)
-            except CalledProcessError:
-                # If there is an exception there are still failed jobs then restart
                 system(toilCommandString + " --restart")
-            else:
-                break
-
+                finished = True
+            except CalledProcessError: #This happens when the script fails due to having unfinished jobs
+                self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+                
+        #Check the toil status command does not issue an exception
+        system(toilStatusCommandString)
 
         # Check if we try to launch after its finished that we get a JobException
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
