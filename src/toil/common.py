@@ -16,7 +16,6 @@ from __future__ import absolute_import
 from contextlib import contextmanager
 import logging
 import os
-from subprocess import CalledProcessError
 import sys
 import cPickle
 from argparse import ArgumentParser
@@ -82,7 +81,7 @@ class Config(object):
     def setOptions(self, options):
         """
         Creates a config object from the options object.
-        """
+        """ 
         from bd2k.util.humanize import human2bytes #This import is used to convert
         #from human readable quantites to integers 
         def setOption(varName, parsingFn=None, checkFn=None):

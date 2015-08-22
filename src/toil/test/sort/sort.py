@@ -24,7 +24,7 @@ import random
 from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
-success_ratio = 1.0 #0.5
+success_ratio = 0.5
 
 def setup(job, inputFile, N):
     """Sets up the sort.

@@ -24,7 +24,6 @@ if __name__ == "__main__":
     sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
 
 import traceback
-import importlib
 import time
 import socket
 import logging
@@ -47,36 +46,6 @@ def truncateFile(fileNameString, tooBig=50000):
         fh.write(data)
         fh.truncate()
         fh.close()
-
-def loadJob(command, jobStore):
-    """
-    Unpickles a job.Job instance by decoding the command.
-    See job.Job._serialiseFirstJob and job.Job._serialiseFirstJob
-    job.Job._makeJobWrappers to see how the Job is encoded in the command.
-    Essentially the command is a reference to a jobStoreFileID containing 
-    the pickle file for the job and a list of modules which must be imported
-    so that the Job can be successfully unpickled.
-    """
-    commandTokens = command.split()
-    assert "scriptTree" == commandTokens[0]
-    pickleFile = commandTokens[1]
-    jobClassName = commandTokens[2]
-    # must import lazily because toil might not be on sys.path when the top-level of this module is run
-    from toil.resource import ModuleDescriptor
-    userModule = ModuleDescriptor(*commandTokens[3:])
-    if not userModule.belongsToToil:
-        userModule = userModule.localize()
-    if userModule.dirPath not in sys.path:
-        sys.path.append(userModule.dirPath)
-    userModule = importlib.import_module(userModule.name)
-    thisModule = sys.modules[__name__]
-    thisModule.__dict__[jobClassName] = userModule.__dict__[jobClassName]
-    if pickleFile == "firstJob":
-        openFileStream = jobStore.readSharedFileStream( pickleFile )
-    else:
-        openFileStream = jobStore.readFileStream( pickleFile )
-    with openFileStream as fileHandle:
-        return cPickle.load( fileHandle )
     
 def nextOpenDescriptor():
     """Gets the number of the next available file descriptor.
@@ -104,6 +73,7 @@ def main():
     from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
     from toil.common import loadJobStore
+    from toil.job import Job
     
     ########################################## 
     #Input args
@@ -262,7 +232,7 @@ def main():
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a job command
-                    messages = loadJob(job.command, jobStore)._execute( jobWrapper=job,
+                    messages = Job._loadJob(job.command, jobStore)._execute( jobWrapper=job,
                                     stats=stats, localTempDir=localTempDir, 
                                     jobStore=jobStore)
                     
