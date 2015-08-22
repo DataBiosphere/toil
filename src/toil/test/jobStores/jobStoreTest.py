@@ -80,7 +80,7 @@ class hidden:
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, "master1")
             self.assertEquals(jobOnMaster.memory, 12)
-            self.assertEquals(jobOnMaster.cpu, 34)
+            self.assertEquals(jobOnMaster.cores, 34)
             self.assertEquals(jobOnMaster.disk, 35)
             self.assertEquals(jobOnMaster.updateID, "foo")
             self.assertEquals(jobOnMaster.stack, [])

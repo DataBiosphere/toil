@@ -162,9 +162,9 @@ def getTotalCpuTimeAndMemoryUsage():
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-    totalCpuTime = me.ru_utime+me.ru_stime+childs.ru_utime+childs.ru_stime
+    totalCPUTime = me.ru_utime+me.ru_stime+childs.ru_utime+childs.ru_stime
     totalMemoryUsage = me.ru_maxrss+ me.ru_maxrss
-    return totalCpuTime, totalMemoryUsage
+    return totalCPUTime, totalMemoryUsage
 
 def getTotalCpuTime():
     """Gives the total cpu time, including the children.

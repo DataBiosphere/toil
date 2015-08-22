@@ -53,14 +53,14 @@ class Job(object):
     This public functions of this class and its  nested classes are the API 
     to toil.
     """
-    def __init__(self, memory=sys.maxint, cpu=sys.maxint, disk=sys.maxint):
+    def __init__(self, memory=sys.maxint, cores=sys.maxint, disk=sys.maxint):
         """
         This method must be called by any overiding constructor.
         
         Memory is the maximum number of bytes of memory the job will
-        require to run. Cpu is the number of cores required. 
+        require to run. Cores is the number of CPU cores required.
         """
-        self.cpu = cpu
+        self.cores = cores
         # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1
         # larger than sys.maxint. We later assume that any value here not equal to sys.maxint must be the user's value
         # so it is passed to the batch system, which cannot allocate that many resources.
@@ -469,13 +469,13 @@ class Job(object):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+        def __init__(self, memory=sys.maxint, cores=sys.maxint):
             """
-            Memory and cpu requirements are specified identically to the Job
+            Memory and core requirements are specified identically to the Job
             constructor.
             """
             self.memory = memory
-            self.cpu = cpu
+            self.cores = cores
         
         @abstractmethod       
         def start(self):
@@ -540,8 +540,8 @@ class Job(object):
         return jobStore.create(command=command,
                                memory=(self.memory if self.memory != sys.maxint 
                                        else jobStore.config.defaultMemory),
-                               cpu=(self.cpu if self.cpu != sys.maxint
-                                    else float(jobStore.config.defaultCpu)),
+                               cores=(self.cores if self.cores != sys.maxint
+                                    else float(jobStore.config.defaultCores)),
                                disk=(self.disk if self.disk != sys.maxint
                                     else float(jobStore.config.defaultDisk)),
                                updateID=updateID, predecessorNumber=predecessorNumber)
@@ -590,11 +590,11 @@ class Job(object):
             assert jobWrapper.predecessorNumber > 1
         
         #The return is a tuple stored within the job.stack of the jobs to run.
-        #The tuple is jobStoreID, memory, cpu, disk, predecessorID
+        #The tuple is jobStoreID, memory, cores, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor 
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cpu, jobWrapper.disk,
+        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
     
     def _serialiseJobGraph(self, jobWrapper, jobStore):
@@ -885,10 +885,10 @@ class FunctionWrappingJob(Job):
     """
     def __init__(self, userFunction, *args, **kwargs):
         # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
-        cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        cores = kwargs.pop("cores") if "cores" in kwargs else sys.maxint
         disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
-        Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
+        Job.__init__(self, memory=memory, cores=cores, disk=disk)
         #If dill is installed pickle the user function directly
         
         #else use indirect method
@@ -943,7 +943,7 @@ class ServiceJob(Job):
     not be called by a user.
     """
     def __init__(self, service):
-        Job.__init__(self, memory=service.memory, cpu=service.cpu)
+        Job.__init__(self, memory=service.memory, cores=service.cores)
         self.service = service
         #An empty file in the jobStore which when deleted is used to signal
         #that the service should cease, is initialised in 

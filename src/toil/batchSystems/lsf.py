@@ -157,8 +157,8 @@ class LSFBatchSystem(AbstractBatchSystem):
     """The interface for running jobs on lsf, runs all the jobs you
     give it as they come in, but in parallel.
     """
-    def __init__(self, config, maxCpus, maxMemory):
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
+    def __init__(self, config, maxCores, maxMemory):
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
         self.lsfResultsFile = getParasolResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
@@ -179,11 +179,11 @@ class LSFBatchSystem(AbstractBatchSystem):
         #Closes the file handle associated with the results file.
         self.lsfResultsFileHandle.close() #Close the results file, cos were done.        
     
-    def issueBatchJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cores):
         jobID = self.nextJobID
         self.nextJobID += 1
         self.currentjobs.add(jobID)
-        bsubline = prepareBsub(cpu, memory) + [command]
+        bsubline = prepareBsub(cores, memory) + [command]
         self.newJobsQueue.put((jobID, bsubline))
         logger.info("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID

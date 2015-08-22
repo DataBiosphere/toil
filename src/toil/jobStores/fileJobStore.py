@@ -66,14 +66,14 @@ class FileJobStore(AbstractJobStore):
     #existence of jobs
     ########################################## 
     
-    def create(self, command, memory, cpu, disk, updateID=None,
+    def create(self, command, memory, cores, disk, updateID=None,
                predecessorNumber=0):
         #The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         #Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         #Make the job
-        job = JobWrapper(command=command, memory=memory, cpu=cpu, disk=disk,
+        job = JobWrapper(command=command, memory=memory, cores=cores, disk=disk,
                   jobStoreID=self._getRelativePath(absJobDir), 
                   remainingRetryCount=self._defaultTryCount( ), 
                   updateID=updateID,

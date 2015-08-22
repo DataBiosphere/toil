@@ -64,9 +64,9 @@ class Config(object):
         
         #Resource requirements
         self.defaultMemory = 2147483648
-        self.defaultCpu = 1
+        self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.maxCpus = sys.maxint
+        self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
         
@@ -133,9 +133,9 @@ class Config(object):
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCpu", h2b, iC(1))
+        setOption("defaultCores", h2b, iC(1))
         setOption("defaultDisk", h2b, iC(1))
-        setOption("maxCpus", h2b, iC(1))
+        setOption("maxCores", h2b, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
         
@@ -197,7 +197,7 @@ def _addOptions(addGroupFn, config):
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
     #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
-                help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
+                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
     addOptionFn("--masterIP", dest="masterIP", default=None,
                 help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
@@ -207,20 +207,18 @@ def _addOptions(addGroupFn, config):
     #
     #Resource requirements
     #
-    addOptionFn = addGroupFn("toil options for cpu/memory requirements",
-                             "The options to specify default cpu/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cpu requested from the batch system.")
+    addOptionFn = addGroupFn("toil options for cores/memory requirements",
+                             "The options to specify default cores/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cores requested from the batch system.")
     addOptionFn("--defaultMemory", dest="defaultMemory", default=None,
                       help=("The default amount of memory to request for a job (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
-    #TODO - change "Cpus" to "cores" through out.
-    addOptionFn("--defaultCpu", dest="defaultCpu", default=None,
-                      help="The number of cpus to dedicate a job. default=%s" % config.defaultCpu)
+    addOptionFn("--defaultCores", dest="defaultCores", default=None,
+                      help="The number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
-    #TODO - change "Cpus" to "cores" through out.
-    addOptionFn("--maxCpus", dest="maxCpus", default=None,
-                      help=("The maximum number of cpus to request from the batch system at any "
-                            "one time. default=%s" % config.maxCpus))
+    addOptionFn("--maxCores", dest="maxCores", default=None,
+                      help=("The maximum number of cpu cores to request from the batch system at any "
+                            "one time. default=%s" % config.maxCores))
     addOptionFn("--maxMemory", dest="maxMemory", default=None,
                       help=("The maximum amount of memory to request from the batch \
                       system at any one time. default=%s" % config.maxMemory))
@@ -297,7 +295,7 @@ def loadBatchSystemClass(config):
     """
     batchSystemName = config.batchSystem
     kwargs = dict(config=config,
-                  maxCpus=config.maxCpus,
+                  maxCores=config.maxCores,
                   maxMemory=config.maxMemory,
                   maxDisk=config.maxDisk)
     if batchSystemName == 'parasol':

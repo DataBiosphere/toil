@@ -299,12 +299,12 @@ def main():
             
             #We check the requirements of the job to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCpu, successorsDisk, successorPredecessorID = jobs[0]
+            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorPredecessorID = jobs[0]
             if successorMemory > job.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break
-            if successorCpu > job.cpu:
-                logger.debug("We need more cpus for the next job, so finishing")
+            if successorCores > job.cores:
+                logger.debug("We need more cores for the next job, so finishing")
                 break
             if successorsDisk > job.disk:
                 logger.debug("We need more disk for the next job, so finishing")
@@ -329,7 +329,7 @@ def main():
             successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
             assert successorJob.memory == successorMemory
-            assert successorJob.cpu == successorCpu
+            assert successorJob.cores == successorCores
             assert successorJob.predecessorsFinished == set()
             assert successorJob.predecessorNumber == 1
             assert successorJob.command != None
@@ -339,7 +339,7 @@ def main():
             job.command = successorJob.command
             job.stack += successorJob.stack
             assert job.memory >= successorJob.memory
-            assert job.cpu >= successorJob.cpu
+            assert job.cores >= successorJob.cores
             
             #Checkpoint the job and delete the successorJob
             job.jobsToDelete = [ successorJob.jobStoreID ]
@@ -353,9 +353,9 @@ def main():
         ##########################################
 
         if stats != None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
-            stats.attrib["clock"] = str(totalCpuTime - startClock)
+            stats.attrib["clock"] = str(totalCPUTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
             m = ET.SubElement(stats, "messages")
             for message in messages:

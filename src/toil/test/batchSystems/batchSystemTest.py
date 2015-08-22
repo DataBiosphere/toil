@@ -36,7 +36,7 @@ numCores = 2
 #
 numJobs = 2
 
-# How much CPU to allocate for a particular job
+# How many cores to allocate for a particular job
 #
 numCoresPerJob = (numCores) / numJobs
 
@@ -91,27 +91,27 @@ class hidden:
             test_path = os.path.join(self.tempDir, 'test.txt')
             # sleep 1 coupled to command as 'touch' was too fast for wait_for_jobs to catch
             jobCommand = 'touch {}; sleep 1'.format(test_path)
-            self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=.1, disk=1000)
+            self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=.1, disk=1000)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
         def testCheckResourceRequest(self):
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=1000, cpu=200, disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cpu=200,disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=100, cpu=1,disk=1000)
-            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cpu=1,disk=1002)
-            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=None, cpu=1,disk=1000)
-            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=10, cpu=None,disk=1000)
-            self.batchSystem.checkResourceRequest(memory=10, cpu=1, disk=100)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=1000, cores=200, disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cores=200,disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=100, cores=1,disk=1000)
+            self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest, memory=5, cores=1,disk=1002)
+            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=None, cores=1,disk=1000)
+            self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=10, cores=None,disk=1000)
+            self.batchSystem.checkResourceRequest(memory=10, cores=1, disk=100)
 
         def testGetIssuedJobIDs(self):
-            self.batchSystem.issueBatchJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
-            self.batchSystem.issueBatchJob('sleep 1', memory=10, cpu=numCoresPerJob, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 1', memory=10, cores=numCoresPerJob, disk=1000)
             self.assertEqual({0, 1}, set(self.batchSystem.getIssuedBatchJobIDs()))
 
         def testGetRunningJobIDs(self):
-            self.batchSystem.issueBatchJob('sleep 100', memory=10, cpu=.1, disk=1000)
-            self.batchSystem.issueBatchJob('sleep 100', memory=10, cpu=.1, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 100', memory=10, cores=.1, disk=1000)
+            self.batchSystem.issueBatchJob('sleep 100', memory=10, cores=.1, disk=1000)
             self.wait_for_jobs(numJobs=2)
             # Assert that jobs were correctly labeled by JobID
             self.assertEqual({0, 1}, set(self.batchSystem.getRunningBatchJobIDs().keys()))
@@ -121,7 +121,7 @@ class hidden:
 
         def testKillJobs(self):
             jobCommand = 'sleep 100'
-            jobID = self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=.1, disk=1000)
+            jobID = self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=.1, disk=1000)
             self.wait_for_jobs()
             # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killBatchJobs([jobID])
@@ -133,7 +133,7 @@ class hidden:
             delay = 1
             jobCommand = 'sleep %i' % delay
             for i in range(numJobs):
-                self.batchSystem.issueBatchJob(jobCommand, memory=10, cpu=numCoresPerJob, disk=1000)
+                self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=numCoresPerJob, disk=1000)
             jobs = set((i, 0) for i in range(numJobs))
             self.wait_for_jobs(numJobs=numJobs, wait_for_completion=True)
             for i in range(numJobs):
@@ -156,8 +156,8 @@ class hidden:
             config.attrib["batch_system"] = None
             config.attrib["max_log_file_size"] = str(1)
             config.attrib["default_memory"] = str(1)
-            config.attrib["default_cpu"] = str(1)
-            config.attrib["max_cpus"] = str(1)
+            config.attrib["default_cores"] = str(1)
+            config.attrib["max_cores"] = str(1)
             config.attrib["max_memory"] = str(1)
             config.attrib["scale"] = str(1)
             """
@@ -182,7 +182,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
-        return MesosBatchSystem(config=self.config, maxCpus=numCores, maxMemory=20, maxDisk=1001,masterIP='127.0.0.1:5050')
+        return MesosBatchSystem(config=self.config, maxCores=numCores, maxMemory=20, maxDisk=1001,masterIP='127.0.0.1:5050')
 
     def tearDown(self):
         self._stopMesos()
@@ -191,4 +191,4 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCpus=numCores, maxMemory=50, maxDisk=1001)
+        return SingleMachineBatchSystem(config=self.config, maxCores=numCores, maxMemory=50, maxDisk=1001)

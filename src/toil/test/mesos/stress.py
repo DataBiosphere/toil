@@ -23,7 +23,7 @@ def touchFile( fileStore ):
 
 class LongTestJob(Job):
     def __init__(self, numJobs):
-        Job.__init__(self,  memory=100000, cpu=0.01)
+        Job.__init__(self,  memory=100000, cores=0.01)
         self.numJobs = numJobs
 
     def run(self, fileStore):
@@ -34,7 +34,7 @@ class LongTestJob(Job):
 class LongTestFollowOn(Job):
 
     def __init__(self):
-        Job.__init__(self,  memory=1000000, cpu=0.01)
+        Job.__init__(self,  memory=1000000, cores=0.01)
 
     def run(self, fileStore):
         touchFile( fileStore )
@@ -42,7 +42,7 @@ class LongTestFollowOn(Job):
 class HelloWorldJob(Job):
 
     def __init__(self,i):
-        Job.__init__(self,  memory=100000, cpu=0.01)
+        Job.__init__(self,  memory=100000, cores=0.01)
         self.i=i
 
 
@@ -53,7 +53,7 @@ class HelloWorldJob(Job):
 class HelloWorldFollowOn(Job):
 
     def __init__(self,i):
-        Job.__init__(self,  memory=200000, cpu=0.01)
+        Job.__init__(self,  memory=200000, cores=0.01)
         self.i = i
 
     def run(self, fileStore):
