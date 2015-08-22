@@ -663,6 +663,7 @@ class Job(object):
         if not userModule.belongsToToil:
             userModule = userModule.localize()
         if userModule.dirPath not in sys.path:
+            # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userModule.dirPath)
         userModule = importlib.import_module(userModule.name)
         thisModule = sys.modules[__name__]
@@ -934,7 +935,9 @@ class FunctionWrappingJob(Job):
     def _getUserFunction(self):
         #If dill is installed unpickle the user function directly
         
-        userFunctionModule = self.userFunctionModule.localize()
+        userFunctionModule = self.userFunctionModule
+        if not userFunctionModule.belongsToToil:
+            userFunctionModule = userFunctionModule.localize()
         if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userFunctionModule.dirPath)
@@ -995,7 +998,7 @@ class ServiceJob(Job):
         
     def run(self, fileStore):
         #Unpickle the service
-        self._loadClass(self.serviceClassName, self.serviceModule) #This gets the class loaded 
+        self._loadClass(self.serviceClassName, self.serviceModule) #This gets the class loaded
         service = cPickle.loads(self.pickledService)
         #Start the service
         startCredentials = service.start()
@@ -1018,7 +1021,11 @@ class ServiceJob(Job):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         service.stop()
-        
+
+    def getUserScript(self):
+        return self.serviceModule
+
+
 class EncapsulatedJob(Job):
     """
     An convenience Job class used to make a job subgraph appear to
