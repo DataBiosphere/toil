@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import absolute_import
 import os
@@ -305,12 +299,12 @@ def main():
             
             #We check the requirements of the job to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCpu, successorsDisk, successorPredecessorID = jobs[0]
+            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorPredecessorID = jobs[0]
             if successorMemory > job.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break
-            if successorCpu > job.cpu:
-                logger.debug("We need more cpus for the next job, so finishing")
+            if successorCores > job.cores:
+                logger.debug("We need more cores for the next job, so finishing")
                 break
             if successorsDisk > job.disk:
                 logger.debug("We need more disk for the next job, so finishing")
@@ -335,7 +329,7 @@ def main():
             successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
             assert successorJob.memory == successorMemory
-            assert successorJob.cpu == successorCpu
+            assert successorJob.cores == successorCores
             assert successorJob.predecessorsFinished == set()
             assert successorJob.predecessorNumber == 1
             assert successorJob.command != None
@@ -345,7 +339,7 @@ def main():
             job.command = successorJob.command
             job.stack += successorJob.stack
             assert job.memory >= successorJob.memory
-            assert job.cpu >= successorJob.cpu
+            assert job.cores >= successorJob.cores
             
             #Checkpoint the job and delete the successorJob
             job.jobsToDelete = [ successorJob.jobStoreID ]
@@ -359,9 +353,9 @@ def main():
         ##########################################
 
         if stats != None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
-            stats.attrib["clock"] = str(totalCpuTime - startClock)
+            stats.attrib["clock"] = str(totalCPUTime - startClock)
             stats.attrib["memory"] = str(totalMemoryUsage)
             m = ET.SubElement(stats, "messages")
             for message in messages:

@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """
 The leader script (of the leader/worker pair) for running jobs.
@@ -98,25 +92,25 @@ class JobBatcher:
         self.workerPath = os.path.join(toilPackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
-    def issueJob(self, jobStoreID, memory, cpu, disk):
+    def issueJob(self, jobStoreID, memory, cores, disk):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cpu, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
-                     "%s and cpus: %i, disk: %i, and memory: %i",
-                     jobStoreID, str(jobBatchSystemID), cpu, disk, memory)
+                     "%s and cores: %i, disk: %i, and memory: %i",
+                     jobStoreID, str(jobBatchSystemID), cores, disk, memory)
 
     def issueJobs(self, jobs):
         """
         Add a list of jobs, each represented as a tuple of
-        (jobStoreID, memory, cpu, disk).
+        (jobStoreID, memory, cores, disk).
         """
-        for jobStoreID, memory, cpu, disk in jobs:
-            self.issueJob(jobStoreID, memory, cpu, disk)
+        for jobStoreID, memory, cores, disk in jobs:
+            self.issueJob(jobStoreID, memory, cores, disk)
 
     def getNumberOfJobsIssued(self):
         """
@@ -375,7 +369,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                     #If the job has a command it must be run before any successors
                     if job.command != None:
                         if job.remainingRetryCount > 0:
-                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cpu, job.disk)
+                            jobBatcher.issueJob(job.jobStoreID, job.memory, job.cores, job.disk)
                         else:
                             totalFailedJobs += 1
                             logger.warn("Job: %s is completely failed", job.jobStoreID)
@@ -393,7 +387,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         successors = []
                         #For each successor schedule if all predecessors have been
                         #completed
-                        for successorJobStoreID, memory, cpu, disk, predecessorID in job.stack.pop():
+                        for successorJobStoreID, memory, cores, disk, predecessorID in job.stack.pop():
                             #Build map from successor to predecessors.
                             if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                                 toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
@@ -412,7 +406,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                                 assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                                 if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                     continue
-                            successors.append((successorJobStoreID, memory, cpu, disk))
+                            successors.append((successorJobStoreID, memory, cores, disk))
                         jobBatcher.issueJobs(successors)
 
                     #There are no remaining tasks to schedule within the job, but
@@ -426,7 +420,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         if job.remainingRetryCount > 0:
                             jobBatcher.issueJob(job.jobStoreID,
                                                 config.defaultMemory,
-                                                config.defaultCpu,
+                                                config.defaultCores,
                                                 config.defaultDisk)
                             logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
                         else:

@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 from __future__ import absolute_import
 import os
 import sys
@@ -59,14 +53,14 @@ class Job(object):
     This public functions of this class and its  nested classes are the API 
     to toil.
     """
-    def __init__(self, memory=sys.maxint, cpu=sys.maxint, disk=sys.maxint):
+    def __init__(self, memory=sys.maxint, cores=sys.maxint, disk=sys.maxint):
         """
         This method must be called by any overiding constructor.
         
         Memory is the maximum number of bytes of memory the job will
-        require to run. Cpu is the number of cores required. 
+        require to run. Cores is the number of CPU cores required.
         """
-        self.cpu = cpu
+        self.cores = cores
         # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1
         # larger than sys.maxint. We later assume that any value here not equal to sys.maxint must be the user's value
         # so it is passed to the batch system, which cannot allocate that many resources.
@@ -478,13 +472,13 @@ class Job(object):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=sys.maxint, cpu=sys.maxint):
+        def __init__(self, memory=sys.maxint, cores=sys.maxint):
             """
-            Memory and cpu requirements are specified identically to the Job
+            Memory and core requirements are specified identically to the Job
             constructor.
             """
             self.memory = memory
-            self.cpu = cpu
+            self.cores = cores
         
         @abstractmethod       
         def start(self):
@@ -549,8 +543,8 @@ class Job(object):
         return jobStore.create(command=command,
                                memory=(self.memory if self.memory != sys.maxint 
                                        else jobStore.config.defaultMemory),
-                               cpu=(self.cpu if self.cpu != sys.maxint
-                                    else float(jobStore.config.defaultCpu)),
+                               cores=(self.cores if self.cores != sys.maxint
+                                    else float(jobStore.config.defaultCores)),
                                disk=(self.disk if self.disk != sys.maxint
                                     else float(jobStore.config.defaultDisk)),
                                updateID=updateID, predecessorNumber=predecessorNumber)
@@ -599,11 +593,11 @@ class Job(object):
             assert jobWrapper.predecessorNumber > 1
         
         #The return is a tuple stored within the job.stack of the jobs to run.
-        #The tuple is jobStoreID, memory, cpu, disk, predecessorID
+        #The tuple is jobStoreID, memory, cores, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor 
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cpu, jobWrapper.disk,
+        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
     
     def _serialiseJobGraph(self, jobWrapper, jobStore):
@@ -894,10 +888,10 @@ class FunctionWrappingJob(Job):
     """
     def __init__(self, userFunction, *args, **kwargs):
         # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
-        cpu = kwargs.pop("cpu") if "cpu" in kwargs else sys.maxint
+        cores = kwargs.pop("cores") if "cores" in kwargs else sys.maxint
         disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
         memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
-        Job.__init__(self, memory=memory, cpu=cpu, disk=disk)
+        Job.__init__(self, memory=memory, cores=cores, disk=disk)
         #If dill is installed pickle the user function directly
         
         #else use indirect method
@@ -952,7 +946,7 @@ class ServiceJob(Job):
     not be called by a user.
     """
     def __init__(self, service):
-        Job.__init__(self, memory=service.memory, cpu=service.cpu)
+        Job.__init__(self, memory=service.memory, cores=service.cores)
         self.service = service
         #An empty file in the jobStore which when deleted is used to signal
         #that the service should cease, is initialised in 

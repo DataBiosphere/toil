@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 from __future__ import absolute_import
 import logging
 
@@ -99,8 +93,8 @@ def getUpdatedJob(parasolResultsFile, outputQueue1, outputQueue2):
 class ParasolBatchSystem(AbstractBatchSystem):
     """The interface for Parasol.
     """
-    def __init__(self, config, maxCpus, maxMemory):
-        AbstractBatchSystem.__init__(self, config, maxCpus, maxMemory) #Call the parent constructor
+    def __init__(self, config, maxCores, maxMemory):
+        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
         if maxMemory != sys.maxint:
             logger.warn("A max memory has been specified for the parasol batch system class of %i, but currently "
                         "this batchsystem interface does not support such limiting" % maxMemory)
@@ -134,14 +128,14 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.usedCpus = 0
         self.jobIDsToCpu = {}
          
-    def issueBatchJob(self, command, memory, cpu):
+    def issueBatchJob(self, command, memory, cores):
         """Issues parasol with job commands.
         """
-        self.checkResourceRequest(memory, cpu)
+        self.checkResourceRequest(memory, cores)
         pattern = re.compile("your job ([0-9]+).*")
-        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cpu, self.parasolResultsFile, command)
+        parasolCommand = "%s -verbose -ram=%i -cores=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cores, self.parasolResultsFile, command)
         #Deal with the cpus
-        self.usedCpus += cpu
+        self.usedCpus += cores
         while True: #Process finished results with no wait
             try:
                jobID = self.outputQueue1.get_nowait()
@@ -150,7 +144,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                self.outputQueue1.task_done()
             except Empty:
                 break
-        while self.usedCpus > self.maxCpus: #If we are still waiting
+        while self.usedCpus > self.maxCores: #If we are still waiting
             self.usedCpus -= self.jobIDsToCpu.pop(self.outputQueue1.get())
             assert self.usedCpus >= 0
             self.outputQueue1.task_done()
@@ -165,7 +159,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 logger.info("We failed to properly add the job, we will try again after a sleep")
                 time.sleep(5)
         jobID = int(match.group(1))
-        self.jobIDsToCpu[jobID] = cpu
+        self.jobIDsToCpu[jobID] = cores
         logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
         logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID

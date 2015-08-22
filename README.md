@@ -170,7 +170,7 @@ The important arguments to **toilStats** are:
                         The default amount of memory to request for a job (in
                         bytes), by default is 2^31 = 2 gigabytes,
                         default=2147483648
-    --defaultCpu=DEFAULTCPU
+    --defaultCores=DEFAULTCORES
                         The default the number of cpus to dedicate a job.
                         default=1
     --maxCpus=MAXCPUS   The maximum number of cpus to request from the batch

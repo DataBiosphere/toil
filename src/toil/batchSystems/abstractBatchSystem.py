@@ -1,26 +1,19 @@
 #!/usr/bin/env python
 
-"""
-Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-"""
 
 from __future__ import absolute_import
 from Queue import Empty
@@ -41,34 +34,34 @@ class AbstractBatchSystem:
         """
         return False
 
-    def __init__(self, config, maxCpus, maxMemory, maxDisk):
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
         """This method must be called.
         The config object is setup by the toilSetup script and
         has configuration parameters for the jobtree. You can add stuff
         to that script to get parameters for your batch system.
         """
         self.config = config
-        self.maxCpus = maxCpus
+        self.maxCores = maxCores
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
         
-    def checkResourceRequest(self, memory, cpu, disk):
+    def checkResourceRequest(self, memory, cores, disk):
         """Check resource request is not greater than that available.
         """
         assert memory is not None
         assert disk is not None
-        assert cpu is not None
-        if cpu > self.maxCpus:
-            raise InsufficientSystemResources('CPUs', cpu, self.maxCpus)
+        assert cores is not None
+        if cores > self.maxCores:
+            raise InsufficientSystemResources('cores', cores, self.maxCores)
         if memory > self.maxMemory:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
         
-    def issueBatchJob(self, command, memory, cpu, disk):
+    def issueBatchJob(self, command, memory, cores, disk):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cpu is the number of cpus needed for
+        the number of bytes the job needs to run in and cores is the number of cpu cores needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
         """
         raise NotImplementedError('Abstract method: issueBatchJob')
@@ -135,11 +128,11 @@ class AbstractBatchSystem:
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, cpu_or_mem, requested, available):
+    def __init__(self, cores_or_mem, requested, available):
         self.requested = requested
         self.available = available
-        self.cpu_or_mem = cpu_or_mem
+        self.cores_or_mem = cores_or_mem
 
     def __str__(self):
         return 'Requesting more {} than available. Requested: {}, Available: {}' \
-               ''.format(self.cpu_or_mem, self.requested, self.available)
+               ''.format(self.cores_or_mem, self.requested, self.available)

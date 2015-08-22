@@ -1,22 +1,17 @@
-#Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import absolute_import
 from contextlib import contextmanager
 import logging
@@ -69,9 +64,9 @@ class Config(object):
         
         #Resource requirements
         self.defaultMemory = 2147483648
-        self.defaultCpu = 1
+        self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.maxCpus = sys.maxint
+        self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
         
@@ -138,9 +133,9 @@ class Config(object):
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCpu", h2b, iC(1))
+        setOption("defaultCores", h2b, iC(1))
         setOption("defaultDisk", h2b, iC(1))
-        setOption("maxCpus", h2b, iC(1))
+        setOption("maxCores", h2b, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
         
@@ -202,7 +197,7 @@ def _addOptions(addGroupFn, config):
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
     #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
-                help=("A scaling factor to change the value of all submitted tasks's submitted cpu. "
+                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
     addOptionFn("--masterIP", dest="masterIP", default=None,
                 help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
@@ -212,20 +207,18 @@ def _addOptions(addGroupFn, config):
     #
     #Resource requirements
     #
-    addOptionFn = addGroupFn("toil options for cpu/memory requirements",
-                             "The options to specify default cpu/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cpu requested from the batch system.")
+    addOptionFn = addGroupFn("toil options for cores/memory requirements",
+                             "The options to specify default cores/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cores requested from the batch system.")
     addOptionFn("--defaultMemory", dest="defaultMemory", default=None,
                       help=("The default amount of memory to request for a job (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
-    #TODO - change "Cpus" to "cores" through out.
-    addOptionFn("--defaultCpu", dest="defaultCpu", default=None,
-                      help="The number of cpus to dedicate a job. default=%s" % config.defaultCpu)
+    addOptionFn("--defaultCores", dest="defaultCores", default=None,
+                      help="The number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
                       help="The amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
-    #TODO - change "Cpus" to "cores" through out.
-    addOptionFn("--maxCpus", dest="maxCpus", default=None,
-                      help=("The maximum number of cpus to request from the batch system at any "
-                            "one time. default=%s" % config.maxCpus))
+    addOptionFn("--maxCores", dest="maxCores", default=None,
+                      help=("The maximum number of cpu cores to request from the batch system at any "
+                            "one time. default=%s" % config.maxCores))
     addOptionFn("--maxMemory", dest="maxMemory", default=None,
                       help=("The maximum amount of memory to request from the batch \
                       system at any one time. default=%s" % config.maxMemory))
@@ -302,7 +295,7 @@ def loadBatchSystemClass(config):
     """
     batchSystemName = config.batchSystem
     kwargs = dict(config=config,
-                  maxCpus=config.maxCpus,
+                  maxCores=config.maxCores,
                   maxMemory=config.maxMemory,
                   maxDisk=config.maxDisk)
     if batchSystemName == 'parasol':

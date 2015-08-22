@@ -1,22 +1,17 @@
-# Copyright (C) 2011 by Benedict Paten (benedictpaten@gmail.com)
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 """ Reports the state of your given jobtree.
 """
@@ -428,11 +423,11 @@ def reportPrettyData(root, worker, job, job_types, options):
     """ print the important bits out.
     """
     out_str = "Batch System: %s\n" % root.attrib["batch_system"]
-    out_str += ("Default CPU: %s  Default Memory: %s\n"
-                "Max CPUs: %s  Max Threads: %s\n" % (
-        reportNumber(get(root, "default_cpu"), options),
+    out_str += ("Default Cores: %s  Default Memory: %s\n"
+                "Max Cores: %s  Max Threads: %s\n" % (
+        reportNumber(get(root, "default_cores"), options),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
-        reportNumber(get(root, "max_cpus"), options),
+        reportNumber(get(root, "max_cores"), options),
         reportNumber(get(root, "max_threads"), options),
         ))
     out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
@@ -584,8 +579,8 @@ def processData(config, stats, options):
          "total_clock":stats.find("total_time").attrib["clock"],
          "batch_system":config.batchSystem,
          "default_memory":str(config.defaultMemory),
-         "default_cpu":str(config.defaultCpu),
-         "max_cpus":str(config.maxCpus)})
+         "default_cores":str(config.defaultCores),
+         "max_cores":str(config.maxCores)})
 
     # Add worker info
     workers = stats.findall("worker")

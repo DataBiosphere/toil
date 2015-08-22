@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
+# Copyright (C) 2015 UCSC Computational Genomics Lab
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -88,9 +86,9 @@ class MesosExecutor(mesos.interface.Executor):
 
     def _sendStats(self, driver):
         while True:
-            cpuUsage = str(psutil.cpu_percent())
+            coresUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("cpu percent: %s, ram usage: %s" % (cpuUsage, ramUsage))
+            driver.sendFrameworkMessage("CPU usage: %s, Memory usage: %s" % (coresUsage, ramUsage))
             log.debug("sent stats message")
             sleep(30)
 

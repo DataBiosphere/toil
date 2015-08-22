@@ -1,3 +1,16 @@
+# Copyright (C) 2015 UCSC Computational Genomics Lab
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 A simple user script for Toil
 """
@@ -7,7 +20,7 @@ from optparse import OptionParser
 import os
 from toil.job import Job
 
-def hello_world(job, memory=100, cpu=0.5):
+def hello_world(job):
 
     with open('foo_bam.txt', 'w') as handle:
         handle.write('\nThis is a triumph...\n')
@@ -16,10 +29,10 @@ def hello_world(job, memory=100, cpu=0.5):
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
 
     # Spawn child
-    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cpu=0.5, disk=2000)
+    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk=2000)
 
 
-def hello_world_child(job, hw, memory=100, cpu=0.5):
+def hello_world_child(job, hw):
 
     path = job.fileStore.readGlobalFile(hw)
 
@@ -48,7 +61,7 @@ def main():
 
 
     # Launch first toil Job
-    i = Job.wrapJobFn(hello_world, memory=100, cpu=0.5, disk=2000)
+    i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk=2000)
     j = Job.Runner.startToil(i, options)
 
 
