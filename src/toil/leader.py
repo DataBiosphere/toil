@@ -304,9 +304,18 @@ class ToilState( object ):
                     #but we add back a predecessor link
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
 
+class FailedJobsException( Exception ):
+    def __init__( self, jobStoreString, numberOfFailedJobs ):
+        super( FailedJobsException, self ).__init__( "The job store '%s' contains %i failed jobs" % (jobStoreString, numberOfFailedJobs))
+        self.jobStoreString = jobStoreString
+        self.numberOfFailedJobs = numberOfFailedJobs
+        
 def mainLoop(config, batchSystem, jobStore, rootJob):
     """
     This is the main loop from which jobs are issued and processed.
+    
+    :raises: toil.leader.FailedJobsException if at the end of function their remain
+    failed jobs
     """
 
     ##########################################
@@ -490,5 +499,6 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         clean = config.clean
         if clean=="always" or clean == "onError" and totalFailedJobs>0 or clean == "onSuccess" and totalFailedJobs==0:
             jobStore.deleteJobStore()
-
-    return totalFailedJobs #Returns number of failed jobs
+    
+    if totalFailedJobs > 0:
+        raise FailedJobsException( config.jobStore, totalFailedJobs )

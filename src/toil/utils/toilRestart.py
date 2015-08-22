@@ -58,7 +58,7 @@ def main():
     options.restart = True
     with setupToil(options) as (config, batchSystem, jobStore):
         jobStore.clean()
-        return mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore))
+        mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore))
     
 def _test():
     import doctest      

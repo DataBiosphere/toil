@@ -345,7 +345,10 @@ class Job(object):
             """
             Runs the toil workflow using the given options 
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) 
-            starting with this job.
+            starting with this job. 
+            
+            :raises: toil.leader.FailedJobsException if at the end of function their remain
+    failed jobs
             """
             setLoggingFromOptions(options)
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
@@ -356,7 +359,7 @@ class Job(object):
                     #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
-        
+
     class FileStore:
         """
         Class used to manage temporary files and log messages, 

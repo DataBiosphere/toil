@@ -96,11 +96,8 @@ class DependenciesTest(ToilTest):
             options.maxCores = maxCores
 
             baseJob = FirstJob(tree, "Anc00", sleepTime, startTime, int(coresPerJob))
-            i = Job.Runner.startToil(baseJob, options)
-
+            Job.Runner.startToil(baseJob, options)
             checkLog(logName, maxCores, maxThreads, coresPerJob, sleepTime)
-
-            self.assertEquals(i, 0)
 
             os.close(logFd)
 

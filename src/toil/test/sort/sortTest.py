@@ -33,6 +33,7 @@ from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test.sort.sort import setup
 from toil.test import ToilTest, needs_aws, needs_mesos
 from toil.jobStores.abstractJobStore import JobStoreCreationException
+from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +94,11 @@ class SortTest(ToilTest, MesosTestSupport):
             options.restart = False
 
             # Now actually run the workflow
-            i = Job.Runner.startToil(firstJob, options)
+            try:
+                Job.Runner.startToil(firstJob, options)
+                i = 0
+            except FailedJobsException as e:
+                i = e.numberOfFailedJobs
 
             # Check we get an exception if we try to run without restart on an existing job store
             try:
@@ -107,7 +112,11 @@ class SortTest(ToilTest, MesosTestSupport):
             # This loop tests the restart behavior
             while i != 0:
                 options.useExistingOptions = random.random() > 0.5
-                i = Job.Runner.startToil(firstJob, options)
+                try:
+                    Job.Runner.startToil(firstJob, options)
+                    i = 0
+                except FailedJobsException as e:
+                    i = e.numberOfFailedJobs
 
             # Now check that if you try to restart from here it will raise an exception
             # indicating that there are no jobs remaining in the workflow.

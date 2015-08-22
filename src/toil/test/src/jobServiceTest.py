@@ -65,7 +65,7 @@ class JobServiceTest(ToilTest):
             options.logLevel = "INFO"
             options.jobStore = self._getTestJobStorePath()
             # Run the workflow, the return value being the number of failed jobs
-            self.assertEquals(Job.Runner.startToil(t, options), 0)
+            Job.Runner.startToil(t, options)
             # Check output
             self.assertEquals(open(outFile, 'r').readline(), "123")
         finally:
