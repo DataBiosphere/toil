@@ -101,19 +101,37 @@ class AWSJobStore(AbstractJobStore):
         self.s3 = self._connectS3()
         self.sseKey = None
 
+        # Check global registry domain for existence of this job store. The first time this is
+        # being executed in an AWS account, the registry domain will be created on the fly.
         create = config is not None
+        self.registry_domain = self._getOrCreateDomain('toil-registry')
+        for attempt in retry_sdb():
+            with attempt:
+                attributes = self.registry_domain.get_attributes(item_name=namePrefix,
+                                                                 attribute_name='exists',
+                                                                 consistent_read=True)
+                exists = parse_bool(attributes.get('exists', str(False)))
+                self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
 
-        def creationCheck(exists):
-            self._checkJobStoreCreation(create, exists, region + " " + namePrefix)
+        self.jobDomain = self._getOrCreateDomain(self.qualify('jobs'))
+        self.versions = self._getOrCreateDomain(self.qualify('versions'))
+        self.files = self._getOrCreateBucket(self.qualify('files'), versioning=True)
+        self.stats = self._getOrCreateBucket(self.qualify('stats'), versioning=True)
 
-        self.jobDomain = self._getOrCreateDomain('jobs', creationCheck)
-        self.versions = self._getOrCreateDomain('versions')
-        self.files = self._getOrCreateBucket('files', create, versioning=True)
-        self.stats = self._getOrCreateBucket('stats', create, versioning=True)
+        # Now register this job store
+        for attempt in retry_sdb():
+            with attempt:
+                self.registry_domain.put_attributes(item_name=namePrefix,
+                                                    attributes=dict(exists='True'))
+
         super(AWSJobStore, self).__init__(config=config)
+
         if self.config.sseKey is not None:
             with open(self.config.sseKey) as f:
                 self.sseKey = f.read()
+
+    def qualify(self, name):
+        return self.namePrefix + self.nameSeparator + name
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
@@ -213,7 +231,8 @@ class AWSJobStore(AbstractJobStore):
         assert self._validateSharedFileName(sharedFileName)
         jobStoreFileID = self._newFileID(sharedFileName)
         oldVersion = self._getFileVersion(jobStoreFileID)
-        with self._uploadStream(jobStoreFileID, self.files, encrypted=isProtected) as (writable, key):
+        with self._uploadStream(jobStoreFileID, self.files,
+                                encrypted=isProtected) as ( writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str(self.sharedFileJobID) if oldVersion is None else None
@@ -266,7 +285,8 @@ class AWSJobStore(AbstractJobStore):
         if version is None: raise NoSuchFileException(jobStoreFileID)
         log.debug("Read version %s from shared file %s (%s)",
                   version, sharedFileName, jobStoreFileID)
-        with self._downloadStream(jobStoreFileID, version, self.files, encrypted=isProtected) as readable:
+        with self._downloadStream(jobStoreFileID, version, self.files,
+                                  encrypted=isProtected) as readable:
             yield readable
 
     def deleteFile(self, jobStoreFileID):
@@ -363,11 +383,10 @@ class AWSJobStore(AbstractJobStore):
                              self.region)
         return s3
 
-    def _getOrCreateBucket(self, bucket_name, create=False, versioning=False):
+    def _getOrCreateBucket(self, bucket_name, versioning=False):
         """
         :rtype Bucket
         """
-        bucket_name = self.namePrefix + self.nameSeparator + bucket_name
         assert self.bucketNameRe.match(bucket_name)
         assert 3 <= len(bucket_name) <= 63
         try:
@@ -375,7 +394,7 @@ class AWSJobStore(AbstractJobStore):
             assert versioning is self.__getBucketVersioning(bucket)
             return bucket
         except S3ResponseError as e:
-            if e.error_code == 'NoSuchBucket' and create:
+            if e.error_code == 'NoSuchBucket':
                 bucket = self.s3.create_bucket(bucket_name, location=self.region)
                 if versioning:
                     bucket.configure_versioning(versioning)
@@ -383,48 +402,16 @@ class AWSJobStore(AbstractJobStore):
             else:
                 raise
 
-    def _getOrCreateDomain(self, domain_name, creation_check=None):
+    def _getOrCreateDomain(self, domain_name):
         """
         Return the boto Domain object representing the SDB domain with the given name. If the
-        domain does not exist it will be created unless the given callback prevents that by
-        raising an exception.
+        domain does not exist it will be created.
 
         :param domain_name: the unqualified name of the domain to be created
 
-        :param creation_check: a callback that, if provided,  will be invoked with True if the
-        domain already exists, False if it is missing. If the callback wants to prevent the
-        creation of a missing domain, it should raise an exception.
-
         :rtype : Domain
         """
-        domain_name = self.namePrefix + self.nameSeparator + domain_name
-        domain = self.__getDomain(domain_name, timeout_seconds=10)
-        if creation_check is not None:
-            creation_check(domain is not None)
-        self.db.create_domain(domain_name)
-        domain = self.__getDomain(domain_name, timeout_seconds=60)
-        if domain is None:
-            raise RuntimeError("Failed to lookup domain '%s' after creating it." % domain_name)
-        else:
-            return domain
-
-    def __getDomain(self, domain_name, timeout_seconds=60):
-        deadline = time.time() + timeout_seconds
-        sleep = 1.0
-        while True:
-            try:
-                return self.db.get_domain(domain_name)
-            except SDBResponseError as e:
-                if e.error_code == 'NoSuchDomain':
-                    if time.time() < deadline:
-                        log.info(
-                            "Domain '%s' does not exist, retrying in %fs" % (domain_name, sleep))
-                        time.sleep(sleep)
-                        sleep *= 1.25
-                    else:
-                        return None
-                else:
-                    raise
+        return self.db.create_domain(domain_name)
 
     def _newJobID(self):
         return str(uuid.uuid4())
@@ -476,7 +463,8 @@ class AWSJobStore(AbstractJobStore):
             version = key.version_id
         else:
             with open(localFilePath, 'rb') as f:
-                upload = self.files.initiate_multipart_upload(key_name=jobStoreFileID, headers=headers)
+                upload = self.files.initiate_multipart_upload(key_name=jobStoreFileID,
+                                                              headers=headers)
                 try:
                     start = 0
                     part_num = itertools.count()
@@ -513,7 +501,8 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(writable_fh, 'w') as writable:
                 def reader():
                     try:
-                        upload = bucket.initiate_multipart_upload(key_name=jobStoreFileID, headers=headers)
+                        upload = bucket.initiate_multipart_upload(key_name=jobStoreFileID,
+                                                                  headers=headers)
                         try:
                             for part_num in itertools.count():
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -653,6 +642,7 @@ class AWSJobStore(AbstractJobStore):
             self._add_encryption_headers(self.sseKey, headers)
 
     def deleteJobStore(self):
+        self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
         for bucket in (self.files, self.stats):
             if bucket is not None:
                 for upload in bucket.list_multipart_uploads():
@@ -692,7 +682,8 @@ class AWSJob(JobWrapper):
         chunkedJob = item.items()
         chunkedJob.sort()
         if len(chunkedJob) == 1:
-            wholeJobString = chunkedJob[0][1] #first element of list = tuple, second element of tuple = serialized job
+            # First element of list = tuple, second element of tuple = serialized job
+            wholeJobString = chunkedJob[0][1]
         else:
             wholeJobString = ''.join(item[1] for item in chunkedJob)
         return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
@@ -704,10 +695,12 @@ class AWSJob(JobWrapper):
         item = {}
         serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
         # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
-        jobChunks = [serializedAndEncodedJob[i:i+1024] for i in range(0, len(serializedAndEncodedJob), 1024)]
+        jobChunks = [serializedAndEncodedJob[i:i + 1024]
+                     for i in range(0, len(serializedAndEncodedJob), 1024)]
         for attributeOrder, chunk in enumerate(jobChunks):
             item[str(attributeOrder).zfill(3)] = chunk
         return item
+
 
 # FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
 # FIXME: ... between that code and this is the name of the exception.
@@ -823,3 +816,12 @@ def retry_sdb(retry_after=a_short_time,
             yield
 
         yield single_attempt()
+
+
+def parse_bool(s):
+    if s == 'True':
+        return True
+    elif s == 'False':
+        return False
+    else:
+        raise ValueError(s)
