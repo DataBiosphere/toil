@@ -24,11 +24,13 @@ import tempfile
 import uuid
 import time
 import copy_reg
-import cPickle 
-import logging 
+import cPickle
+import logging
+
+from bd2k.util.humanize import human2bytes
+
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
-from bd2k.util.humanize import human2bytes
 
 logger = logging.getLogger( __name__ )
 
@@ -656,6 +658,7 @@ class Job(object):
     @staticmethod
     def _loadClass(className, userModule):
         """
+        :type userModule: ModuleDescriptor
         """
         if not userModule.belongsToToil:
             userModule = userModule.localize()
@@ -668,23 +671,22 @@ class Job(object):
     @staticmethod
     def _loadJob(command, jobStore):
         """
-        Unpickles a job.Job instance by decoding the command.
-        See job.Job._serialiseFirstJob and 
-        job.Job._makeJobWrappers to see how the Job is encoded in the command.
-        Essentially the command is a reference to a jobStoreFileID containing 
-        the pickle file for the job and a list of modules which must be imported
-        so that the Job can be successfully unpickled.
+        Unpickles a job.Job instance by decoding the command. See job.Job._serialiseFirstJob and
+        job.Job._makeJobWrappers to see how the Job is encoded in the command. Essentially the
+        command is a reference to a jobStoreFileID containing the pickle file for the job and a
+        list of modules which must be imported so that the Job can be successfully unpickled.
         """
         commandTokens = command.split()
         assert "scriptTree" == commandTokens[0]
-        Job._loadClass(commandTokens[2], ModuleDescriptor(*commandTokens[3:]))
+        userModule = ModuleDescriptor(*(commandTokens[3:]))
+        Job._loadClass(commandTokens[2], userModule)
         pickleFile = commandTokens[1]
         if pickleFile == "firstJob":
-            openFileStream = jobStore.readSharedFileStream( pickleFile )
+            openFileStream = jobStore.readSharedFileStream(pickleFile)
         else:
-            openFileStream = jobStore.readFileStream( pickleFile )
+            openFileStream = jobStore.readFileStream(pickleFile)
         with openFileStream as fileHandle:
-            return cPickle.load( fileHandle )
+            return cPickle.load(fileHandle)
 
     ####################################################
     #Functions to pass Job.run return values to the
@@ -971,16 +973,15 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     
 class ServiceJob(Job):
     """
-    Job used to wrap a Job.Service instance. This constructor should
-    not be called by a user.
+    Job used to wrap a Job.Service instance. This constructor should not be called by a user.
     """
     def __init__(self, service):
         """
-        service: instance of Job.Service
+        :type service: Job.Service
         """
         Job.__init__(self, memory=service.memory, cores=service.cores)
         # service.__module__ is the module defining the class service is an instance of.
-        self.serviceModule = ModuleDescriptor.forModule(service.__module__)
+        self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
         self.serviceClassName = service.__class__.__name__
         #The service to run, pickled
         self.pickledService = cPickle.dumps(service)
