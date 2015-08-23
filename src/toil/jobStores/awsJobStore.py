@@ -34,7 +34,7 @@ from boto.s3.connection import S3Connection
 from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
-from boto.exception import SDBResponseError, S3ResponseError
+from boto.exception import SDBResponseError, S3ResponseError, BotoServerError
 import itertools
 import time
 
@@ -245,7 +245,7 @@ class AWSJobStore(AbstractJobStore):
         jobStoreFileID = self._newFileID(sharedFileName)
         oldVersion = self._getFileVersion(jobStoreFileID)
         with self._uploadStream(jobStoreFileID, self.files,
-                                encrypted=isProtected) as ( writable, key):
+                                encrypted=isProtected) as (writable, key):
             yield writable
         newVersion = key.version_id
         jobStoreId = str(self.sharedFileJobID) if oldVersion is None else None
@@ -424,7 +424,15 @@ class AWSJobStore(AbstractJobStore):
 
         :rtype : Domain
         """
-        return self.db.create_domain(domain_name)
+        try:
+            return self.db.get_domain(domain_name)
+        except SDBResponseError as e:
+            if no_such_domain(e):
+                for attempt in retry_sdb(retry_while=sdb_unavailable):
+                    with attempt:
+                        return self.db.create_domain(domain_name)
+            else:
+                raise
 
     def _newJobID(self):
         return str(uuid.uuid4())
@@ -724,7 +732,11 @@ a_long_time = 60 * 60
 
 
 def no_such_domain(e):
-    return e.error_code.endswith('NoSuchDomain')
+    return isinstance(e, SDBResponseError) and e.error_code.endswith('NoSuchDomain')
+
+
+def sdb_unavailable(e):
+    return e.__class__ == BotoServerError and e.status.startswith("503")
 
 
 def true(_):
@@ -806,7 +818,7 @@ def retry_sdb(retry_after=a_short_time,
         def repeated_attempt():
             try:
                 yield
-            except SDBResponseError as e:
+            except BotoServerError as e:
                 if time.time() + retry_after < expiration:
                     if retry_while(e):
                         log.info('... got %s, trying again in %is ...', e.error_code, retry_after)
