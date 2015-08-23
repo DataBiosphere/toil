@@ -656,6 +656,7 @@ class Job(object):
     @staticmethod
     def _loadClass(className, userModule):
         """
+        Loads class so that instance can be unpickled.
         """
         if not userModule.belongsToToil:
             userModule = userModule.localize()
@@ -663,6 +664,7 @@ class Job(object):
             sys.path.append(userModule.dirPath)
         userModule = importlib.import_module(userModule.name)
         thisModule = sys.modules[__name__]
+        #TODO: Document what this magic is doing
         thisModule.__dict__[className] = userModule.__dict__[className]
     
     @staticmethod
