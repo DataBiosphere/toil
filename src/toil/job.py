@@ -657,6 +657,7 @@ class Job(object):
     def _loadClass(className, userModule):
         """
         Loads class so that instance can be unpickled.
+        :type userModule: ModuleDescriptor
         """
         if not userModule.belongsToToil:
             userModule = userModule.localize()
