@@ -24,16 +24,14 @@ import tempfile
 import uuid
 import time
 import copy_reg
-from toil.resource import ModuleDescriptor
-from toil.common import loadJobStore
+import cPickle 
+import logging 
+
 from bd2k.util.humanize import human2bytes
 
-try:
-    import cPickle 
-except ImportError:
-    import pickle as cPickle
-    
-import logging
+from toil.resource import ModuleDescriptor
+from toil.common import loadJobStore
+
 logger = logging.getLogger( __name__ )
 
 from toil.lib.bioio import (setLoggingFromOptions,
@@ -656,6 +654,43 @@ class Job(object):
         if not jobStore.exists(rootJobID):
             raise JobException("No root job (%s) left in toil workflow (workflow has finished successfully?)" % rootJobID)
         return jobStore.load(rootJobID)
+    
+    @staticmethod
+    def _loadClass(className, userModule):
+        """
+        Loads class so that instance can be unpickled.
+
+        :type userModule: ModuleDescriptor
+        """
+        if not userModule.belongsToToil:
+            userModule = userModule.localize()
+        if userModule.dirPath not in sys.path:
+            # FIXME: prepending to sys.path will probably fix #103
+            sys.path.append(userModule.dirPath)
+        userModule = importlib.import_module(userModule.name)
+        thisModule = sys.modules[__name__]
+        #TODO: Document what this magic is doing
+        thisModule.__dict__[className] = userModule.__dict__[className]
+    
+    @staticmethod
+    def _loadJob(command, jobStore):
+        """
+        Unpickles a job.Job instance by decoding the command. See job.Job._serialiseFirstJob and
+        job.Job._makeJobWrappers to see how the Job is encoded in the command. Essentially the
+        command is a reference to a jobStoreFileID containing the pickle file for the job and a
+        list of modules which must be imported so that the Job can be successfully unpickled.
+        """
+        commandTokens = command.split()
+        assert "scriptTree" == commandTokens[0]
+        userModule = ModuleDescriptor(*(commandTokens[3:]))
+        Job._loadClass(commandTokens[2], userModule)
+        pickleFile = commandTokens[1]
+        if pickleFile == "firstJob":
+            openFileStream = jobStore.readSharedFileStream( pickleFile )
+        else:
+            openFileStream = jobStore.readFileStream( pickleFile )
+        with openFileStream as fileHandle:
+            return cPickle.load( fileHandle )
 
     ####################################################
     #Functions to pass Job.run return values to the
@@ -903,7 +938,9 @@ class FunctionWrappingJob(Job):
     def _getUserFunction(self):
         #If dill is installed unpickle the user function directly
         
-        userFunctionModule = self.userFunctionModule.localize()
+        userFunctionModule = self.userFunctionModule
+        if not userFunctionModule.belongsToToil:
+            userFunctionModule = userFunctionModule.localize()
         if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userFunctionModule.dirPath)
@@ -942,12 +979,18 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     
 class ServiceJob(Job):
     """
-    Job used to wrap a Job.Service instance. This constructor should
-    not be called by a user.
+    Job used to wrap a Job.Service instance. This constructor should not be called by a user.
     """
     def __init__(self, service):
+        """
+        :type service: Job.Service
+        """
         Job.__init__(self, memory=service.memory, cores=service.cores)
-        self.service = service
+        # service.__module__ is the module defining the class service is an instance of.
+        self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
+        self.serviceClassName = service.__class__.__name__
+        #The service to run, pickled
+        self.pickledService = cPickle.dumps(service)
         #An empty file in the jobStore which when deleted is used to signal
         #that the service should cease, is initialised in 
         #Job._modifyJobGraphForServices
@@ -957,8 +1000,11 @@ class ServiceJob(Job):
         self.startFileStoreID = None
         
     def run(self, fileStore):
+        #Unpickle the service
+        self._loadClass(self.serviceClassName, self.serviceModule) #This gets the class loaded 
+        service = cPickle.loads(self.pickledService)
         #Start the service
-        startCredentials = self.service.start()
+        startCredentials = service.start()
         #The start credentials  must be communicated to processes connecting to
         #the service, to do this while the run method is running we 
         #cheat and set the return value promise within the run method
@@ -977,8 +1023,12 @@ class ServiceJob(Job):
         while fileStore.globalFileExists(self.stopFileStoreID):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
-        self.service.stop()
+        service.stop()
         
+    def getUserScript(self):
+        return self.serviceModule
+
+
 class EncapsulatedJob(Job):
     """
     An convenience Job class used to make a job subgraph appear to
