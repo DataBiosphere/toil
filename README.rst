@@ -1,5 +1,5 @@
 Toil is a massively scalable pipeline management system, written entirely in Python.
-Toil runs as easily on a laptop as it does on a physical cluster or in the cloud, thanks
+Toil runs as easily on a laptop as it does on a bare-metal cluster or in the cloud, thanks
 to support for many batch systems, including `Grid Engine`_, Parasol_, and a
 custom Mesos_ framework.
 
@@ -11,7 +11,7 @@ resumed even after an unexpected shutdown of every node in the cluster that resu
 loss of all local data.
 
 Writing a Toil script requires only a knowledge of basic Python. Toil 'Jobs' are the
-basic unit of work in a Toil workflow, can dynamically spawn children jobs that will
+elemental unit of work in a Toil workflow, can dynamically spawn children jobs that will
 be run in parallel after its completion.
 
 .. _Grid Engine:http://gridscheduler.sourceforge.net/
@@ -52,18 +52,18 @@ you would like to include when pip installing::
 Building & Testing
 ==================
 
-This is only required if cloning from Git. To run the tests, ``cd`` into the toil root directory
-and run::
-
-    make test
-
-For developers, running::
+This is only required if cloning from Git. Running::
 
     make develop
 
 will install Toil in editable mode. You can also specify extras to use in develop mode as follows::
 
     make develop extras=[mesos,aws]
+
+To run the tests, ``cd`` into the toil root directory
+and run::
+
+    make test
 
 Finally, running::
 
