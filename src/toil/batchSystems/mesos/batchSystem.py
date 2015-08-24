@@ -274,7 +274,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
-            log.warning("No jobs to assign. Rejecting offer".format(offer.id.value))
+            log.debug("No jobs to assign. Rejecting offer".format(offer.id.value))
             driver.declineOffer(offer.id)
 
     def _determineOfferResources(self, offer):
@@ -359,7 +359,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 log.info("...launching Mesos task %s" % task.task_id.value)
 
             if len(tasks) == 0:
-                log.info("Offer not large enough to run any tasks. Required: %s Offered: %s" % (job_types[-1], (offerMem*1000000, offerCores, offerStor*1000000)))
+                log.debug("Offer %s not large enough to run any tasks. Required: %s Offered: %s"
+                          % (offer.id.value, job_types[-1], (offerMem*1000000, offerCores, offerStor*1000000)))
 
     def _createTask(self, jt_job, offer):
         """
@@ -435,7 +436,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         Invoked when an executor sends a message.
         """
-        log.info("Executor {} on slave {} sent a message: {}".format(executorId, slaveId, message))
+        log.debug("Executor {} on slave {} sent a message: {}".format(executorId, slaveId, message))
 
     def __reconcile(self, driver):
         """
