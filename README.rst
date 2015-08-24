@@ -11,8 +11,8 @@ resumed even after an unexpected shutdown of every node in the cluster that resu
 loss of all local data.
 
 Writing a Toil script requires only a knowledge of basic Python. Toil 'Jobs' are the
-basic unit of work in a Toil workflow, and must either inherit from the Job class or be a
-function wrapped by the WrapJobFn method.
+basic unit of work in a Toil workflow, can dynamically spawn children jobs that will
+be run in parallel after its completion.
 
 .. _Grid Engine:http://gridscheduler.sourceforge.net/
 .. _Parasol:https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
@@ -26,7 +26,7 @@ Python 2.5 < 3.0
 
 pip_ 7.x
 
-`Apache Mesos`_ 0.22.0, if using the Mesos batch system. Brew installable on OSX via::
+`Apache Mesos`_ 0.22.0, if using the Mesos batch system. This is Brew_ installable on OSX via::
 
     brew install mesos
 
@@ -34,6 +34,7 @@ Git_, if cloning from the `Toil Github Repository`_
 
 .. _pip: https://pip.readthedocs.org/en/latest/installing.html
 .. _Apache Mesos:http://mesos.apache.org/gettingstarted/
+.. _Brew: http://brew.sh/
 .. _Git: https://git-scm.com/
 .. _Toil Github Repository: https://github.com/BD2KGenomics/toil
 
@@ -56,7 +57,15 @@ and run::
 
     make test
 
-Running::
+For developers, running::
+
+    make develop
+
+will install Toil in editable mode. You can also specify extras to use in develop mode as follows::
+
+    make develop extras=[mesos,aws]
+
+Finally, running::
 
     make
 
