@@ -384,12 +384,21 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         disk = task.resources.add()
         disk.name = "disk"
         disk.type = mesos_pb2.Value.SCALAR
-        disk.scalar.value = jt_job.resources.disk / 1000000
-
+        if jt_job.resources.disk > 1000000:
+            disk.scalar.value = jt_job.resources.disk / 1000000
+        else:
+            log.warning("Job %s uses less disk than mesos requires. Rounding %s bytes up to 1 mb" %
+                        (jt_job.jobID, jt_job.resources.disk))
+            disk.scalar.value = 1
         mem = task.resources.add()
         mem.name = "mem"
         mem.type = mesos_pb2.Value.SCALAR
-        mem.scalar.value = jt_job.resources.memory / 1000000
+        if jt_job.resources.memory > 1000000:
+            mem.scalar.value = jt_job.resources.memory / 1000000
+        else:
+            log.warning("Job %s uses less memory than mesos requires. Rounding %s bytes up to 1 mb" %
+                        (jt_job.jobID, jt_job.resources.memory))
+            mem.scalar.value = 1
         return task
 
     def __updateState(self, intID, exitStatus):
