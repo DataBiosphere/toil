@@ -61,7 +61,9 @@ class AzureJobStore(AbstractJobStore):
     """A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
-    def __init__(self, accountName, namePrefix, config=None):
+    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
+        self.jobChunkSize = jobChunkSize
+
         account_key = _fetchAzureAccountKey(accountName)
 
         # Table names have strict requirements in Azure
@@ -111,7 +113,7 @@ class AzureJobStore(AbstractJobStore):
                      command=command, memory=memory, cores=cores, disk=disk,
                      remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
                      updateID=updateID, predecessorNumber=predecessorNumber)
-        entity = job.toItem()
+        entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)
         return job
@@ -128,7 +130,8 @@ class AzureJobStore(AbstractJobStore):
         return AzureJob.fromEntity(jobEntity)
 
     def update(self, job):
-        self.jobItems.update_entity(row_key=job.jobStoreID, entity=job.toItem())
+        self.jobItems.update_entity(row_key=job.jobStoreID,
+                                    entity=job.toItem(chunkSize=self.jobChunkSize))
 
     def delete(self, jobStoreID):
         self.jobItems.delete_entity(row_key=jobStoreID)
@@ -438,7 +441,7 @@ class AzureTable():
             return None
 
 class AzureBlobContainer():
-    """A shim over the BlobService API, so that the table name is automatically filled in.
+    """A shim over the BlobService API, so that the container name is automatically filled in.
 
     To avoid confusion over the position of any remaining positional
     arguments, all method calls must use *only* keyword arguments.
@@ -466,15 +469,19 @@ class AzureJob(JobWrapper):
 
     @classmethod
     def fromEntity(cls, jobEntity):
+        """
+        :type jobEntity: Entity
+        :rtype: AzureJob
+        """
         jobEntity = jobEntity.__dict__
         for attr in cls.defaultAttrs:
             del jobEntity[attr]
         return cls.fromItem(jobEntity)
 
     @classmethod
-    def fromItem(cls, item, jobStoreID=None):
+    def fromItem(cls, item):
         """
-        :type item: Item
+        :type item: dict
         :rtype: AzureJob
         """
         chunkedJob = item.items()
@@ -486,15 +493,15 @@ class AzureJob(JobWrapper):
             wholeJobString = ''.join(item[1] for item in chunkedJob)
         return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
 
-    def toItem(self, parentJobStoreID=None):
+    # Max size of a string value in Azure is 64K
+    def toItem(self, chunkSize=65535):
         """
-        :rtype: Item
+        :rtype: dict
         """
         item = {}
         serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
-        # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
-        jobChunks = [serializedAndEncodedJob[i:i + 1024]
-                     for i in range(0, len(serializedAndEncodedJob), 1024)]
+        jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
+                     for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):
             item['_' + str(attributeOrder).zfill(3)] = chunk
         return item
