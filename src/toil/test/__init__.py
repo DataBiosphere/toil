@@ -84,6 +84,22 @@ def needs_aws(test_item):
         else:
             return unittest.skip( "Skipping test. Create ~/.boto to include this test." )( test_item)
 
+def needs_azure(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if Azure is usable.
+    """
+    try:
+        # noinspection PyUnresolvedReferences
+        import azure.storage
+    except ImportError:
+        return unittest.skip("Skipping test. Install and configure the Azure Storage Python SDK to include this test.")(test_item)
+    except:
+        raise
+    else:
+        credentials_path = os.path.expanduser('~/.toilAzureCredentials')
+        if not os.path.exists(credentials_path):
+            return unittest.skip("Skipping test. Configure .toilAzureCredentials with the account key for 'toiltestaccount'.")(test_item)
+        return test_item
 
 def needs_mesos(test_item):
     """

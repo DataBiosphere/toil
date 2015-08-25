@@ -358,6 +358,10 @@ def loadJobStore( jobStoreString, config=None ):
         from toil.jobStores.awsJobStore import AWSJobStore
         region, namePrefix = jobStoreArgs.split( ':', 1 )
         return AWSJobStore( region, namePrefix, config=config )
+    elif jobStoreName == 'azure':
+        from toil.jobStores.azureJobStore import AzureJobStore
+        account, namePrefix = jobStoreArgs.split( ':', 1 )
+        return AzureJobStore( account, namePrefix, config=config )
     else:
         raise RuntimeError( "Unknown job store implementation '%s'" % jobStoreName )
 

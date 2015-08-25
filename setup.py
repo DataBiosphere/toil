@@ -30,7 +30,9 @@ kwargs = dict(
             'mesos.interface==0.22.0',
             'psutil==3.0.1' ],
         'aws': [
-            'boto==2.38.0' ] },
+            'boto==2.38.0' ],
+        'azure': [
+            'azure==0.11.1' ],},
     package_dir={ '': 'src' },
     packages=find_packages( 'src', exclude=[ '*.test' ] ),
     entry_points={

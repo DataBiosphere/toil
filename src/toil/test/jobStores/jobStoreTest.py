@@ -25,7 +25,7 @@ import shutil
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, needs_aws, needs_mesos
+from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure
 
 logger = logging.getLogger(__name__)
 
@@ -413,6 +413,12 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         from toil.jobStores.awsJobStore import AWSJobStore
         AWSJobStore._s3_part_size = self.partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
+
+@needs_azure
+class AzureJobStoreTest(hidden.AbstractJobStoreTest):
+    def _createJobStore(self, config=None):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        return AzureJobStore('toiltestaccount', self.namePrefix, config=config)
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
