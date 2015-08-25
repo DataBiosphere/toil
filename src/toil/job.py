@@ -51,7 +51,7 @@ class Job(object):
     This public functions of this class and its  nested classes are the API 
     to toil.
     """
-    def __init__(self, memory=sys.maxint, cores=sys.maxint, disk=sys.maxint):
+    def __init__(self, memory=None, cores=None, disk=None):
         """
         This method must be called by any overiding constructor.
         
@@ -59,11 +59,8 @@ class Job(object):
         require to run. Cores is the number of CPU cores required.
         """
         self.cores = cores
-        # passing sys.maxint to human2bytes seems to result in some float imprecision, and returns a value 1
-        # larger than sys.maxint. We later assume that any value here not equal to sys.maxint must be the user's value
-        # so it is passed to the batch system, which cannot allocate that many resources.
-        self.memory = human2bytes(str(memory)) if memory!=sys.maxint else sys.maxint
-        self.disk = human2bytes(str(disk)) if disk!=sys.maxint else sys.maxint
+        self.memory = human2bytes(str(memory)) if memory else memory
+        self.disk = human2bytes(str(disk)) if disk else disk
         #Private class variables
         
         #See Job.addChild
@@ -470,7 +467,7 @@ class Job(object):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=sys.maxint, cores=sys.maxint):
+        def __init__(self, memory=None, cores=None):
             """
             Memory and core requirements are specified identically to the Job
             constructor.
@@ -539,11 +536,11 @@ class Job(object):
         Create an empty job for the job.
         """
         return jobStore.create(command=command,
-                               memory=(self.memory if self.memory != sys.maxint 
+                               memory=(self.memory if self.memory is not None
                                        else jobStore.config.defaultMemory),
-                               cores=(self.cores if self.cores != sys.maxint
+                               cores=(self.cores if self.cores is not None
                                     else float(jobStore.config.defaultCores)),
-                               disk=(self.disk if self.disk != sys.maxint
+                               disk=(self.disk if self.disk is not None
                                     else float(jobStore.config.defaultDisk)),
                                updateID=updateID, predecessorNumber=predecessorNumber)
         
@@ -923,9 +920,9 @@ class FunctionWrappingJob(Job):
     """
     def __init__(self, userFunction, *args, **kwargs):
         # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
-        cores = kwargs.pop("cores") if "cores" in kwargs else sys.maxint
-        disk = kwargs.pop("disk") if "disk" in kwargs else sys.maxint
-        memory = kwargs.pop("memory") if "memory" in kwargs else sys.maxint
+        cores = kwargs.pop("cores") if "cores" in kwargs else None
+        disk = kwargs.pop("disk") if "disk" in kwargs else None
+        memory = kwargs.pop("memory") if "memory" in kwargs else None
         Job.__init__(self, memory=memory, cores=cores, disk=disk)
         #If dill is installed pickle the user function directly
         
