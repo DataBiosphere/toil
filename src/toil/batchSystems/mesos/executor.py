@@ -60,23 +60,24 @@ class MesosExecutor(mesos.interface.Executor):
         """
         Invoked when the executor re-registers with a restarted slave.
         """
-        log.info("Re-Registered")
+        log.info("Re-registered")
 
     def disconnected(self, driver):
         """
         Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being restarted due to an upgrade).
         """
-        log.critical("disconnected from slave")
+        log.critical("Disconnected from slave")
 
     def killTask(self, driver, taskId):
         if taskId in self.runningTasks:
             os.kill(self.runningTasks[taskId], 9)
 
     def shutdown(self, driver):
-        log.critical("Shutting Down Executor...")
+        log.critical("Shutting down executor...")
         for taskId, pid in self.runningTasks.items():
             self.killTask(driver, taskId)
-        log.critical("Executor Shut Down")
+        Resource.cleanSystem()
+        log.critical("Executor shut down")
 
     def error(self, driver, message):
         """
@@ -88,8 +89,8 @@ class MesosExecutor(mesos.interface.Executor):
         while True:
             coresUsage = str(psutil.cpu_percent())
             ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("CPU usage: %s, Memory usage: %s" % (coresUsage, ramUsage))
-            log.debug("sent stats message")
+            driver.sendFrameworkMessage("CPU usage: %s, memory usage: %s" % (coresUsage, ramUsage))
+            log.debug("Sent stats message")
             sleep(30)
 
     def launchTask(self, driver, task):
