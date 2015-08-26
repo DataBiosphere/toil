@@ -36,8 +36,12 @@ from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 
 log = logging.getLogger(__name__)
 
+credential_file_path = '~/.toilAzureCredentials'
+
+
 def _fetchAzureAccountKey(accountName):
-    """Find the account key for a given Azure storage account.
+    """
+    Find the account key for a given Azure storage account.
 
     The account key is taken from the AZURE_ACCOUNT_KEY environment
     variable if it exists, or from looking in the file
@@ -50,15 +54,17 @@ def _fetchAzureAccountKey(accountName):
     if 'AZURE_ACCOUNT_KEY' in os.environ:
         return os.environ['AZURE_ACCOUNT_KEY']
     configParser = RawConfigParser()
-    configParser.read(os.path.expanduser('~/.toilAzureCredentials'))
+    configParser.read(os.path.expanduser(credential_file_path))
     try:
         return configParser.get('AzureStorageCredentials', accountName)
     except NoOptionError:
-        raise RuntimeError("No account key found for %s, please provide it in "
-                           "~/.toilAzureCredentials" % accountName)
+        raise RuntimeError("No account key found for %s, please provide it in " +
+                           credential_file_path % accountName)
+
 
 class AzureJobStore(AbstractJobStore):
-    """A job store that uses Azure's blob store for file storage and
+    """
+    A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
     def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
@@ -68,7 +74,7 @@ class AzureJobStore(AbstractJobStore):
 
         # Table names have strict requirements in Azure
         self.namePrefix = self._sanitizeTableName(namePrefix)
-        log.debug("Creating job store with name prefix '%s'" % (self.namePrefix))
+        log.debug("Creating job store with name prefix '%s'" % self.namePrefix)
 
         # These are the main API entrypoints.
         self.tableService = TableService(account_key=account_key, account_name=accountName)
@@ -79,7 +85,7 @@ class AzureJobStore(AbstractJobStore):
         exists = self.registryTable.get_entity(row_key=self.namePrefix)
         self._checkJobStoreCreation(config is not None, exists, accountName + ":" + self.namePrefix)
         self.registryTable.insert_or_replace_entity(row_key=self.namePrefix,
-                                                    entity={ 'exists': True })
+                                                    entity={'exists': True})
 
         # Serialized jobs table
         self.jobItems = self._getOrCreateTable(self.qualify('jobs'))
@@ -110,9 +116,9 @@ class AzureJobStore(AbstractJobStore):
                predecessorNumber=0):
         jobStoreID = self._newJobID()
         job = AzureJob(jobStoreID=jobStoreID,
-                     command=command, memory=memory, cores=cores, disk=disk,
-                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     updateID=updateID, predecessorNumber=predecessorNumber)
+                       command=command, memory=memory, cores=cores, disk=disk,
+                       remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
+                       updateID=updateID, predecessorNumber=predecessorNumber)
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)
@@ -233,7 +239,7 @@ class AzureJobStore(AbstractJobStore):
         jobStoreFileID = self._newFileID()
         self.statsFiles.put_block_blob_from_text(blob_name=jobStoreFileID,
                                                  text=statsAndLoggingString)
-        self.statsFileIDs.insert_entity(entity={ 'RowKey': jobStoreFileID })
+        self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID})
 
     def readStatsAndLogging(self, statsAndLoggingCallbackFn):
         numStatsFiles = 0
@@ -277,8 +283,8 @@ class AzureJobStore(AbstractJobStore):
         return ret.replace('-', '_')
 
     def _associateJobWithFile(self, jobStoreID, jobStoreFileID):
-        self.jobFileIDs.insert_entity(entity={ 'PartitionKey': jobStoreID,
-                                               'RowKey': jobStoreFileID })
+        self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
+                                              'RowKey': jobStoreFileID})
 
     def _dissociateJobWithFile(self, jobStoreFileID):
         entities = self.jobFileIDs.query_entities(filter="RowKey eq '%s'" % jobStoreFileID)
@@ -296,7 +302,8 @@ class AzureJobStore(AbstractJobStore):
         return AzureBlobContainer(self.blobService, containerName)
 
     def _sanitizeTableName(self, tableName):
-        """Azure table names must start with a letter and be alphanumeric.
+        """
+        Azure table names must start with a letter and be alphanumeric.
 
         This will never cause a collision if uuids are used, but
         otherwise may not be safe.
@@ -332,7 +339,7 @@ class AzureJobStore(AbstractJobStore):
                                     break
                                 blockID = self._newFileID()
                                 container.put_block(blob_name=jobStoreFileID, block=buf,
-                                                     blockid=blockID)
+                                                    blockid=blockID)
                                 blockIDs.append(blockID)
                         except:
                             # This is guaranteed to delete any uncommitted
@@ -344,7 +351,7 @@ class AzureJobStore(AbstractJobStore):
                             # Acquire a (60-second) write lock,
                             leaseID = container.lease_blob(blob_name=jobStoreFileID,
                                                            x_ms_lease_action='acquire'
-                                                       )['x-ms-lease-id']
+                                                           )['x-ms-lease-id']
                             # check for modification,
                             blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
                             if blobProperties['etag'] != expectedVersion:
@@ -367,7 +374,8 @@ class AzureJobStore(AbstractJobStore):
 
                 def simpleReader():
                     try:
-                        container.put_block_blob_from_file(blob_name=jobStoreFileID, stream=readable)
+                        container.put_block_blob_from_file(blob_name=jobStoreFileID,
+                                                           stream=readable)
                     except:
                         log.exception("Exception encountered in simple single-part reader thread")
 
@@ -402,8 +410,10 @@ class AzureJobStore(AbstractJobStore):
                 yield readable
                 thread.join()
 
+
 class AzureTable():
-    """A shim over the Azure TableService API, specfic for a single table.
+    """
+    A shim over the Azure TableService API, specfic for a single table.
 
     This class automatically forwards method calls to the TableService
     API, including the proper table name and default partition key if
@@ -414,6 +424,7 @@ class AzureTable():
       - allows a default partition key to be used when one is not specified
       - returns None when attempting to get a non-existent entity.
     """
+
     def __init__(self, tableService, tableName):
         self.tableService = tableService
         self.tableName = tableName
@@ -432,6 +443,7 @@ class AzureTable():
                 if 'PartitionKey' not in kwargs['entity']:
                     kwargs['entity']['PartitionKey'] = self.defaultPartition
             return function(**kwargs)
+
         return callable
 
     def get_entity(self, **kwargs):
@@ -440,12 +452,15 @@ class AzureTable():
         except WindowsAzureMissingResourceError as e:
             return None
 
+
 class AzureBlobContainer():
-    """A shim over the BlobService API, so that the container name is automatically filled in.
+    """
+    A shim over the BlobService API, so that the container name is automatically filled in.
 
     To avoid confusion over the position of any remaining positional
     arguments, all method calls must use *only* keyword arguments.
     """
+
     def __init__(self, blobService, containerName):
         self.blobService = blobService
         self.containerName = containerName
@@ -456,10 +471,13 @@ class AzureBlobContainer():
             function = getattr(self.blobService, name)
             kwargs['container_name'] = self.containerName
             return function(**kwargs)
+
         return callable
 
+
 class AzureJob(JobWrapper):
-    """Serialize and unserialize a job for storage on Azure.
+    """
+    Serialize and unserialize a job for storage on Azure.
 
     Copied almost entirely from AWSJob, except to take into account the
     fact that Azure properties must start with a letter or underscore.

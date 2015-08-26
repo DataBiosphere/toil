@@ -71,18 +71,21 @@ def needs_aws(test_item):
         # noinspection PyUnresolvedReferences
         import boto
     except ImportError:
-        return unittest.skip("Skipping test. Install and configure Boto to include this test.")(test_item)
+        return unittest.skip("Skipping test. "
+                             "Install and configure Boto to include this test.")(test_item)
     except:
         raise
     else:
         dot_boto_path = os.path.expanduser('~/.boto')
         hv_uuid_path = '/sys/hypervisor/uuid'
-        if os.path.exists( dot_boto_path ) \
-                or os.path.exists( hv_uuid_path ) \
-                        and open( hv_uuid_path ).read( ).startswith( 'ec2' ):
+        if os.path.exists(dot_boto_path) \
+                or os.path.exists(hv_uuid_path) \
+                        and open(hv_uuid_path).read().startswith('ec2'):
             return test_item
         else:
-            return unittest.skip( "Skipping test. Create ~/.boto to include this test." )( test_item)
+            return unittest.skip("Skipping test. "
+                                 "Create ~/.boto to include this test.")(test_item)
+
 
 def needs_azure(test_item):
     """
@@ -92,18 +95,23 @@ def needs_azure(test_item):
         # noinspection PyUnresolvedReferences
         import azure.storage
     except ImportError:
-        return unittest.skip("Skipping test. Install and configure the Azure Storage Python SDK to include this test.")(test_item)
+        return unittest.skip("Skipping test. Install and configure the Azure Storage Python SDK to "
+                             "include this test.")(test_item)
     except:
         raise
     else:
-        credentials_path = os.path.expanduser('~/.toilAzureCredentials')
-        if not os.path.exists(credentials_path):
-            return unittest.skip("Skipping test. Configure .toilAzureCredentials with the account key for 'toiltestaccount'.")(test_item)
+        from toil.jobStores.azureJobStore import credential_file_path
+        full_credential_file_path = os.path.expanduser(credential_file_path)
+        if not os.path.exists(full_credential_file_path):
+            return unittest.skip("Skipping test. Configure %s with the access key for the "
+                                 "'toiltest' storage account." % credential_file_path)(test_item)
         return test_item
+
 
 def needs_mesos(test_item):
     """
-    Use as a decorator before test classes or methods to only run them if the Mesos is installed and configured.
+    Use as a decorator before test classes or methods to only run them if the Mesos is installed
+    and configured.
     """
     try:
         # noinspection PyUnresolvedReferences
