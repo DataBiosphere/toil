@@ -1,21 +1,21 @@
-Job Class
-*********
-A Job is the elemental unit of work in a Toil Workflow
+Toil API
+********
 
+Job Methods
+-----------
 .. autoclass:: toil.job.Job
    :members:
 
 Job.FileStore
 -------------
-A Job is the elemental unit of work in a Toil Workflow
+The FileStore is an abstraction of a Toil run's shared storage
 
 .. autoclass:: toil.job::Job.FileStore
    :members:
 
 Job.Runner
 ----------
-A Job is the elemental unit of work in a Toil Workflow
+The Runner contains the methods needed to configure and start a Toil run.
 
 .. autoclass:: toil.job::Job.Runner
    :members:
-   
