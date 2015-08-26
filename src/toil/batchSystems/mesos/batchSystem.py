@@ -360,7 +360,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
             if len(tasks) == 0:
                 log.debug("Offer %s not large enough to run any tasks. Required: %s Offered: %s"
-                          % (offer.id.value, job_types[-1], (offerMem*1000000, offerCores, offerStor*1000000)))
+                          % (offer.id.value, job_types[-1], (self.__mbToBytes(offerMem), offerCores, self.__mbToBytes(offerStor))))
 
     def _createTask(self, jt_job, offer):
         """
@@ -384,12 +384,21 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         disk = task.resources.add()
         disk.name = "disk"
         disk.type = mesos_pb2.Value.SCALAR
-        disk.scalar.value = jt_job.resources.disk / 1000000
-
+        if self.__bytesToMB(jt_job.resources.disk) > 1:
+            disk.scalar.value = self.__bytesToMB(jt_job.resources.disk)
+        else:
+            log.warning("Job %s uses less disk than mesos requires. Rounding %s bytes up to 1 mb" %
+                        (jt_job.jobID, jt_job.resources.disk))
+            disk.scalar.value = 1
         mem = task.resources.add()
         mem.name = "mem"
         mem.type = mesos_pb2.Value.SCALAR
-        mem.scalar.value = jt_job.resources.memory / 1000000
+        if self.__bytesToMB(jt_job.resources.memory) > 1:
+            mem.scalar.value = self.__bytesToMB(jt_job.resources.memory)
+        else:
+            log.warning("Job %s uses less memory than mesos requires. Rounding %s bytes up to 1 mb" %
+                        (jt_job.jobID, jt_job.resources.memory))
+            mem.scalar.value = 1
         return task
 
     def __updateState(self, intID, exitStatus):
@@ -467,3 +476,10 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         used when converting toil reqs to Mesos reqs
         """
         return mem / 1024 / 1024
+
+    @staticmethod
+    def __mbToBytes(mem):
+        """
+        used when converting Mesos reqs to Toil reqs
+        """
+        return mem * 1024 * 1024
