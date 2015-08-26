@@ -47,7 +47,7 @@ export help
 all:
 	@echo "$$help"
 
-clean: _develop _sdist
+clean: _develop _sdist _docs
 
 extras=
 
@@ -101,3 +101,9 @@ pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
 	&& echo "Not on master branch, silently skipping deployment to PyPI." \
 	|| $(python) setup.py egg_info register sdist bdist_egg upload
+
+docs:
+	cd doc && make -f Makefile html
+
+_docs:
+	rm -rf doc/_build/*
