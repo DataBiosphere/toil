@@ -10,14 +10,14 @@ either locally or on AWS. The result of this abstraction is a robust system that
 resumed even after an unexpected shutdown of every node in the cluster that resulted in the
 loss of all local data.
 
-Writing a Toil script requires only a knowledge of basic Python. Toil 'Jobs' are the
-elemental unit of work in a Toil workflow, can dynamically spawn children jobs that will
-be run in parallel after its completion.
+Writing a Toil script requires only a knowledge of basic Python, with Toil "Jobs" as the
+elemental unit of work in a Toil workflow. A Job can dynamically spawn other Jobs as needed,
+leading to an intuitive and powerful control over the pipeline.
 
-.. _Grid Engine:http://gridscheduler.sourceforge.net/
-.. _Parasol:https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
-.. _Mesos:http://mesos.apache.org/
-.. _Spot Market:https://aws.amazon.com/ec2/spot/
+.. _Grid Engine: http://gridscheduler.sourceforge.net/
+.. _Parasol: https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
+.. _Mesos: http://mesos.apache.org/
+.. _Spot Market: https://aws.amazon.com/ec2/spot/
 
 Prerequisites
 =============
@@ -26,14 +26,14 @@ Python 2.5 < 3.0
 
 pip_ 7.x
 
-`Apache Mesos`_ 0.22.0, if using the Mesos batch system. This is Brew_ installable on OSX via::
+`Apache Mesos`_ 0.22.1, if using the Mesos batch system. This is Brew_ installable on OSX via::
 
     brew install mesos
 
 Git_, if cloning from the `Toil Github Repository`_
 
 .. _pip: https://pip.readthedocs.org/en/latest/installing.html
-.. _Apache Mesos:http://mesos.apache.org/gettingstarted/
+.. _Apache Mesos: http://mesos.apache.org/gettingstarted/
 .. _Brew: http://brew.sh/
 .. _Git: https://git-scm.com/
 .. _Toil Github Repository: https://github.com/BD2KGenomics/toil
