@@ -59,8 +59,8 @@ class Job(object):
         require to run. Cores is the number of CPU cores required.
         """
         self.cores = cores
-        self.memory = human2bytes(str(memory)) if memory else memory
-        self.disk = human2bytes(str(disk)) if disk else disk
+        self.memory = human2bytes(str(memory)) if memory is not None else memory
+        self.disk = human2bytes(str(disk)) if disk is not None else disk
         #Private class variables
         
         #See Job.addChild
