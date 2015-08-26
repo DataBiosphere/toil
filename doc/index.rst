@@ -12,15 +12,16 @@ To begin, consider this short toil script:
 .. code:: python
 
    from toil.job import Job
+   from optparse import OptionParser
 
    class HelloWorld(Job):
        def __init__(self):
            Job.__init__(self,  memory=100000, cores=2, disk=20000)
        def run(self, fileStore):
            fileId = getEmptyFileStoreID()
-           self.wrapJobFn(childFn, fileId,
-                          cores=1, memory="1M", disk="10M")
-           self.addChild(FollowOn(fileId),
+           self.addChild(wrapJobFn(childFn, fileId,
+                          cores=1, memory="1M", disk="10M"))
+           self.addFollowOn(FollowOn(fileId),
 
    def childFn(target, fileID):
        with target.fileStore.updateGlobalFileStream(fileID) as file:
@@ -45,6 +46,21 @@ To begin, consider this short toil script:
 
    if __name__=="__main__":
        main()
+
+The script consists of three Jobs - the object based HelloWorld and FollowOn Jobs,
+and the function based childFn Job. The object based Jobs inherit from the Job class,
+and must invoke the Job constructor and implement the run method, where the user's code
+to be executed should be placed.
+
+Note that the constructor takes optional resource parameters, which specify the cores,
+memory, and disk space needed for the job to run successfully. These resources can be
+specified in bytes, or by passing in a string as in the constructor for the wrapJobFn().
+
+Also notice the two types of descendant Jobs. HelloWorld specifies childFn as a child Job,
+and FollowOn as a follow on Job. The only difference between a parent, children, and a
+follow on is the order of execution. Parents are executed first, its children, finally
+followed by the follow ons. The children and follow on jobs are run in parallel.
+
 
 Toil Docs
 =========
