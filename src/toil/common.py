@@ -175,7 +175,7 @@ def _addOptions(addGroupFn, config):
                             "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
                             "information from the jobStore upon completion so the jobStore will never be deleted with"
                             "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
-                            "Default is never if stats collection is enabled, and onSuccess otherwise"))
+                            "Default is %s" % config.clean))
 
     #
     #Restarting the workflow options

@@ -27,7 +27,7 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import toilKill, toilRestart, toilStats, toilStatus
+    from toil.utils import toilKill, toilRestart, toilStats, toilStatus, toilClean
     return {name[4:].lower(): module for name, module in locals().iteritems()}
 
 
