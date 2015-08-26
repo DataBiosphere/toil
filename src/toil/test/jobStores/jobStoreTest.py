@@ -22,10 +22,11 @@ from threading import Thread
 import tempfile
 import uuid
 import shutil
+
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure
+from toil.test import ToilTest, needs_aws, needs_azure
 
 logger = logging.getLogger(__name__)
 
@@ -257,16 +258,16 @@ class hidden:
 
             # TODO: Test stats methods
 
-        def testFileDeletion( self ):
+        def testFileDeletion(self):
             """
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt running it on the
             other job stores.
             """
-            job = self.master.create( "1", 2, 3, 4, 0)
+            job = self.master.create("1", 2, 3, 4, 0)
             file_list = []
             # FIXME: tie 30 to batch limit in AWSJobStore
-            for file in xrange(0,30):
-                 file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
+            for file in xrange(0, 30):
+                file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
             self.master.delete(job.jobStoreID)
             for file in file_list:
                 self.assertRaises(NoSuchFileException, self.master.readFileStream(file).__enter__)
@@ -398,12 +399,14 @@ class hidden:
             with open(sseKeyFile, 'w') as f:
                 f.write("01234567890123456789012345678901")
             config.sseKey = sseKeyFile
-            #config.attrib["sse_key"] = sseKeyFile
+            # config.attrib["sse_key"] = sseKeyFile
             return config
+
 
 class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         return FileJobStore(self.namePrefix, config=config)
+
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
@@ -414,14 +417,17 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         AWSJobStore._s3_part_size = self.partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 
+
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore('toiltestaccount', self.namePrefix, config=config)
+        return AzureJobStore('toiltest', self.namePrefix, config=config, jobChunkSize=128)
+
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
+
 
 @needs_aws
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
