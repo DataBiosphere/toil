@@ -108,6 +108,11 @@ class UtilsTest(ToilTest):
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             checkEqual(self.correctSort, l2)
+
+        # Check we can run 'toil clean'
+        toilCleanString = ("{rootPath}/toilMain.py clean "
+                           "--jobStore {self.toilDir}".format(**locals()))
+        system(toilCleanString)
             
     def testUtilsStatsSort(self):
         """

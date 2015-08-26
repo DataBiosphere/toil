@@ -25,7 +25,9 @@ from uuid import uuid4
 import logging
 import shutil
 import tempfile
+import subprocess
 
+from toil.common import toilPackageDirPath
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -41,18 +43,21 @@ log = logging.getLogger(__name__)
 class SortTest(ToilTest, MesosTestSupport):
     def setUp(self):
         super(SortTest, self).setUp()
-        self.jobStore = self._getTestJobStorePath()
         self.tempDir = tempfile.mkdtemp(prefix="tempDir")
         self.testNo = 5
+        self.jobStore = None
 
     def tearDown(self):
         super(SortTest, self).tearDown()
-        if os.path.exists(self.jobStore):
-            shutil.rmtree(self.jobStore)
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
+        if self.jobStore is not None:
+            rootPath = os.path.join(toilPackageDirPath(), "utils")
+            toilCleanString = ("{rootPath}/toilMain.py clean "
+                               "--jobStore {self.jobStore}".format(**locals()))
+            subprocess.check_call(toilCleanString, shell=True)
 
-    def toilSortTest(self, testNo=1, batchSystem="singleMachine", jobStore='file',
+    def toilSortTest(self, jobStore, testNo=1, batchSystem="singleMachine",
                      lines=10000, maxLineLength=10, N=10000):
         """
         Tests toil by sorting a file in parallel.
@@ -65,6 +70,7 @@ class SortTest(ToilTest, MesosTestSupport):
                 options.jobStore = self.jobStore
             else:
                 options.jobStore = jobStore
+                self.jobStore = jobStore
 
             # Specify options
             options.logLevel = getLogLevelString()
@@ -156,7 +162,7 @@ class SortTest(ToilTest, MesosTestSupport):
         """
         Tests scriptTree/toil by sorting a file in parallel.
         """
-        self.toilSortTest()
+        self.toilSortTest(jobStore=self._getTestJobStorePath())
 
     # The following functions test the functions in the test!
 
