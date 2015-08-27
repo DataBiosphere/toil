@@ -11,20 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 import logging
 import os
-import shlex
 import tempfile
 import unittest
-import sys
 import shutil
 import re
 
 from bd2k.util.files import mkdir_p
 
 from toil.common import toilPackageDirPath
-from toil.lib.bioio import getBasicOptionParser, parseSuiteTestOptions
 
 log = logging.getLogger(__name__)
 
@@ -43,20 +41,11 @@ class ToilTest(unittest.TestCase):
     Otherwise, left-over files will not be removed.
     """
 
-    orig_sys_argv = None
-
     _tempBaseDir = None
 
     @classmethod
     def setUpClass(cls):
         super(ToilTest, cls).setUpClass()
-        if True:
-            # FIXME: I think this is obsolete (Hannes) (see #315)
-            cls.orig_sys_argv = sys.argv[1:]
-            sys.argv[1:] = shlex.split(os.environ.get('TOIL_TEST_ARGS', ""))
-            parser = getBasicOptionParser()
-            options, args = parseSuiteTestOptions(parser)
-            sys.argv[1:] = args
         cls._tempDirs = []
         tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
@@ -86,8 +75,6 @@ class ToilTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if True:
-            sys.argv[1:] = cls.orig_sys_argv
         if cls._tempBaseDir is None:
             while cls._tempDirs:
                 tempDir = cls._tempDirs.pop()

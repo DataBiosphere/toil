@@ -269,37 +269,6 @@ def parseBasicOptions(parser):
 
     return options, args
 
-def parseSuiteTestOptions(parser=None):
-    if parser is None:
-        parser = getBasicOptionParser()
-
-    parser.add_option("--testLength", dest="testLength", type="string",
-                     help="Control the length of the tests either SHORT/MEDIUM/LONG/VERY_LONG. default=%default",
-                     default="SHORT")
-
-    parser.add_option("--saveError", dest="saveError", type="string",
-                     help="Directory in which to store the inputs of failed tests")
-
-    options, args = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
-
-    if options.testLength == "SHORT":
-        TestStatus.setTestStatus(TestStatus.TEST_SHORT)
-    elif options.testLength == "MEDIUM":
-        TestStatus.setTestStatus(TestStatus.TEST_MEDIUM)
-    elif options.testLength == "LONG":
-        TestStatus.setTestStatus(TestStatus.TEST_LONG)
-    elif options.testLength == "VERY_LONG":
-        TestStatus.setTestStatus(TestStatus.TEST_VERY_LONG)
-    else:
-        parser.error('Unrecognised option for --testLength, %s. Options are SHORT, MEDIUM, LONG, VERY_LONG.' %
-                     options.testLength)
-
-    if options.saveError is not None:
-        TestStatus.setSaveErrorLocation(options.saveError)
-
-    return options, args
-
 def getRandomAlphaNumericString(length=10):
     """Returns a random alpha numeric string of the given length.
     """

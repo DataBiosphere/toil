@@ -78,7 +78,6 @@ testLength=SHORT
 testLogLevel=INFO
 
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
 	$(python) setup.py test --pytest-args "src -vv"
 
 check_clean_working_copy:
