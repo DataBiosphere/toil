@@ -74,11 +74,8 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-testLength=SHORT
-testLogLevel=INFO
-
 test:
-	$(python) setup.py test --pytest-args "src -vv"
+	$(python) setup.py test --pytest-args "-vv src"
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
