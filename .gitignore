@@ -9,3 +9,4 @@ tmp_*
 /testJobTree/
 /build
 /dist
+/docs/_build

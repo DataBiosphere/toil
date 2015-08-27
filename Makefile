@@ -17,7 +17,7 @@ pip=/usr/bin/env pip2.7
 
 define help
 
-Supported targets: 'develop', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
+Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
  ensure that develop mode installs support for extras. Consult setup.py for a list of supported
@@ -28,7 +28,9 @@ make develop extras=[mesos,aws]
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
 
-The 'clean' target undoes the effect of 'develop' and 'sdist'.
+The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
+
+The 'docs' target uses Sphinx to create html documentation in the doc/_build directory
 
 The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
 
@@ -47,7 +49,7 @@ export help
 all:
 	@echo "$$help"
 
-clean: _develop _sdist
+clean: _develop _sdist _docs
 
 extras=
 
@@ -101,3 +103,9 @@ pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
 	&& echo "Not on master branch, silently skipping deployment to PyPI." \
 	|| $(python) setup.py egg_info register sdist bdist_egg upload
+
+docs:
+	cd docs && make html
+
+_docs:
+	cd docs && make clean
