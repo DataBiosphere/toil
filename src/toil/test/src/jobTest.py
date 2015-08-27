@@ -38,7 +38,7 @@ class JobTest(ToilTest):
           
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=os.getcwd())
+        outFile = getTempFile(rootDir=self._createTempDir())
         try:
 
             # Create the jobs

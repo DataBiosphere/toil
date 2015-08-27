@@ -18,7 +18,10 @@ import shlex
 import tempfile
 import unittest
 import sys
-import uuid
+import shutil
+import re
+
+from bd2k.util.files import mkdir_p
 
 from toil.common import toilPackageDirPath
 from toil.lib.bioio import getBasicOptionParser, parseSuiteTestOptions
@@ -28,39 +31,96 @@ log = logging.getLogger(__name__)
 
 class ToilTest(unittest.TestCase):
     """
-    A common base class for our tests. Please have every test case directly or indirectly inherit
-    this one.
+    A common base class for Toil tests. Please have every test case directly or indirectly
+    inherit this one.
+
+    When running tests you may optionally set the TOIL_TEST_TEMP environment variable to the path
+    of a directory where you want temporary test files be placed. The directory will be created
+    if it doesn't exist. The path may be relative in which case it will be assumed to be relative
+    to the project root. If TOIL_TEST_TEMP is not defined, temporary files and directories will
+    be created in the system's default location for such files and any temporary files or
+    directories left over from tests will be removed automatically removed during tear down.
+    Otherwise, left-over files will not be removed.
     """
 
     orig_sys_argv = None
 
-    def getScriptPath(self, script_name):
-        return os.path.join(toilPackageDirPath(), 'utils', script_name + '.py')
+    _tempBaseDir = None
 
     @classmethod
     def setUpClass(cls):
         super(ToilTest, cls).setUpClass()
-        cls.orig_sys_argv = sys.argv[1:]
-        sys.argv[1:] = shlex.split(os.environ.get('TOIL_TEST_ARGS', ""))
-        parser = getBasicOptionParser()
-        options, args = parseSuiteTestOptions(parser)
-        sys.argv[1:] = args
+        if True:
+            # FIXME: I think this is obsolete (Hannes) (see #315)
+            cls.orig_sys_argv = sys.argv[1:]
+            sys.argv[1:] = shlex.split(os.environ.get('TOIL_TEST_ARGS', ""))
+            parser = getBasicOptionParser()
+            options, args = parseSuiteTestOptions(parser)
+            sys.argv[1:] = args
+        cls._tempDirs = []
+        tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
+        if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
+            tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
+            mkdir_p(tempBaseDir)
+        cls._tempBaseDir = tempBaseDir
+
+    @classmethod
+    def _getUtilScriptPath(cls, script_name):
+        return os.path.join(toilPackageDirPath(), 'utils', script_name + '.py')
+
+    @classmethod
+    def _projectRootPath(cls):
+        """
+        Returns the path to the project root, i.e. the directory that typically contains the .git
+        and src subdirectories. This method has limited utility. It only works if in "develop"
+        mode, since it assumes the existence of a src subdirectory which, in a regular install
+        wouldn't exist. Then again, in that mode project root has no meaning anyways.
+        """
+        assert re.search(r'__init__\.pyc?$', __file__)
+        projectRootPath = os.path.dirname(os.path.abspath(__file__))
+        packageComponents = __name__.split('.')
+        expectedSuffix = os.path.join('src', *packageComponents)
+        assert projectRootPath.endswith(expectedSuffix)
+        projectRootPath = projectRootPath[:-len(expectedSuffix)]
+        return projectRootPath
 
     @classmethod
     def tearDownClass(cls):
-        sys.argv[1:] = cls.orig_sys_argv
+        if True:
+            sys.argv[1:] = cls.orig_sys_argv
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
+        else:
+            cls._tempDirs = []
         super(ToilTest, cls).tearDownClass()
 
     def setUp(self):
-        log.info("Setting up %s", self.id())
+        log.info("Setting up %s ...", self.id())
         super(ToilTest, self).setUp()
+
+    def _createTempDir(self, purpose=None):
+        prefix = ['toil', 'test', self.id()]
+        if purpose: prefix.append(purpose)
+        prefix.append('')
+        temp_dir_path = tempfile.mkdtemp(dir=self._tempBaseDir, prefix='-'.join(prefix))
+        self._tempDirs.append(temp_dir_path)
+        return temp_dir_path
 
     def tearDown(self):
         super(ToilTest, self).tearDown()
-        log.info("Tearing down down %s", self.id())
+        log.info("Tore down %s", self.id())
 
     def _getTestJobStorePath(self):
-        return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+        path = self._createTempDir(purpose='jobstore')
+        # We only need a unique path, directory shouldn't actually exist. This of course is racy
+        # and insecure because another thread could now allocate the same path as a temporary
+        # directory. However, the built-in tempfile module randomizes the name temp dir suffixes
+        # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
+        os.rmdir(path)
+        return path
 
 
 def needs_aws(test_item):

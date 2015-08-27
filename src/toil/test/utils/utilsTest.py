@@ -17,11 +17,11 @@ import os
 from subprocess import CalledProcessError
 
 from toil.lib.bioio import system
-from toil.lib.bioio import getTempDirectory
 from toil.lib.bioio import getTempFile
 from toil.test.sort.sortTest import makeFileToSort, checkEqual
 from toil.common import toilPackageDirPath
 from toil.test import ToilTest
+
 
 class UtilsTest(ToilTest):
     """
@@ -30,10 +30,10 @@ class UtilsTest(ToilTest):
 
     def setUp(self):
         super(UtilsTest, self).setUp()
-        self.tempDir = getTempDirectory(os.getcwd())
+        self.tempDir = self._createTempDir()
         self.tempFile = getTempFile(rootDir=self.tempDir)
         self.outputFile = getTempFile(rootDir=self.tempDir)
-        self.toilDir = os.path.join(self.tempDir, "testToil")
+        self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
         self.lines = 1000
         self.maxLineLength = 10
@@ -43,10 +43,18 @@ class UtilsTest(ToilTest):
         with open(self.tempFile, 'r') as fileHandle:
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
-            
+
     def tearDown(self):
         ToilTest.tearDown(self)
         system("rm -rf %s" % self.tempDir)
+
+    @property
+    def toilMain(self):
+        return self._getUtilScriptPath('toilMain')
+
+    @property
+    def sort(self):
+        return os.path.join(toilPackageDirPath(), "test", "sort", "sort.py")
 
     def testUtilsSort(self):
         """
@@ -54,8 +62,7 @@ class UtilsTest(ToilTest):
         sort example.
         """
         # Get the sort command to run
-        rootPath = os.path.join(toilPackageDirPath(), "test", "sort")
-        toilCommandString = ("{rootPath}/sort.py "
+        toilCommandString = ("{self.sort} "
                              "--jobStore {self.toilDir} "
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
@@ -66,17 +73,17 @@ class UtilsTest(ToilTest):
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
         # Check that trying to run it in restart mode does not create the jobStore
         self.assertFalse(os.path.exists(self.toilDir))
-        
+
         # Status command
-        rootPath = os.path.join(toilPackageDirPath(), "utils")
-        toilStatusCommandString = ("{rootPath}/toilMain.py status "
-                                   "--jobStore {self.toilDir} --failIfNotComplete".format(**locals()))
+        toilStatusCommandString = ("{self.toilMain} status "
+                                   "--jobStore {self.toilDir} "
+                                   "--failIfNotComplete".format(**locals()))
 
         # Run the script for the first time
         try:
             system(toilCommandString)
             finished = True
-        except CalledProcessError: #This happens when the script fails due to having unfinished jobs
+        except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
             self.assertRaises(CalledProcessError, system, toilStatusCommandString)
             finished = False
         self.assertTrue(os.path.exists(self.toilDir))
@@ -89,46 +96,45 @@ class UtilsTest(ToilTest):
             try:
                 system(toilCommandString + " --restart")
                 finished = True
-            except CalledProcessError: #This happens when the script fails due to having unfinished jobs
+            except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
                 self.assertRaises(CalledProcessError, system, toilStatusCommandString)
-                
-        #Check the toil status command does not issue an exception
+
+        # Check the toil status command does not issue an exception
         system(toilStatusCommandString)
 
         # Check if we try to launch after its finished that we get a JobException
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
 
         # Check we can run 'toil stats'
-        rootPath = os.path.join(toilPackageDirPath(), "utils")
-        toilStatsString = ("{rootPath}/toilMain.py stats "
-                           "--jobStore {self.toilDir} --pretty".format(**locals()))
+        toilStatsString = ("{self.toilMain} stats "
+                           "--jobStore {self.toilDir} "
+                           "--pretty".format(**locals()))
         system(toilStatsString)
 
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             checkEqual(self.correctSort, l2)
-            
+
     def testUtilsStatsSort(self):
         """
         Tests the stats commands on a complete run of the stats test.
         """
         # Get the sort command to run
-        rootPath = os.path.join(toilPackageDirPath(), "test", "sort")
-        toilCommandString = ("{rootPath}/sort.py "
+        toilCommandString = ("{self.sort} "
                              "--jobStore {self.toilDir} "
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
                              "--retryCount 99".format(**locals()))
-    
+
         # Run the script for the first time
         system(toilCommandString)
         self.assertTrue(os.path.exists(self.toilDir))
 
         # Check we can run 'toil stats'
         rootPath = os.path.join(toilPackageDirPath(), "utils")
-        toilStatsString = ("{rootPath}/toilMain.py stats "
+        toilStatsString = ("{self.toilMain} stats "
                            "--jobStore {self.toilDir} --pretty".format(**locals()))
         system(toilStatsString)
 
@@ -136,6 +142,7 @@ class UtilsTest(ToilTest):
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             checkEqual(self.correctSort, l2)
+
 
 if __name__ == '__main__':
     unittest.main()

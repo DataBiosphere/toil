@@ -47,20 +47,11 @@ class DependenciesTest(ToilTest):
 
     def setUp(self):
         super(DependenciesTest, self).setUp()
-        # A directory for the jobtree to be created in
-        self.toilDir = os.path.join(os.getcwd(), 'testToil')
-        self.tempDir = tempfile.mkdtemp(prefix='tempDir', dir=os.getcwd())
-
-
-    def tearDown(self):
-        super(DependenciesTest, self).tearDown()
-        if os.path.exists(self.toilDir):
-            shutil.rmtree(self.toilDir)
-        if os.path.exists(self.tempDir):
-            shutil.rmtree(self.tempDir)
-
+        self.jobStore = self._createTempDir('jobStore')
+        self.tempDir = self._createTempDir('tempDir')
 
     # FIXME: test methods can't have parameters, AFAIK (Hannes)
+
     @unittest.expectedFailure
     def testDependencies(self, batchSystem="singleMachine"):
         """
@@ -73,8 +64,8 @@ class DependenciesTest(ToilTest):
             """
             startTime = datetime.datetime.now()
 
-            if os.path.exists(self.toilDir):
-                shutil.rmtree(self.toilDir)
+            if os.path.exists(self.jobStore):
+                shutil.rmtree(self.jobStore)
 
             logFd, logName = tempfile.mkstemp(prefix="log", dir=self.tempDir)
 
@@ -89,7 +80,7 @@ class DependenciesTest(ToilTest):
                 tree = combTree(size)
 
             options = Job.Runner.getDefaultOptions()
-            options.jobStore = self.toilDir
+            options.jobStore = self.jobStore
             options.maxThreads = maxThreads
             options.batchSystem = batchSystem
             options.logFile = logName

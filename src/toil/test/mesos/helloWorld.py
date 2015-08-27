@@ -43,7 +43,6 @@ def hello_world_child(job, hw):
     # If we want to SAVE our changes to this tmp file, we must write it out.
     with open(path, 'r') as r:
         with open('bar_bam.txt', 'w') as handle:
-            x = os.getcwd()
             for line in r.readlines():
                 handle.write(line)
 
