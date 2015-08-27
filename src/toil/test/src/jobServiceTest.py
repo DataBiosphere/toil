@@ -28,7 +28,7 @@ class JobServiceTest(ToilTest):
         Tests the creation of a Job.Service.
         """
         # Temporary file
-        outFile = getTempFile(rootDir=os.getcwd())
+        outFile = getTempFile(rootDir=self._createTempDir())
         try:
             # Wire up the services/jobs
             t = Job.wrapFn(f, "1", outFile)

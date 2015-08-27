@@ -17,7 +17,7 @@ pip=/usr/bin/env pip2.7
 
 define help
 
-Supported targets: 'develop', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
+Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
  ensure that develop mode installs support for extras. Consult setup.py for a list of supported
@@ -28,7 +28,9 @@ make develop extras=[mesos,aws]
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
 
-The 'clean' target undoes the effect of 'develop' and 'sdist'.
+The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
+
+The 'docs' target uses Sphinx to create html documentation in the doc/_build directory
 
 The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
 
@@ -44,10 +46,14 @@ endef
 
 export help
 
+green=\033[0;32m
+normal=\033[0m
+red=\033[0;31m
+
 all:
 	@echo "$$help"
 
-clean: _develop _sdist
+clean: _develop _sdist _pypi _docs
 
 extras=
 
@@ -56,8 +62,8 @@ extras=
 __user=$(shell python -c 'import sys; print "" if hasattr(sys, "real_prefix") else "--user"')
 
 check_user_base_on_path:
-	@echo "\033[0;32mChecking if Python's user-specific bin directory is on the PATH ...\033[0m"
-	@test -z "$(__user)" || python -c 'import site,sys,os;sys.exit(0 if os.path.join(site.USER_BASE,"bin") in os.environ["PATH"] else 1)'
+	@echo "$(green)Checking if Python's user-specific bin directory is on the PATH ...$(normal)"
+	test -z "$(__user)" || python -c 'import site,sys,os;sys.exit(0 if os.path.join(site.USER_BASE,"bin") in os.environ["PATH"] else 1)'
 
 develop: check_user_base_on_path
 	$(pip) install $(__user) -e .$(extras)
@@ -72,32 +78,43 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-testLength=SHORT
-testLogLevel=INFO
-
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
-	$(python) setup.py test --pytest-args "src -vv"
+	$(python) setup.py test --pytest-args "-vv src"
 
 check_clean_working_copy:
-	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
-	@git diff --exit-code > /dev/null || ( echo "\033[0;31mWorking copy looks dirty.\033[0m" ; false )
-	git diff --cached --exit-code > /dev/null || ( echo "\033[0;31mIndex looks dirty.\033[0m" ; false )
-	test -z "$(git ls-files --other --exclude-standard --directory)"
+	@echo "$(green)Checking if your working copy is clean ...$(normal)"
+	git diff --exit-code > /dev/null \
+		|| ( echo "$(red)Working copy looks dirty.$(normal)" ; false )
+	git diff --cached --exit-code > /dev/null \
+		|| ( echo "$(red)Index looks dirty.$(normal)" ; false )
+	test -z "$$(git ls-files --other --exclude-standard --directory)" \
+		|| ( echo "$(red)Untracked files:$(normal)" \
+			; git ls-files --other --exclude-standard --directory \
+			; false )
 
 check_running_on_jenkins:
-	@echo "\033[0;32mChecking if running on Jenkins ...\033[0m"
-	@test -n "$$BUILD_NUMBER" || ( echo "\033[0;31mThis target should only be invoked on Jenkins.\033[0m" ; false )
+	@echo "$(green)Checking if running on Jenkins ...$(normal)"
+	test -n "$$BUILD_NUMBER" \
+		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
 pypi: check_clean_working_copy check_running_on_jenkins
-	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
-	&& echo "Not on master branch, silently skipping deployment to PyPI." \
-	|| $(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
+	@test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
+		&& echo "Not on master branch, silently skipping deployment to PyPI." \
+		|| $(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
 
 force_pypi: check_clean_working_copy check_running_on_jenkins
 	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
-	&& echo "Not on master branch, silently skipping deployment to PyPI." \
-	|| $(python) setup.py egg_info register sdist bdist_egg upload
+		&& echo "Not on master branch, silently skipping deployment to PyPI." \
+		|| $(python) setup.py egg_info register sdist bdist_egg upload
+
+_pypi:
+	- rm -rf build/
+
+docs:
+	cd docs && make html
+
+_docs:
+	cd docs && make clean
