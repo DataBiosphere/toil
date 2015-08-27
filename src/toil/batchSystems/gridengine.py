@@ -163,13 +163,13 @@ class Worker(Thread):
                             "so I'll try again")
                 time.sleep(5)
 
-    def createJobs(self):
-        # Load new job ids:
-        while not self.newJobsQueue.empty():
-            self.waitingJobs.append(self.newJobsQueue.get())
+    def createJobs(self, new_job):
+        # Load new job id if present:
+        if new_job is not None:
+            self.waitingJobs.append(new_job)
 
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCpus):
+        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCores):
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             qsubline = prepareQsub(cpu, memory) + [command]
             logger.debug('qsubline: {}'.format(qsubline))
@@ -190,8 +190,14 @@ class Worker(Thread):
     
     def run(self):
         while True:
+            new_job = None
+            if not self.newJobsQueue.empty():
+                new_job = self.newJobsQueue.get()
+                if new_job is None:
+                    logger.debug('Received queue sentinel.')
+                    break
             self.killJobs()
-            self.createJobs()
+            self.createJobs(new_job)
             self.checkOnJobs()
             time.sleep(10)
 
@@ -214,7 +220,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.killQueue = Queue()
         self.killedJobsQueue = Queue()
         self.worker = Worker(self.newJobsQueue, self.updatedJobsQueue, self.killQueue, self.killedJobsQueue, self)
-        self.worker.setDaemon(True)
         self.worker.start()
         
     def __des__(self):
@@ -270,9 +275,12 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def shutdown(self):
         """
-        Because the gridEngine Worker is a daemon thread this fn is unnecessary
+        Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """
-        pass
+        self.newJobsQueue.put(None)
+        # Remove reference to newJobsQueue (raises exception if inputQueue is used after method call)
+        self.newJobsQueue = None
+        self.worker.join()
 
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)
