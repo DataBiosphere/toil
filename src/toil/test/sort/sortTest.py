@@ -52,21 +52,15 @@ class SortTest(ToilTest, MesosTestSupport):
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
 
-    def toilSortTest(self, testNo=1, batchSystem="singleMachine", jobStore='file',
-                     lines=10000, maxLineLength=10, N=10000):
+    def toilSortTest(self, jobStore, batchSystem, lines, N, testNo=1, maxLineLength=10):
         """
         Tests toil by sorting a file in parallel.
         """
         for test in xrange(testNo):
-            options = Job.Runner.getDefaultOptions()
-
-            # toil
-            if jobStore == 'file':
-                options.jobStore = self.jobStore
-            else:
-                options.jobStore = jobStore
 
             # Specify options
+            options = Job.Runner.getDefaultOptions()
+            options.jobStore = jobStore
             options.logLevel = getLogLevelString()
             options.retryCount = 2
             options.batchSystem = batchSystem
@@ -125,7 +119,7 @@ class SortTest(ToilTest, MesosTestSupport):
                 self.fail()
             except JobException:
                 pass
-                #self.assertTrue(e.message.endswith('left in toil workflow (workflow has finished successfully?)'))
+                # self.assertTrue(e.message.endswith('left in toil workflow (workflow has finished successfully?)'))
 
             # Now check the file is properly sorted..
             with open(tempSortFile, 'r') as fileHandle:
@@ -137,18 +131,27 @@ class SortTest(ToilTest, MesosTestSupport):
         """Tests scriptTree/toil by sorting a file in parallel.
         """
         self.toilSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
+                          batchSystem='singleMachine',
                           lines=100, N=100)
 
     @needs_aws
     @needs_mesos
-    def testScriptTree_SortSimpleOnAWSWithMesos(self):
+    def testToilSortOnAWSWithMesos(self):
         self._startMesos()
         try:
-            self.toilSortTest(testNo=1,
+            self.toilSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                               batchSystem="mesos",
-                              jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
-                              lines=100,
-                              N=100)
+                              lines=100, N=100)
+        finally:
+            self._stopMesos()
+
+    @needs_mesos
+    def testToilSortWithMesos(self):
+        self._startMesos()
+        try:
+            self.toilSortTest(jobStore=self._getTestJobStorePath(),
+                              batchSystem="mesos",
+                              lines=100, N=100)
         finally:
             self._stopMesos()
 
@@ -156,7 +159,9 @@ class SortTest(ToilTest, MesosTestSupport):
         """
         Tests scriptTree/toil by sorting a file in parallel.
         """
-        self.toilSortTest()
+        self.toilSortTest(jobStore=self._getTestJobStorePath(),
+                          batchSystem='singleMachine',
+                          lines=10000, N=10000)
 
     # The following functions test the functions in the test!
 
@@ -230,19 +235,23 @@ def checkEqual(i, j):
         print "false", j
     assert i == j
 
+
 def loadFile(file):
     with open(file, 'r') as fileHandle:
         return fileHandle.readlines()
+
 
 def getRandomLine(maxLineLength):
     return "".join(
         [random.choice(['a', 'c', 't', 'g', "A", "C", "G", "T", "N", "X", "Y", "Z"]) for i in
          xrange(maxLineLength)]) + "\n"
 
+
 def makeFileToSort(fileName, lines=10, maxLineLength=10):
     with open(fileName, 'w') as fileHandle:
         for line in xrange(lines):
             fileHandle.write(getRandomLine(maxLineLength))
+
 
 if __name__ == '__main__':
     unittest.main()

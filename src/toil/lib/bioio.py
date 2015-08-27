@@ -252,7 +252,7 @@ def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", pa
 
     parser.add_option("--tempDirRoot", dest="tempDirRoot", type="string",
                       help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
-                      default=os.getcwd())
+                      default=tempfile.gettempdir())
 
     return parser
 
@@ -264,39 +264,8 @@ def parseBasicOptions(parser):
     setLoggingFromOptions(options)
 
     #Set up the temp dir root
-    if options.tempDirRoot == "None":
-        options.tempDirRoot = os.getcwd()
-
-    return options, args
-
-def parseSuiteTestOptions(parser=None):
-    if parser is None:
-        parser = getBasicOptionParser()
-
-    parser.add_option("--testLength", dest="testLength", type="string",
-                     help="Control the length of the tests either SHORT/MEDIUM/LONG/VERY_LONG. default=%default",
-                     default="SHORT")
-
-    parser.add_option("--saveError", dest="saveError", type="string",
-                     help="Directory in which to store the inputs of failed tests")
-
-    options, args = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
-
-    if options.testLength == "SHORT":
-        TestStatus.setTestStatus(TestStatus.TEST_SHORT)
-    elif options.testLength == "MEDIUM":
-        TestStatus.setTestStatus(TestStatus.TEST_MEDIUM)
-    elif options.testLength == "LONG":
-        TestStatus.setTestStatus(TestStatus.TEST_LONG)
-    elif options.testLength == "VERY_LONG":
-        TestStatus.setTestStatus(TestStatus.TEST_VERY_LONG)
-    else:
-        parser.error('Unrecognised option for --testLength, %s. Options are SHORT, MEDIUM, LONG, VERY_LONG.' %
-                     options.testLength)
-
-    if options.saveError is not None:
-        TestStatus.setSaveErrorLocation(options.saveError)
+    if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
+        options.tempDirRoot = tempfile.gettempdir()
 
     return options, args
 

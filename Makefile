@@ -49,7 +49,7 @@ export help
 all:
 	@echo "$$help"
 
-clean: _develop _sdist _docs
+clean: _develop _sdist _pypi _docs
 
 extras=
 
@@ -74,12 +74,8 @@ sdist:
 _sdist:
 	- rm -rf dist
 
-testLength=SHORT
-testLogLevel=INFO
-
 test:
-	TOIL_TEST_ARGS="--logLevel=$(testLogLevel) --testLength=$(testLength)" \
-	$(python) setup.py test --pytest-args "src -vv"
+	$(python) setup.py test --pytest-args "-vv src"
 
 check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
@@ -103,6 +99,9 @@ pypi_stable: check_clean_working_copy check_running_on_jenkins
 	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
 	&& echo "Not on master branch, silently skipping deployment to PyPI." \
 	|| $(python) setup.py egg_info register sdist bdist_egg upload
+
+_pypi:
+	- rm -rf build/
 
 docs:
 	cd docs && make html

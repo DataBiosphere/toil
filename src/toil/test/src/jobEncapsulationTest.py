@@ -31,7 +31,7 @@ class JobEncapsulationTest(ToilTest):
         class.
         """
         # Temporary file
-        outFile = getTempFile(rootDir=os.getcwd())
+        outFile = getTempFile(rootDir=self._createTempDir())
         try:
             # Make a job graph
             a = T.wrapFn(f, "A", outFile)

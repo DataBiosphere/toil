@@ -57,6 +57,8 @@ class PyTest( TestCommand ):
 
     def run_tests( self ):
         import pytest
+        # Sanitize command line arguments to avoid confusing Toil code attempting to parse them
+        sys.argv[1:] = []
         errno = pytest.main( self.pytest_args )
         sys.exit( errno )
 
