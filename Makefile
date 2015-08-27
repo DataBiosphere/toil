@@ -81,7 +81,7 @@ check_clean_working_copy:
 	@echo "\033[0;32mChecking if your working copy is clean ...\033[0m"
 	@git diff --exit-code > /dev/null || ( echo "\033[0;31mWorking copy looks dirty.\033[0m" ; false )
 	git diff --cached --exit-code > /dev/null || ( echo "\033[0;31mIndex looks dirty.\033[0m" ; false )
-	test -z "$(git ls-files --other --exclude-standard --directory)"
+	test -z "$$(git ls-files --other --exclude-standard --directory)"
 
 check_running_on_jenkins:
 	@echo "\033[0;32mChecking if running on Jenkins ...\033[0m"
