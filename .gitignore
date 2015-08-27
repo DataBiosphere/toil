@@ -4,4 +4,6 @@
 /dist
 /docs/_build
 __pycache__
-
+.eggs/
+test-report.xml
+venv/
