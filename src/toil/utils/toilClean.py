@@ -26,7 +26,7 @@ from toil.jobStores.abstractJobStore import JobStoreCreationException
 logger = logging.getLogger( __name__ )
 
 def main():
-    """Reports the state of the toil.
+    """Removes the JobStore from a toil run.
     """
 
     ##########################################
@@ -42,8 +42,9 @@ def main():
     options, args = parseBasicOptions(parser)
     logger.info("Parsed arguments")
 
-    assert len(args) <= 1 #Only toil may be specified as argument
-    if len(args) == 1: #Allow toil directory as arg
+    # the JobStore may also be passed as an argument directly to the script
+    assert len(args) <= 1
+    if len(args) == 1:
         options.jobStore = args[0]
 
     ##########################################
