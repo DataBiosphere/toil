@@ -117,7 +117,7 @@ class UtilsTest(ToilTest):
             checkEqual(self.correctSort, l2)
 
         # Check we can run 'toil clean'
-        toilCleanString = ("{rootPath}/toilMain.py clean "
+        toilCleanString = ("{self.toilMain} clean "
                            "--jobStore {self.toilDir}".format(**locals()))
         system(toilCleanString)
             

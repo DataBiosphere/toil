@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests the scriptTree toil-script compiler.
+"""
+Tests the scriptTree toil-script compiler.
 """
 
 from __future__ import absolute_import
@@ -23,11 +24,8 @@ import os
 import random
 from uuid import uuid4
 import logging
-import shutil
-import tempfile
 import subprocess
 
-from toil.common import toilPackageDirPath
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -43,19 +41,7 @@ log = logging.getLogger(__name__)
 class SortTest(ToilTest, MesosTestSupport):
     def setUp(self):
         super(SortTest, self).setUp()
-        self.tempDir = tempfile.mkdtemp(prefix="tempDir")
-        self.testNo = 5
-        self.jobStore = None
-
-    def tearDown(self):
-        super(SortTest, self).tearDown()
-        if os.path.exists(self.tempDir):
-            shutil.rmtree(self.tempDir)
-        if self.jobStore is not None:
-            rootPath = os.path.join(toilPackageDirPath(), "utils")
-            toilCleanString = ("{rootPath}/toilMain.py clean "
-                               "--jobStore {self.jobStore}".format(**locals()))
-            subprocess.check_call(toilCleanString, shell=True)
+        self.tempDir = self._createTempDir(purpose='tempDir')
 
     def toilSortTest(self, jobStore, batchSystem, lines, N, testNo=1, maxLineLength=10):
         """
@@ -63,73 +49,76 @@ class SortTest(ToilTest, MesosTestSupport):
         """
         for test in xrange(testNo):
 
-            # Specify options
-            options = Job.Runner.getDefaultOptions()
-            options.jobStore = jobStore
-            options.logLevel = getLogLevelString()
-            options.retryCount = 2
-            options.batchSystem = batchSystem
-
-            # Make the file to sort
-            tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
-            makeFileToSort(tempSortFile, lines=lines, maxLineLength=maxLineLength)
-
-            # First make our own sorted version
-            with open(tempSortFile, 'r') as fileHandle:
-                l = fileHandle.readlines()
-                l.sort()
-
-            # Make the first job
-            firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=5000)
-
-            # Check we get an exception if we try to restart a workflow that doesn't exist
-            options.restart = True
             try:
-                Job.Runner.startToil(firstJob, options)
-                self.fail()
-            except JobStoreCreationException:
-                pass
+                # Specify options
+                options = Job.Runner.getDefaultOptions()
+                options.jobStore = jobStore
+                options.logLevel = getLogLevelString()
+                options.retryCount = 2
+                options.batchSystem = batchSystem
 
-            options.restart = False
+                # Make the file to sort
+                tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
+                makeFileToSort(tempSortFile, lines=lines, maxLineLength=maxLineLength)
 
-            # Now actually run the workflow
-            try:
-                Job.Runner.startToil(firstJob, options)
-                i = 0
-            except FailedJobsException as e:
-                i = e.numberOfFailedJobs
+                # First make our own sorted version
+                with open(tempSortFile, 'r') as fileHandle:
+                    l = fileHandle.readlines()
+                    l.sort()
 
-            # Check we get an exception if we try to run without restart on an existing job store
-            try:
-                Job.Runner.startToil(firstJob, options)
-                self.fail()
-            except JobStoreCreationException:
-                pass
+                # Make the first job
+                firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=5000)
 
-            options.restart = True
+                # Check we get an exception if we try to restart a workflow that doesn't exist
+                options.restart = True
+                try:
+                    Job.Runner.startToil(firstJob, options)
+                    self.fail()
+                except JobStoreCreationException:
+                    pass
 
-            # This loop tests the restart behavior
-            while i != 0:
-                options.useExistingOptions = random.random() > 0.5
+                options.restart = False
+
+                # Now actually run the workflow
                 try:
                     Job.Runner.startToil(firstJob, options)
                     i = 0
                 except FailedJobsException as e:
                     i = e.numberOfFailedJobs
 
-            # Now check that if you try to restart from here it will raise an exception
-            # indicating that there are no jobs remaining in the workflow.
-            try:
-                Job.Runner.startToil(firstJob, options)
-                self.fail()
-            except JobException:
-                pass
-                # self.assertTrue(e.message.endswith('left in toil workflow (workflow has finished successfully?)'))
+                # Check we get an exception if we try to run without restart on an existing store
+                try:
+                    Job.Runner.startToil(firstJob, options)
+                    self.fail()
+                except JobStoreCreationException:
+                    pass
 
-            # Now check the file is properly sorted..
-            with open(tempSortFile, 'r') as fileHandle:
-                l2 = fileHandle.readlines()
-                checkEqual(l, l2)
+                options.restart = True
+
+                # This loop tests the restart behavior
+                while i != 0:
+                    options.useExistingOptions = random.random() > 0.5
+                    try:
+                        Job.Runner.startToil(firstJob, options)
+                        i = 0
+                    except FailedJobsException as e:
+                        i = e.numberOfFailedJobs
+
+                # Now check that if you try to restart from here it will raise an exception
+                # indicating that there are no jobs remaining in the workflow.
+                try:
+                    Job.Runner.startToil(firstJob, options)
+                    self.fail()
+                except JobException:
+                    pass
+
+                # Now check the file is properly sorted..
+                with open(tempSortFile, 'r') as fileHandle:
+                    l2 = fileHandle.readlines()
+                    checkEqual(l, l2)
+            finally:
+                subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean',
+                                       '--jobStore', jobStore])
 
     @needs_aws
     def testToilSortOnAWS(self):
@@ -169,6 +158,8 @@ class SortTest(ToilTest, MesosTestSupport):
                           lines=10000, N=10000)
 
     # The following functions test the functions in the test!
+
+    testNo = 5
 
     def testSort(self):
         for test in xrange(self.testNo):
