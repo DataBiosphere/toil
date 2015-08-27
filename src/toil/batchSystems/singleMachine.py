@@ -191,7 +191,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
     def killBatchJobs(self, jobIDs):
         """
-        As jobs are already run, this method has no effect.
+        Kills jobs by ID
         """
         logger.debug('Killing jobs: {}'.format(jobIDs))
         for id in jobIDs:
