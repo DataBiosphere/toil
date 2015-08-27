@@ -252,7 +252,7 @@ def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", pa
 
     parser.add_option("--tempDirRoot", dest="tempDirRoot", type="string",
                       help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
-                      default=os.getcwd())
+                      default=tempfile.gettempdir())
 
     return parser
 
@@ -264,8 +264,8 @@ def parseBasicOptions(parser):
     setLoggingFromOptions(options)
 
     #Set up the temp dir root
-    if options.tempDirRoot == "None":
-        options.tempDirRoot = os.getcwd()
+    if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
+        options.tempDirRoot = tempfile.gettempdir()
 
     return options, args
 
