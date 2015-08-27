@@ -105,7 +105,7 @@ pypi_stable: check_clean_working_copy check_running_on_jenkins
 	|| $(python) setup.py egg_info register sdist bdist_egg upload
 
 docs:
-	cd doc && make -f Makefile html
+	cd doc && make html
 
 _docs:
-	cd doc && make -f Makefile clean
+	cd doc && make clean
