@@ -1,12 +1,5 @@
-*.o
 *.pyc
-*.a
-*.egg-info
-*.DS_Store
-/bin/
-tmp_*
-/tmpFileTree/
-/testJobTree/
+/src/*.egg-info
 /build
 /dist
 /docs/_build
