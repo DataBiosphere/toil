@@ -50,7 +50,10 @@ class Config(object):
         self.logLevel = getLogLevelString()
         self.workDir = None
         self.stats = False
-        self.clean = "never"
+
+        # Because the stats option needs the jobStore to persist past the end of the run,
+        # the clean default value depends the specified stats option and is determined in setOptions
+        self.clean = None
         
         #Restarting the workflow options
         self.restart = False
@@ -115,11 +118,14 @@ class Config(object):
         setOption("stats")
         setOption("clean")
         if self.stats:
-            if self.clean != "never":
+            if self.clean != "never" and self.clean is not None:
                 raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
                                    "despite the stats flag requiring "
                                    "the jobStore to be intact at the end of the run. " 
                                    "Set clean to \'never\'" % self.clean)
+            self.clean = "never"
+        elif self.clean is None:
+            self.clean = "onSuccess"
         
         #Restarting the workflow options
         setOption("restart") 
@@ -175,7 +181,7 @@ def _addOptions(addGroupFn, config):
                             "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
                             "information from the jobStore upon completion so the jobStore will never be deleted with"
                             "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
-                            "Default is %s" % config.clean))
+                            "Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise"))
 
     #
     #Restarting the workflow options

@@ -56,6 +56,7 @@ class SortTest(ToilTest, MesosTestSupport):
                 options.logLevel = getLogLevelString()
                 options.retryCount = 2
                 options.batchSystem = batchSystem
+                options.clean = "never"
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
