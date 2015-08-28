@@ -165,6 +165,7 @@ def main():
     #the file descriptor out from under it.
     logger.addHandler(logging.StreamHandler(sys.stderr))
 
+    debugging = logging.getLogger().isEnabledFor(logging.DEBUG)
     ##########################################
     #Worker log file trapped from here on in
     ##########################################
@@ -321,7 +322,6 @@ def main():
         ##########################################
         #Finish up the stats
         ##########################################
-
         if stats != None:
             totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.attrib["time"] = str(time.time() - startTime)
@@ -336,7 +336,8 @@ def main():
             m = ET.SubElement(l, "messages")
             for message in messages:
                 ET.SubElement(m, "message").text = message
-            jobStore.writeStatsAndLogging(ET.tostring(l))
+            if not debugging: # we know we will have more to write with debug, so we do not call this yet
+                jobStore.writeStatsAndLogging(ET.tostring(l))
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
@@ -384,6 +385,17 @@ def main():
         job.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
         jobStore.update(job)
+        if debugging: # we are already sending logs but have not sent the messages we saved earlier
+            jobStore.writeStatsAndLogging(ET.tostring(l))
+    elif debugging: # write log and the previous messages
+        truncateFile(tempWorkerLogPath)
+        with open(tempWorkerLogPath, 'r') as logFile:
+            logMessages = logFile.read().splitlines()
+        l = ET.Element("worker")
+        m = ET.SubElement(l, "messages")
+        for logMessage in logMessages:
+            ET.SubElement(m, "log").text = jobStoreID+"!"+logMessage
+        jobStore.writeStatsAndLogging(ET.tostring(l))
 
     #Remove the temp dir
     shutil.rmtree(localWorkerTempDir)
