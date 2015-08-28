@@ -941,7 +941,12 @@ class FunctionWrappingJob(Job):
         if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userFunctionModule.dirPath)
-        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+        try:
+            return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+        except AttributeError:
+            logger.error("Error retrieving user module. Confirm that the script's name is not also "
+                         "a standard python module")
+            raise
 
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
