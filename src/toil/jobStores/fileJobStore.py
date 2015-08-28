@@ -22,6 +22,7 @@ import random
 import shutil
 import os
 import tempfile
+import stat
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     NoSuchFileException
@@ -163,10 +164,12 @@ class FileJobStore(AbstractJobStore):
         
     def fileExists(self, jobStoreFileID):
         absPath = self._getAbsPath(jobStoreFileID)
-        if not os.path.exists(absPath):
+        try:
+            st = os.stat(absPath)
+        except os.error:
             return False
-        if not os.path.isfile(absPath):
-            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
+        if not stat.S_ISREG(st.st_mode):
+            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
         return True
     
     @contextmanager
@@ -286,11 +289,8 @@ class FileJobStore(AbstractJobStore):
         """
         Raises NoSuchFileException if the jobStoreFileID does not exist or is not a file.
         """
-        absPath = os.path.join(self.tempFilesDir, jobStoreFileID)
-        if not os.path.exists(absPath):
+        if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
-        if not os.path.isfile(absPath):
-            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID) 
     
     def _getTempSharedDir(self):
         """
