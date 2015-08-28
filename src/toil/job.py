@@ -667,7 +667,12 @@ class Job(object):
         userModule = importlib.import_module(userModule.name)
         thisModule = sys.modules[__name__]
         #TODO: Document what this magic is doing
-        thisModule.__dict__[className] = userModule.__dict__[className]
+        try:
+            thisModule.__dict__[className] = userModule.__dict__[className]
+        except KeyError:
+            logger.error("Error retrieving user module. Confirm that the script's name is not also "
+                         "a standard python module")
+            raise
     
     @staticmethod
     def _loadJob(command, jobStore):
