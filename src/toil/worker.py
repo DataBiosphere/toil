@@ -171,6 +171,9 @@ def main():
     ##########################################
 
     workerFailed = False
+    elementNode = ET.Element("worker")
+    messageNode = ET.SubElement(elementNode, "messages")
+    messages = []
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -217,9 +220,6 @@ def main():
         if config.stats:
             startTime = time.time()
             startClock = getTotalCpuTime()
-            stats = ET.Element("worker")
-        else:
-            stats = None
 
         startTime = time.time() 
         while True:
@@ -234,7 +234,7 @@ def main():
                     
                     #Is a job command
                     messages = Job._loadJob(job.command, jobStore)._execute( jobWrapper=job,
-                                    stats=stats, localTempDir=localTempDir, 
+                                    stats=elementNode if config.stats else None, localTempDir=localTempDir,
                                     jobStore=jobStore)
                     
                     #Remove the temporary file directory
@@ -242,12 +242,10 @@ def main():
     
                 else: #Is another command (running outside of jobs may be deprecated)
                     system(job.command)
-                    messages = []
             else:
                 #The command may be none, in which case
                 #the job is just a shell ready to be deleted
                 assert len(job.stack) == 0
-                messages = []
                 break
             
             ##########################################
@@ -322,22 +320,13 @@ def main():
         ##########################################
         #Finish up the stats
         ##########################################
-        if stats != None:
+        if config.stats:
             totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            stats.attrib["time"] = str(time.time() - startTime)
-            stats.attrib["clock"] = str(totalCPUTime - startClock)
-            stats.attrib["memory"] = str(totalMemoryUsage)
-            m = ET.SubElement(stats, "messages")
-            for message in messages:
-                ET.SubElement(m, "message").text = message
-            jobStore.writeStatsAndLogging(ET.tostring(stats))
-        elif len(messages) > 0: #No stats, but still need to report log messages
-            l = ET.Element("worker")
-            m = ET.SubElement(l, "messages")
-            for message in messages:
-                ET.SubElement(m, "message").text = message
-            if not debugging: # we know we will have more to write with debug, so we do not call this yet
-                jobStore.writeStatsAndLogging(ET.tostring(l))
+            elementNode.attrib["time"] = str(time.time() - startTime)
+            elementNode.attrib["clock"] = str(totalCPUTime - startClock)
+            elementNode.attrib["memory"] = str(totalMemoryUsage)
+        for message in messages:
+            ET.SubElement(messageNode, "message").text = message
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
@@ -385,17 +374,15 @@ def main():
         job.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
         jobStore.update(job)
-        if debugging: # we are already sending logs but have not sent the messages we saved earlier
-            jobStore.writeStatsAndLogging(ET.tostring(l))
-    elif debugging: # write log and the previous messages
+    elif debugging: # write log messages
         truncateFile(tempWorkerLogPath)
         with open(tempWorkerLogPath, 'r') as logFile:
             logMessages = logFile.read().splitlines()
-        l = ET.Element("worker")
-        m = ET.SubElement(l, "messages")
         for logMessage in logMessages:
-            ET.SubElement(m, "log").text = jobStoreID+"!"+logMessage
-        jobStore.writeStatsAndLogging(ET.tostring(l))
+            ET.SubElement(messageNode, "log").text = jobStoreID+"!"+logMessage
+
+    if debugging or config.stats or messages: # We have stats/logging to report back
+        jobStore.writeStatsAndLogging(ET.tostring(elementNode))
 
     #Remove the temp dir
     shutil.rmtree(localWorkerTempDir)
