@@ -21,7 +21,8 @@ import sys
 if __name__ == "__main__":
     # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
     # and Python's
-    sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
+    toilSrcDir = os.path.dirname(os.path.realpath(__file__))
+    sys.path = [directory for directory in sys.path if not os.path.realpath(directory) == toilSrcDir]
 
 import traceback
 import time
