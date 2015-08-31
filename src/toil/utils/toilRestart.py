@@ -17,12 +17,14 @@
 
 from __future__ import absolute_import
 import sys
-from optparse import OptionParser
+from toil.lib.bioio import getBasicOptionParser
+from toil.lib.bioio import parseBasicOptions
 
 from toil.leader import mainLoop
-from toil.common import addOptions, setupToil
+from toil.common import setupToil
 from toil.lib.bioio import setLoggingFromOptions
 from toil.job import Job
+from toil.version import version
 import logging
 logger = logging.getLogger( __name__ )
 
@@ -34,10 +36,12 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = OptionParser()
-    addOptions(parser)
-    
-    options, args = parser.parse_args()
+    parser = getBasicOptionParser("usage: %prog restart [--jobStore] JOB_TREE_DIR [more options]", "%prog "+version)
+
+    parser.add_option("--jobStore", dest="jobStore",
+                      help="Job store path. Can also be specified as the single argument to the script.")
+
+    options, args = parseBasicOptions(parser)
     
     if len(args) != 0:
         parser.error("Unrecognised input arguments: %s" % " ".join(args))

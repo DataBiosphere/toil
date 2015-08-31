@@ -25,6 +25,7 @@ from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
 from toil.leader import ToilState
 from toil.job import Job, JobException
+from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
@@ -36,7 +37,7 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
+    parser = getBasicOptionParser("usage: %prog status [--jobStore] JOB_TREE_DIR [options]", "%prog "+version)
     
     parser.add_option("--jobStore", dest="jobStore",
                       help="Job store path. Can also be specified as the single argument to the script.\
