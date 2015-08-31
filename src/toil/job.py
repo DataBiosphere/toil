@@ -667,7 +667,12 @@ class Job(object):
         userModule = importlib.import_module(userModule.name)
         thisModule = sys.modules[__name__]
         #TODO: Document what this magic is doing
-        thisModule.__dict__[className] = userModule.__dict__[className]
+        try:
+            thisModule.__dict__[className] = userModule.__dict__[className]
+        except KeyError:
+            logger.error("Error retrieving user module. Confirm that the script's name is not also "
+                         "a standard python module")
+            raise
     
     @staticmethod
     def _loadJob(command, jobStore):
@@ -941,7 +946,12 @@ class FunctionWrappingJob(Job):
         if userFunctionModule.dirPath not in sys.path:
             # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userFunctionModule.dirPath)
-        return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+        try:
+            return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
+        except AttributeError:
+            logger.error("Error retrieving user module. Confirm that the script's name is not also "
+                         "a standard python module")
+            raise
 
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
