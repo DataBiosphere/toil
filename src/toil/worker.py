@@ -381,7 +381,7 @@ def main():
         for logMessage in logMessages:
             ET.SubElement(messageNode, "log").text = jobStoreID+"!"+logMessage
 
-    if debugging or config.stats or messages: # We have stats/logging to report back
+    if (debugging or config.stats or messages) and not workerFailed: # We have stats/logging to report back
         jobStore.writeStatsAndLogging(ET.tostring(elementNode))
 
     #Remove the temp dir
