@@ -11,13 +11,4 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-use_multiprocessing = True
-if use_multiprocessing:
-    from multiprocessing import Process
-    from multiprocessing import JoinableQueue as Queue
-else:
-    from threading import Thread as Process
-    from Queue import Queue
-
-# TODO: Do the same for pickle and cPickle
+version='3.0.6a1'

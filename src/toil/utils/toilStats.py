@@ -24,6 +24,7 @@ import os
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
+from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
@@ -726,7 +727,7 @@ def main():
     """
 
     parser = getBasicOptionParser(
-        "usage: %prog [--jobStore] JOB_TREE_DIR [options]", "%prog 0.1")
+        "usage: %prog stats [--jobStore] JOB_TREE_DIR [options]", "%prog "+version)
     initializeOptions(parser)
     options, args = parseBasicOptions(parser)
     checkOptions(options, args, parser)

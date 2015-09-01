@@ -25,7 +25,8 @@ from toil.test import ToilTest
 
 class UtilsTest(ToilTest):
     """
-    Tests the scriptTree toil-script compiler.
+    Tests the utilities that toil ships with, e.g. stats and status, in conjunction with restart
+    functionality.
     """
 
     def setUp(self):

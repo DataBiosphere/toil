@@ -14,10 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Tests the scriptTree toil-script compiler.
-"""
-
 from __future__ import absolute_import
 import unittest
 import os
@@ -123,8 +119,6 @@ class SortTest(ToilTest, MesosTestSupport):
 
     @needs_aws
     def testToilSortOnAWS(self):
-        """Tests scriptTree/toil by sorting a file in parallel.
-        """
         self.toilSortTest(jobStore="aws:us-west-2:sort-test-%s" % uuid4(),
                           batchSystem='singleMachine',
                           lines=100, N=100)
@@ -151,9 +145,6 @@ class SortTest(ToilTest, MesosTestSupport):
             self._stopMesos()
 
     def testToilSort(self):
-        """
-        Tests scriptTree/toil by sorting a file in parallel.
-        """
         self.toilSortTest(jobStore=self._getTestJobStorePath(),
                           batchSystem='singleMachine',
                           lines=10000, N=10000)
