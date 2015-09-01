@@ -161,7 +161,9 @@ class AWSJobStore(AbstractJobStore):
         Encrypted file urls are currently not supported
         """
         key = self.files.get_key(key_name=jobStoreFileID)
-        return key.generate_url(expires_in=3600)  # one hour
+        # There should be no practical upper limit on when a job is allowed to access a public
+        # URL so we set the expiration to 20 years.
+        return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
 
     def getSharedPublicUrl(self, FileName):
         jobStoreFileID = self._newFileID(FileName)
