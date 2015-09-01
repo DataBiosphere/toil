@@ -578,9 +578,7 @@ class Job(object):
             fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
             with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-            jobClassName = self.__class__.__name__
-            jobWrapper.command = ' '.join( ('scriptTree', fileStoreID, jobClassName)
-                                           + self.userModule.globalize())
+            jobWrapper.command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())
             #Update the status of the job on disk
             jobStore.update(jobWrapper)
         else:
@@ -632,9 +630,8 @@ class Job(object):
         with jobStore.writeSharedFileStream(sharedJobFile) as f:
             cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
         #Make the first job
-        jobClassName = self.__class__.__name__
-        command = ('scriptTree', sharedJobFile, jobClassName) + self.userModule.globalize()
-        jobWrapper = self._createEmptyJobForJob(jobStore, command=' '.join( command ))
+        command = ' '.join(('_toil',sharedJobFile) + self.userModule.globalize())
+        jobWrapper = self._createEmptyJobForJob(jobStore, command=command)
         #Store the name of the first job in a file in case of restart
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:
             f.write(jobWrapper.jobStoreID)
@@ -675,8 +672,8 @@ class Job(object):
         list of modules which must be imported so that the Job can be successfully unpickled.
         """
         commandTokens = command.split()
-        assert "scriptTree" == commandTokens[0]
-        userModule = ModuleDescriptor(*(commandTokens[3:]))
+        assert "_toil" == commandTokens[0]
+        userModule = ModuleDescriptor(*(commandTokens[2:]))
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
         if pickleFile == "firstJob":

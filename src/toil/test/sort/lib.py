@@ -15,8 +15,6 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-"""Functions for scriptTreeTest_Sort.py
-"""
 
 def sort(file):
     """Sorts the given file.
