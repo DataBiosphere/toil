@@ -15,6 +15,7 @@ from __future__ import absolute_import
 from collections import namedtuple
 from contextlib import closing
 import hashlib
+import importlib
 from io import BytesIO
 import json
 import logging
@@ -105,11 +106,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         Removes all downloaded, localized resources
         """
         resourceRootDirPath = os.environ[cls.rootDirPathEnvName]
-        shutil.rmtree( resourceRootDirPath )
-        for k,v in os.environ.items():
-            if k.startswith( cls.resourceEnvNamePrefix ):
+        shutil.rmtree(resourceRootDirPath)
+        for k, v in os.environ.items():
+            if k.startswith(cls.resourceEnvNamePrefix):
                 os.unsetenv(k)
-
 
     def register(self):
         """
@@ -297,34 +297,80 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     to change the assertion to .pyc.
 
     >>> import subprocess, tempfile, os
-    >>> fh,path = tempfile.mkstemp(prefix='foo', suffix='.py')
-    >>> with os.fdopen(fh,'w') as f:
+    >>> dirPath = tempfile.mkdtemp()
+    >>> path = os.path.join( dirPath, 'foo.py' )
+    >>> with open(path,'w') as f:
     ...     f.write('from toil.resource import ModuleDescriptor\\n'
     ...             'print ModuleDescriptor.forModule(__name__)')
-    >>> subprocess.check_output([ 'python', path ]) # doctest: +ELLIPSIS
-    "ModuleDescriptor(dirPath='/...', name='foo...', extension='.py')\\n"
+    >>> expected = [ str( ModuleDescriptor(dirPath=dirPath, name='foo', extension=extension) )
+    ...     for extension in ('.py', '.pyc') ]
+    >>> subprocess.check_output([ sys.executable, path ]).strip() in expected
+    True
+
+    Now test a collision. As funny as it sounds, the robotparser module is included in the Python
+    standard library.
+    >>> dirPath = tempfile.mkdtemp()
+    >>> path = os.path.join( dirPath, 'robotparser.py' )
+    >>> with open(path,'w') as f:
+    ...     f.write('from toil.resource import ModuleDescriptor\\n'
+    ...             'ModuleDescriptor.forModule(__name__)')
+
+    This should fail and return exit status 1 due to the collision with the built-in 'test' module:
+    >>> subprocess.call([ sys.executable, path ])
+    1
+
+    Clean up
+    >>> from shutil import rmtree
+    >>> rmtree( dirPath )
     """
 
     @classmethod
-    def forModule(cls, moduleName):
+    def forModule(cls, name):
         """
         Return an instance of this class representing the module of the given name. If the given
         module name is "__main__", it will be translated to the actual file name of the top-level
         script without the .py or .pyc extension. This method assumes that the module with the
         specified name has already been loaded.
         """
-        module = sys.modules[moduleName]
-        moduleFilePath = os.path.abspath(module.__file__)
-        dirPath = moduleFilePath.split(os.path.sep)
-        dirPath[-1], extension = os.path.splitext(dirPath[-1])
+        module = sys.modules[name]
+        filePath = os.path.abspath(module.__file__)
+        filePath = filePath.split(os.path.sep)
+        filePath[-1], extension = os.path.splitext(filePath[-1])
         assert extension in ('.py', '.pyc')
-        if moduleName == '__main__':
-            moduleName = dirPath.pop()
+        if name == '__main__':
+            name = filePath.pop()
+            dirPath = os.path.sep.join(filePath)
+            cls._check_conflict(dirPath, name)
         else:
-            for package in reversed(moduleName.split('.')):
-                dirPathTail = dirPath.pop()
+            for package in reversed(name.split('.')):
+                dirPathTail = filePath.pop()
                 assert dirPathTail == package
-        return cls(dirPath=os.path.sep.join(dirPath), name=moduleName, extension=extension)
+            dirPath = os.path.sep.join(filePath)
+
+        return cls(dirPath=dirPath, name=name, extension=extension)
+
+    @classmethod
+    def _check_conflict(cls, dirPath, name):
+        """
+        Check whether the module of the given name conflicts with another module on the sys.path.
+
+        :param dirPath: the directory from which the module was originally loaded
+        :param name: the mpdule name
+        """
+        old_sys_path = sys.path
+        try:
+            sys.path = [dir for dir in old_sys_path
+                        if os.path.realpath(dir) != os.path.realpath(dirPath)]
+            try:
+                colliding_module = importlib.import_module(name)
+            except ImportError:
+                pass
+            else:
+                raise RuntimeError(
+                    "The user module '%s' collides with module '%s from '%s'." % (
+                        name, colliding_module.__name__, colliding_module.__file__))
+        finally:
+            sys.path = old_sys_path
 
     @property
     def belongsToToil(self):

@@ -63,7 +63,6 @@ def main():
     # This is assuming that worker.py is at a path ending in "/toil/worker.py".
     sourcePath = os.path.dirname(os.path.dirname(__file__))
     if sourcePath not in sys.path:
-        # FIXME: prepending to sys.path should fix #103
         sys.path.append(sourcePath)
     
     #Now we can import all the necessary functions
@@ -229,7 +228,7 @@ def main():
             ##########################################
             
             if job.command != None:
-                if job.command[:11] == "scriptTree ":
+                if job.command.startswith( "_toil " ):
                     #Make a temporary file directory for the job
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
