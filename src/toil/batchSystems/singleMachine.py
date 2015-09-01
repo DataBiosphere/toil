@@ -222,10 +222,12 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         Cleanly terminate worker threads. Add sentinels to inputQueue equal to maxThreads. Join all worker threads.
         """
-        for i in xrange(self.numWorkers):
-            self.inputQueue.put(None)
         # Remove reference to inputQueue (raises exception if inputQueue is used after method call)
+        inputQueue = self.inputQueue
         self.inputQueue = None
+        for i in xrange(self.numWorkers):
+            inputQueue.put(None)
+
         for thread in self.workerThreads:
             thread.join()
 
