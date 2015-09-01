@@ -24,10 +24,11 @@ import tempfile
 import uuid
 import time
 import copy_reg
-import cPickle 
-import logging 
+import cPickle
+import logging
 
 from bd2k.util.humanize import human2bytes
+from io import BytesIO
 
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
@@ -62,7 +63,7 @@ class Job(object):
         self.memory = human2bytes(str(memory)) if memory is not None else memory
         self.disk = human2bytes(str(disk)) if disk is not None else disk
         #Private class variables
-        
+
         #See Job.addChild
         self._children = []
         #See Job.addFollowOn
@@ -70,7 +71,7 @@ class Job(object):
         #See Job.addService
         self._services = []
         #A follow-on, service or child of a job A, is a "successor" of A, if B
-        #is a successor of A, then A is a predecessor of B. 
+        #is a successor of A, then A is a predecessor of B.
         self._predecessors = set()
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
@@ -78,7 +79,7 @@ class Job(object):
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Job.rv()
         self._rvs = {}
-     
+
     def run(self, fileStore):
         """
         Do user stuff here, including creating any follow on jobs.
@@ -101,7 +102,7 @@ class Job(object):
         instances that contain other PromisedJobReturnValue).
         """
         pass
-    
+
     def addChild(self, childJob):
         """
         Adds the child job to be run as child of this job. Returns childJob.
@@ -113,7 +114,7 @@ class Job(object):
         self._children.append(childJob)
         childJob._addPredecessor(self)
         return childJob
-    
+
     def addService(self, service):
         """
         Add a service of type Job.Service. The Job.Service.start() method
@@ -127,7 +128,7 @@ class Job(object):
         jobService = ServiceJob(service)
         self._services.append(jobService)
         return jobService.rv()
-    
+
     def addFollowOn(self, followOnJob):
         """
         Adds a follow-on job, follow-on jobs will be run
@@ -140,9 +141,9 @@ class Job(object):
         self._followOns.append(followOnJob)
         followOnJob._addPredecessor(self)
         return followOnJob
-    
+
     ##Convenience functions for creating jobs
-    
+
     def addChildFn(self, fn, *args, **kwargs):
         """
         Adds a child fn. See FunctionWrappingJob.
@@ -156,7 +157,7 @@ class Job(object):
         Returns the new child Job.
         """
         return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
-    
+
     def addFollowOnFn(self, fn, *args, **kwargs):
         """
         Adds a follow-on fn. See FunctionWrappingJob.
@@ -170,7 +171,7 @@ class Job(object):
         Returns the new follow-on Job.
         """
         return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
-    
+
     @staticmethod
     def wrapJobFn(fn, *args, **kwargs):
         """
@@ -179,7 +180,7 @@ class Job(object):
         Convenience function for constructor of JobFunctionWrappingJob
         """
         return JobFunctionWrappingJob(fn, *args, **kwargs)
- 
+
     @staticmethod
     def wrapFn(fn, *args, **kwargs):
         """
@@ -188,7 +189,7 @@ class Job(object):
         Convenience function for constructor of FunctionWrappingJob
         """
         return FunctionWrappingJob(fn, *args, **kwargs)
-    
+
     def encapsulate(self):
         """
         See EncapsulatedJob.
@@ -196,12 +197,12 @@ class Job(object):
         :rtype : A new EncapsulatedJob for this job.
         """
         return EncapsulatedJob(self)
-    
+
     ####################################################
-    #The following function is used for passing return values between 
+    #The following function is used for passing return values between
     #job run functions
     ####################################################
-    
+
     def rv(self, argIndex=None):
         """
         Gets a PromisedJobReturnValue, representing the argIndex return
@@ -223,12 +224,12 @@ class Job(object):
             return self._rvs[argIndex]
         #Create, store, return new PromisedJobReturnValue
         self._rvs[argIndex] = PromisedJobReturnValue()
-        return self._rvs[argIndex] 
-    
+        return self._rvs[argIndex]
+
     ####################################################
     #Cycle/connectivity checking
     ####################################################
-    
+
     def checkJobGraphForDeadlocks(self):
         """
         Raises a JobGraphDeadlockException exception if the job graph
@@ -236,7 +237,7 @@ class Job(object):
         """
         self.checkJobGraphConnected()
         self.checkJobGraphAcylic()
-    
+
     def getRootJobs(self):
         """
         A root is a job with no predecessors.
@@ -244,7 +245,7 @@ class Job(object):
         contains this job.
         """
         roots = set()
-        visited = set() 
+        visited = set()
         #Function to get the roots of a job
         def getRoots(job):
             if job not in visited:
@@ -258,7 +259,7 @@ class Job(object):
                     job._followOns + job._services)
         getRoots(self)
         return roots
-    
+
     def checkJobGraphConnected(self):
         """
         Raises a JobGraphDeadlockException exception if getRootJobs() does not
@@ -269,7 +270,7 @@ class Job(object):
         rootJobs = self.getRootJobs()
         if len(rootJobs) != 1:
             raise JobGraphDeadlockException("Graph does not contain exactly one root job: %s" % rootJobs)
-    
+
     def checkJobGraphAcylic(self):
         """
         Raises a JobGraphDeadlockException exception if the connected component
@@ -294,27 +295,27 @@ class Job(object):
         roots = self.getRootJobs()
         if len(roots) == 0:
             raise JobGraphDeadlockException("Graph contains no root jobs due to cycles")
-        
+
         #Get implied edges
         extraEdges = self._getImpliedEdges(roots)
-            
+
         #Check for directed cycles in the augmented graph
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
-    
+
     ####################################################
     #The following nested classes are used for
     #creating jobtrees (Job.Runner),
     #managing temporary files (Job.FileStore),
     #and defining a service (Job.Service)
     ####################################################
-    
+
     class Runner(object):
         """
         Used to setup and run a graph of jobs.
         """
-    
+
         @staticmethod
         def getDefaultOptions():
             """
@@ -326,7 +327,7 @@ class Job(object):
             options, args = parser.parse_args(args=[])
             assert len(args) == 0
             return options
-            
+
         @staticmethod
         def addToilOptions(parser):
             """
@@ -334,7 +335,7 @@ class Job(object):
             parser object.
             """
             addOptions(parser)
-    
+
         @staticmethod
         def startToil(job, options):
             """
@@ -360,7 +361,7 @@ class Job(object):
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
         """
-        
+
         def __init__(self, jobStore, jobWrapper, localTempDir):
             """
             This constructor should not be called by the user, 
@@ -371,14 +372,14 @@ class Job(object):
             self.jobWrapper = jobWrapper
             self.localTempDir = localTempDir
             self.loggingMessages = []
-        
+
         def writeGlobalFile(self, localFileName):
             """
             Takes a file (as a path) and uploads it to to the global file store, returns
             an ID that can be used to retrieve the file. 
             """
             return self.jobStore.writeFile(self.jobWrapper.jobStoreID, localFileName)
-        
+
         def updateGlobalFile(self, fileStoreID, localFileName):
             """
             Replaces the existing version of a file in the global file store, 
@@ -386,7 +387,7 @@ class Job(object):
             Throws an exception if the file does not exist.
             """
             self.jobStore.updateFile(fileStoreID, localFileName)
-        
+
         def readGlobalFile(self, fileStoreID, localFilePath=None):
             """
             Returns a path to a local copy of the file keyed by fileStoreID. 
@@ -401,14 +402,14 @@ class Job(object):
             else:
                 self.jobStore.readFile(fileStoreID, localFilePath)
             return localFilePath
-        
+
         def deleteGlobalFile(self, fileStoreID):
             """
             Deletes a global file with the given fileStoreID. Returns true if 
             file exists, else false.
             """
             return self.jobStore.deleteFile(fileStoreID)
-        
+
         def writeGlobalFileStream(self):
             """
             Similar to writeGlobalFile, but returns a context manager yielding a 
@@ -417,7 +418,7 @@ class Job(object):
             not need to and should not be closed explicitly.
             """
             return self.jobStore.writeFileStream(self.jobWrapper.jobStoreID)
-        
+
         def updateGlobalFileStream(self, fileStoreID):
             """
             Similar to updateGlobalFile, but returns a context manager yielding 
@@ -425,20 +426,20 @@ class Job(object):
             not need to and should not be closed explicitly.
             """
             return self.jobStore.updateFileStream(fileStoreID)
-        
+
         def getEmptyFileStoreID(self):
             """
             Returns the ID of a new, empty file.
             """
             return self.jobStore.getEmptyFileStoreID(self.jobWrapper.jobStoreID)
-        
+
         def globalFileExists(self, fileStoreID):
             """
             :rtype : True if and only if the jobStore contains the given fileStoreID, else
             false.
             """
             return self.jobStore.fileExists(fileStoreID)
-        
+
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
@@ -446,7 +447,7 @@ class Job(object):
             need to and should not be closed explicitly.
             """
             return self.jobStore.readFileStream(fileStoreID)
-           
+
         def getLocalTempDir(self):
             """
             Get the local temporary directory. This directory will exist for the 
@@ -454,14 +455,14 @@ class Job(object):
             the job terminates.
             """
             return self.localTempDir
-        
+
         def logToMaster(self, string):
             """
             Send a logging message to the leader. Will only ne reported if logging 
             is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
-    
+
     class Service:
         """
         Abstract class used to define the interface to a service.
@@ -474,8 +475,8 @@ class Job(object):
             """
             self.memory = memory
             self.cores = cores
-        
-        @abstractmethod       
+
+        @abstractmethod
         def start(self):
             """
             Start the service.
@@ -484,7 +485,7 @@ class Job(object):
             pickleable. Will be used by a job to access the service.
             """
             pass
-        
+
         @abstractmethod
         def stop(self):
             """
@@ -497,7 +498,7 @@ class Job(object):
     ####################################################
     #Private functions
     ####################################################
-    
+
     def _addPredecessor(self, predecessorJob):
         """
         Adds a predecessor job to the set of predecessor jobs. Raises a
@@ -511,7 +512,7 @@ class Job(object):
     #The following functions are used to serialise
     #a job graph to the jobStore
     ####################################################
-    
+
     def _getHashOfJobsToUUIDs(self, jobsToUUIDs):
         """
         Creates a map of the jobs in the graph to randomly selected UUIDs.
@@ -521,7 +522,7 @@ class Job(object):
         for successor in self._children + self._followOns:
             successor._getHashOfJobsToUUIDs2(jobsToUUIDs)
         return jobsToUUIDs
-        
+
     def getUserScript(self):
         return self.userModule
 
@@ -529,7 +530,7 @@ class Job(object):
         if self not in jobsToUUIDs:
             jobsToUUIDs[self] = str(uuid.uuid1())
             self._getHashOfJobsToUUIDs(jobsToUUIDs)
-           
+
     def _createEmptyJobForJob(self, jobStore, updateID=None, command=None,
                                  predecessorNumber=0):
         """
@@ -543,7 +544,7 @@ class Job(object):
                                disk=(self.disk if self.disk is not None
                                     else float(jobStore.config.defaultDisk)),
                                updateID=updateID, predecessorNumber=predecessorNumber)
-        
+
     def _makeJobWrappers(self, jobStore, jobsToUUIDs, jobsToJobs, predecessor, rootJob):
         """
         Creates a job for each job in the job graph, recursively.
@@ -554,7 +555,7 @@ class Job(object):
             jobWrapper = self._createEmptyJobForJob(jobStore, jobsToUUIDs[self],
                                                 predecessorNumber=len(self._predecessors))
             jobsToJobs[self] = jobWrapper
-            
+
             #Add followOns/children to be run after the current job.
             for successors in (self._followOns, self._children):
                 jobs = map(lambda successor:
@@ -562,9 +563,9 @@ class Job(object):
                                                jobsToJobs, self, rootJob), successors)
                 if len(jobs) > 0:
                     jobWrapper.stack.append(jobs)
-            
+
             #Pickle the job so that its run method can be run at a later time.
-            #Drop out the children/followOns/predecessors/services - which are 
+            #Drop out the children/followOns/predecessors/services - which are
             #all recored within the jobStore and do not need to be stored within
             #the job
             self._children = []
@@ -586,15 +587,15 @@ class Job(object):
             #Lookup the already created job
             jobWrapper = jobsToJobs[self]
             assert jobWrapper.predecessorNumber > 1
-        
+
         #The return is a tuple stored within the job.stack of the jobs to run.
         #The tuple is jobStoreID, memory, cores, disk, predecessorID
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
-        #per predecessor 
+        #per predecessor
         return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
-    
+
     def _serialiseJobGraph(self, jobWrapper, jobStore):
         """
         Serialises the graph of jobs rooted at this job,
@@ -620,7 +621,7 @@ class Job(object):
         jobWrapper.jobsToDelete = []
         jobWrapper.command = None
         jobStore.update(jobWrapper)
-        
+
     def _serialiseFirstJob(self, jobStore):
         """
         Serialises the root job. Returns the wrapping job.
@@ -640,7 +641,7 @@ class Job(object):
         #Return the first job wrapper
         return jobWrapper
 
-    @staticmethod      
+    @staticmethod
     def _loadRootJob(jobStore):
         """
         Loads the root job.
@@ -651,31 +652,22 @@ class Job(object):
         if not jobStore.exists(rootJobID):
             raise JobException("No root job (%s) left in toil workflow (workflow has finished successfully?)" % rootJobID)
         return jobStore.load(rootJobID)
-    
-    @staticmethod
-    def _loadClass(className, userModule):
+
+    @classmethod
+    def _loadUserModule(cls, userModule):
         """
-        Loads class so that instance can be unpickled.
+        Imports and returns the module object represented by the given module descriptor.
 
         :type userModule: ModuleDescriptor
         """
         if not userModule.belongsToToil:
             userModule = userModule.localize()
         if userModule.dirPath not in sys.path:
-            # FIXME: prepending to sys.path will probably fix #103
             sys.path.append(userModule.dirPath)
-        userModule = importlib.import_module(userModule.name)
-        thisModule = sys.modules[__name__]
-        #TODO: Document what this magic is doing
-        try:
-            thisModule.__dict__[className] = userModule.__dict__[className]
-        except KeyError:
-            logger.error("Error retrieving user module. Confirm that the script's name is not also "
-                         "a standard python module")
-            raise
-    
-    @staticmethod
-    def _loadJob(command, jobStore):
+        return importlib.import_module(userModule.name)
+
+    @classmethod
+    def _loadJob(cls, command, jobStore):
         """
         Unpickles a job.Job instance by decoding the command. See job.Job._serialiseFirstJob and
         job.Job._makeJobWrappers to see how the Job is encoded in the command. Essentially the
@@ -685,20 +677,41 @@ class Job(object):
         commandTokens = command.split()
         assert "scriptTree" == commandTokens[0]
         userModule = ModuleDescriptor(*(commandTokens[3:]))
-        Job._loadClass(commandTokens[2], userModule)
+        userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
         if pickleFile == "firstJob":
-            openFileStream = jobStore.readSharedFileStream( pickleFile )
+            openFileStream = jobStore.readSharedFileStream(pickleFile)
         else:
-            openFileStream = jobStore.readFileStream( pickleFile )
+            openFileStream = jobStore.readFileStream(pickleFile)
         with openFileStream as fileHandle:
-            return cPickle.load( fileHandle )
+            return cls._unpickle(userModule, fileHandle)
+
+    @classmethod
+    def _unpickle(cls, userModule, fileHandle):
+        """
+        Unpickles an object graph from the given file handle while loading symbols referencing
+        the __main__ module from the given userModule instead.
+
+        :param userModule:
+        :param fileHandle:
+        :return:
+        """
+        unpickler = cPickle.Unpickler(fileHandle)
+
+        def filter_main(module_name, class_name):
+            if module_name == '__main__':
+                return getattr(userModule, class_name)
+            else:
+                return getattr(importlib.import_module(module_name), class_name)
+
+        unpickler.find_global = filter_main
+        return unpickler.load()
 
     ####################################################
     #Functions to pass Job.run return values to the
     #input arguments of other Job instances
     ####################################################
-      
+
     def _setFileIDsForPromisedValues(self, jobStore, jobStoreID, visited):
         """
         Sets the jobStoreFileID for each PromisedJobReturnValue in the
@@ -720,7 +733,7 @@ class Job(object):
             #Now recursively do the same for the children and follow ons.
             for successorJob in self._children + self._followOns + self._services:
                 successorJob._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
-    
+
     @staticmethod
     def _setReturnValuesForPromises(job, returnValues, jobStore):
         """
@@ -736,27 +749,27 @@ class Job(object):
                 if isinstance(argToStore, PromisedJobReturnValue):
                     raise RuntimeError("A nested PromisedJobReturnValue has been found.") #We do not allow the return of PromisedJobReturnValue instance from the run function
                 cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
-    
+
     ####################################################
     #Functions associated with Job.checkJobGraphAcyclic to establish
     #that the job graph does not contain any cycles of dependencies.
     ####################################################
-        
+
     def _dfs(self, visited):
         """Adds the job and all jobs reachable on a directed path from current
         node to the set 'visited'.
         """
         if self not in visited:
-            visited.add(self) 
+            visited.add(self)
             for successor in self._children + self._followOns:
                 successor._dfs(visited)
-        
+
     def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
         """
         DFS traversal to detect cycles in augmented job graph.
         """
         if self not in visited:
-            visited.add(self) 
+            visited.add(self)
             stack.append(self)
             for successor in self._children + self._followOns + extraEdges[self]:
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
@@ -764,7 +777,7 @@ class Job(object):
         if self in stack:
             stack.append(self)
             raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
-    
+
     @staticmethod
     def _getImpliedEdges(roots):
         """
@@ -774,10 +787,10 @@ class Job(object):
         nodes = set()
         for root in roots:
             root._dfs(nodes)
-        
+
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
-        #connected by an implied edge 
+        #connected by an implied edge
         extraEdges = dict(map(lambda n : (n, []), nodes))
         for job in nodes:
             if len(job._followOns) > 0:
@@ -789,8 +802,8 @@ class Job(object):
                 #Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += job._followOns[:]
-        return extraEdges 
-    
+        return extraEdges
+
     def _modifyJobGraphForServices(self, fileStore):
         """
         Modifies the job graph to correctly schedule any services
@@ -803,11 +816,11 @@ class Job(object):
                 assert fileStore.globalFileExists(service.startFileStoreID)
                 service.stopFileStoreID = fileStore.getEmptyFileStoreID()
                 assert fileStore.globalFileExists(service.stopFileStoreID)
-            
+
             def removePredecessor(job):
                 assert self in job._predecessors
                 job._predecessors.remove(self)
-            
+
             #t1 and t2 are used to run the children and followOns of the job
             #after the services of the job are started
             startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
@@ -833,20 +846,20 @@ class Job(object):
             #this is achieved by deleting the stopFileStoreIDs.
             t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
             self._services = [] #Defensive
-    
+
     ####################################################
     #Function which worker calls to ultimately invoke
     #a jobs Job.run method, and then handle created
     #children/followOn jobs
     ####################################################
-       
+
     def _execute(self, jobWrapper, stats, localTempDir, jobStore):
         """This is the core method for running the job within a worker.
-        """ 
+        """
         if stats != None:
             startTime = time.time()
             startClock = getTotalCpuTime()
-        
+
         baseDir = os.getcwd()
         #Run the job, first cleanup then run.
         fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir)
@@ -875,12 +888,12 @@ class Job(object):
             stats.attrib["memory"] = str(totalMemoryUsage)
         #Return any logToMaster logging messages
         return fileStore.loggingMessages
-    
+
     ####################################################
     #Method used to resolve the module in which an inherited job instances
     #class is defined
     ####################################################
-    
+
     @staticmethod
     def _resolveMainModule( moduleName ):
         """
@@ -904,7 +917,7 @@ class Job(object):
                 "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
                 moduleName)
         return moduleDirPath, moduleName
-    
+
     def _jobName(self):
         """
         :rtype : string, used as identifier of the job class in the stats report. 
@@ -930,28 +943,17 @@ class FunctionWrappingJob(Job):
         memory = kwargs.pop("memory") if "memory" in kwargs else None
         Job.__init__(self, memory=memory, cores=cores, disk=disk)
         #If dill is installed pickle the user function directly
-        
+
         #else use indirect method
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
         self._args=args
         self._kwargs=kwargs
-        
+
     def _getUserFunction(self):
-        #If dill is installed unpickle the user function directly
-        
-        userFunctionModule = self.userFunctionModule
-        if not userFunctionModule.belongsToToil:
-            userFunctionModule = userFunctionModule.localize()
-        if userFunctionModule.dirPath not in sys.path:
-            # FIXME: prepending to sys.path will probably fix #103
-            sys.path.append(userFunctionModule.dirPath)
-        try:
-            return getattr(importlib.import_module(userFunctionModule.name), self.userFunctionName)
-        except AttributeError:
-            logger.error("Error retrieving user module. Confirm that the script's name is not also "
-                         "a standard python module")
-            raise
+        userFunctionModule = self._loadUserModule(self.userFunctionModule)
+        return getattr(userFunctionModule, self.userFunctionName)
+
 
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
@@ -959,7 +961,7 @@ class FunctionWrappingJob(Job):
 
     def getUserScript(self):
         return self.userFunctionModule
-    
+
     def _jobName(self):
         return ".".join((self.__class__.__name__,self.userFunctionModule.name,self.userFunctionName))
 
@@ -983,7 +985,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         userFunction = self._getUserFunction()
         self.fileStore = fileStore
         return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
-    
+
 class ServiceJob(Job):
     """
     Job used to wrap a Job.Service instance. This constructor should not be called by a user.
@@ -995,43 +997,41 @@ class ServiceJob(Job):
         Job.__init__(self, memory=service.memory, cores=service.cores)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
-        self.serviceClassName = service.__class__.__name__
         #The service to run, pickled
         self.pickledService = cPickle.dumps(service)
         #An empty file in the jobStore which when deleted is used to signal
-        #that the service should cease, is initialised in 
+        #that the service should cease, is initialised in
         #Job._modifyJobGraphForServices
         self.stopFileStoreID = None
-        #Similarly a empty file which when deleted is used to signal that the 
+        #Similarly a empty file which when deleted is used to signal that the
         #service is established
         self.startFileStoreID = None
-        
+
     def run(self, fileStore):
         #Unpickle the service
-        self._loadClass(self.serviceClassName, self.serviceModule) #This gets the class loaded 
-        service = cPickle.loads(self.pickledService)
+        userModule = self._loadUserModule(self.serviceModule)
+        service = self._unpickle( userModule, BytesIO( self.pickledService ) )
         #Start the service
         startCredentials = service.start()
         #The start credentials  must be communicated to processes connecting to
-        #the service, to do this while the run method is running we 
+        #the service, to do this while the run method is running we
         #cheat and set the return value promise within the run method
-        self._setReturnValuesForPromises(self, startCredentials, 
-                                         fileStore.jobStore)
-        self._rvs = {} #Set this to avoid the return values being updated after the 
+        self._setReturnValuesForPromises(self, startCredentials, fileStore.jobStore)
+        self._rvs = {}  # Set this to avoid the return values being updated after the
         #run method has completed!
         #Now flag that the service is running jobs can connect to it
         assert self.startFileStoreID != None
         assert fileStore.globalFileExists(self.startFileStoreID)
         fileStore.deleteGlobalFile(self.startFileStoreID)
         assert not fileStore.globalFileExists(self.startFileStoreID)
-        #Now block until we are told to stop, which is indicated by the removal 
+        #Now block until we are told to stop, which is indicated by the removal
         #of a file
         assert self.stopFileStoreID != None
         while fileStore.globalFileExists(self.stopFileStoreID):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         service.stop()
-        
+
     def getUserScript(self):
         return self.serviceModule
 
@@ -1074,16 +1074,16 @@ class EncapsulatedJob(Job):
         Job.addChild(self, job)
         self.followOn = Job()
         Job.addFollowOn(self, self.followOn)
-        
+
     def addChild(self, childJob):
         return Job.addChild(self.followOn, childJob)
-    
+
     def addService(self, service):
         return Job.addService(self.followOn, service)
-    
+
     def addFollowOn(self, followOnJob):
         return Job.addFollowOn(self.followOn, followOnJob)
-    
+
     def rv(self, argIndex=0):
         return self.followOn.rv(argIndex)
 
@@ -1096,12 +1096,12 @@ class PromisedJobReturnValue(object):
     will be replaced by the actual referenced return value.
     This mechanism allows a return values from one Job's run method to be input
     argument to Job before the former Job's run function has been executed.
-    """ 
+    """
     def __init__(self):
         #The None values are replaced with a actual values in Job._setFileIDsForPromisedValues
         self.jobStoreFileID = None #A file containing the actual pickled return value
-        self.jobStoreString = None #This is the string used to load the jobStore. 
-            
+        self.jobStoreString = None #This is the string used to load the jobStore.
+
 def promisedJobReturnValuePickleFunction(promise):
     """
     This function and promisedJobReturnValueUnpickleFunction are used as custom pickle/unpickle 
@@ -1125,8 +1125,8 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
         return value
 
 #This sets up the custom magic for pickling/unpickling a PromisedJobReturnValue
-copy_reg.pickle(PromisedJobReturnValue, 
-                promisedJobReturnValuePickleFunction, 
+copy_reg.pickle(PromisedJobReturnValue,
+                promisedJobReturnValuePickleFunction,
                 promisedJobReturnValueUnpickleFunction)
 
 def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
@@ -1146,4 +1146,4 @@ def blockUntilDeleted(job, jobStoreFileIDs):
         if len(jobStoreFileIDs) == 0:
             break
         time.sleep(1)
-        
+
