@@ -58,8 +58,7 @@ class JobTest(ToilTest):
             A.addFollowOn(F)
 
             # Create the runner for the workflow.
-            options = Job.Runner.getDefaultOptions()
-            options.jobStore = self._getTestJobStorePath()
+            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(A, options)
@@ -185,8 +184,7 @@ class JobTest(ToilTest):
             # Make the job graph
             rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile)
             # Run the job  graph
-            options = Job.Runner.getDefaultOptions()
-            options.jobStore = "%s.%i" % (jobStore, test)
+            options = Job.Runner.getDefaultOptions("%s.%i" % (jobStore, test))
             Job.Runner.startToil(rootJob, options)
             # Get the ordering add the implied ordering to the graph
             with open(outFile, 'r') as fH:

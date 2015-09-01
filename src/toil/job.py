@@ -17,7 +17,7 @@ from __future__ import absolute_import
 import os
 import sys
 import importlib
-from optparse import OptionParser
+from argparse import ArgumentParser
 import xml.etree.cElementTree as ET
 from abc import ABCMeta, abstractmethod
 import tempfile
@@ -316,15 +316,14 @@ class Job(object):
         """
     
         @staticmethod
-        def getDefaultOptions():
+        def getDefaultOptions(jobStore):
             """
             Returns an optparse.Values object of the 
             options used by a toil.
             """
-            parser = OptionParser()
+            parser = ArgumentParser()
             Job.Runner.addToilOptions(parser)
-            options, args = parser.parse_args(args=[])
-            assert len(args) == 0
+            options = parser.parse_args(args=[jobStore])
             return options
             
         @staticmethod

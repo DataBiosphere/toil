@@ -63,7 +63,7 @@ class UtilsTest(ToilTest):
         """
         # Get the sort command to run
         toilCommandString = ("{self.sort} "
-                             "--jobStore {self.toilDir} "
+                             "{self.toilDir} "
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
@@ -76,7 +76,7 @@ class UtilsTest(ToilTest):
 
         # Status command
         toilStatusCommandString = ("{self.toilMain} status "
-                                   "--jobStore {self.toilDir} "
+                                   "{self.toilDir} "
                                    "--failIfNotComplete".format(**locals()))
 
         # Run the script for the first time
@@ -107,7 +107,7 @@ class UtilsTest(ToilTest):
 
         # Check we can run 'toil stats'
         toilStatsString = ("{self.toilMain} stats "
-                           "--jobStore {self.toilDir} "
+                           "{self.toilDir} "
                            "--pretty".format(**locals()))
         system(toilStatsString)
 
@@ -118,7 +118,7 @@ class UtilsTest(ToilTest):
 
         # Check we can run 'toil clean'
         toilCleanString = ("{self.toilMain} clean "
-                           "--jobStore {self.toilDir}".format(**locals()))
+                           "{self.toilDir}".format(**locals()))
         system(toilCleanString)
             
     def testUtilsStatsSort(self):
@@ -127,7 +127,7 @@ class UtilsTest(ToilTest):
         """
         # Get the sort command to run
         toilCommandString = ("{self.sort} "
-                             "--jobStore {self.toilDir} "
+                             "{self.toilDir} "
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
@@ -140,7 +140,7 @@ class UtilsTest(ToilTest):
         # Check we can run 'toil stats'
         rootPath = os.path.join(toilPackageDirPath(), "utils")
         toilStatsString = ("{self.toilMain} stats "
-                           "--jobStore {self.toilDir} --pretty".format(**locals()))
+                           "{self.toilDir} --pretty".format(**locals()))
         system(toilStatsString)
 
         # Check the file is properly sorted

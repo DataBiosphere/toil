@@ -13,7 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import
 import sys
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 from toil.job import Job
 
@@ -60,15 +60,11 @@ class HelloWorldFollowOn(Job):
         touchFile( fileStore)
 
 def main(numJobs):
-    args = list( sys.argv )
-    args.append('--batchSystem=mesos')
-    args.append('--retryCount=3')
-
     # Boilerplate -- startToil requires options
-    parser = OptionParser()
+    parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    options, args = parser.parse_args( args )
-
+    options = parser.parse_args( args=["./toilTest"] )
+    options.batchSystem="mesos"
     # Launch first toil Job
     i = LongTestJob( numJobs )
     Job.Runner.startToil(i,  options )

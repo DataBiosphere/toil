@@ -57,7 +57,7 @@ class MesosTest(ToilTest, MesosTestSupport):
 
     def test_hello_world(self):
         dirPath = os.path.dirname(os.path.abspath(__file__))
-        subprocess.check_call("python {dirPath}/helloWorld.py "
+        subprocess.check_call("python {dirPath}/helloWorld.py ./toilTest "
                               "--batchSystem=mesos "
                               "--logLevel={logLevel}".format(dirPath=dirPath,
                                                              logLevel=getLogLevelString()),

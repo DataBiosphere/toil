@@ -35,24 +35,20 @@ def main():
     ##########################################
     #Construct the arguments.
     ##########################################  
-    
-    parser = getBasicOptionParser("usage: %prog restart [--jobStore] JOB_TREE_DIR [more options]", "%prog "+version)
 
-    parser.add_option("--jobStore", dest="jobStore",
-                      help="Job store path. Can also be specified as the single argument to the script.")
+    parser = getBasicOptionParser()
 
-    options, args = parseBasicOptions(parser)
-    
-    if len(args) != 0:
-        parser.error("Unrecognised input arguments: %s" % " ".join(args))
-        
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(0)
-    
-    assert len(args) <= 1 #Only toil may be specified as argument
-    if len(args) == 1: #Allow toil directory as arg
-        options.jobStore = args[0]
+    parser.add_argument("--version", action='version', version=version)
+
+    parser.add_argument("jobStore", type=str,
+          help=("Store in which to place job management files \
+          and the global accessed temporary files"
+          "(If this is a file path this needs to be globally accessible "
+          "by all machines running jobs).\n"
+          "If the store already exists and restart is false an"
+          " ExistingJobStoreException exception will be thrown."))
+
+    options = parseBasicOptions(parser)
         
     ##########################################
     #Now run the toil construction/leader

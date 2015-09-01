@@ -79,8 +79,7 @@ class DependenciesTest(ToilTest):
             else:
                 tree = combTree(size)
 
-            options = Job.Runner.getDefaultOptions()
-            options.jobStore = self.jobStore
+            options = Job.Runner.getDefaultOptions(self.jobStore)
             options.maxThreads = maxThreads
             options.batchSystem = batchSystem
             options.logFile = logName

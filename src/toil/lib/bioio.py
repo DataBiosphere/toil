@@ -244,13 +244,13 @@ class TestStatus:
         return os.environ["SON_TRACE_DATASETS"]
     getPathToDataSets = staticmethod(getPathToDataSets)
 
-def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", parser=None):
+def getBasicOptionParser( parser=None):
     if parser is None:
-        parser = OptionParser(usage=usage, version=version)
+        parser = ArgumentParser()
 
     addLoggingOptions(parser)
 
-    parser.add_option("--tempDirRoot", dest="tempDirRoot", type="string",
+    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str,
                       help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
                       default=tempfile.gettempdir())
 
@@ -259,7 +259,7 @@ def getBasicOptionParser(usage="usage: %prog [options]", version="%prog 0.1", pa
 def parseBasicOptions(parser):
     """Setups the standard things from things added by getBasicOptionParser.
     """
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
 
     setLoggingFromOptions(options)
 
@@ -267,7 +267,7 @@ def parseBasicOptions(parser):
     if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
         options.tempDirRoot = tempfile.gettempdir()
 
-    return options, args
+    return options
 
 def getRandomAlphaNumericString(length=10):
     """Returns a random alpha numeric string of the given length.
