@@ -25,8 +25,8 @@ from threading import Thread
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems.parasol import getParasolResultsFileName
 
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger( __name__ )
 
 class MemoryString:
     def __init__(self, string):
@@ -57,24 +57,31 @@ class MemoryString:
     def __cmp__(self, other):
         return cmp(self.bytes, other.bytes)
 
-def prepareQsub(cpu, mem):
-    qsubline = ["qsub","-b","y","-terse","-j" ,"y", "-cwd", "-o", "/dev/null", "-e", "/dev/null", "-v",
-                     "LD_LIBRARY_PATH=%s" % os.environ["LD_LIBRARY_PATH"]]
+
+def prepareQsub(cpu, mem, jobID):
+    qsubline = ["qsub", "-b", "y", "-terse", "-j", "y", "-cwd", "-o", "/dev/null",
+                "-e", "/dev/null", "-N", "Toil-Job_" + str(jobID)]
+    try:
+        path = os.environ["LD_LIBRARY_PATH"]
+    except KeyError:
+        pass
+    else:
+        qsubline.append("LD_LIBRARY_PATH=%s" % path)
+
     reqline = list()
     if mem is not None:
-        reqline.append("vf="+str(mem/ 1024)+"K")
-        reqline.append("h_vmem="+str(mem/ 1024)+"K")
+        reqline.append("vf=" + str(mem / 1024) + "K")
+        reqline.append("h_vmem=" + str(mem / 1024) + "K")
     if len(reqline) > 0:
         qsubline.extend(["-hard","-l", ",".join(reqline)])
-    if cpu is not None:
+    if cpu is not None and math.ceil(cpu) > 1:
         qsubline.extend(["-pe", "smp", str(int(math.ceil(cpu)))])
     return qsubline
 
 def qsub(qsubline):
-    logger.debug("**"+" ".join(qsubline))
+    logger.debug("**" + " ".join(qsubline))
     process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
     result = int(process.stdout.readline().strip().split('.')[0])
-    logger.debug("Got the job id: %s" % (str(result)))
     return result
 
 def getjobexitcode(sgeJobID):
@@ -83,11 +90,12 @@ def getjobexitcode(sgeJobID):
         if task is not None:
              args.extend(["-t", str(task)])
 
-        process = subprocess.Popen(args, stdout = subprocess.PIPE,stderr = subprocess.STDOUT)
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             if line.startswith("failed") and int(line.split()[1]) == 1:
                 return 1
             elif line.startswith("exit_status"):
+                logger.debug('Exit Status: {}'.format(line.split()[1]))
                 return int(line.split()[1])
         return None
 
@@ -106,16 +114,17 @@ class Worker(Thread):
 
     def getRunningJobIDs(self):
         times = {}
-        currentjobs = dict((self.sgeJobIDs[x], x) for x in self.runningJobs)
-        process = subprocess.Popen(["qstat"], stdout = subprocess.PIPE)
+        currentjobs = dict((str(self.sgeJobIDs[x][0]), x) for x in self.runningJobs)
+        process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
         for currline in stdout.split('\n'):
             items = currline.strip().split()
-            if ((len(items) > 9 and (items[0],items[9]) in currentjobs) or (items[0], None) in currentjobs) and items[4] == 'r':
-                jobstart = " ".join(items[5:7])
-                jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                times[currentjobs[(items[0],items[9])]] = time.time() - jobstart 
+            if items:
+                if items[0] in currentjobs and items[4] == 'r':
+                    jobstart = " ".join(items[5:7])
+                    jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
+                    times[currentjobs[items[0]]] = time.time() - jobstart
 
         return times
 
@@ -143,6 +152,7 @@ class Worker(Thread):
         # Do the dirty job
         for jobID in list(killList):
             if jobID in self.runningJobs:
+                logger.debug('Killing job: {}'.format(jobID))
                 process = subprocess.Popen(["qdel", self.getSgeID(jobID)])
             else:
                 if jobID in self.waitingJobs:
@@ -154,6 +164,7 @@ class Worker(Thread):
         while len(killList) > 0:
             for jobID in list(killList):
                 if getjobexitcode(self.sgeJobIDs[jobID]) is not None:
+                    logger.debug('Adding {} jobID to killedJobsQueue'.format(jobID))
                     self.killedJobsQueue.put(jobID)
                     killList.remove(jobID)
                     self.forgetJob(jobID)
@@ -171,10 +182,8 @@ class Worker(Thread):
         # Launch jobs as necessary:
         while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(self.boss.maxCores):
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
-            qsubline = prepareQsub(cpu, memory) + [command]
-            logger.debug('qsubline: {}'.format(qsubline))
+            qsubline = prepareQsub(cpu, memory, jobID) + [command]
             sgeJobID = qsub(qsubline)
-            logger.debug('sgeJobID: {}'.format(sgeJobID))
             self.sgeJobIDs[jobID] = (sgeJobID, None)
             self.runningJobs.add(jobID)
             self.allocatedCpus[jobID] = cpu
@@ -183,7 +192,6 @@ class Worker(Thread):
         logger.debug('List of runningJobs: {}'.format(self.runningJobs))
         for jobID in list(self.runningJobs):
             exit = getjobexitcode(self.sgeJobIDs[jobID])
-            logger.debug('Exit status: {}'.format(exit))
             if exit is not None:
                 self.updatedJobsQueue.put((jobID, exit))
                 self.forgetJob(jobID)
@@ -214,7 +222,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.currentjobs = set()
         self.obtainSystemConstants()
         self.nextJobID = 0
-
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
@@ -230,7 +237,6 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
-
         self.currentjobs.add(jobID)
         self.newJobsQueue.put((jobID, cores, memory, command))
         logger.debug("Issued the job command: %s with job id: %s " % (command, str(jobID)))
@@ -243,19 +249,20 @@ class GridengineBatchSystem(AbstractBatchSystem):
         for jobID in jobIDs:
             self.killQueue.put(jobID)
 
+        logger.debug('Jobs to be killed: {}'.format(jobIDs))
         killList = set(jobIDs)
         while len(killList) > 0:
-            while True:
-                i = self.killedJobsQueue.get()
-                if i is not None:
-                    killList.remove(jobID)
-                    self.currentjobs.remove(jobID)
-                else:
-                    break
+            i = self.killedJobsQueue.get()
+            if i is not None:
+                killList.remove(i)
+                if i in self.currentjobs:
+                    self.currentjobs.remove(i)
+            else:
+                break
 
-        if len(killList) > 0:
-            time.sleep(5)
-    
+            if len(killList) > 0:
+                time.sleep(5)
+
     def getIssuedBatchJobIDs(self):
         """Gets the list of jobs issued to SGE.
         """
@@ -266,6 +273,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
     
     def getUpdatedBatchJob(self, maxWait):
         i = self.updatedJobsQueue.get()
+        logger.debug('UpdatedJobsQueue Item: {}'.format(i))
         if i == None:
             return None
         jobID, retcode = i
@@ -277,9 +285,10 @@ class GridengineBatchSystem(AbstractBatchSystem):
         """
         Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """
-        self.newJobsQueue.put(None)
-        # Remove reference to newJobsQueue (raises exception if inputQueue is used after method call)
+        newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
+
+        newJobsQueue.put(None)
         self.worker.join()
 
     def getWaitDuration(self):

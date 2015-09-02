@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 import logging
 import os
+import subprocess
 import tempfile
 import unittest
 import shutil
@@ -153,6 +154,19 @@ def needs_azure(test_item):
         if not os.path.exists(full_credential_file_path):
             return unittest.skip("Skipping test. Configure %s with the access key for the "
                                  "'toiltest' storage account." % credential_file_path)(test_item)
+        return test_item
+
+def needs_gridengine(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if GridEngine is installed.
+    """
+    try:
+        subprocess.Popen('qsub')
+    except OSError:
+        return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
+    except:
+        raise
+    else:
         return test_item
 
 

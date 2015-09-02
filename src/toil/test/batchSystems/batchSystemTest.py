@@ -15,8 +15,6 @@ from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 import logging
 import os
-import shutil
-import tempfile
 import time
 import multiprocessing
 
@@ -26,7 +24,7 @@ from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.test import ToilTest, needs_mesos, needs_parasol
+from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine
 
 log = logging.getLogger(__name__)
 
@@ -64,27 +62,14 @@ class hidden:
             """
             raise NotImplementedError
 
-        config = None
-        tempDir = None
-
-        @classmethod
-        def setUpClass(cls):
-            super(hidden.AbstractBatchSystemTest, cls).setUpClass()
-            cls.config = cls._createDummyConfig()
-            cls.tempDir = tempfile.mkdtemp()
-            if not os.path.exists(cls.config.jobStore):
-                os.mkdir(cls.config.jobStore)
-
-        @classmethod
-        def tearDownClass(cls):
-            shutil.rmtree(cls.tempDir)
-            shutil.rmtree(cls.config.jobStore)
-            super(hidden.AbstractBatchSystemTest, cls).tearDownClass()
+        def _createDummyConfig(self):
+            return Config()
 
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
+            self.config = self._createDummyConfig()
             self.batchSystem = self.createBatchSystem()
-            self.tempDir = tempfile.mkdtemp()
+            self.tempDir = self._createTempDir('testFiles')
 
         def tearDown(self):
             self.batchSystem.shutdown()
@@ -97,19 +82,19 @@ class hidden:
             test_path = os.path.join(self.tempDir, 'test.txt')
             # sleep 1 coupled to command as 'touch' was too fast for wait_for_jobs to catch
             jobCommand = 'touch {}; sleep 1'.format(test_path)
-            self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=.1, disk=1000)
+            self.batchSystem.issueBatchJob(jobCommand, memory=10, cores=1, disk=1000)
             self.wait_for_jobs(wait_for_completion=True)
             self.assertTrue(os.path.exists(test_path))
 
         def testCheckResourceRequest(self):
             self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
-                              memory=1000, cores=200, disk=1000)
+                              memory=1000, cores=200, disk=1e9)
             self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
-                              memory=5, cores=200, disk=1000)
+                              memory=5, cores=200, disk=1e9)
             self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
-                              memory=2e9, cores=1, disk=1000)
+                              memory=1001e9, cores=1, disk=1e9)
             self.assertRaises(InsufficientSystemResources, self.batchSystem.checkResourceRequest,
-                              memory=5, cores=1, disk=1002)
+                              memory=5, cores=1, disk=2e9)
             self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=None,
                               cores=1, disk=1000)
             self.assertRaises(AssertionError, self.batchSystem.checkResourceRequest, memory=10,
@@ -152,7 +137,7 @@ class hidden:
             self.batchSystem.killBatchJobs([0])
 
         def testGetUpdatedJob(self):
-            delay = 1
+            delay = 20
             jobCommand = 'sleep %i' % delay
             issuedIDs = []
             for i in range(numJobs):
@@ -167,26 +152,6 @@ class hidden:
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
-
-        @staticmethod
-        def _createDummyConfig():
-            config = Config()
-            """
-            config = ElementTree.Element("config")
-            config.attrib["log_level"] = 'DEBUG'
-            config.attrib["job_store"] = '.'
-            config.attrib["parasol_command"] = 'parasol'
-            config.attrib["try_count"] = str(2)
-            config.attrib["max_job_duration"] = str(1)
-            config.attrib["batch_system"] = None
-            config.attrib["max_log_file_size"] = str(1)
-            config.attrib["default_memory"] = str(1)
-            config.attrib["default_cores"] = str(1)
-            config.attrib["max_cores"] = str(1)
-            config.attrib["max_memory"] = str(1)
-            config.attrib["scale"] = str(1)
-            """
-            return config
 
         def wait_for_jobs(self, numJobs=1, wait_for_completion=False):
             while not self.batchSystem.getIssuedBatchJobIDs():
@@ -227,6 +192,21 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     """
     Tests the Parasol batch system
     """
+    def _createDummyConfig(self):
+        config = super(ParasolBatchSystemTest, self)._createDummyConfig()
+        # can't use _getTestJobStorePath since that method removes the directory
+        config.jobStore = self._createTempDir('jobStore')
+        return config
+
+    def createBatchSystem(self):
+        self._startParasol(numCores)
+        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
+                                  maxDisk=1001)
+
+    def tearDown(self):
+        self._stopParasol()
+        super(ParasolBatchSystemTest, self).tearDown()
+
 
     def testIssueJob(self):
         # TODO
@@ -239,12 +219,25 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.wait_for_jobs(wait_for_completion=True)
         self.assertTrue(os.path.exists(test_path))
 
-    def createBatchSystem(self):
-        self._startParasol(numCores)
-        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
-                                  maxDisk=1001)
 
-    def tearDown(self):
-        self._stopParasol()
-        super(ParasolBatchSystemTest, self).tearDown()
-        self.batchSystem.shutdown()
+
+@needs_gridengine
+class GridEngineTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the GridEngine batch system
+    """
+
+    def _createDummyConfig(self):
+        config = super(GridEngineTest, self)._createDummyConfig()
+        # can't use _getTestJobStorePath since that method removes the directory
+        config.jobStore = self._createTempDir('jobStore')
+        return config
+
+    def createBatchSystem(self):
+        from toil.batchSystems.gridengine import GridengineBatchSystem
+        return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9)
+
+    @classmethod
+    def setUpClass(cls):
+        super(GridEngineTest, cls).setUpClass()
+        logging.basicConfig(level=logging.DEBUG)
