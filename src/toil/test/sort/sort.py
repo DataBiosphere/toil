@@ -17,7 +17,7 @@
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
 from __future__ import absolute_import
-from optparse import OptionParser
+from argparse import ArgumentParser
 import os
 import random
 
@@ -95,18 +95,18 @@ def cleanup(job, tempOutputFileStoreID, outputFile):
     #sort(outputFile)
 
 def main():
-    parser = OptionParser()
+    parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     
-    parser.add_option("--fileToSort", dest="fileToSort",
+    parser.add_argument("--fileToSort", dest="fileToSort",
                       help="The file you wish to sort")
     
-    parser.add_option("--N", dest="N",
+    parser.add_argument("--N", dest="N",
                       help="The threshold below which a serial sort function is"
                       "used to sort file. All lines must of length less than or equal to N or program will fail", 
                       default=10000)
     
-    options, args = parser.parse_args()
+    options = parser.parse_args()
     
     if options.fileToSort is None:
         raise RuntimeError("No file to sort given")
@@ -116,9 +116,6 @@ def main():
     
     if int(options.N) <= 0:
         raise RuntimeError("Invalid value of N: %s" % options.N)
-    
-    if len(args) != 0:
-        raise RuntimeError("Unrecognised input arguments: %s" % " ".join(args))
     
     #Now we are ready to run
     Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N)), options)

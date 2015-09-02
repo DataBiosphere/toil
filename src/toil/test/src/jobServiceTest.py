@@ -34,9 +34,8 @@ class JobServiceTest(ToilTest):
             t = Job.wrapFn(f, "1", outFile)
             t.addChildFn(f, t.addService(TestService("2", "3", outFile)), outFile)
             # Create the runner for the workflow.
-            options = Job.Runner.getDefaultOptions()
+            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            options.jobStore = self._getTestJobStorePath()
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(t, options)
             # Check output

@@ -37,31 +37,31 @@ def main():
     #Construct the arguments.
     ##########################################  
     
-    parser = getBasicOptionParser("usage: %prog status [--jobStore] JOB_TREE_DIR [options]", "%prog "+version)
+    parser = getBasicOptionParser()
     
-    parser.add_option("--jobStore", dest="jobStore",
-                      help="Job store path. Can also be specified as the single argument to the script.\
-                       default=%default", default=os.path.abspath("./toil"))
+    parser.add_argument("jobStore", type=str,
+              help=("Store in which to place job management files \
+              and the global accessed temporary files"
+              "(If this is a file path this needs to be globally accessible "
+              "by all machines running jobs).\n"
+              "If the store already exists and restart is false an"
+              " ExistingJobStoreException exception will be thrown."))
     
-    parser.add_option("--verbose", dest="verbose", action="store_true",
+    parser.add_argument("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
                       jobs that failed. default=%default",
                       default=False)
     
-    parser.add_option("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
+    parser.add_argument("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
                       help="Return exit value of 1 if toil jobs not all completed. default=%default",
                       default=False)
-    
-    options, args = parseBasicOptions(parser)
+    parser.add_argument("--version", action='version', version=version)
+    options = parseBasicOptions(parser)
     logger.info("Parsed arguments")
     
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
-    
-    assert len(args) <= 1 #Only toil may be specified as argument
-    if len(args) == 1: #Allow toil directory as arg
-        options.jobStore = args[0]
     
     ##########################################
     #Do some checks.

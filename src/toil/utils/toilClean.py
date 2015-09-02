@@ -34,30 +34,22 @@ def main():
     #Construct the arguments.
     ##########################################
 
-    parser = getBasicOptionParser("usage: %prog clean [--jobStore] JOB_STORE", "%prog "+version)
-
-    parser.add_option("--jobStore", dest="jobStore",
-                      help="Job store path. Can also be specified as the single argument to the script.\
-                       default=%default", default=os.path.abspath("./toil"))
-
-    options, args = parseBasicOptions(parser)
+    parser = getBasicOptionParser()
+    parser.add_argument("jobStore", type=str,
+                      help=("Store in which to place job management files \
+                      and the global accessed temporary files"
+                      "(If this is a file path this needs to be globally accessible "
+                      "by all machines running jobs).\n"
+                      "If the store already exists and restart is false an"
+                      " ExistingJobStoreException exception will be thrown."))
+    parser.add_argument("--version", action='version', version=version)
+    options = parseBasicOptions(parser)
     logger.info("Parsed arguments")
-
-    # the JobStore may also be passed as an argument directly to the script
-    assert len(args) <= 1
-    if len(args) == 1:
-        options.jobStore = args[0]
-
-    ##########################################
-    #Do some checks.
-    ##########################################
-
-    logger.info("Checking if we have files for toil")
-    assert options.jobStore != None
 
     ##########################################
     #Survey the status of the job and report.
     ##########################################
+    logger.info("Checking if we have files for toil")
     try:
         jobStore = loadJobStore(options.jobStore)
     except JobStoreCreationException:

@@ -19,7 +19,6 @@ import os
 import sys
 import cPickle
 from argparse import ArgumentParser
-from optparse import OptionContainer, OptionGroup
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -84,13 +83,13 @@ class Config(object):
     def setOptions(self, options):
         """
         Creates a config object from the options object.
-        """ 
+        """
         from bd2k.util.humanize import human2bytes #This import is used to convert
         #from human readable quantites to integers 
         def setOption(varName, parsingFn=None, checkFn=None):
             #If options object has the option "varName" specified
             #then set the "varName" attrib to this value in the config object
-            x = getattr(options, varName)
+            x = getattr(options, varName, None)
             if x != None:
                 if parsingFn != None:
                     x = parsingFn(x)
@@ -163,14 +162,13 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
     location of the toil and turn on stats collation about the performance of jobs.")
     #TODO - specify how this works when path is AWS
-    addOptionFn("--jobStore", dest="jobStore", default=None,
+    addOptionFn('jobStore', type=str,
                       help=("Store in which to place job management files \
                       and the global accessed temporary files"
-                            "(If this is a file path this needs to be globally accessible "
-                            "by all machines running jobs).\n"
-                            "If the store already exists and restart is false an"
-                            " ExistingJobStoreException exception will be thrown."
-                            " The default=%s" % config.jobStore))
+                      "(If this is a file path this needs to be globally accessible "
+                      "by all machines running jobs).\n"
+                      "If the store already exists and restart is false an"
+                      " ExistingJobStoreException exception will be thrown."))
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil run should be placed. "
                      "Default is determined by environmental variables (TMPDIR, TEMP, TMP) via mkdtemp")
@@ -268,14 +266,7 @@ def addOptions(parser, config=Config()):
     # Wrapper function that allows toil to be used with both the optparse and
     # argparse option parsing modules
     addLoggingOptions(parser) # This adds the logging stuff.
-    if isinstance(parser, OptionContainer):
-        def addGroup(headingString, bodyString):
-            group = OptionGroup(parser, headingString, bodyString)
-            parser.add_option_group(group)
-            return group.add_option
-        _addOptions(addGroup, config)
-        #parser.add_option_group(group)
-    elif isinstance(parser, ArgumentParser):
+    if isinstance(parser, ArgumentParser):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
         _addOptions(addGroup, config)

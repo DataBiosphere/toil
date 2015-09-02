@@ -16,7 +16,7 @@ A simple user script for Toil
 """
 
 from __future__ import absolute_import
-from optparse import OptionParser
+import argparse
 import os
 from toil.job import Job
 
@@ -52,16 +52,17 @@ def hello_world_child(job, hw):
 
 def main():
     # Boilerplate -- startToil requires options
-    parser = OptionParser()
+
+    parser = argparse.ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    options, args = parser.parse_args()
+    args = parser.parse_args()
 
     # Create object that contains our FileStoreIDs
 
-
+    print args.jobStore
     # Launch first toil Job
     i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk=2000)
-    j = Job.Runner.startToil(i, options)
+    j = Job.Runner.startToil(i, args)
 
 
 if __name__ == '__main__':

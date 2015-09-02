@@ -89,42 +89,42 @@ def initializeOptions(parser):
     ##########################################
     # Construct the arguments.
     ##########################################
-    parser.add_option("--jobStore", dest="jobStore", default=os.path.abspath("./toil"),
-                      help="Job store path. Can also be specified as the single argument to the script. Default=%default")
-    parser.add_option("--outputFile", dest="outputFile", default=None,
+    parser.add_argument("jobStore", type=str,
+              help=("Store in which to place job management files \
+              and the global accessed temporary files"
+              "(If this is a file path this needs to be globally accessible "
+              "by all machines running jobs).\n"
+              "If the store already exists and restart is false an"
+              " ExistingJobStoreException exception will be thrown."))
+    parser.add_argument("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
-    parser.add_option("--raw", action="store_true", default=False,
+    parser.add_argument("--raw", action="store_true", default=False,
                       help="output the raw xml data.")
-    parser.add_option("--pretty", "--human", action="store_true", default=False,
+    parser.add_argument("--pretty", "--human", action="store_true", default=False,
                       help=("if not raw, prettify the numbers to be "
                             "human readable."))
-    parser.add_option("--categories",
+    parser.add_argument("--categories",
                       help=("comma separated list from [time, clock, wait, "
                             "memory]"))
-    parser.add_option("--sortCategory", default="time",
+    parser.add_argument("--sortCategory", default="time",
                       help=("how to sort Job list. may be from [alpha, "
                             "time, clock, wait, memory, count]. "
                             "default=%(default)s"))
-    parser.add_option("--sortField", default="med",
+    parser.add_argument("--sortField", default="med",
                       help=("how to sort Job list. may be from [min, "
                             "med, ave, max, total]. "
                             "default=%(default)s"))
-    parser.add_option("--sortReverse", "--reverseSort", default=False,
+    parser.add_argument("--sortReverse", "--reverseSort", default=False,
                       action="store_true",
                       help="reverse sort order.")
+    parser.add_argument("--version", action='version', version=version)
     #parser.add_option("--cache", default=False, action="store_true",
     #                  help="stores a cache to speed up data display.")
 
-def checkOptions(options, args, parser):
+def checkOptions(options, parser):
     """ Check options, throw parser.error() if something goes wrong
     """
     logger.info("Parsed arguments")
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(0)
-    assert len(args) <= 1  # Only toil may be specified as argument
-    if len(args) == 1:  # Allow toil directory as arg
-        options.jobStore = args[0]
     logger.info("Checking if we have files for toil")
     if options.jobStore == None:
         parser.error("Specify --jobStore")
@@ -726,11 +726,10 @@ def main():
     """ Reports stats on the job-tree, use with --stats option to toil.
     """
 
-    parser = getBasicOptionParser(
-        "usage: %prog stats [--jobStore] JOB_TREE_DIR [options]", "%prog "+version)
+    parser = getBasicOptionParser()
     initializeOptions(parser)
-    options, args = parseBasicOptions(parser)
-    checkOptions(options, args, parser)
+    options = parseBasicOptions(parser)
+    checkOptions(options, parser)
     jobStore = loadJobStore(options.jobStore)
     #collatedStatsTag = cacheAvailable(options)
     #if collatedStatsTag is None:

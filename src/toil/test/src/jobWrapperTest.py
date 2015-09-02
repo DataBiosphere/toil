@@ -18,7 +18,7 @@ from __future__ import absolute_import
 import unittest
 import os
 from toil.lib.bioio import system
-from optparse import OptionParser
+from argparse import ArgumentParser
 from toil.common import setupToil
 from toil.job import Job
 from toil.test import ToilTest
@@ -29,10 +29,9 @@ class JobWrapperTest(ToilTest):
     def setUp(self):
         super( JobWrapperTest, self ).setUp( )
         self.jobStorePath = self._getTestJobStorePath()
-        parser = OptionParser()
+        parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
-        options, args = parser.parse_args()
-        options.jobStore = self.jobStorePath
+        options = parser.parse_args(args=[self.jobStorePath])
         self.contextManager = setupToil(options)
         config, batchSystem, self.jobStore = self.contextManager.__enter__()
 

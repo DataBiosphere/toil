@@ -47,8 +47,7 @@ class SortTest(ToilTest, MesosTestSupport):
 
             try:
                 # Specify options
-                options = Job.Runner.getDefaultOptions()
-                options.jobStore = jobStore
+                options = Job.Runner.getDefaultOptions(jobStore)
                 options.logLevel = getLogLevelString()
                 options.retryCount = 2
                 options.batchSystem = batchSystem
@@ -114,8 +113,7 @@ class SortTest(ToilTest, MesosTestSupport):
                     l2 = fileHandle.readlines()
                     checkEqual(l, l2)
             finally:
-                subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean',
-                                       '--jobStore', jobStore])
+                subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean', jobStore])
 
     @needs_aws
     def testToilSortOnAWS(self):
