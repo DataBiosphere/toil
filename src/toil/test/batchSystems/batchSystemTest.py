@@ -192,6 +192,21 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     """
     Tests the Parasol batch system
     """
+    def _createDummyConfig(self):
+        config = super(ParasolBatchSystemTest, self)._createDummyConfig()
+        # can't use _getTestJobStorePath since that method removes the directory
+        config.jobStore = self._createTempDir('jobStore')
+        return config
+
+    def createBatchSystem(self):
+        self._startParasol(numCores)
+        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
+                                  maxDisk=1001)
+
+    def tearDown(self):
+        self._stopParasol()
+        super(ParasolBatchSystemTest, self).tearDown()
+
 
     def testIssueJob(self):
         # TODO
@@ -204,14 +219,6 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.wait_for_jobs(wait_for_completion=True)
         self.assertTrue(os.path.exists(test_path))
 
-    def createBatchSystem(self):
-        self._startParasol(numCores)
-        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
-                                  maxDisk=1001)
-
-    def tearDown(self):
-        self._stopParasol()
-        super(ParasolBatchSystemTest, self).tearDown()
 
 
 @needs_gridengine
