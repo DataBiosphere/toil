@@ -15,34 +15,34 @@ To begin, consider this short toil script:
    from optparse import OptionParser
 
    class HelloWorld(Job):
-       def __init__(self):
-           Job.__init__(self,  memory=100000, cores=2, disk=20000)
-       def run(self, fileStore):
-           fileId = getEmptyFileStoreID()
-           self.addChild(wrapJobFn(childFn, fileId,
-                          cores=1, memory="1M", disk="10M"))
-           self.addFollowOn(FollowOn(fileId),
+      def __init__(self):
+         Job.__init__(self,  memory=100000, cores=2, disk=20000)
+      def run(self, fileStore):
+         fileId = fileStore.getEmptyFileStoreID()
+         self.addChild(Job.wrapJobFn(childFn, fileId,
+             cores=1, memory="1M", disk="10M"))
+         self.addFollowOn(FollowOn(fileId))
 
    def childFn(target, fileID):
-       with target.fileStore.updateGlobalFileStream(fileID) as file:
-           file.write("Hello, World!")
+      with target.fileStore.updateGlobalFileStream(fileID) as file:
+         file.write("Hello, World!")
 
    class FollowOn(Job):
-       def __init__(self,fileId):
-           Job.__init__(self)
-           self.fileId=fileId
-       def run(self, fileStore):
-           tempDir = self.getLocalTempDir()
-           tempFilePath = "/".join(tempDir,"LocalCopy")
-           with readGlobalFileStream(fileId) as globalFile:
-               with open(tempFilePath, w) as localFile:
-                  localFile.write(globalFile.read())
+      def __init__(self,fileId):
+         Job.__init__(self)
+         self.fileId=fileId
+      def run(self, fileStore):
+         tempDir = fileStore.getLocalTempDir()
+         tempFilePath = "/".join([tempDir,"LocalCopy"])
+         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
+            with open(tempFilePath, "w") as localFile:
+               localFile.write(globalFile.read())
 
    def main():
        parser = OptionParser()
        Job.Runner.addToilOptions(parser)
-       options, args = parser.parse_args( args )
-       Job.Runner.startToil(HelloWorld(),  options )
+       options, args = parser.parse_args(args)
+       Job.Runner.startToil(HelloWorld(),  options)
 
    if __name__=="__main__":
        main()
