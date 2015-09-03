@@ -27,6 +27,8 @@ import inspect
 import bz2
 import cPickle
 import base64
+import socket
+import httplib
 from datetime import datetime, timedelta
 from ConfigParser import RawConfigParser, NoOptionError
 
@@ -294,11 +296,15 @@ class AzureJobStore(AbstractJobStore):
 
     def _getOrCreateTable(self, tableName):
         # This will not fail if the table already exists.
-        self.tableService.create_table(tableName)
+        for attempt in retry_on_error():
+            with attempt:
+                self.tableService.create_table(tableName)
         return AzureTable(self.tableService, tableName)
 
     def _getOrCreateBlobContainer(self, containerName):
-        self.blobService.create_container(containerName)
+        for attempt in retry_on_error():
+            with attempt:
+                self.blobService.create_container(containerName)
         return AzureBlobContainer(self.blobService, containerName)
 
     def _sanitizeTableName(self, tableName):
@@ -442,7 +448,10 @@ class AzureTable():
             if 'entity' in kwargs:
                 if 'PartitionKey' not in kwargs['entity']:
                     kwargs['entity']['PartitionKey'] = self.defaultPartition
-            return function(**kwargs)
+
+            for attempt in retry_on_error():
+                with attempt:
+                    return function(**kwargs)
 
         return callable
 
@@ -470,7 +479,10 @@ class AzureBlobContainer():
             assert len(args) == 0
             function = getattr(self.blobService, name)
             kwargs['container_name'] = self.containerName
-            return function(**kwargs)
+
+            for attempt in retry_on_error():
+                with attempt:
+                    return function(**kwargs)
 
         return callable
 
@@ -523,3 +535,67 @@ class AzureJob(JobWrapper):
         for attributeOrder, chunk in enumerate(jobChunks):
             item['_' + str(attributeOrder).zfill(3)] = chunk
         return item
+
+def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
+                                                      httplib.HTTPException)):
+    """
+    Retries on a set of allowable exceptions, mimicking boto's behavior by default.
+
+    :param num_tries: number of times to try before giving up.
+
+    :return: a generator yielding contextmanagers
+
+    Retry the correct number of times and then give up and reraise
+    >>> i = 0
+    >>> for attempt in retry_on_error(retriable_exceptions=(RuntimeError)):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise RuntimeError("foo")
+    Traceback (most recent call last):
+    ...
+    RuntimeError: foo
+    >>> i
+    5
+
+    Give up and reraise on any unexpected exceptions
+    >>> i = 0
+    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=()):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise RuntimeError("foo")
+    Traceback (most recent call last):
+    ...
+    RuntimeError: foo
+    >>> i
+    1
+
+    Do things only once if they succeed!
+    >>> i = 0
+    >>> for attempt in retry_on_error():
+    ...     with attempt:
+    ...         i += 1
+    >>> i
+    1
+    """
+    go = [None]
+    @contextmanager
+    def attempt(last=False):
+        try:
+            yield
+        except retriable_exceptions as e:
+            if last:
+                raise
+            else:
+                log.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
+        else:
+            go.pop()
+
+    while go:
+        if num_tries == 1:
+            yield attempt(last=True)
+        else:
+            yield attempt()
+        # It's safe to do this, even with Python's weird default
+        # arguments behavior, since we are assigning to num_tries
+        # rather than mutating it.
+        num_tries -= 1
