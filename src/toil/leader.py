@@ -490,7 +490,12 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
 
         logger.info("Finished the main loop")
 
-
+    except:
+        if config.clean == "onError":
+            jobStore.deleteJobStore()
+    else:
+        if config.clean == "onSuccess" and totalFailedJobs == 0:
+            jobStore.deleteJobStore()
     finally:
         ##########################################
         #Finish up the stats/logging aggregation process
@@ -500,8 +505,8 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
         stopStatsAndLoggingAggregatorProcess.put(True)
         worker.join()
         logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
-        clean = config.clean
-        if clean=="always" or clean == "onError" and totalFailedJobs>0 or clean == "onSuccess" and totalFailedJobs==0:
+        # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
+        if config.clean == "always" or config.clean == "onError" and totalFailedJobs > 0:
             jobStore.deleteJobStore()
     
     if totalFailedJobs > 0:
