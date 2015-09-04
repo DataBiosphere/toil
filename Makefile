@@ -20,21 +20,21 @@ define help
 Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
- ensure that develop mode installs support for extras. Consult setup.py for a list of supported
- extras. For example, to install Mesos and AWS support run
+ensure that develop mode installs support for extras. Consult setup.py for a list of supported
+extras. For example, to install Toil in develop mode with Mesos, AWS and Azure support, run
 
-make develop extras=[mesos,aws]
+make develop extras=[mesos,aws,azure]
 
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
 
 The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
 
-The 'docs' target uses Sphinx to create html documentation in the doc/_build directory
+The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
 The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
 
-make test tests=toil.test.src.jobTest.JobTest
+make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
@@ -50,7 +50,9 @@ green=\033[0;32m
 normal=\033[0m
 red=\033[0;31m
 
-all:
+all: help
+
+help:
 	@echo "$$help"
 
 clean: _develop _sdist _pypi _docs
@@ -63,7 +65,12 @@ __user=$(shell python -c 'import sys; print "" if hasattr(sys, "real_prefix") el
 
 check_user_base_on_path:
 	@echo "$(green)Checking if Python's user-specific bin directory is on the PATH ...$(normal)"
-	test -z "$(__user)" || python -c 'import site,sys,os;sys.exit(0 if os.path.join(site.USER_BASE,"bin") in os.environ["PATH"] else 1)'
+	@test -z "$(__user)" || python -c 'import site,sys,os; \
+	bin_dir = os.path.join( site.USER_BASE, "bin" ) ; \
+	path_entries = map( os.path.realpath, os.environ["PATH"].split( os.path.pathsep ) ) ; \
+	result = os.path.realpath( bin_dir ) in path_entries ; \
+	print "$(green)OK$(normal)" if result else "$(red)Please add %s to your PATH$(normal)" % bin_dir ; \
+	sys.exit(0 if result else 1)'
 
 develop: check_user_base_on_path
 	$(pip) install $(__user) -e .$(extras)
@@ -78,17 +85,19 @@ sdist:
 _sdist:
 	- rm -rf dist
 
+tests=src
+
 test:
-	$(python) setup.py test --pytest-args "-vv src"
+	$(python) setup.py test --pytest-args "-vv $(tests)"
 
 check_clean_working_copy:
 	@echo "$(green)Checking if your working copy is clean ...$(normal)"
-	git diff --exit-code > /dev/null \
-		|| ( echo "$(red)Working copy looks dirty.$(normal)" ; false )
-	git diff --cached --exit-code > /dev/null \
-		|| ( echo "$(red)Index looks dirty.$(normal)" ; false )
-	test -z "$$(git ls-files --other --exclude-standard --directory)" \
-		|| ( echo "$(red)Untracked files:$(normal)" \
+	@git diff --exit-code > /dev/null \
+		|| ( echo "$(red)Your working copy looks dirty.$(normal)" ; false )
+	@git diff --cached --exit-code > /dev/null \
+		|| ( echo "$(red)Your index looks dirty.$(normal)" ; false )
+	@test -z "$$(git ls-files --other --exclude-standard --directory)" \
+		|| ( echo "$(red)You have are untracked files:$(normal)" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
@@ -98,17 +107,10 @@ check_running_on_jenkins:
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
 pypi: check_clean_working_copy check_running_on_jenkins
-	@test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
-		&& echo "Not on master branch, silently skipping deployment to PyPI." \
-		|| $(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
-
-force_pypi: check_clean_working_copy check_running_on_jenkins
 	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
-	test "$$(git rev-parse --verify remotes/origin/master)" != "$$(git rev-parse --verify HEAD)" \
-		&& echo "Not on master branch, silently skipping deployment to PyPI." \
-		|| $(python) setup.py egg_info register sdist bdist_egg upload
+	$(python) setup.py egg_info register sdist bdist_egg upload
 
 _pypi:
 	- rm -rf build/
