@@ -79,6 +79,7 @@ class Config(object):
         #Misc
         self.maxLogFileSize=50120
         self.sseKey = None
+        self.cseKey = None
         
     def setOptions(self, options):
         """
@@ -154,6 +155,7 @@ class Config(object):
             with open(sseKey) as f:
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
+        setOption("cseKey", checkFn=checkSse)
 
 def _addOptions(addGroupFn, config):
     #
@@ -258,6 +260,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--sseKey", dest="sseKey", default=None,
             help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
                  "not be used if this flag is not passed.")
+    addOptionFn("--cseKey", dest="cseKey", default=None,
+                help="Path to file containing 256-bit key to be used for client-side encryption on "
+                "azureJobStore. By default, no encryption is used.")
 
 def addOptions(parser, config=Config()):
     """

@@ -387,11 +387,13 @@ class hidden:
 
         def setUp(self):
             self.sseKeyDir = tempfile.mkdtemp()
+            self.cseKeyDir = tempfile.mkdtemp()
             super(hidden.AbstractEncryptedJobStoreTest, self).setUp()
 
         def tearDown(self):
             super(hidden.AbstractEncryptedJobStoreTest, self).tearDown()
             shutil.rmtree(self.sseKeyDir)
+            shutil.rmtree(self.cseKeyDir)
 
         def _createConfig(self):
             config = super(hidden.AbstractEncryptedJobStoreTest, self)._createConfig()
@@ -400,6 +402,11 @@ class hidden:
                 f.write("01234567890123456789012345678901")
             config.sseKey = sseKeyFile
             # config.attrib["sse_key"] = sseKeyFile
+
+            cseKeyFile = os.path.join(self.cseKeyDir, "keyFile")
+            with open(cseKeyFile, 'w') as f:
+                f.write("i am a fake key, so don't use me")
+            config.cseKey = cseKeyFile
             return config
 
 
@@ -431,4 +438,9 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobSto
 
 @needs_aws
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+    pass
+
+
+@needs_azure
+class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
