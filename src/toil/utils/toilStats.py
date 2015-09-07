@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-""" Reports the state of your given jobtree.
+""" Reports data about the given toil run.
 """
 from __future__ import absolute_import
 import logging

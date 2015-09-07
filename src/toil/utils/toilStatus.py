@@ -49,11 +49,11 @@ def main():
     
     parser.add_argument("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
-                      jobs that failed. default=%default",
+                      jobs that failed. default=%(default)s",
                       default=False)
     
     parser.add_argument("--failIfNotComplete", dest="failIfNotComplete", action="store_true",
-                      help="Return exit value of 1 if toil jobs not all completed. default=%default",
+                      help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                       default=False)
     parser.add_argument("--version", action='version', version=version)
     options = parseBasicOptions(parser)
