@@ -373,7 +373,7 @@ def serialiseEnvironment(jobStore):
     """
     #Dump out the environment of this process in the environment pickle file.
     with jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-        cPickle.dump(os.environ, fileHandle)
+        cPickle.dump(os.environ, fileHandle, cPickle.HIGHEST_PROTOCOL)
     logger.info("Written the environment for the jobs to the environment file")
 
 @contextmanager
