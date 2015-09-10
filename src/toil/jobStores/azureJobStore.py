@@ -264,8 +264,8 @@ class AzureJobStore(AbstractJobStore):
         numStatsFiles = 0
         for entity in self.statsFileIDs.query_entities():
             jobStoreFileID = entity.RowKey
-            string = self.statsFiles.get_blob_to_text(blob_name=jobStoreFileID)
-            statsAndLoggingCallbackFn(string)
+            with self._downloadStream(jobStoreFileID, self.statsFiles, encrypted=False) as fd:
+                statsAndLoggingCallbackFn(fd)
             self.statsFiles.delete_blob(blob_name=jobStoreFileID)
             self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
             numStatsFiles += 1
@@ -425,10 +425,10 @@ class AzureJobStore(AbstractJobStore):
                 def writer():
                     try:
                         chunkStartPos = 0
-                        fileSize = int(self.files.get_blob_properties(blob_name=jobStoreFileID)['Content-Length'])
+                        fileSize = int(container.get_blob_properties(blob_name=jobStoreFileID)['Content-Length'])
                         while chunkStartPos < fileSize:
                             chunkEndPos = chunkStartPos + self._maxAzureBlockBytes - 1
-                            buf = self.files.get_blob(blob_name=jobStoreFileID,
+                            buf = container.get_blob(blob_name=jobStoreFileID,
                                                       x_ms_range="bytes=%d-%d" % (chunkStartPos,
                                                                                   chunkEndPos))
                             if encrypted:
