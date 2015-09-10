@@ -277,7 +277,7 @@ def addOptions(parser, config=Config()):
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
-                           "Either optparse.OptionParser or argparse.ArgumentParser" % parser.__class__)
+                           "argparse.ArgumentParser" % parser.__class__)
 
 def loadBatchSystem(config):
     """
