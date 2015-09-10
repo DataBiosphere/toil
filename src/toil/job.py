@@ -360,7 +360,6 @@ class Job(object):
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
         """
-
         def __init__(self, jobStore, jobWrapper, localTempDir):
             """
             This constructor should not be called by the user, 
@@ -371,28 +370,59 @@ class Job(object):
             self.jobWrapper = jobWrapper
             self.localTempDir = localTempDir
             self.loggingMessages = []
+            self.deletedJobStoreFileIDs = set()
+        
+        def getLocalTempDir(self):
+            """
+            Get a new local temporary directory. This directory will exist for the 
+            duration of the job only, and is guaranteed to be deleted once
+            the job terminates, removing all files it contains recursively. 
+            """
+            return self.localTempDir
+        
+        def getLocalTempFile(self):
+            """
+            Get a local temporary file. This file will exist for the duration of the job only, and
+            is guaranteed to be deleted once the job terminates.
+            """
+            handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
+            os.close(handle)
+            return tmpFile
 
-        def writeGlobalFile(self, localFileName):
+        def writeGlobalFile(self, localFileName, cleanup=False):
             """
             Takes a file (as a path) and uploads it to to the global file store, returns
             an ID that can be used to retrieve the file. 
+            
+            If cleanup is True then the file will be deleted once the job
+            and all its successors have completed running. If not the file must be deleted
+            manually.
+            
+            The write is asynchronous, so further modifications to the file pointed by
+            localFileName will result in undetermined behavior. The file is safely removed 
+            at the end of the job by placing it in (a subdirectory) of the location returned 
+            by getLocalTempDir.
             """
-            return self.jobStore.writeFile(self.jobWrapper.jobStoreID, localFileName)
-
-        def updateGlobalFile(self, fileStoreID, localFileName):
+            return self.jobStore.writeFile(localFileName, 
+                                           None if not cleanup else self.jobWrapper.jobStoreID)
+        
+        def writeGlobalFileStream(self, cleanup=False):
             """
-            Replaces the existing version of a file in the global file store, 
-            keyed by the fileStoreID. 
-            Throws an exception if the file does not exist.
+            Similar to writeGlobalFile, but returns a context manager yielding a 
+            tuple of 1) a file handle which can be written to and 2) the ID of 
+            the resulting file in the job store. The yielded file handle does
+            not need to and should not be closed explicitly.
+            
+            owner is as in writeGlobalFile.
             """
-            self.jobStore.updateFile(fileStoreID, localFileName)
+            return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
 
         def readGlobalFile(self, fileStoreID, localFilePath=None):
             """
             Returns a path to a local copy of the file keyed by fileStoreID. 
-            The version will be consistent with the last copy of the file 
-            written/updated to the global file store. If localFilePath is not None, 
-            the returned file path will be localFilePath.
+            If localFilePath is not None, the returned file path will be localFilePath
+            within the location returned by getLocalTempDir().
+            The returned file will be read only.
             """
             if localFilePath is None:
                 fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
@@ -401,44 +431,7 @@ class Job(object):
             else:
                 self.jobStore.readFile(fileStoreID, localFilePath)
             return localFilePath
-
-        def deleteGlobalFile(self, fileStoreID):
-            """
-            Deletes a global file with the given fileStoreID. Returns true if 
-            file exists, else false.
-            """
-            return self.jobStore.deleteFile(fileStoreID)
-
-        def writeGlobalFileStream(self):
-            """
-            Similar to writeGlobalFile, but returns a context manager yielding a 
-            tuple of 1) a file handle which can be written to and 2) the ID of 
-            the resulting file in the job store. The yielded file handle does
-            not need to and should not be closed explicitly.
-            """
-            return self.jobStore.writeFileStream(self.jobWrapper.jobStoreID)
-
-        def updateGlobalFileStream(self, fileStoreID):
-            """
-            Similar to updateGlobalFile, but returns a context manager yielding 
-            a file handle which can be written to. The yielded file handle does 
-            not need to and should not be closed explicitly.
-            """
-            return self.jobStore.updateFileStream(fileStoreID)
-
-        def getEmptyFileStoreID(self):
-            """
-            Returns the ID of a new, empty file.
-            """
-            return self.jobStore.getEmptyFileStoreID(self.jobWrapper.jobStoreID)
-
-        def globalFileExists(self, fileStoreID):
-            """
-            :rtype : True if and only if the jobStore contains the given fileStoreID, else
-            false.
-            """
-            return self.jobStore.fileExists(fileStoreID)
-
+        
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
@@ -447,17 +440,17 @@ class Job(object):
             """
             return self.jobStore.readFileStream(fileStoreID)
 
-        def getLocalTempDir(self):
+        def deleteGlobalFile(self, fileStoreID):
             """
-            Get the local temporary directory. This directory will exist for the 
-            duration of the job only, and is guaranteed to be deleted once
-            the job terminates.
+            Deletes a global file with the given fileStoreID. 
+            To ensure that the job can be restarted if necessary, 
+            the delete will not happen until after the job's run method has completed.
             """
-            return self.localTempDir
+            self.deletedJobStoreFileIDs.add(fileStoreID)
 
         def logToMaster(self, string):
             """
-            Send a logging message to the leader. Will only ne reported if logging 
+            Send a logging message to the leader. Will only be reported if logging 
             is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
@@ -574,7 +567,6 @@ class Job(object):
             #The pickled job is "run" as the command of the job, see worker
             #for the mechanism which unpickles the job and executes the Job.run
             #method.
-            fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
             with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
                 cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
             jobWrapper.command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())
@@ -721,9 +713,9 @@ class Job(object):
             visited.add(self)
             for i in self._rvs.keys():
                 promisedJobReturnValue = self._rvs[i]
-                #Instances of PromisedJobReturnValue are replaced with jobStoreFileIDs
+                #Instances of PromisedJobReturnValue are replaced with jobStoreFileIDs, if this hasn't happened already
                 if isinstance(promisedJobReturnValue, PromisedJobReturnValue):
-                    promisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
+                    promisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID()
                     promisedJobReturnValue.jobStoreString = jobStore.config.jobStore
                     self._rvs[i] = promisedJobReturnValue.jobStoreFileID
             #Now recursively do the same for the children and follow ons.
@@ -742,8 +734,6 @@ class Job(object):
             else:
                 argToStore = returnValues[i]
             with jobStore.updateFileStream(job._rvs[i]) as fileHandle:
-                if isinstance(argToStore, PromisedJobReturnValue):
-                    raise RuntimeError("A nested PromisedJobReturnValue has been found.") #We do not allow the return of PromisedJobReturnValue instance from the run function
                 cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
@@ -800,7 +790,7 @@ class Job(object):
                     extraEdges[descendant] += job._followOns[:]
         return extraEdges
 
-    def _modifyJobGraphForServices(self, fileStore):
+    def _modifyJobGraphForServices(self, jobStore, jobStoreID):
         """
         Modifies the job graph to correctly schedule any services
         defined for this job.
@@ -808,10 +798,10 @@ class Job(object):
         if len(self._services) > 0:
             #Set the start/stop jobStore fileIDs for each service
             for service in self._services:
-                service.startFileStoreID = fileStore.getEmptyFileStoreID()
-                assert fileStore.globalFileExists(service.startFileStoreID)
-                service.stopFileStoreID = fileStore.getEmptyFileStoreID()
-                assert fileStore.globalFileExists(service.stopFileStoreID)
+                service.startFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
+                assert jobStore.fileExists(service.startFileStoreID)
+                service.stopFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
+                assert jobStore.fileExists(service.stopFileStoreID)
 
             def removePredecessor(job):
                 assert self in job._predecessors
@@ -861,7 +851,7 @@ class Job(object):
         fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir)
         returnValues = self.run(fileStore)
         #Modify job graph to run any services correctly
-        self._modifyJobGraphForServices(fileStore)
+        self._modifyJobGraphForServices(jobStore, jobWrapper.jobStoreID)
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
@@ -950,7 +940,6 @@ class FunctionWrappingJob(Job):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
@@ -1017,13 +1006,13 @@ class ServiceJob(Job):
         #run method has completed!
         #Now flag that the service is running jobs can connect to it
         assert self.startFileStoreID != None
-        assert fileStore.globalFileExists(self.startFileStoreID)
-        fileStore.deleteGlobalFile(self.startFileStoreID)
-        assert not fileStore.globalFileExists(self.startFileStoreID)
+        assert fileStore.jobStore.fileExists(self.startFileStoreID)
+        fileStore.jobStore.deleteFile(self.startFileStoreID)
+        assert not fileStore.jobStore.fileExists(self.startFileStoreID)
         #Now block until we are told to stop, which is indicated by the removal
         #of a file
         assert self.stopFileStoreID != None
-        while fileStore.globalFileExists(self.stopFileStoreID):
+        while fileStore.jobStore.fileExists(self.stopFileStoreID):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         service.stop()
@@ -1106,6 +1095,9 @@ def promisedJobReturnValuePickleFunction(promise):
     """
     return promisedJobReturnValueUnpickleFunction, (promise.jobStoreString, promise.jobStoreFileID)
 
+#These promise files must be deleted when we know we don't need the promise again.
+promiseFilesToDelete = set()
+
 def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
     """The PromisedJobReturnValue custom unpickle function.
     """
@@ -1116,6 +1108,7 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
         assert jobStoreFileID == None
         return PromisedJobReturnValue()
     jobStore = loadJobStore(jobStoreString)
+    promiseFilesToDelete.add(jobStoreFileID)
     with jobStore.readFileStream(jobStoreFileID) as fileHandle:
         value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
         return value
@@ -1129,7 +1122,7 @@ def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
     """
     Job function that deletes a bunch of files using their jobStoreFileIDs
     """
-    map(lambda i : job.fileStore.deleteGlobalFile(i), jobStoreFileIDsToDelete)
+    map(lambda i : job.fileStore.jobStore.deleteFile(i), jobStoreFileIDsToDelete)
 
 def blockUntilDeleted(job, jobStoreFileIDs):
     """
@@ -1138,7 +1131,7 @@ def blockUntilDeleted(job, jobStoreFileIDs):
     """
     while True:
         jobStoreFileIDs = [ i for i in jobStoreFileIDs
-                           if job.fileStore.globalFileExists(i) ]
+                           if job.fileStore.jobStore.fileExists(i) ]
         if len(jobStoreFileIDs) == 0:
             break
         time.sleep(1)

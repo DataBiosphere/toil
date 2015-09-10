@@ -29,11 +29,10 @@ success_ratio = 0.5
 def setup(job, inputFile, N):
     """Sets up the sort.
     """
-    tempOutputFileStoreID = job.fileStore.getEmptyFileStoreID()
-    job.addChildJobFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
-    job.addFollowOnJobFn(cleanup, tempOutputFileStoreID, inputFile)
+    job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
+        inputFile, 0, os.path.getsize(inputFile), N).rv(), inputFile)
 
-def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
+def down(job, inputFile, fileStart, fileEnd, N):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
@@ -43,48 +42,39 @@ def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
-    assert length >= 0
     if length > N:
         job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
                                       % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
-        assert midPoint >= fileStart
-        assert midPoint+1 < fileEnd
         #We will subdivide the file
-        tempFileStoreID1 = job.fileStore.getEmptyFileStoreID()
-        tempFileStoreID2 = job.fileStore.getEmptyFileStoreID()
-        #The use of rv here is for testing purposes
-        #The rv() of the first child job is tempFileStoreID1,
-        #similarly rv() of the second child is tempFileStoreID2
-        job.addFollowOnJobFn(up,
-                                   job.addChildJobFn(down, inputFile, fileStart,
-                                                           midPoint+1, N, tempFileStoreID1).rv(),
-                                   job.addChildJobFn(down, inputFile, midPoint+1,
-                                                           fileEnd, N, tempFileStoreID2).rv(), #Add one to avoid the newline
-                                   outputFileStoreID)                
+        return job.addFollowOnJobFn(up,
+            job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N).rv(),
+            job.addChildJobFn(down, inputFile, midPoint+1, fileEnd, N).rv()).rv()          
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
                                       % (fileStart, fileEnd, inputFile) )
-        with job.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
-            copySubRangeOfFile(inputFile, fileStart, fileEnd, fileHandle)
-        #Make a local copy and sort the file
-        tempOutputFile = job.fileStore.readGlobalFile(outputFileStoreID)
-        sort(tempOutputFile)
-        job.fileStore.updateGlobalFile(outputFileStoreID, tempOutputFile)
-    return outputFileStoreID
+        t = job.fileStore.getLocalTempFile()
+        with open(t, 'w') as fH:
+            copySubRangeOfFile(inputFile, fileStart, fileEnd, fH)
+        sort(t)
+        return job.fileStore.writeGlobalFile(t)
 
-def up(job, inputFileID1, inputFileID2, outputFileStoreID):
+def up(job, inputFileID1, inputFileID2):
     """Merges the two files and places them in the output.
     """
     if random.random() > success_ratio:
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
-    with job.fileStore.updateGlobalFileStream(outputFileStoreID) as fileHandle:
+    with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         with job.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
-    job.fileStore.logToMaster( "Merging %s and %s to %s"
-                                  % (inputFileID1, inputFileID2, outputFileStoreID) )
+                job.fileStore.logToMaster( "Merging %s and %s to %s"
+                                       % (inputFileID1, inputFileID2, outputFileStoreID) )
+        #Cleanup up the input files - these deletes will occur after the completion is successful. 
+        job.fileStore.deleteGlobalFile(inputFileID1)
+        job.fileStore.deleteGlobalFile(inputFileID2)
+        return outputFileStoreID
 
 def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.

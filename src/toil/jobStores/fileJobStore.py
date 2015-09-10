@@ -142,12 +142,22 @@ class FileJobStore(AbstractJobStore):
     #Functions that deal with temporary files associated with jobs
     ##########################################    
     
-    def writeFile(self, jobStoreID, localFilePath):
-        self._checkJobStoreId(jobStoreID)
-        fd, absPath = self._getJobTempFile(jobStoreID)
+    def writeFile(self, localFilePath, jobStoreID=None):
+        fd, absPath = self._getTempFile(jobStoreID)
         shutil.copyfile(localFilePath, absPath)
         os.close(fd)
         return self._getRelativePath(absPath)
+    
+    @contextmanager
+    def writeFileStream(self, jobStoreID=None):
+        fd, absPath = self._getTempFile(jobStoreID)
+        with open(absPath, 'w') as f:
+            yield f, self._getRelativePath(absPath)
+        os.close(fd) #Close the os level file descriptor
+        
+    def getEmptyFileStoreID(self, jobStoreID=None):
+        with self.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileID ):
+            return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
@@ -171,14 +181,6 @@ class FileJobStore(AbstractJobStore):
         if not stat.S_ISREG(st.st_mode):
             raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
         return True
-    
-    @contextmanager
-    def writeFileStream(self, jobStoreID):
-        self._checkJobStoreId(jobStoreID)
-        fd, absPath =  self._getJobTempFile(jobStoreID)
-        with open(absPath, 'w') as f:
-            yield f, self._getRelativePath(absPath)
-        os.close(fd) #Close the os level file descript
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -188,10 +190,6 @@ class FileJobStore(AbstractJobStore):
         # the file object directly, without a with statement.
         with open(self._getAbsPath(jobStoreFileID), 'w') as f:
             yield f
-    
-    def getEmptyFileStoreID(self, jobStoreID):
-        with self.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileID ):
-            return jobStoreFileID
     
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -266,17 +264,6 @@ class FileJobStore(AbstractJobStore):
         for the given job.
         """
         return os.path.join(self._getAbsPath(jobStoreID), "job")
-
-    def _getJobTempFile(self, jobStoreID):
-        """
-        :rtype : file-descriptor, string, string is absolute path to a temporary file within
-        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
-        is integer pointing to open operating system file handle. Should be closed using os.close()
-        after writing some material to the file.
-        """
-        fD, absPath = tempfile.mkstemp(suffix=".tmp", 
-                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
-        return fD, absPath
     
     def _checkJobStoreId(self, jobStoreID):
         """
@@ -325,3 +312,19 @@ class FileJobStore(AbstractJobStore):
                 yield path
         for tempDir in _dirs(self.tempFilesDir, self.levels):
             yield tempDir
+            
+    def _getTempFile(self, jobStoreID=None):
+        """
+        :rtype : file-descriptor, string, string is the absolute path to a temporary file within
+        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
+        is integer pointing to open operating system file handle. Should be closed using os.close()
+        after writing some material to the file.
+        """
+        if jobStoreID != None:
+            #Make a temporary file within the job's directory
+            self._checkJobStoreId(jobStoreID)
+            return tempfile.mkstemp(suffix=".tmp", 
+                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+        else:
+            #Make a temporary file within the temporary file structure 
+            return tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
