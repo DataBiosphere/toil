@@ -145,7 +145,6 @@ class hidden:
 
             # Test job deletions
             #
-
             # First delete parent, this should have no effect on the children
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertTrue(worker.exists(jobOnMaster.jobStoreID))
@@ -231,21 +230,25 @@ class hidden:
             self.assertTrue(not master.fileExists(fileOne))
 
             # Test stats and logging
-            testRead = []
-            files = master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files == 0)
+            #
+            stats = None
 
-            master.writeStatsAndLogging("abc")
+            def callback(f):
+                stats.add(f.read())
 
-            files = master.readStatsAndLogging(testRead.append)
-            assert len(testRead) == 1
-            self.assertTrue(files == 1)
-            files = master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files == 0)
-            master.writeStatsAndLogging("abc")
-            master.writeStatsAndLogging("abc")
-            files = master.readStatsAndLogging(testRead.append)
-            self.assertTrue(files == 2)
+            stats = set()
+            self.assertEquals(0, master.readStatsAndLogging(callback))
+            self.assertEquals(set(), stats)
+            master.writeStatsAndLogging('1')
+            self.assertEquals(1, master.readStatsAndLogging(callback))
+            self.assertEquals({'1'}, stats)
+            self.assertEquals(0, master.readStatsAndLogging(callback))
+            master.writeStatsAndLogging('1')
+            master.writeStatsAndLogging('2')
+            stats = set()
+            self.assertEquals(2, master.readStatsAndLogging(callback))
+            self.assertEquals({'1', '2'}, stats)
+
             # Delete parent and its associated files
             #
             master.delete(jobOnMaster.jobStoreID)
