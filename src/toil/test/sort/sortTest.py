@@ -178,7 +178,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         try:
             self._toilSort(jobStore=self._getTestJobStorePath(),
                            batchSystem='parasol',
-                           lines=10000, N=10000)
+                           lines=100, N=100)
         finally:
             self._stopParasol()
 
