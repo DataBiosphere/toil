@@ -20,18 +20,22 @@ from __future__ import absolute_import
 from argparse import ArgumentParser
 import os
 import random
+from bd2k.util.humanize import human2bytes
 
 from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 success_ratio = 0.5
+sortMemory = human2bytes('1000M')
 
 def setup(job, inputFile, N):
     """Sets up the sort.
     """
     tempOutputFileStoreID = job.fileStore.getEmptyFileStoreID()
-    job.addChildJobFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID)
-    job.addFollowOnJobFn(cleanup, tempOutputFileStoreID, inputFile)
+    job.addChildJobFn(down, inputFile, 0, os.path.getsize(inputFile), N, tempOutputFileStoreID,
+                      memory=sortMemory)
+    job.addFollowOnJobFn(cleanup, tempOutputFileStoreID, inputFile,
+                         memory=sortMemory)
 
 def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
     """Input is a file and a range into that file to sort and an output location in which
@@ -58,10 +62,12 @@ def down(job, inputFile, fileStart, fileEnd, N, outputFileStoreID):
         #similarly rv() of the second child is tempFileStoreID2
         job.addFollowOnJobFn(up,
                                    job.addChildJobFn(down, inputFile, fileStart,
-                                                           midPoint+1, N, tempFileStoreID1).rv(),
+                                                           midPoint+1, N, tempFileStoreID1,
+                                                           memory=sortMemory).rv(),
                                    job.addChildJobFn(down, inputFile, midPoint+1,
-                                                           fileEnd, N, tempFileStoreID2).rv(), #Add one to avoid the newline
-                                   outputFileStoreID)                
+                                                           fileEnd, N, tempFileStoreID2,
+                                                           memory=sortMemory).rv(), # Add one to avoid the newline
+                                   outputFileStoreID,memory=sortMemory)
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
@@ -97,28 +103,29 @@ def cleanup(job, tempOutputFileStoreID, outputFile):
 def main():
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    
+
     parser.add_argument("--fileToSort", dest="fileToSort",
                       help="The file you wish to sort")
-    
+
     parser.add_argument("--N", dest="N",
                       help="The threshold below which a serial sort function is"
-                      "used to sort file. All lines must of length less than or equal to N or program will fail", 
+                      "used to sort file. All lines must of length less than or equal to N or program will fail",
                       default=10000)
-    
+
     options = parser.parse_args()
-    
+
     if options.fileToSort is None:
         raise RuntimeError("No file to sort given")
 
     if not os.path.exists(options.fileToSort):
         raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
-    
+
     if int(options.N) <= 0:
         raise RuntimeError("Invalid value of N: %s" % options.N)
-    
+
     #Now we are ready to run
-    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N)), options)
+    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N),
+                                       memory=sortMemory), options)
 
 if __name__ == '__main__':
     main()
