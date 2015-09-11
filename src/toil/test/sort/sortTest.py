@@ -119,14 +119,14 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean', jobStore])
 
     @needs_aws
-    def test_aws_single(self):
+    def testAwsSingle(self):
         self._toilSort(jobStore=self._awsJobStore(),
                        batchSystem='singleMachine',
                        lines=100, N=100)
 
     @needs_aws
     @needs_mesos
-    def test_aws_mesos(self):
+    def testAwsMesos(self):
         self._startMesos()
         try:
             self._toilSort(jobStore=self._awsJobStore(),
@@ -136,7 +136,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._stopMesos()
 
     @needs_mesos
-    def test_file_mesos(self):
+    def testFileMesos(self):
         self._startMesos()
         try:
             self._toilSort(jobStore=self._getTestJobStorePath(),
@@ -146,34 +146,35 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._stopMesos()
 
     @needs_azure
-    def test_azure_single(self):
+    def testAzureSingle(self):
         self._toilSort(jobStore=self._azureJobStore(),
                        batchSystem='singleMachine',
                        lines=100, N=100)
 
     @needs_azure
     @needs_mesos
-    def test_azure_mesos(self):
+    def testAzureMesos(self):
         self._startMesos()
         try:
             self._toilSort(jobStore=self._azureJobStore(),
-                           batchSystem="mesos", lines=100, N=100)
+                           batchSystem="mesos",
+                           lines=100, N=100)
         finally:
             self._stopMesos()
 
-    def test_file_single(self):
+    def testFileSingle(self):
         self._toilSort(jobStore=self._getTestJobStorePath(),
                        batchSystem='singleMachine',
                        lines=10000, N=10000)
 
     @needs_gridengine
-    def test_file_gridengine(self):
+    def testFileGridEngine(self):
         self._toilSort(jobStore=self._getTestJobStorePath(),
                        batchSystem='gridengine',
                        lines=100, N=100)
 
     @needs_parasol
-    def test_file_parasol(self):
+    def testFileParasol(self):
         self._startParasol()
         try:
             self._toilSort(jobStore=self._getTestJobStorePath(),
