@@ -27,7 +27,7 @@ from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
-from toil.test.sort.sort import setup
+from toil.test.sort.sort import setup, sortMemory
 from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure, needs_parasol, needs_gridengine
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 from toil.leader import FailedJobsException
@@ -66,7 +66,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     l.sort()
 
                 # Make the first job
-                firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=5000)
+                firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=sortMemory)
 
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True
@@ -170,7 +170,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def test_file_gridengine(self):
         self._toilSort(jobStore=self._getTestJobStorePath(),
                        batchSystem='gridengine',
-                       lines=10000, N=10000)
+                       lines=100, N=100)
 
     @needs_parasol
     def test_file_parasol(self):
