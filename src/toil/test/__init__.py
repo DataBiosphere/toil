@@ -161,7 +161,8 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     try:
-        subprocess.Popen('qsub')
+        with open('/dev/null','a') as dev_null:
+            subprocess.Popen('qsub',stdout=dev_null,stderr=dev_null)
     except OSError:
         return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
     except:
@@ -191,7 +192,8 @@ def needs_parasol(test_item):
     Use as decorator so tests are only run if Parasol is installed.
     """
     try:
-        subprocess.Popen("parasol")
+        with open('/dev/null','a') as dev_null:
+            subprocess.Popen('parasol',stdout=dev_null,stderr=dev_null)
     except OSError:
         return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
     except:
