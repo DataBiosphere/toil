@@ -34,6 +34,9 @@ from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 
+defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
+defaultN = int(os.environ.get('TOIL_TEST_SORT_N', '10'))
+
 
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     """
@@ -45,7 +48,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         super(SortTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
 
-    def _toilSort(self, jobStore, batchSystem, lines, N, testNo=1, maxLineLength=10):
+    def _toilSort(self, jobStore, batchSystem,
+                  lines=defaultLines, N=defaultN, testNo=1, maxLineLength=10):
         for test in xrange(testNo):
 
             try:
@@ -120,18 +124,14 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     @needs_aws
     def testAwsSingle(self):
-        self._toilSort(jobStore=self._awsJobStore(),
-                       batchSystem='singleMachine',
-                       lines=100, N=100)
+        self._toilSort(jobStore=self._awsJobStore(), batchSystem='singleMachine')
 
     @needs_aws
     @needs_mesos
     def testAwsMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._awsJobStore(),
-                           batchSystem="mesos",
-                           lines=100, N=100)
+            self._toilSort(jobStore=self._awsJobStore(), batchSystem="mesos")
         finally:
             self._stopMesos()
 
@@ -139,47 +139,39 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testFileMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._getTestJobStorePath(),
-                           batchSystem="mesos",
-                           lines=100, N=100)
+            self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem="mesos")
         finally:
             self._stopMesos()
 
     @needs_azure
     def testAzureSingle(self):
-        self._toilSort(jobStore=self._azureJobStore(),
-                       batchSystem='singleMachine',
-                       lines=100, N=100)
+        self._toilSort(jobStore=self._azureJobStore(), batchSystem='singleMachine')
 
     @needs_azure
     @needs_mesos
     def testAzureMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._azureJobStore(),
-                           batchSystem="mesos",
-                           lines=100, N=100)
+            self._toilSort(jobStore=self._azureJobStore(), batchSystem="mesos")
         finally:
             self._stopMesos()
 
     def testFileSingle(self):
-        self._toilSort(jobStore=self._getTestJobStorePath(),
-                       batchSystem='singleMachine',
+        self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine')
+
+    def testFileSingleLarge(self):
+        self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine',
                        lines=10000, N=10000)
 
     @needs_gridengine
     def testFileGridEngine(self):
-        self._toilSort(jobStore=self._getTestJobStorePath(),
-                       batchSystem='gridengine',
-                       lines=100, N=100)
+        self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='gridengine')
 
     @needs_parasol
     def testFileParasol(self):
         self._startParasol()
         try:
-            self._toilSort(jobStore=self._getTestJobStorePath(),
-                           batchSystem='parasol',
-                           lines=100, N=100)
+            self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='parasol')
         finally:
             self._stopParasol()
 
