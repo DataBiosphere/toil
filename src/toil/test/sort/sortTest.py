@@ -34,13 +34,14 @@ from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 
+defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', '10'))
 defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
-defaultN = int(os.environ.get('TOIL_TEST_SORT_N', '10'))
+defaultN = int(os.environ.get('TOIL_TEST_SORT_N', str(defaultLineLen * defaultLines / 5)))
 
 
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     """
-    Tests toil by sorting a file in parallel on various combinations of job stores and batch
+    Tests Toil by sorting a file in parallel on various combinations of job stores and batch
     systems.
     """
 
@@ -49,9 +50,26 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
     def _toilSort(self, jobStore, batchSystem,
-                  lines=defaultLines, N=defaultN, testNo=1, maxLineLength=10):
-        for test in xrange(testNo):
+                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen):
+        """
+        Generate a file consisting of the given number of random lines, each line of the given
+        length. Sort the file with Toil by splitting the file recursively until each part is less
+        than the given number of bytes, sorting each part and merging them back together. Then
+        verify the result.
 
+        :param jobStore: a job store string
+
+        :param batchSystem: the name of the batch system
+
+        :param lines: the number of random lines to generate
+
+        :param N: the size in bytes of each split
+
+        :param testNo: the number of repeats of this test
+
+        :param lineLen: the length of each random line in the file
+        """
+        for test in xrange(testNo):
             try:
                 # Specify options
                 options = Job.Runner.getDefaultOptions(jobStore)
@@ -62,7 +80,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
-                self._makeFileToSort(tempSortFile, lines=lines, maxLineLength=maxLineLength)
+                makeFileToSort(tempSortFile, lines=lines, lineLen=lineLen)
 
                 # First make our own sorted version
                 with open(tempSortFile, 'r') as fileHandle:
@@ -118,7 +136,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Now check the file is properly sorted..
                 with open(tempSortFile, 'r') as fileHandle:
                     l2 = fileHandle.readlines()
-                    self._checkEqual(l, l2)
+                    self.assertEquals(l, l2)
             finally:
                 subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean', jobStore])
 
@@ -159,7 +177,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testFileSingle(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine')
 
-    def testFileSingleLarge(self):
+    def testFileSingle10000(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine',
                        lines=10000, N=10000)
 
@@ -175,28 +193,28 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopParasol()
 
-    # The following functions test the functions in the test!
+    # The following functions test the functions in the test
 
     testNo = 5
 
     def testSort(self):
         for test in xrange(self.testNo):
             tempFile1 = os.path.join(self.tempDir, "fileToSort.txt")
-            self._makeFileToSort(tempFile1)
+            makeFileToSort(tempFile1)
             lines1 = self._loadFile(tempFile1)
             lines1.sort()
             sort(tempFile1)
             with open(tempFile1, 'r') as f:
                 lines2 = f.readlines()
-            self._checkEqual(lines1, lines2)
+            self.assertEquals(lines1, lines2)
 
     def testMerge(self):
         for test in xrange(self.testNo):
             tempFile1 = os.path.join(self.tempDir, "fileToSort1.txt")
             tempFile2 = os.path.join(self.tempDir, "fileToSort2.txt")
             tempFile3 = os.path.join(self.tempDir, "mergedFile.txt")
-            self._makeFileToSort(tempFile1)
-            self._makeFileToSort(tempFile2)
+            makeFileToSort(tempFile1)
+            makeFileToSort(tempFile2)
             sort(tempFile1)
             sort(tempFile2)
             with open(tempFile3, 'w') as fileHandle:
@@ -207,13 +225,13 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             lines1.sort()
             with open(tempFile3, 'r') as f:
                 lines2 = f.readlines()
-            self._checkEqual(lines1, lines2)
+            self.assertEquals(lines1, lines2)
 
     def testCopySubRangeOfFile(self):
         for test in xrange(self.testNo):
             tempFile = os.path.join(self.tempDir, "fileToSort1.txt")
             outputFile = os.path.join(self.tempDir, "outputFileToSort1.txt")
-            self._makeFileToSort(tempFile)
+            makeFileToSort(tempFile, lines=10, lineLen=defaultLineLen)
             fileSize = os.path.getsize(tempFile)
             assert fileSize > 0
             fileStart = random.choice(xrange(0, fileSize))
@@ -223,12 +241,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             fileHandle.close()
             l = open(outputFile, 'r').read()
             l2 = open(tempFile, 'r').read()[fileStart:fileEnd]
-            self._checkEqual(l, l2)
+            self.assertEquals(l, l2)
 
     def testGetMidPoint(self):
         for test in xrange(self.testNo):
             tempFile = os.path.join(self.tempDir, "fileToSort.txt")
-            self._makeFileToSort(tempFile)
+            makeFileToSort(tempFile)
             l = open(tempFile, 'r').read()
             fileSize = os.path.getsize(tempFile)
             midPoint = getMidPoint(tempFile, 0, fileSize)
@@ -245,26 +263,16 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def _azureJobStore(self):
         return "azure:toiltest:sort-test-%s" % uuid4()
 
-    def _checkEqual(self, i, j):
-        if i != j:
-            print "lengths", len(i), len(j)
-            print "true", i
-            print "false", j
-            self.fail()
+    def _loadFile(self, path):
+        with open(path, 'r') as f:
+            return f.readlines()
 
-    def _loadFile(self, file):
-        with open(file, 'r') as fileHandle:
-            return fileHandle.readlines()
 
-    def _getRandomLine(self, maxLineLength):
-        return "".join(
-            [random.choice(['a', 'c', 't', 'g', "A", "C", "G", "T", "N", "X", "Y", "Z"]) for i in
-             xrange(maxLineLength)]) + "\n"
-
-    def _makeFileToSort(self, fileName, lines=10, maxLineLength=10):
-        with open(fileName, 'w') as fileHandle:
-            for line in xrange(lines):
-                fileHandle.write(self._getRandomLine(maxLineLength))
+def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
+    with open(fileName, 'w') as fileHandle:
+        for _ in xrange(lines):
+            line = "".join(random.choice('actgACTGNXYZ') for _ in xrange(lineLen - 1)) + '\n'
+            fileHandle.write(line)
 
 
 if __name__ == '__main__':
