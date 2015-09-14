@@ -33,7 +33,6 @@ from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 
-
 class SortTest(ToilTest, MesosTestSupport):
     def setUp(self):
         super(SortTest, self).setUp()

@@ -174,6 +174,7 @@ def main():
     elementNode = ET.Element("worker")
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
+    fileStoreIDsToDelete = set()
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -233,9 +234,11 @@ def main():
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Is a job command
-                    messages = Job._loadJob(job.command, jobStore)._execute( jobWrapper=job,
-                                    stats=elementNode if config.stats else None, localTempDir=localTempDir,
-                                    jobStore=jobStore)
+                    messages, fileStoreIDsToDelete = Job._loadJob(job.command, 
+                    jobStore)._execute( jobWrapper=job,
+                                        stats=elementNode if config.stats else None, 
+                                        localTempDir=localTempDir,
+                                        jobStore=jobStore)
                     
                     #Remove the temporary file directory
                     shutil.rmtree(localTempDir)
@@ -315,6 +318,10 @@ def main():
             jobStore.update(job)
             jobStore.delete(successorJob.jobStoreID)
             
+            #Remove any jobs that the user specified should be removed during the job
+            for f in fileStoreIDsToDelete:
+                jobStore.delete(f)
+            
             logger.debug("Starting the next job")
         
         ##########################################
@@ -389,8 +396,12 @@ def main():
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not workerFailed) and job.command == None and len(job.stack) == 0:
+        #Delete files the user specified should be deleted
+        for f in fileStoreIDsToDelete:
+            jobStore.delete(f)
         #We can now safely get rid of the job
         jobStore.delete(job.jobStoreID)
+        
        
 if __name__ == '__main__':
     logging.basicConfig()

@@ -43,10 +43,10 @@ def down(job, inputFile, fileStart, fileEnd, N):
         raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
     if length > N:
+        #We will subdivide the file
         job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
                                       % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
-        #We will subdivide the file
         return job.addFollowOnJobFn(up,
             job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N).rv(),
             job.addChildJobFn(down, inputFile, midPoint+1, fileEnd, N).rv()).rv()          

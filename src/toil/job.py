@@ -218,13 +218,12 @@ class Job(object):
         (tuple/list/dictionary, or in general object that implements __getitem__), 
         hence rv(i) would refer to the ith (indexed from 0) member of return value.
         """
-        #Check if the return value has already been promised and if it has
-        #return it
-        if argIndex in self._rvs:
-            return self._rvs[argIndex]
         #Create, store, return new PromisedJobReturnValue
-        self._rvs[argIndex] = PromisedJobReturnValue()
-        return self._rvs[argIndex]
+        if argIndex not in self._rvs:
+            self._rvs[argIndex] = []
+        newPromise = PromisedJobReturnValue()
+        self._rvs[argIndex].append(newPromise)
+        return newPromise
 
     ####################################################
     #Cycle/connectivity checking
@@ -424,6 +423,8 @@ class Job(object):
             within the location returned by getLocalTempDir().
             The returned file will be read only.
             """
+            if fileStoreID in self.deletedJobStoreFileIDs:
+                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             if localFilePath is None:
                 fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
                 self.jobStore.readFile(fileStoreID, localFilePath)
@@ -438,6 +439,8 @@ class Job(object):
             file handle which can be read from. The yielded file handle does not 
             need to and should not be closed explicitly.
             """
+            if fileStoreID in self.deletedJobStoreFileIDs:
+                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             return self.jobStore.readFileStream(fileStoreID)
 
         def deleteGlobalFile(self, fileStoreID):
@@ -711,13 +714,14 @@ class Job(object):
         #the PromisedJobReturnValue instances are created.
         if self not in visited:
             visited.add(self)
-            for i in self._rvs.keys():
-                promisedJobReturnValue = self._rvs[i]
-                #Instances of PromisedJobReturnValue are replaced with jobStoreFileIDs, if this hasn't happened already
-                if isinstance(promisedJobReturnValue, PromisedJobReturnValue):
-                    promisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID()
-                    promisedJobReturnValue.jobStoreString = jobStore.config.jobStore
-                    self._rvs[i] = promisedJobReturnValue.jobStoreFileID
+            for promises in self._rvs.values():
+                for i in xrange(len(promises)):
+                    #Instances of PromisedJobReturnValue are replaced with jobStoreFileIDs, if this hasn't happened already
+                    promisedJobReturnValue = promises[i]
+                    if isinstance(promisedJobReturnValue, PromisedJobReturnValue):
+                        promisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID()
+                        promisedJobReturnValue.jobStoreString = jobStore.config.jobStore
+                        promises[i] = promisedJobReturnValue.jobStoreFileID
             #Now recursively do the same for the children and follow ons.
             for successorJob in self._children + self._followOns + self._services:
                 successorJob._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
@@ -733,8 +737,9 @@ class Job(object):
                 argToStore = returnValues
             else:
                 argToStore = returnValues[i]
-            with jobStore.updateFileStream(job._rvs[i]) as fileHandle:
-                cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            for promiseFileStoreID in job._rvs[i]:
+                with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
+                    cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
     #Functions associated with Job.checkJobGraphAcyclic to establish
@@ -872,8 +877,9 @@ class Job(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
-        #Return any logToMaster logging messages
-        return fileStore.loggingMessages
+        #Return any logToMaster logging messages + the files that should be deleted
+        #from the job store once the job has been registered as complete
+        return fileStore.loggingMessages, fileStore.deletedJobStoreFileIDs.union(promiseFilesToDelete)
 
     ####################################################
     #Method used to resolve the module in which an inherited job instances
@@ -1020,7 +1026,6 @@ class ServiceJob(Job):
     def getUserScript(self):
         return self.serviceModule
 
-
 class EncapsulatedJob(Job):
     """
     An convenience Job class used to make a job subgraph appear to
@@ -1099,7 +1104,8 @@ def promisedJobReturnValuePickleFunction(promise):
 promiseFilesToDelete = set()
 
 def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
-    """The PromisedJobReturnValue custom unpickle function.
+    """
+    The PromisedJobReturnValue custom unpickle function.
     """
     #If the attributes jobStoreFileID and jobStoreString are None then we return
     #a new empty PromisedJobReturnValue (this can happen if Promise is serialised between its creation
