@@ -687,13 +687,13 @@ class Job(object):
                 removePredecessor(followOn)
                 t2.addChild(followOn)
             self._followOns = []
-            #Wire up the self, t1 and t2
-            self.addChild(t1)
-            t1.addFollowOn(t2)
             #Now make the services children of the job
             for service in self._services:
                 self.addChild(service)
                 assert service._directPredecessors == set((self,))
+            #Wire up the self, t1 and t2
+            self.addChild(t1)
+            t1.addFollowOn(t2)
             #The final task once t1 and t2 have finished is to stop the services
             #this is achieved by deleting the stopFileStoreIDs.
             t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
