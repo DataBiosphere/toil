@@ -48,7 +48,6 @@ class JobTest(ToilTest):
             D = Job.wrapFn(f, C.rv(), outFile)
             E = Job.wrapFn(f, D.rv(), outFile)
             F = Job.wrapFn(f, E.rv(), outFile)
-
             # Connect them into a workflow
             A.addChild(B)
             A.addChild(C)
@@ -326,11 +325,35 @@ class JobTest(ToilTest):
         Converts a DAG into a job graph. childEdges and followOnEdges are
         the lists of child and followOn edges.
         """
-        jobs = map(lambda i: Job.wrapFn(f, str(i) + " ", outFile), xrange(nodeNumber))
+        #Map of jobs to the list of promises they have
+        jobsToPromisesMap = {}
+        #Function for making job
+        def makeJob(string):
+            promises = []
+            job = Job.wrapFn(f, string, outFile, promises)
+            jobsToPromisesMap[job] = promises
+            return job
+        #Make the jobs
+        jobs = map(lambda i: makeJob(str(i) + " "), xrange(nodeNumber))
+        #Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
         for fNode, tNode in followOnEdges:
             jobs[fNode].addFollowOn(jobs[tNode])
+        #Function to get a random predecessor for a job
+        def getRandomPredecessor(job):
+            predecessor = random.choice(list(job._directPredecessors))
+            while random.random() > 0.5 and len(predecessor._directPredecessors) > 0:
+                predecessor = random.choice(list(predecessor._directPredecessors))
+            return predecessor
+        #Connect up set of random promises compatible with graph
+        while random.random() > 0.01:
+            job = random.choice(jobsToPromisesMap.keys())
+            promises = jobsToPromisesMap[job]
+            if len(job._directPredecessors) > 0:
+                predecessor = getRandomPredecessor(job)
+                promises.append(predecessor.rv())
+                
         return jobs[0]
 
     @staticmethod
@@ -358,7 +381,7 @@ class JobTest(ToilTest):
         return True
 
 
-def f(string, outFile):
+def f(string, outFile, promises=[]):
     """
     Function appends string to output file, then returns the 
     next ascii character of the first character in the string, e.g.
@@ -368,7 +391,6 @@ def f(string, outFile):
     fH.write(string)
     fH.close()
     return chr(ord(string[0]) + 1)
-
 
 if __name__ == '__main__':
     unittest.main()
