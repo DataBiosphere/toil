@@ -18,9 +18,9 @@ from subprocess import CalledProcessError
 
 from toil.lib.bioio import system
 from toil.lib.bioio import getTempFile
-from toil.test.sort.sortTest import makeFileToSort, checkEqual
 from toil.common import toilPackageDirPath
 from toil.test import ToilTest
+from toil.test.sort.sortTest import makeFileToSort
 
 
 class UtilsTest(ToilTest):
@@ -37,9 +37,9 @@ class UtilsTest(ToilTest):
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
         self.lines = 1000
-        self.maxLineLength = 10
+        self.lineLen = 10
         self.N = 1000
-        makeFileToSort(self.tempFile, self.lines, self.maxLineLength)
+        makeFileToSort(self.tempFile, self.lines, self.lineLen)
         # First make our own sorted version
         with open(self.tempFile, 'r') as fileHandle:
             self.correctSort = fileHandle.readlines()
@@ -115,7 +115,7 @@ class UtilsTest(ToilTest):
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-            checkEqual(self.correctSort, l2)
+            self.assertEquals(self.correctSort, l2)
 
         # Check we can run 'toil clean'
         toilCleanString = ("{self.toilMain} clean "
@@ -147,7 +147,7 @@ class UtilsTest(ToilTest):
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-            checkEqual(self.correctSort, l2)
+            self.assertEquals(self.correctSort, l2)
 
 
 if __name__ == '__main__':

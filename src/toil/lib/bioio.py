@@ -25,7 +25,7 @@ import random
 import math
 import shutil
 from argparse import ArgumentParser
-from optparse import OptionParser, OptionContainer, OptionGroup
+from optparse import OptionContainer, OptionGroup
 import subprocess
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
@@ -93,19 +93,13 @@ def logStream(fileHandle, shortName, printFunction=logger.info):
 def addLoggingOptions(parser):
     # Wrapper function that allows toil to be used with both the optparse and
     # argparse option parsing modules
-    if isinstance(parser, OptionContainer):
-        group = OptionGroup(parser, "Logging options",
-                            "Options that control logging")
-        _addLoggingOptions(group.add_option)
-        parser.add_option_group(group)
-    elif isinstance(parser, ArgumentParser):
+    if isinstance(parser, ArgumentParser):
         group = parser.add_argument_group("Logging Options",
                                           "Options that control logging")
         _addLoggingOptions(group.add_argument)
     else:
         raise RuntimeError("Unanticipated class passed to "
                            "addLoggingOptions(), %s. Expecting "
-                           "Either optparse.OptionParser or "
                            "argparse.ArgumentParser" % parser.__class__)
 
 supportedLogLevels = (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG)

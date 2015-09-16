@@ -1,4 +1,5 @@
-Toil is a massively scalable pipeline management system, written entirely in Python.
+Toil is a massively scalable pipeline management system, written entirely in Python, and designed around the principles of functional programming.
+
 Toil runs as easily on a laptop as it does on a bare-metal cluster or in the cloud, thanks
 to support for many batch systems, including `Grid Engine`_, Parasol_, and a
 custom Mesos_ framework.
@@ -6,13 +7,14 @@ custom Mesos_ framework.
 Toil is robust, and designed to run in highly unreliable computing environments like
 Amazon's `Spot Market`_. Towards this goal, Toil does not rely on a distributed file system.
 Instead, Toil abstracts a pipeline's global storage as a JobStore that can be stored
-either locally or on AWS. The result of this abstraction is a robust system that can be
+either locally or within an object store, such as S3. The result of this abstraction is a robust system that can be
 resumed even after an unexpected shutdown of every node in the cluster that resulted in the
 loss of all local data.
 
 Writing a Toil script requires only a knowledge of basic Python, with Toil "Jobs" as the
 elemental unit of work in a Toil workflow. A Job can dynamically spawn other Jobs as needed,
-leading to an intuitive and powerful control over the pipeline.
+leading to an intuitive and powerful control over the pipeline. File management is through an
+immutable interface that makes it simple and easy to reason about the state of the workflow. 
 
 .. _Grid Engine: http://gridscheduler.sourceforge.net/
 .. _Parasol: https://users.soe.ucsc.edu/~donnak/eng/parasol.htm

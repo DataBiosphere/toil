@@ -20,17 +20,19 @@ from __future__ import absolute_import
 from argparse import ArgumentParser
 import os
 import random
+from bd2k.util.humanize import human2bytes
 
 from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 success_ratio = 0.5
+sortMemory = human2bytes('1000M')
 
 def setup(job, inputFile, N):
     """Sets up the sort.
     """
     job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
-        inputFile, 0, os.path.getsize(inputFile), N).rv(), inputFile)
+        inputFile, 0, os.path.getsize(inputFile), N).rv(), inputFile, memory=sortMemory)
 
 def down(job, inputFile, fileStart, fileEnd, N):
     """Input is a file and a range into that file to sort and an output location in which
@@ -48,8 +50,8 @@ def down(job, inputFile, fileStart, fileEnd, N):
                                       % (fileStart, fileEnd, inputFile) )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         return job.addFollowOnJobFn(up,
-            job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N).rv(),
-            job.addChildJobFn(down, inputFile, midPoint+1, fileEnd, N).rv()).rv()          
+            job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N, memory=sortMemory).rv(),
+            job.addChildJobFn(down, inputFile, midPoint+1, fileEnd, N, memory=sortMemory).rv()).rv()          
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
@@ -87,28 +89,29 @@ def cleanup(job, tempOutputFileStoreID, outputFile):
 def main():
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    
+
     parser.add_argument("--fileToSort", dest="fileToSort",
                       help="The file you wish to sort")
-    
+
     parser.add_argument("--N", dest="N",
                       help="The threshold below which a serial sort function is"
-                      "used to sort file. All lines must of length less than or equal to N or program will fail", 
+                      "used to sort file. All lines must of length less than or equal to N or program will fail",
                       default=10000)
-    
+
     options = parser.parse_args()
-    
+
     if options.fileToSort is None:
         raise RuntimeError("No file to sort given")
 
     if not os.path.exists(options.fileToSort):
         raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
-    
+
     if int(options.N) <= 0:
         raise RuntimeError("Invalid value of N: %s" % options.N)
-    
+
     #Now we are ready to run
-    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N)), options)
+    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N),
+                                       memory=sortMemory), options)
 
 if __name__ == '__main__':
     main()

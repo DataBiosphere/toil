@@ -35,6 +35,7 @@ from ConfigParser import RawConfigParser, NoOptionError
 from toil.jobWrapper import JobWrapper
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
+from toil.lib.encryption import encrypt, decrypt, encryptionOverhead
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class AzureJobStore(AbstractJobStore):
 
     def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
         self.jobChunkSize = jobChunkSize
+        self.keyPath = None
 
         account_key = _fetchAzureAccountKey(accountName)
 
@@ -103,6 +105,9 @@ class AzureJobStore(AbstractJobStore):
         self.statsFileIDs = self._getOrCreateTable(self.qualify('statsFileIDs'))
 
         super(AzureJobStore, self).__init__(config=config)
+
+        if self.config.cseKey is not None:
+            self.keyPath = self.config.cseKey
 
     # tables must be alphanumeric
     nameSeparator = 'xx'
@@ -159,19 +164,26 @@ class AzureJobStore(AbstractJobStore):
 
     def writeFile(self, jobStoreID, localFilePath):
         jobStoreFileID = self._newFileID()
-        self.files.put_block_blob_from_path(blob_name=jobStoreFileID,
-                                            file_path=localFilePath)
+        self.updateFile(jobStoreFileID, localFilePath)
         self._associateJobWithFile(jobStoreID, jobStoreFileID)
         return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        self.files.put_block_blob_from_path(blob_name=jobStoreFileID,
-                                            file_path=localFilePath)
+        with open(localFilePath) as read_fd:
+            with self._uploadStream(jobStoreFileID, self.files,
+                                    encrypted=self.keyPath is not None) as write_fd:
+                while True:
+                    buf = read_fd.read(self._maxAzureBlockBytes)
+                    write_fd.write(buf)
+                    if len(buf) == 0:
+                        break
 
     def readFile(self, jobStoreFileID, localFilePath):
         try:
-            self.files.get_blob_to_path(blob_name=jobStoreFileID,
-                                        file_path=localFilePath)
+            with self._downloadStream(jobStoreFileID, self.files,
+                                      encrypted=self.keyPath is not None) as read_fd:
+                with open(localFilePath, 'w') as write_fd:
+                    write_fd.write(read_fd.read(self._maxAzureBlockBytes))
         except WindowsAzureMissingResourceError:
             raise NoSuchFileException(jobStoreFileID)
 
@@ -198,13 +210,15 @@ class AzureJobStore(AbstractJobStore):
         # Append Blob type, but that is not currently supported by the
         # Azure Python API.
         jobStoreFileID = self._newFileID()
-        with self._uploadStream(jobStoreFileID, self.files) as fd:
+        with self._uploadStream(jobStoreFileID, self.files,
+                                encrypted=self.keyPath is not None) as fd:
             yield fd, jobStoreFileID
         self._associateJobWithFile(jobStoreID, jobStoreFileID)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        with self._uploadStream(jobStoreFileID, self.files, checkForModification=True) as fd:
+        with self._uploadStream(jobStoreFileID, self.files, checkForModification=True,
+                                encrypted=self.keyPath is not None) as fd:
             yield fd
 
     def getEmptyFileStoreID(self, jobStoreID):
@@ -218,13 +232,15 @@ class AzureJobStore(AbstractJobStore):
     def readFileStream(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
-        with self._downloadStream(jobStoreFileID, self.files) as fd:
+        with self._downloadStream(jobStoreFileID, self.files,
+                                  encrypted=self.keyPath is not None) as fd:
             yield fd
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=True):
         sharedFileID = self._newFileID(sharedFileName)
-        with self._uploadStream(sharedFileID, self.files) as fd:
+        with self._uploadStream(sharedFileID, self.files,
+                                encrypted=isProtected and self.keyPath is not None) as fd:
             yield fd
 
     @contextmanager
@@ -232,7 +248,8 @@ class AzureJobStore(AbstractJobStore):
         sharedFileID = self._newFileID(sharedFileName)
         if not self.fileExists(sharedFileID):
             raise NoSuchFileException(sharedFileID)
-        with self._downloadStream(sharedFileID, self.files) as fd:
+        with self._downloadStream(sharedFileID, self.files,
+                                  encrypted=isProtected and self.keyPath is not None) as fd:
             yield fd
 
     def writeStatsAndLogging(self, statsAndLoggingString):
@@ -247,8 +264,8 @@ class AzureJobStore(AbstractJobStore):
         numStatsFiles = 0
         for entity in self.statsFileIDs.query_entities():
             jobStoreFileID = entity.RowKey
-            string = self.statsFiles.get_blob_to_text(blob_name=jobStoreFileID)
-            statsAndLoggingCallbackFn(string)
+            with self._downloadStream(jobStoreFileID, self.statsFiles, encrypted=False) as fd:
+                statsAndLoggingCallbackFn(fd)
             self.statsFiles.delete_blob(blob_name=jobStoreFileID)
             self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
             numStatsFiles += 1
@@ -320,7 +337,7 @@ class AzureJobStore(AbstractJobStore):
     _maxAzureBlockBytes = 4194000
 
     @contextmanager
-    def _uploadStream(self, jobStoreFileID, container, multipart=True, checkForModification=False):
+    def _uploadStream(self, jobStoreFileID, container, checkForModification=False, encrypted=False):
         # This is a straightforward transliteration into Azure of the
         # _uploadStream method of AWSJobStore.
         if checkForModification:
@@ -330,6 +347,14 @@ class AzureJobStore(AbstractJobStore):
             except WindowsAzureMissingResourceError:
                 expectedVersion = None
 
+        if encrypted and self.keyPath is None:
+            encrypted = False
+            log.warning("Encryption requested but no key available, not encrypting")
+
+        maxBlockSize = self._maxAzureBlockBytes
+        if encrypted:
+            # There is a small overhead for encrypted data.
+            maxBlockSize -= encryptionOverhead
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
@@ -338,11 +363,13 @@ class AzureJobStore(AbstractJobStore):
                         blockIDs = []
                         try:
                             while True:
-                                buf = readable.read(self._maxAzureBlockBytes)
+                                buf = readable.read(maxBlockSize)
                                 if len(buf) == 0:
                                     # We're safe to break here even if we never read anything, since
                                     # putting an empty block list creates an empty blob.
                                     break
+                                if encrypted:
+                                    buf = encrypt(buf, self.keyPath)
                                 blockID = self._newFileID()
                                 container.put_block(blob_name=jobStoreFileID, block=buf,
                                                     blockid=blockID)
@@ -378,14 +405,7 @@ class AzureJobStore(AbstractJobStore):
                     except:
                         log.exception("Multipart reader thread encountered an exception")
 
-                def simpleReader():
-                    try:
-                        container.put_block_blob_from_file(blob_name=jobStoreFileID,
-                                                           stream=readable)
-                    except:
-                        log.exception("Exception encountered in simple single-part reader thread")
-
-                thread = Thread(target=reader if multipart else simpleReader)
+                thread = Thread(target=reader)
                 thread.start()
                 yield writable
             # The writable is now closed. This will send EOF to the readable and cause that
@@ -393,14 +413,28 @@ class AzureJobStore(AbstractJobStore):
             thread.join()
 
     @contextmanager
-    def _downloadStream(self, jobStoreFileID, container):
+    def _downloadStream(self, jobStoreFileID, container, encrypted=False):
         # Transliteration of _downloadStream method in AWSJobStore.
+        if encrypted and self.keyPath is None:
+            encrypted = False
+            log.warning("Encryption requested but no key available, not decrypting")
+
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
                 def writer():
                     try:
-                        container.get_blob_to_file(blob_name=jobStoreFileID, stream=writable)
+                        chunkStartPos = 0
+                        fileSize = int(container.get_blob_properties(blob_name=jobStoreFileID)['Content-Length'])
+                        while chunkStartPos < fileSize:
+                            chunkEndPos = chunkStartPos + self._maxAzureBlockBytes - 1
+                            buf = container.get_blob(blob_name=jobStoreFileID,
+                                                      x_ms_range="bytes=%d-%d" % (chunkStartPos,
+                                                                                  chunkEndPos))
+                            if encrypted:
+                                buf = decrypt(buf, self.keyPath)
+                            writable.write(buf)
+                            chunkStartPos = chunkEndPos + 1
                     except:
                         log.exception("Exception encountered in writer thread")
                     finally:
