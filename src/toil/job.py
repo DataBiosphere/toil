@@ -79,7 +79,7 @@ class Job(object):
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Job.rv()
         self._rvs = {}
-        self._promises = []
+        self._promiseJobStore = None
 
     def run(self, fileStore):
         """
@@ -222,11 +222,15 @@ class Job(object):
         if argIndex not in self._rvs:
             self._rvs[argIndex] = [] #This will be a list of jobStoreFileIDs for promises which will
             #be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
-        
-        promise = PromisedJobReturnValue(self._rvs[argIndex])
-        self._promises.append(promise) #We store the promises in the promising job so we can set
-        #the jobStore variable in each promise before we get to serialising the promises
-        return promise
+        def registerPromiseCallBack():
+            #Returns the jobStoreFileID and jobStore string
+            if self._promiseJobStore == None:
+                raise RuntimeError("Trying to pass a promise from a promising job "
+                                   "that is not predecessor of the job receiving the promise")
+            jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
+            self._rvs[argIndex].append(jobStoreFileID)
+            return jobStoreFileID, self._promiseJobStore.config.jobStore
+        return PromisedJobReturnValue(registerPromiseCallBack)
 
     ####################################################
     #Cycle/connectivity checking
@@ -578,32 +582,18 @@ class Job(object):
     #Functions to pass Job.run return values to the
     #input arguments of other Job instances
     ####################################################
-    
-    def _setJobStoreForPromisedValues(self, jobStore, visited):
-        """
-        Sets the jobStore for each PromisedJobReturnValue in the
-        graph of jobs created.
-        """
-        if self not in visited:
-            visited.add(self)
-            for promise in self._promises:
-                promise.jobStore = jobStore
-            #Now recursively do the same for the children and follow ons.
-            for successorJob in self._children + self._followOns + self._services:
-                successorJob._setJobStoreForPromisedValues(jobStore, visited)
 
-    @staticmethod
-    def _setReturnValuesForPromises(job, returnValues, jobStore):
+    def _setReturnValuesForPromises(self, returnValues, jobStore):
         """
         Sets the values for promises using the return values from the job's
         run function.
         """
-        for i in job._rvs.keys():
+        for i in self._rvs.keys():
             if i == None:
                 argToStore = returnValues
             else:
                 argToStore = returnValues[i]
-            for promiseFileStoreID in job._rvs[i]:
+            for promiseFileStoreID in self._rvs[i]:
                 with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
                     cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
@@ -806,7 +796,6 @@ class Job(object):
         self._followOns = []
         self._services = []
         self._directPredecessors = set()
-        self._promises = []
         #The pickled job is "run" as the command of the job, see worker
         #for the mechanism which unpickles the job and executes the Job.run
         #method.
@@ -816,7 +805,7 @@ class Job(object):
         #Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
     
-    def _serialiseJobGraph(self, jobWrapper, jobStore, serialiseRootJob):  
+    def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):  
         """
         Pickle the graph of jobs in the jobStore.
         """
@@ -825,8 +814,6 @@ class Job(object):
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
-        #Set the jobStore variable for the created promises
-        self._setJobStoreForPromisedValues(jobStore, set())  
         #Create a UUIDs for each job
         jobsToUUIDs = self._getHashOfJobsToUUIDs({})
         #Set the jobs to delete
@@ -840,11 +827,34 @@ class Job(object):
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobWrappers)
+        #Temporarily set the jobStore strings for the promise call back functions
+        for job in ordering:
+            job._promiseJobStore = jobStore 
         ordering.reverse()
         assert self == ordering[-1]
-        #Pickle the jobs
-        map(lambda job : job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper), 
-            (ordering if serialiseRootJob else ordering[:-1]))
+        if firstJob:
+            #If the first job we serialise all the jobs, including the root job
+            for job in ordering:
+                job._promiseJobStore = None
+                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+            #Finally remove the jobs to delete list 
+            jobWrapper.jobsToDelete = []
+            jobStore.update(jobWrapper)
+        else:
+            #We store the return values at this point, because if a return value
+            #is a promise from another job, we need to register the promise
+            #before we serialise the other jobs
+            self._setReturnValuesForPromises(returnValues, jobStore)
+            #Pickle the non-root jobs
+            for job in ordering[:-1]:
+                job._promiseJobStore = None
+                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+            #This final update marks the atomic signalling of the completion of the job - 
+            #up to this point the jobStore contains sufficient information
+            #to restart the original job
+            jobWrapper.jobsToDelete = []
+            jobWrapper.command = None
+            jobStore.update(jobWrapper)
             
     def _serialiseFirstJob(self, jobStore):
         """
@@ -854,10 +864,7 @@ class Job(object):
         jobWrapper = self._createEmptyJobForJob(jobStore, None,
                                                 predecessorNumber=0)
         #Write the graph of jobs to disk
-        self._serialiseJobGraph(jobWrapper, jobStore, True)
-        #Remove the jobs to delete list
-        jobWrapper.jobsToDelete = []
-        jobStore.update(jobWrapper)
+        self._serialiseJobGraph(jobWrapper, jobStore, None, True)
         #Store the name of the first job in a file in case of restart
         #Up to this point the root-job is not recoverable
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:
@@ -882,15 +889,7 @@ class Job(object):
         fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir)
         returnValues = self.run(fileStore)
         #Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseJobGraph(jobWrapper, jobStore, False)
-        #Store the return value for any promised return value
-        self._setReturnValuesForPromises(self, returnValues, jobStore)
-        #This final update marks the atomic signalling of the completion of the job - 
-        #up to this point the jobStore contains sufficient information
-        #to restart the original job
-        jobWrapper.jobsToDelete = []
-        jobWrapper.command = None
-        jobStore.update(jobWrapper)
+        self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
@@ -1031,7 +1030,7 @@ class ServiceJob(Job):
         #The start credentials  must be communicated to processes connecting to
         #the service, to do this while the run method is running we
         #cheat and set the return value promise within the run method
-        self._setReturnValuesForPromises(self, startCredentials, fileStore.jobStore)
+        self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
         self._rvs = {}  # Set this to avoid the return values being updated after the
         #run method has completed!
         #Now flag that the service is running jobs can connect to it
@@ -1111,10 +1110,8 @@ class PromisedJobReturnValue(object):
     This mechanism allows a return values from one Job's run method to be input
     argument to Job before the former Job's run function has been executed.
     """
-    def __init__(self, promises):
-        self.promises = promises #This is the list of promises belonging to the promising job
-        self.jobStore = None #This is a reference to the jobStore, used by the 
-        #promisedJobReturnValuePickleFunction function.
+    def __init__(self, promiseCallBackFunction):
+        self.promiseCallBackFunction = promiseCallBackFunction 
         
 def promisedJobReturnValuePickleFunction(promise):
     """
@@ -1125,10 +1122,8 @@ def promisedJobReturnValuePickleFunction(promise):
     #The creation of the jobStoreFileID is intentionally lazy, we only
     #create a fileID if the promise is being pickled. This is done so
     #that we do not create fileIDs that are discarded/never used.
-    jobStoreFileID = promise.jobStore.getEmptyFileStoreID()
-    #This adds the fileID to the list of promises for the promising job
-    promise.promises.append(jobStoreFileID)
-    return promisedJobReturnValueUnpickleFunction, (promise.jobStore.config.jobStore, jobStoreFileID)
+    jobStoreFileID, jobStoreString = promise.promiseCallBackFunction()
+    return promisedJobReturnValueUnpickleFunction, (jobStoreString, jobStoreFileID)
 
 #These promise files must be deleted when we know we don't need the promise again.
 promiseFilesToDelete = set()

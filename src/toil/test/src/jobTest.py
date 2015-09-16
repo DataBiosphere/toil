@@ -25,7 +25,6 @@ class JobTest(ToilTest):
     """
     Tests testing the job class
     """
-
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -64,6 +63,43 @@ class JobTest(ToilTest):
 
             # Check output
             self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
+        finally:
+            os.remove(outFile)
+    
+    def testStatic2(self):
+        """
+        Create a DAG of jobs non-dynamically and run it. DAG is:
+        
+        A -> F
+        \-------
+        B -> D  \ 
+         \       \
+          ------- C -> E
+          
+        Follow on is marked by ->
+        """
+        outFile = getTempFile(rootDir=self._createTempDir())
+        try:
+
+            # Create the jobs
+            A = Job.wrapFn(f, "A", outFile)
+            B = Job.wrapFn(f, "B", outFile)
+            C = Job.wrapFn(f, "C", outFile)
+            D = Job.wrapFn(f, B.rv(), outFile)
+            
+            # Connect them into a workflow
+            A.addChild(B)
+            A.addFollowOn(C)
+            C.addChild(D)
+
+            # Create the runner for the workflow.
+            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+            options.logLevel = "INFO"
+            # Run the workflow, the return value being the number of failed jobs
+            Job.Runner.startToil(A, options)
+
+            # Check output
+            self.assertEquals(open(outFile, 'r').readline(), "ABCC")
         finally:
             os.remove(outFile)
 
