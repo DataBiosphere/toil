@@ -11,41 +11,40 @@ To begin, consider this short toil script:
 
 .. code:: python
 
-   from toil.job import Job
-   from optparse import OptionParser
+    from toil.job import Job
+    from argparse import ArgumentParser
 
-   class HelloWorld(Job):
-      def __init__(self):
-         Job.__init__(self,  memory=100000, cores=2, disk=20000)
-      def run(self, fileStore):
-         fileId = fileStore.getEmptyFileStoreID()
-         self.addChild(Job.wrapJobFn(childFn, fileId,
-             cores=1, memory="1M", disk="10M"))
-         self.addFollowOn(FollowOn(fileId))
+    class HelloWorld(Job):
+        def __init__(self):
+            Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        def run(self, fileStore):
+            fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="10M").rv()
+            self.addFollowOn(FollowOn(fileID))
+    
+    def childFn(job):
+        with job.fileStore.writeGlobalFileStream() as (fH, fileID):
+            fH.write("Hello, World!")
+            return fileID
+        
+    class FollowOn(Job):
+        def __init__(self,fileId):
+            Job.__init__(self)
+            self.fileId=fileId
+        def run(self, fileStore):
+            tempDir = fileStore.getLocalTempDir()
+            tempFilePath = "/".join([tempDir,"LocalCopy"])
+            with fileStore.readGlobalFileStream(self.fileId) as globalFile:
+                with open(tempFilePath, "w") as localFile:
+                    localFile.write(globalFile.read())
 
-   def childFn(target, fileID):
-      with target.fileStore.updateGlobalFileStream(fileID) as file:
-         file.write("Hello, World!")
+    def main():
+        parser = ArgumentParser()
+        Job.Runner.addToilOptions(parser)
+        options, args = parser.parse_args()
+        Job.Runner.startToil(HelloWorld(),  options)
 
-   class FollowOn(Job):
-      def __init__(self,fileId):
-         Job.__init__(self)
-         self.fileId=fileId
-      def run(self, fileStore):
-         tempDir = fileStore.getLocalTempDir()
-         tempFilePath = "/".join([tempDir,"LocalCopy"])
-         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
-            with open(tempFilePath, "w") as localFile:
-               localFile.write(globalFile.read())
-
-   def main():
-       parser = OptionParser()
-       Job.Runner.addToilOptions(parser)
-       options, args = parser.parse_args(args)
-       Job.Runner.startToil(HelloWorld(),  options)
-
-   if __name__=="__main__":
-       main()
+    if __name__=="__main__":
+        main()
 
 The script consists of three Jobs - the object based HelloWorld and FollowOn Jobs,
 and the function based childFn Job. The object based Jobs inherit from the Job class,
