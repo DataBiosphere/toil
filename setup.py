@@ -22,7 +22,7 @@ kwargs = dict(
     author='Benedict Paten',
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
-    install_requires=[ 'bd2k-python-lib==1.7.dev1', 'pynacl==0.3.0' ],
+    install_requires=[ 'bd2k-python-lib==1.7.dev1' ],
     tests_require=[ 'mock==1.0.1', 'pytest==2.7.2' ],
     test_suite='toil',
     extras_require={
@@ -32,7 +32,9 @@ kwargs = dict(
         'aws': [
             'boto==2.38.0' ],
         'azure': [
-            'azure==0.11.1' ],},
+            'azure==0.11.1' ],
+        'encryption': [
+            'pynacl==0.3.0' ]},
     package_dir={ '': 'src' },
     packages=find_packages( 'src', exclude=[ '*.test' ] ),
     entry_points={

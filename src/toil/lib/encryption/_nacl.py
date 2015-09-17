@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import nacl
-from nacl.exceptions import CryptoError
 from nacl.secret import SecretBox
+
 
 # 16-byte MAC plus a nonce is added to every message.
 encryptionOverhead = 16 + SecretBox.NONCE_SIZE
