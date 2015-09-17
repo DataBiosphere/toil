@@ -28,7 +28,6 @@ from threading import Thread
 from datetime import date
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from toil.batchSystems.parasol import getParasolResultsFileName
 
 
 logger = logging.getLogger( __name__ )
@@ -159,7 +158,7 @@ class LSFBatchSystem(AbstractBatchSystem):
     """
     def __init__(self, config, maxCores, maxMemory):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
-        self.lsfResultsFile = getParasolResultsFileName(config.jobStore)
+        self.lsfResultsFile = self._getResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
         self.lsfResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence

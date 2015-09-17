@@ -42,7 +42,6 @@ memoryForJobs = 100e6
 
 diskForJobs = 1000
 
-
 class hidden:
     """
     Hide abstract base class from unittest's test case loader
@@ -83,9 +82,9 @@ class hidden:
             testPath = os.path.join(self.tempDir, "test.txt")
 
             job1 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=0.5, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
             job2 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=0.5, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -103,7 +102,7 @@ class hidden:
             # it to be added to the updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath,
-                                                  memory=memoryForJobs, cores=0.5, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
 
             updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
@@ -114,6 +113,9 @@ class hidden:
             self.assertEqual(updatedID, job3)
             self.assertTrue(os.path.exists(testPath))
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
+
+            #Make sure killBatchJobs can handle jobs that don't exist
+            self.batchSystem.killBatchJobs([10])
 
         def testCheckResourceRequest(self):
             self.assertRaises(InsufficientSystemResources,
@@ -152,7 +154,6 @@ class hidden:
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
             return runningIDs
 
-
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -174,7 +175,6 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
                                         maxDisk=1001)
-
 
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
@@ -289,7 +289,6 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             f.truncate(0)
                             f.write('0,0')
 
-
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
     """
@@ -304,13 +303,49 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
     def createBatchSystem(self):
         self._startParasol(numCores)
-        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
+        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=3e9,
                                   maxDisk=1001)
 
     def tearDown(self):
-        self._stopParasol()
         super(ParasolBatchSystemTest, self).tearDown()
+        self._stopParasol()
 
+    def testBatchResourceLimits(self):
+        #self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
+        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
+        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000)
+
+        batches = self._getBatchList()
+        self.assertEqual(len(batches), 2)
+        #It would be better to directly check that the batches
+        #have the correct memory and cpu values, but parasol seems
+        #to slightly change the values sometimes.
+        self.assertTrue(batches[0]["ram"] != batches[1]["ram"])
+
+        #need to kill one of the jobs because there are only two cores available
+        self.batchSystem.killBatchJobs([job2])
+        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
+        batches = self._getBatchList()
+        self.assertEqual(len(batches), 1)
+
+    def _parseBatchString(self, batchString):
+        import re
+        batchInfo = dict()
+        memPattern = re.compile("(\d+\.\d+)([kgmbt])")
+        items = batchString.split()
+        batchInfo["cores"] = int(items[7])
+        name = str(items[11])
+        memMatch = memPattern.match(items[8])
+        ramValue = float(memMatch.group(1))
+        ramUnits = memMatch.group(2)
+        ramConversion = {'b':1e0, 'k':1e3, 'm':1e6, 'g':1e9, 't':1e12}
+        batchInfo["ram"] = ramValue * ramConversion[ramUnits]
+        return batchInfo
+
+    def _getBatchList(self):
+        from toil.batchSystems.parasol import popenParasolCommand
+        exitStatus, batchLines = popenParasolCommand("parasol list batches")
+        return [self._parseBatchString(line) for line in batchLines[1:] if not line == ""]
 
 @needs_gridengine
 class GridEngineTest(hidden.AbstractBatchSystemTest):

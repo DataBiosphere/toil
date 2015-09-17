@@ -62,6 +62,7 @@ class Config(object):
         self.scale = 1
         self.masterIP = '127.0.0.1:5050'
         self.parasolCommand = "parasol"
+        self.maxParasolBatches = 10000
         
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -140,6 +141,7 @@ class Config(object):
         setOption("scale", float) 
         setOption("masterIP") 
         setOption("parasolCommand")
+        setOption("maxParasolBatches", int, iC(1))
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -218,6 +220,9 @@ def _addOptions(addGroupFn, config):
                 help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The command to run the parasol program default=%s" % config.parasolCommand)
+    addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
+                help="Maximum number of batches Parasol is allowed to create - a batch \
+                is created for each job that has a unique set of resource requirements. Default=%i" % config.maxParasolBatches)
 
     #
     #Resource requirements

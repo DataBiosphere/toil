@@ -17,6 +17,7 @@
 
 from __future__ import absolute_import
 from Queue import Empty
+import os
 
 
 class AbstractBatchSystem:
@@ -125,6 +126,8 @@ class AbstractBatchSystem:
             return queue.get(timeout=maxWait)
         except Empty:
             return None
+    def _getResultsFileName(self, toilPath):
+        return os.path.join(toilPath, "results.txt")
 
 
 class InsufficientSystemResources(Exception):
