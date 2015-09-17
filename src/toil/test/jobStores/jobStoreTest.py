@@ -26,7 +26,7 @@ import shutil
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, needs_aws, needs_azure
+from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption
 
 logger = logging.getLogger(__name__)
 
@@ -445,5 +445,6 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStore
 
 
 @needs_azure
+@needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
