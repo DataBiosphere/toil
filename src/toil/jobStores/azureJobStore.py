@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# noinspection PyUnresolvedReferences
-from azure import WindowsAzureMissingResourceError
-# noinspection PyUnresolvedReferences
-from azure.storage import TableService, BlobService, SharedAccessPolicy, AccessPolicy, \
-    BlobSharedAccessPermissions
-
 import os
 import uuid
 import logging
@@ -30,11 +24,18 @@ import base64
 import socket
 import httplib
 from datetime import datetime, timedelta
+
 from ConfigParser import RawConfigParser, NoOptionError
 
+from azure import WindowsAzureMissingResourceError
+
+from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
+                           BlobSharedAccessPermissions)
+
 from toil.jobWrapper import JobWrapper
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
-    ConcurrentFileModificationException, NoSuchFileException
+from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+                                             ConcurrentFileModificationException,
+                                             NoSuchFileException)
 from toil.lib.encryption import encrypt, decrypt, encryptionOverhead
 
 log = logging.getLogger(__name__)
@@ -391,7 +392,7 @@ class AzureJobStore(AbstractJobStore):
                                 container.lease_blob(blob_name=jobStoreFileID,
                                                      x_ms_lease_action='release',
                                                      x_ms_lease_id=leaseID)
-                                raise ConcurrentFileModificationException()
+                                raise ConcurrentFileModificationException(jobStoreFileID)
                             # commit the file,
                             container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs,
                                                      x_ms_lease_id=leaseID)
@@ -425,12 +426,13 @@ class AzureJobStore(AbstractJobStore):
                 def writer():
                     try:
                         chunkStartPos = 0
-                        fileSize = int(container.get_blob_properties(blob_name=jobStoreFileID)['Content-Length'])
+                        blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
+                        fileSize = int(blobProps['Content-Length'])
                         while chunkStartPos < fileSize:
                             chunkEndPos = chunkStartPos + self._maxAzureBlockBytes - 1
                             buf = container.get_blob(blob_name=jobStoreFileID,
-                                                      x_ms_range="bytes=%d-%d" % (chunkStartPos,
-                                                                                  chunkEndPos))
+                                                     x_ms_range="bytes=%d-%d" % (chunkStartPos,
+                                                                                 chunkEndPos))
                             if encrypted:
                                 buf = decrypt(buf, self.keyPath)
                             writable.write(buf)
@@ -451,7 +453,7 @@ class AzureJobStore(AbstractJobStore):
                 thread.join()
 
 
-class AzureTable():
+class AzureTable(object):
     """
     A shim over the Azure TableService API, specfic for a single table.
 
@@ -496,7 +498,7 @@ class AzureTable():
             return None
 
 
-class AzureBlobContainer():
+class AzureBlobContainer(object):
     """
     A shim over the BlobService API, so that the container name is automatically filled in.
 
@@ -570,6 +572,7 @@ class AzureJob(JobWrapper):
             item['_' + str(attributeOrder).zfill(3)] = chunk
         return item
 
+
 def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
                                                       httplib.HTTPException)):
     """
@@ -612,6 +615,7 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
     1
     """
     go = [None]
+
     @contextmanager
     def attempt(last=False):
         try:
