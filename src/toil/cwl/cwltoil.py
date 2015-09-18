@@ -7,29 +7,6 @@ import os
 import tempfile
 import json
 
-# class HelloWorld(Job):
-#     def __init__(self):
-#         Job.__init__(self,  memory=100000, cores=2, disk=20000)
-#     def run(self, fileStore):
-#         fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="10M").rv()
-#         self.addFollowOn(FollowOn(fileID))
-
-# def childFn(job):
-#     with job.fileStore.writeGlobalFileStream() as (fH, fileID):
-#         fH.write("Hello, World!")
-#         return fileID
-
-# class FollowOn(Job):
-#     def __init__(sel):
-#         Job.__init__(self)
-
-#     def run(self, fileStore):
-#         tempDir = fileStore.getLocalTempDir()
-#         tempFilePath = "/".join([tempDir,"LocalCopy"])
-#         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
-#             with open(tempFilePath, "w") as localFile:
-#                 localFile.write(globalFile.read())
-
 def shortname(n):
     return n.split("#")[-1].split("/")[-1].split(".")[-1]
 
