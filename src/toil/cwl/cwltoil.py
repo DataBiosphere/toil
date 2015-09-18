@@ -4,6 +4,8 @@ import cwltool.main
 import cwltool.workflow
 import schema_salad.ref_resolver
 import os
+import tempfile
+import json
 
 # class HelloWorld(Job):
 #     def __init__(self):
@@ -35,9 +37,8 @@ def adjustFiles(rec, op):
     if isinstance(rec, dict):
         if rec.get("class") == "File":
             rec["path"] = op(rec["path"])
-        else:
-            for d in rec:
-                adjustFiles(rec[d], op)
+        for d in rec:
+            adjustFiles(rec[d], op)
     if isinstance(rec, list):
         for d in rec:
             adjustFiles(d, op)
@@ -51,6 +52,20 @@ class StageJob(Job):
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
         adjustFiles(cwljob, lambda x: fileStore.writeGlobalFile(x))
         return {k: (k, cwljob) for k, v in cwljob.items()}
+
+
+class FinalJob(Job):
+    def __init__(self, cwljob, outdir):
+        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        self.cwljob = cwljob
+        self.outdir = outdir
+
+    def run(self, fileStore):
+        cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x, tempfile.mkstemp(dir=self.outdir)[1]))
+        with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
+            json.dump(cwljob, f, indent=4)
+        return True
 
 
 class CWLJob(Job):
@@ -73,6 +88,7 @@ class CWLJob(Job):
 
         return output
 
+
 class SelfJob(object):
     def __init__(self, j, v):
         self.j = j
@@ -84,8 +100,6 @@ class SelfJob(object):
     def addChild(self, c):
         self.j.addChild(c)
 
-def blub(fileStore):
-    pass
 
 class CWLWorkflow(Job):
     def __init__(self, cwlwf, cwljob):
@@ -101,15 +115,17 @@ class CWLWorkflow(Job):
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
 
-        fufilled = False
-        while not fufilled:
+        alloutputs_fufilled = False
+        while not alloutputs_fufilled:
+            alloutputs_fufilled = True
+
             for step in self.cwlwf.steps:
                 if step.tool["id"] not in jobs:
-                    fufilled = True
+                    stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
                         if inp["source"] not in promises:
-                            fufilled = False
-                    if fufilled:
+                            stepinputs_fufilled = False
+                    if stepinputs_fufilled:
                         jobobj = {}
                         for inp in step.tool["inputs"]:
                             jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
@@ -123,15 +139,41 @@ class CWLWorkflow(Job):
                         for out in step.tool["outputs"]:
                             promises[out["id"]] = job
 
-            fufilled = True
-            for out in step.tool["outputs"]:
+                        print "Fufilled", step.tool["id"]
+
+                for inp in step.tool["inputs"]:
+                    if "source" in inp:
+                        if inp["source"] not in promises:
+                            alloutputs_fufilled = False
+
+            for out in self.cwlwf.tool["outputs"]:
                 if "source" in out:
                     if out["source"] not in promises:
-                        fufilled = False
+                        alloutputs_fufilled = False
 
-        self.addFollowOn(Job.wrapFn(blub, None))
+        outobj = {}
+        for out in self.cwlwf.tool["outputs"]:
+            outobj[shortname(out["id"])] = (shortname(out["source"]), promises[out["source"]].rv())
 
-        return True
+        return outobj
+
+supportedProcessRequirements = ["DockerRequirement",
+                                "ExpressionEngineRequirement",
+                                "SchemaDefRequirement",
+                                "EnvVarRequirement",
+                                "CreateFileRequirement"]
+
+def checkRequirements(rec):
+    if isinstance(rec, dict):
+        if "requirements" in rec:
+            for r in rec["requirements"]:
+                if r["class"] not in supportedProcessRequirements:
+                    raise Exception("Unsupported requirement %s" % r["class"])
+        for d in rec:
+            checkRequirements(rec[d])
+    if isinstance(rec, list):
+        for d in rec:
+            checkRequirements(d)
 
 
 def main():
@@ -176,6 +218,7 @@ def main():
         wf = CWLJob(t, staging.rv())
 
     staging.addFollowOn(wf)
+    wf.addFollowOn(FinalJob(wf.rv(), os.getcwd()))
 
     Job.Runner.startToil(staging,  options)
 
