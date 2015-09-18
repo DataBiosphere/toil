@@ -116,8 +116,6 @@ class CWLWorkflow(Job):
                         for out in step.tool["outputs"]:
                             promises[out["id"]] = job
 
-                        print "Fufilled", step.tool["id"]
-
                 for inp in step.tool["inputs"]:
                     if "source" in inp:
                         if inp["source"] not in promises:
