@@ -163,10 +163,10 @@ class AzureJobStore(AbstractJobStore):
         self.statsFiles.delete_container()
         self.statsFileIDs.delete_table()
 
-    def writeFile(self, jobStoreID, localFilePath):
+    def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         self.updateFile(jobStoreFileID, localFilePath)
-        self._associateJobWithFile(jobStoreID, jobStoreFileID)
+        self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
@@ -191,7 +191,7 @@ class AzureJobStore(AbstractJobStore):
     def deleteFile(self, jobStoreFileID):
         try:
             self.files.delete_blob(blob_name=jobStoreFileID)
-            self._dissociateJobWithFile(jobStoreFileID)
+            self._dissociateFileFromJob(jobStoreFileID)
         except WindowsAzureMissingResourceError:
             pass
 
@@ -206,7 +206,7 @@ class AzureJobStore(AbstractJobStore):
             return False
 
     @contextmanager
-    def writeFileStream(self, jobStoreID):
+    def writeFileStream(self, jobStoreID=None):
         # TODO: this (and all stream methods) should probably use the
         # Append Blob type, but that is not currently supported by the
         # Azure Python API.
@@ -214,7 +214,7 @@ class AzureJobStore(AbstractJobStore):
         with self._uploadStream(jobStoreFileID, self.files,
                                 encrypted=self.keyPath is not None) as fd:
             yield fd, jobStoreFileID
-        self._associateJobWithFile(jobStoreID, jobStoreFileID)
+        self._associateFileWithJob(jobStoreFileID, jobStoreID)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -222,11 +222,11 @@ class AzureJobStore(AbstractJobStore):
                                 encrypted=self.keyPath is not None) as fd:
             yield fd
 
-    def getEmptyFileStoreID(self, jobStoreID):
+    def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         self.files.put_blob(blob_name=jobStoreFileID, blob='',
                             x_ms_blob_type='BlockBlob')
-        self._associateJobWithFile(jobStoreID, jobStoreFileID)
+        self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     @contextmanager
@@ -302,15 +302,17 @@ class AzureJobStore(AbstractJobStore):
             ret = str(uuid.uuid5(self.sharedFileJobID, str(sharedFileName)))
         return ret.replace('-', '_')
 
-    def _associateJobWithFile(self, jobStoreID, jobStoreFileID):
-        self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
-                                              'RowKey': jobStoreFileID})
+    def _associateFileWithJob(self, jobStoreFileID, jobStoreID=None):
+        if jobStoreID is not None:
+            self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
+                                                  'RowKey': jobStoreFileID})
 
-    def _dissociateJobWithFile(self, jobStoreFileID):
+    def _dissociateFileFromJob(self, jobStoreFileID):
         entities = self.jobFileIDs.query_entities(filter="RowKey eq '%s'" % jobStoreFileID)
-        assert len(entities) == 1
-        jobStoreID = entities[0].PartitionKey
-        self.jobFileIDs.delete_entity(partition_key=jobStoreID, row_key=jobStoreFileID)
+        if entities:
+            assert len(entities) == 1
+            jobStoreID = entities[0].PartitionKey
+            self.jobFileIDs.delete_entity(partition_key=jobStoreID, row_key=jobStoreFileID)
 
     def _getOrCreateTable(self, tableName):
         # This will not fail if the table already exists.
@@ -343,8 +345,7 @@ class AzureJobStore(AbstractJobStore):
         # _uploadStream method of AWSJobStore.
         if checkForModification:
             try:
-                blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
-                expectedVersion = blobProperties['etag']
+                expectedVersion = container.get_blob_properties(blob_name=jobStoreFileID)['etag']
             except WindowsAzureMissingResourceError:
                 expectedVersion = None
 
@@ -474,7 +475,7 @@ class AzureTable(object):
     defaultPartition = 'default'
 
     def __getattr__(self, name):
-        def callable(*args, **kwargs):
+        def f(*args, **kwargs):
             assert len(args) == 0
             function = getattr(self.tableService, name)
             funcArgs, _, _, _ = inspect.getargspec(function)
@@ -489,12 +490,12 @@ class AzureTable(object):
                 with attempt:
                     return function(**kwargs)
 
-        return callable
+        return f
 
     def get_entity(self, **kwargs):
         try:
             return self.__getattr__('get_entity')(**kwargs)
-        except WindowsAzureMissingResourceError as e:
+        except WindowsAzureMissingResourceError:
             return None
 
 
@@ -511,7 +512,7 @@ class AzureBlobContainer(object):
         self.containerName = containerName
 
     def __getattr__(self, name):
-        def callable(*args, **kwargs):
+        def f(*args, **kwargs):
             assert len(args) == 0
             function = getattr(self.blobService, name)
             kwargs['container_name'] = self.containerName
@@ -520,7 +521,7 @@ class AzureBlobContainer(object):
                 with attempt:
                     return function(**kwargs)
 
-        return callable
+        return f
 
 
 class AzureJob(JobWrapper):
@@ -584,7 +585,7 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
 
     Retry the correct number of times and then give up and reraise
     >>> i = 0
-    >>> for attempt in retry_on_error(retriable_exceptions=(RuntimeError)):
+    >>> for attempt in retry_on_error(retriable_exceptions=(RuntimeError,)):
     ...     with attempt:
     ...         i += 1
     ...         raise RuntimeError("foo")
