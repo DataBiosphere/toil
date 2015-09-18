@@ -1,3 +1,7 @@
+#
+# Implement support for Common Workflow Language (CWL) in Toil.
+#
+
 from toil.job import Job
 from argparse import ArgumentParser
 import cwltool.main
@@ -8,9 +12,12 @@ import tempfile
 import json
 
 def shortname(n):
+    """Trim the leading namespace to get just the final name part of a parameter."""
     return n.split("#")[-1].split("/")[-1].split(".")[-1]
 
 def adjustFiles(rec, op):
+    """Apply a mapping function to each File path in the object `rec`."""
+
     if isinstance(rec, dict):
         if rec.get("class") == "File":
             rec["path"] = op(rec["path"])
@@ -21,6 +28,15 @@ def adjustFiles(rec, op):
             adjustFiles(d, op)
 
 class StageJob(Job):
+    """File staging job to put local files into the global file store.
+
+    This currently will break if you try and run this on a cluster because the
+    main() method can't stage files before Job.Runner.startToil(), and the
+    staging job could run on a compute node where it doesn't have direct access
+    to the input files of the head node.
+
+    """
+
     def __init__(self, cwljob):
         Job.__init__(self,  memory=100000, cores=2, disk=20000)
         self.cwljob = cwljob
@@ -32,6 +48,16 @@ class StageJob(Job):
 
 
 class FinalJob(Job):
+    """Wrap-up job to write output JSON and copy output files from global file
+    store to current working directory.
+
+    This currently will break if you try and run this on a cluster because the
+    main() method can't access files produced by Job.Runner.startToil(), and
+    the staging job could run on a compute node where it doesn't have direct
+    access to the output directory of the head node.
+
+    """
+
     def __init__(self, cwljob, outdir):
         Job.__init__(self,  memory=100000, cores=2, disk=20000)
         self.cwljob = cwljob
@@ -46,6 +72,8 @@ class FinalJob(Job):
 
 
 class CWLJob(Job):
+    """Execute a CWL tool wrapper."""
+
     def __init__(self, cwltool, cwljob):
         Job.__init__(self,  memory=100000, cores=2, disk=20000)
         self.cwltool = cwltool
@@ -54,6 +82,7 @@ class CWLJob(Job):
     def run(self, fileStore):
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
 
+        # Copy input files out of the global file store.
         adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x))
 
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
@@ -61,12 +90,15 @@ class CWLJob(Job):
                                                   outdir=os.path.join(fileStore.getLocalTempDir(), "out"),
                                                   tmpdir=os.path.join(fileStore.getLocalTempDir(), "tmp"))
 
+        # Copy output files into the global file store.
         adjustFiles(output, lambda x: fileStore.writeGlobalFile(x))
 
         return output
 
 
 class SelfJob(object):
+    """Fake job object to facilitate implementation of CWLWorkflow.run()"""
+
     def __init__(self, j, v):
         self.j = j
         self.v = v
@@ -79,14 +111,33 @@ class SelfJob(object):
 
 
 class CWLWorkflow(Job):
+    """Traverse a CWL workflow graph and schedule a Toil job graph."""
+
     def __init__(self, cwlwf, cwljob):
         Job.__init__(self,  memory=100000, cores=2, disk=20000)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
 
     def run(self, fileStore):
+        # The job object passed into CWLJob and CWLWorkflow
+        # is a dict mapping to tuple of (key, dict)
+        # the final dict is derived by evaluating each
+        # tuple looking up the key in the supplied dict.
+        #
+        # This is necessary because Toil jobs return a single value (a dict)
+        # but CWL permits steps to have multiple output parameters that may
+        # feed into multiple other steps.  This transformation maps the key in the
+        # output object to the correct key of the input object.
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+
+        # `promises` dict
+        # from: each parameter (workflow input or step output)
+        #   that may be used as a "source" for a step input workflow output
+        #   parameter
+        # to: the job that will produce that value.
         promises = {}
+
+        # `jobs` dict from step id to job that implements that step.
         jobs = {}
 
         for inp in self.cwlwf.tool["inputs"]:
@@ -94,6 +145,11 @@ class CWLWorkflow(Job):
 
         alloutputs_fufilled = False
         while not alloutputs_fufilled:
+            # Iteratively go over the workflow steps, scheduling jobs as their
+            # dependencies can be fufilled by upstream workflow inputs or
+            # step outputs.  Loop exits when the workflow outputs
+            # are satisfied.
+
             alloutputs_fufilled = True
 
             for step in self.cwlwf.steps:
@@ -104,6 +160,11 @@ class CWLWorkflow(Job):
                             stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
+
+                        # TODO: Handle multiple inbound links
+                        # TODO: Handle scatter/gather
+                        # (both are discussed in section 5.1.2 in CWL spec draft-2)
+
                         for inp in step.tool["inputs"]:
                             jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
 
@@ -161,6 +222,12 @@ def main():
     Job.Runner.addToilOptions(parser)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", type=str)
+
+    # TODO: support cwl-runner standard CLI interface (cwl-runner workflow.cwl jobinput.json)
+    # requires selection of default toil jobStore instead of requiring as 1st command line item.
+    #
+    # TODO: support cwltest standard CLI interface to support conformance testing cwltoil
+    # (see cwltool/cwltest.py)
     options = parser.parse_args()
 
     uri = "file://" + os.path.abspath(options.cwljob)
@@ -175,6 +242,8 @@ def main():
     adjustFiles(job, lambda x: x.replace("file://", ""))
 
     t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool, True)
+
+    checkRequirements(t.tool)
 
     jobobj = {}
     for inp in t.tool["inputs"]:
