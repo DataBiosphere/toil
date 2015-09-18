@@ -617,8 +617,8 @@ class AWSJobStore(AbstractJobStore):
 
         :param bucketName: the name of the S3 bucket the file was placed in
 
-        :param jobStoreID: the ID of the job owning the file, only allowed for first version of
-                           file or when file is registered without content
+        :param jobStoreID: optional ID of the job owning the file, only allowed for first version of
+                           file
 
         :param newVersion: the file's new version or None if the file is to be registered without
                            content, in which case jobStoreId must be passed
@@ -626,8 +626,6 @@ class AWSJobStore(AbstractJobStore):
         :param oldVersion: the expected previous version of the file or None if newVersion is the
                            first version or file is registered without content
         """
-        # Must pass either jobStoreID or newVersion, or both
-        assert jobStoreID is not None or newVersion is not None
         # Must pass newVersion if passing oldVersion
         assert oldVersion is None or newVersion is not None
         attributes = dict(bucketName=bucketName)
