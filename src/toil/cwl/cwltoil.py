@@ -107,7 +107,11 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
 
-                        job = CWLJob(step.embedded_tool, jobobj)
+                        if step.embedded_tool.tool["class"] == "Workflow":
+                            job = CWLWorkflow(step.embedded_tool, jobobj)
+                        else:
+                            job = CWLJob(step.embedded_tool, jobobj)
+
                         jobs[step.tool["id"]] = job
 
                         for inp in step.tool["inputs"]:
@@ -136,7 +140,8 @@ supportedProcessRequirements = ["DockerRequirement",
                                 "ExpressionEngineRequirement",
                                 "SchemaDefRequirement",
                                 "EnvVarRequirement",
-                                "CreateFileRequirement"]
+                                "CreateFileRequirement",
+                                "SubworkflowFeatureRequirement"]
 
 def checkRequirements(rec):
     if isinstance(rec, dict):
