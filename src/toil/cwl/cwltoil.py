@@ -102,6 +102,7 @@ class SelfJob(object):
     def __init__(self, j, v):
         self.j = j
         self.v = v
+        self._children = j._children
 
     def rv(self):
         return self.v
@@ -156,7 +157,7 @@ class CWLWorkflow(Job):
                 if step.tool["id"] not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
-                        if inp["source"] not in promises:
+                        if "source" in inp and inp["source"] not in promises:
                             stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
@@ -166,7 +167,10 @@ class CWLWorkflow(Job):
                         # (both are discussed in section 5.1.2 in CWL spec draft-2)
 
                         for inp in step.tool["inputs"]:
-                            jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
+                            if "source" in inp:
+                                jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
+                            elif "default" in inp:
+                                jobobj[shortname(inp["id"])] = ("default", {"default": inp["default"]})
 
                         if step.embedded_tool.tool["class"] == "Workflow":
                             job = CWLWorkflow(step.embedded_tool, jobobj)
@@ -176,7 +180,9 @@ class CWLWorkflow(Job):
                         jobs[step.tool["id"]] = job
 
                         for inp in step.tool["inputs"]:
-                            promises[inp["source"]].addChild(job)
+                            if "source" in inp:
+                                if job not in promises[inp["source"]]._children:
+                                    promises[inp["source"]].addChild(job)
 
                         for out in step.tool["outputs"]:
                             promises[out["id"]] = job
