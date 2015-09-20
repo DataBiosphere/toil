@@ -107,7 +107,7 @@ class JobWrapper( object ):
         """
         if self.logJobStoreFileID is not None:
             self.clearLogFile(jobStore)
-        self.logJobStoreFileID = jobStore.writeFile( self.jobStoreID, logFile )
+        self.logJobStoreFileID = jobStore.writeFile( logFile, self.jobStoreID )
         assert self.logJobStoreFileID is not None
 
     def getLogFileHandle( self, jobStore ):

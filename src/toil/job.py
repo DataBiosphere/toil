@@ -70,15 +70,16 @@ class Job(object):
         self._followOns = []
         #See Job.addService
         self._services = []
-        #A follow-on, service or child of a job A, is a "successor" of A, if B
-        #is a successor of A, then A is a predecessor of B.
-        self._predecessors = set()
+        #A follow-on, service or child of a job A, is a "direct successor" of A, if B
+        #is a direct successor of A, then A is a "direct predecessor" of B.
+        self._directPredecessors = set()
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
         #See Job.rv()
         self._rvs = {}
+        self._promiseJobStore = None
 
     def run(self, fileStore):
         """
@@ -202,7 +203,7 @@ class Job(object):
     #The following function is used for passing return values between
     #job run functions
     ####################################################
-
+    
     def rv(self, argIndex=None):
         """
         Gets a PromisedJobReturnValue, representing the argIndex return
@@ -218,13 +219,18 @@ class Job(object):
         (tuple/list/dictionary, or in general object that implements __getitem__), 
         hence rv(i) would refer to the ith (indexed from 0) member of return value.
         """
-        #Check if the return value has already been promised and if it has
-        #return it
-        if argIndex in self._rvs:
-            return self._rvs[argIndex]
-        #Create, store, return new PromisedJobReturnValue
-        self._rvs[argIndex] = PromisedJobReturnValue()
-        return self._rvs[argIndex]
+        if argIndex not in self._rvs:
+            self._rvs[argIndex] = [] #This will be a list of jobStoreFileIDs for promises which will
+            #be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
+        def registerPromiseCallBack():
+            #Returns the jobStoreFileID and jobStore string
+            if self._promiseJobStore == None:
+                raise RuntimeError("Trying to pass a promise from a promising job "
+                                   "that is not predecessor of the job receiving the promise")
+            jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
+            self._rvs[argIndex].append(jobStoreFileID)
+            return jobStoreFileID, self._promiseJobStore.config.jobStore
+        return PromisedJobReturnValue(registerPromiseCallBack)
 
     ####################################################
     #Cycle/connectivity checking
@@ -250,8 +256,8 @@ class Job(object):
         def getRoots(job):
             if job not in visited:
                 visited.add(job)
-                if len(job._predecessors) > 0:
-                    map(lambda p : getRoots(p), job._predecessors)
+                if len(job._directPredecessors) > 0:
+                    map(lambda p : getRoots(p), job._directPredecessors)
                 else:
                     roots.add(job)
                 #The following call ensures we explore all successor edges.
@@ -315,7 +321,6 @@ class Job(object):
         """
         Used to setup and run a graph of jobs.
         """
-
         @staticmethod
         def getDefaultOptions(jobStore):
             """
@@ -360,7 +365,6 @@ class Job(object):
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
         """
-
         def __init__(self, jobStore, jobWrapper, localTempDir):
             """
             This constructor should not be called by the user, 
@@ -371,29 +375,62 @@ class Job(object):
             self.jobWrapper = jobWrapper
             self.localTempDir = localTempDir
             self.loggingMessages = []
+            self.deletedJobStoreFileIDs = set()
+        
+        def getLocalTempDir(self):
+            """
+            Get a new local temporary directory. This directory will exist for the 
+            duration of the job only, and is guaranteed to be deleted once
+            the job terminates, removing all files it contains recursively. 
+            """
+            return self.localTempDir
+        
+        def getLocalTempFile(self):
+            """
+            Get a local temporary file. This file will exist for the duration of the job only, and
+            is guaranteed to be deleted once the job terminates.
+            """
+            handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
+            os.close(handle)
+            return tmpFile
 
-        def writeGlobalFile(self, localFileName):
+        def writeGlobalFile(self, localFileName, cleanup=False):
             """
             Takes a file (as a path) and uploads it to to the global file store, returns
             an ID that can be used to retrieve the file. 
+            
+            If cleanup is True then the file will be deleted once the job
+            and all its successors have completed running. If not the file must be deleted
+            manually.
+            
+            The write is asynchronous, so further modifications to the file pointed by
+            localFileName will result in undetermined behavior. The file is safely removed 
+            at the end of the job by placing it in (a subdirectory) of the location returned 
+            by getLocalTempDir.
             """
-            return self.jobStore.writeFile(self.jobWrapper.jobStoreID, localFileName)
-
-        def updateGlobalFile(self, fileStoreID, localFileName):
+            return self.jobStore.writeFile(localFileName, 
+                                           None if not cleanup else self.jobWrapper.jobStoreID)
+        
+        def writeGlobalFileStream(self, cleanup=False):
             """
-            Replaces the existing version of a file in the global file store, 
-            keyed by the fileStoreID. 
-            Throws an exception if the file does not exist.
+            Similar to writeGlobalFile, but returns a context manager yielding a 
+            tuple of 1) a file handle which can be written to and 2) the ID of 
+            the resulting file in the job store. The yielded file handle does
+            not need to and should not be closed explicitly.
+            
+            owner is as in writeGlobalFile.
             """
-            self.jobStore.updateFile(fileStoreID, localFileName)
+            return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
 
         def readGlobalFile(self, fileStoreID, localFilePath=None):
             """
             Returns a path to a local copy of the file keyed by fileStoreID. 
-            The version will be consistent with the last copy of the file 
-            written/updated to the global file store. If localFilePath is not None, 
-            the returned file path will be localFilePath.
+            If localFilePath is not None, the returned file path will be localFilePath
+            within the location returned by getLocalTempDir().
+            The returned file will be read only.
             """
+            if fileStoreID in self.deletedJobStoreFileIDs:
+                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             if localFilePath is None:
                 fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
                 self.jobStore.readFile(fileStoreID, localFilePath)
@@ -401,63 +438,28 @@ class Job(object):
             else:
                 self.jobStore.readFile(fileStoreID, localFilePath)
             return localFilePath
-
-        def deleteGlobalFile(self, fileStoreID):
-            """
-            Deletes a global file with the given fileStoreID. Returns true if 
-            file exists, else false.
-            """
-            return self.jobStore.deleteFile(fileStoreID)
-
-        def writeGlobalFileStream(self):
-            """
-            Similar to writeGlobalFile, but returns a context manager yielding a 
-            tuple of 1) a file handle which can be written to and 2) the ID of 
-            the resulting file in the job store. The yielded file handle does
-            not need to and should not be closed explicitly.
-            """
-            return self.jobStore.writeFileStream(self.jobWrapper.jobStoreID)
-
-        def updateGlobalFileStream(self, fileStoreID):
-            """
-            Similar to updateGlobalFile, but returns a context manager yielding 
-            a file handle which can be written to. The yielded file handle does 
-            not need to and should not be closed explicitly.
-            """
-            return self.jobStore.updateFileStream(fileStoreID)
-
-        def getEmptyFileStoreID(self):
-            """
-            Returns the ID of a new, empty file.
-            """
-            return self.jobStore.getEmptyFileStoreID(self.jobWrapper.jobStoreID)
-
-        def globalFileExists(self, fileStoreID):
-            """
-            :rtype : True if and only if the jobStore contains the given fileStoreID, else
-            false.
-            """
-            return self.jobStore.fileExists(fileStoreID)
-
+        
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
             file handle which can be read from. The yielded file handle does not 
             need to and should not be closed explicitly.
             """
+            if fileStoreID in self.deletedJobStoreFileIDs:
+                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             return self.jobStore.readFileStream(fileStoreID)
 
-        def getLocalTempDir(self):
+        def deleteGlobalFile(self, fileStoreID):
             """
-            Get the local temporary directory. This directory will exist for the 
-            duration of the job only, and is guaranteed to be deleted once
-            the job terminates.
+            Deletes a global file with the given fileStoreID. 
+            To ensure that the job can be restarted if necessary, 
+            the delete will not happen until after the job's run method has completed.
             """
-            return self.localTempDir
+            self.deletedJobStoreFileIDs.add(fileStoreID)
 
         def logToMaster(self, string):
             """
-            Send a logging message to the leader. Will only ne reported if logging 
+            Send a logging message to the leader. Will only be reported if logging 
             is set to INFO level (or lower) in the leader.
             """
             self.loggingMessages.append(str(string))
@@ -503,139 +505,9 @@ class Job(object):
         Adds a predecessor job to the set of predecessor jobs. Raises a
         RuntimeError is the job is already a predecessor.
         """
-        if predecessorJob in self._predecessors:
+        if predecessorJob in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
-        self._predecessors.add(predecessorJob)
-
-    ####################################################
-    #The following functions are used to serialise
-    #a job graph to the jobStore
-    ####################################################
-
-    def _getHashOfJobsToUUIDs(self, jobsToUUIDs):
-        """
-        Creates a map of the jobs in the graph to randomly selected UUIDs.
-        Excludes the root job.
-        """
-        #Call recursively
-        for successor in self._children + self._followOns:
-            successor._getHashOfJobsToUUIDs2(jobsToUUIDs)
-        return jobsToUUIDs
-
-    def getUserScript(self):
-        return self.userModule
-
-    def _getHashOfJobsToUUIDs2(self, jobsToUUIDs):
-        if self not in jobsToUUIDs:
-            jobsToUUIDs[self] = str(uuid.uuid1())
-            self._getHashOfJobsToUUIDs(jobsToUUIDs)
-
-    def _createEmptyJobForJob(self, jobStore, updateID=None, command=None,
-                                 predecessorNumber=0):
-        """
-        Create an empty job for the job.
-        """
-        return jobStore.create(command=command,
-                               memory=(self.memory if self.memory is not None
-                                       else jobStore.config.defaultMemory),
-                               cores=(self.cores if self.cores is not None
-                                    else float(jobStore.config.defaultCores)),
-                               disk=(self.disk if self.disk is not None
-                                    else float(jobStore.config.defaultDisk)),
-                               updateID=updateID, predecessorNumber=predecessorNumber)
-
-    def _makeJobWrappers(self, jobStore, jobsToUUIDs, jobsToJobs, predecessor, rootJob):
-        """
-        Creates a job for each job in the job graph, recursively.
-        """
-        if self not in jobsToJobs:
-            #The job for the job
-            assert predecessor in self._predecessors
-            jobWrapper = self._createEmptyJobForJob(jobStore, jobsToUUIDs[self],
-                                                predecessorNumber=len(self._predecessors))
-            jobsToJobs[self] = jobWrapper
-
-            #Add followOns/children to be run after the current job.
-            for successors in (self._followOns, self._children):
-                jobs = map(lambda successor:
-                    successor._makeJobWrappers(jobStore, jobsToUUIDs,
-                                               jobsToJobs, self, rootJob), successors)
-                if len(jobs) > 0:
-                    jobWrapper.stack.append(jobs)
-
-            #Pickle the job so that its run method can be run at a later time.
-            #Drop out the children/followOns/predecessors/services - which are
-            #all recored within the jobStore and do not need to be stored within
-            #the job
-            self._children = []
-            self._followOns = []
-            self._services = []
-            self._predecessors = set()
-            #The pickled job is "run" as the command of the job, see worker
-            #for the mechanism which unpickles the job and executes the Job.run
-            #method.
-            fileStoreID = jobStore.getEmptyFileStoreID(rootJob.jobStoreID)
-            with jobStore.writeFileStream(rootJob.jobStoreID) as (fileHandle, fileStoreID):
-                cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-            jobWrapper.command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())
-            #Update the status of the job on disk
-            jobStore.update(jobWrapper)
-        else:
-            #Lookup the already created job
-            jobWrapper = jobsToJobs[self]
-            assert jobWrapper.predecessorNumber > 1
-
-        #The return is a tuple stored within the job.stack of the jobs to run.
-        #The tuple is jobStoreID, memory, cores, disk, predecessorID
-        #The predecessorID is used to establish which predecessors have been
-        #completed before running the given Job - it is just a unique ID
-        #per predecessor
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
-                None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
-
-    def _serialiseJobGraph(self, jobWrapper, jobStore):
-        """
-        Serialises the graph of jobs rooted at this job,
-        storing them in the jobStore.
-        Assumes the root job is already in the jobStore.
-        """
-        #Create jobIDs as UUIDs
-        jobsToUUIDs = self._getHashOfJobsToUUIDs({})
-        #Set the jobs to delete
-        jobWrapper.jobsToDelete = list(jobsToUUIDs.values())
-        #Update the job on disk. The jobs to delete is a record of what to
-        #remove if the update goes wrong
-        jobStore.update(jobWrapper)
-        #Create the jobs for followOns/children
-        jobsToJobs = {}
-        for successors in (self._followOns, self._children):
-            jobs = map(lambda successor:
-                successor._makeJobWrappers(jobStore, jobsToUUIDs,
-                                           jobsToJobs, self, jobWrapper), successors)
-            if len(jobs) > 0:
-                jobWrapper.stack.append(jobs)
-        #Remove the jobs to delete list and remove the old command finishing the update
-        jobWrapper.jobsToDelete = []
-        jobWrapper.command = None
-        jobStore.update(jobWrapper)
-
-    def _serialiseFirstJob(self, jobStore):
-        """
-        Serialises the root job. Returns the wrapping job.
-        """
-        #Pickles the job within a shared file in the jobStore called
-        #"firstJob"
-        sharedJobFile = "firstJob"
-        with jobStore.writeSharedFileStream(sharedJobFile) as f:
-            cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
-        #Make the first job
-        command = ' '.join(('_toil',sharedJobFile) + self.userModule.globalize())
-        jobWrapper = self._createEmptyJobForJob(jobStore, command=command)
-        #Store the name of the first job in a file in case of restart
-        with jobStore.writeSharedFileStream("rootJobStoreID") as f:
-            f.write(jobWrapper.jobStoreID)
-        #Return the first job wrapper
-        return jobWrapper
+        self._directPredecessors.add(predecessorJob)
 
     @staticmethod
     def _loadRootJob(jobStore):
@@ -702,49 +574,28 @@ class Job(object):
 
         unpickler.find_global = filter_main
         return unpickler.load()
+    
+    def getUserScript(self):
+        return self.userModule
 
     ####################################################
     #Functions to pass Job.run return values to the
     #input arguments of other Job instances
     ####################################################
 
-    def _setFileIDsForPromisedValues(self, jobStore, jobStoreID, visited):
-        """
-        Sets the jobStoreFileID for each PromisedJobReturnValue in the
-        graph of jobs created.
-        """
-        #Replace None references with valid jobStoreFileIDs. We
-        #do this here, rather than within the original constructor of the
-        #promised value because we don't necessarily have access to the jobStore when
-        #the PromisedJobReturnValue instances are created.
-        if self not in visited:
-            visited.add(self)
-            for i in self._rvs.keys():
-                promisedJobReturnValue = self._rvs[i]
-                #Instances of PromisedJobReturnValue are replaced with jobStoreFileIDs
-                if isinstance(promisedJobReturnValue, PromisedJobReturnValue):
-                    promisedJobReturnValue.jobStoreFileID = jobStore.getEmptyFileStoreID(jobStoreID)
-                    promisedJobReturnValue.jobStoreString = jobStore.config.jobStore
-                    self._rvs[i] = promisedJobReturnValue.jobStoreFileID
-            #Now recursively do the same for the children and follow ons.
-            for successorJob in self._children + self._followOns + self._services:
-                successorJob._setFileIDsForPromisedValues(jobStore, jobStoreID, visited)
-
-    @staticmethod
-    def _setReturnValuesForPromises(job, returnValues, jobStore):
+    def _setReturnValuesForPromises(self, returnValues, jobStore):
         """
         Sets the values for promises using the return values from the job's
         run function.
         """
-        for i in job._rvs.keys():
+        for i in self._rvs.keys():
             if i == None:
                 argToStore = returnValues
             else:
                 argToStore = returnValues[i]
-            with jobStore.updateFileStream(job._rvs[i]) as fileHandle:
-                if isinstance(argToStore, PromisedJobReturnValue):
-                    raise RuntimeError("A nested PromisedJobReturnValue has been found.") #We do not allow the return of PromisedJobReturnValue instance from the run function
-                cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            for promiseFileStoreID in self._rvs[i]:
+                with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
+                    cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
     #Functions associated with Job.checkJobGraphAcyclic to establish
@@ -799,23 +650,28 @@ class Job(object):
                 for descendant in reacheable:
                     extraEdges[descendant] += job._followOns[:]
         return extraEdges
+    
+    ####################################################
+    #The following functions are used to serialise
+    #a job graph to the jobStore
+    ####################################################
 
-    def _modifyJobGraphForServices(self, fileStore):
+    def _modifyJobGraphForServices(self, jobStore, jobStoreID):
         """
-        Modifies the job graph to correctly schedule any services
-        defined for this job.
+        Modifies the job graph just before it is serialised to disk 
+        to correctly schedule any services defined for the job.
         """
         if len(self._services) > 0:
             #Set the start/stop jobStore fileIDs for each service
             for service in self._services:
-                service.startFileStoreID = fileStore.getEmptyFileStoreID()
-                assert fileStore.globalFileExists(service.startFileStoreID)
-                service.stopFileStoreID = fileStore.getEmptyFileStoreID()
-                assert fileStore.globalFileExists(service.stopFileStoreID)
+                service.startFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
+                assert jobStore.fileExists(service.startFileStoreID)
+                service.stopFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
+                assert jobStore.fileExists(service.stopFileStoreID)
 
             def removePredecessor(job):
-                assert self in job._predecessors
-                job._predecessors.remove(self)
+                assert self in job._directPredecessors
+                job._directPredecessors.remove(self)
 
             #t1 and t2 are used to run the children and followOns of the job
             #after the services of the job are started
@@ -831,17 +687,190 @@ class Job(object):
                 removePredecessor(followOn)
                 t2.addChild(followOn)
             self._followOns = []
-            #Wire up the self, t1 and t2
-            self.addChild(t1)
-            t1.addFollowOn(t2)
             #Now make the services children of the job
             for service in self._services:
                 self.addChild(service)
-                assert service._predecessors == set((self,))
+                assert service._directPredecessors == set((self,))
+            #Wire up the self, t1 and t2
+            self.addChild(t1)
+            t1.addFollowOn(t2)
             #The final task once t1 and t2 have finished is to stop the services
             #this is achieved by deleting the stopFileStoreIDs.
             t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
             self._services = [] #Defensive
+            
+    def _getHashOfJobsToUUIDs(self, jobsToUUIDs):
+        """
+        Creates a map of the jobs in the graph to randomly selected UUIDs.
+        Excludes the root job.
+        """
+        #Call recursively
+        for successor in self._children + self._followOns:
+            successor._getHashOfJobsToUUIDs2(jobsToUUIDs)
+        return jobsToUUIDs
+
+    def _getHashOfJobsToUUIDs2(self, jobsToUUIDs):
+        if self not in jobsToUUIDs:
+            jobsToUUIDs[self] = str(uuid.uuid1())
+            self._getHashOfJobsToUUIDs(jobsToUUIDs)
+
+    def _createEmptyJobForJob(self, jobStore, updateID=None, command=None,
+                                 predecessorNumber=0):
+        """
+        Create an empty job for the job.
+        """
+        return jobStore.create(command=command,
+                               memory=(self.memory if self.memory is not None
+                                       else jobStore.config.defaultMemory),
+                               cores=(self.cores if self.cores is not None
+                                    else float(jobStore.config.defaultCores)),
+                               disk=(self.disk if self.disk is not None
+                                    else float(jobStore.config.defaultDisk)),
+                               updateID=updateID, predecessorNumber=predecessorNumber)
+        
+    def _makeJobWrappers(self, jobWrapper, jobStore, jobsToUUIDs):
+        """
+        Creates a job for each job in the job graph, recursively.
+        """
+        jobsToJobWrappers = { self:jobWrapper }
+        for successors in (self._followOns, self._children):
+            jobs = map(lambda successor:
+                successor._makeJobWrappers2(jobStore, jobsToUUIDs, 
+                                           jobsToJobWrappers), successors)
+            if len(jobs) > 0:
+                jobWrapper.stack.append(jobs)
+        return jobsToJobWrappers
+
+    def _makeJobWrappers2(self, jobStore, jobsToUUIDs, jobsToJobWrappers):
+        #Make the jobWrapper for the job, if necessary
+        if self not in jobsToJobWrappers:
+            jobWrapper = self._createEmptyJobForJob(jobStore, jobsToUUIDs[self],
+                                                predecessorNumber=len(self._directPredecessors))
+            jobsToJobWrappers[self] = jobWrapper
+            #Add followOns/children to be run after the current job.
+            for successors in (self._followOns, self._children):
+                jobs = map(lambda successor:
+                    successor._makeJobWrappers2(jobStore, jobsToUUIDs,
+                                               jobsToJobWrappers), successors)
+                if len(jobs) > 0:
+                    jobWrapper.stack.append(jobs)
+        else:
+            jobWrapper = jobsToJobWrappers[self]
+        #The return is a tuple stored within a job.stack 
+        #The tuple is jobStoreID, memory, cores, disk, predecessorID
+        #The predecessorID is used to establish which predecessors have been
+        #completed before running the given Job - it is just a unique ID
+        #per predecessor
+        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
+                None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
+        
+    def getTopologicalOrderingOfJobs(self):
+        """
+        Get a list of jobs such that for all pairs of indices i, j for which i < j, 
+        the job at index i can be run before the job at index j.
+        """
+        ordering = []
+        visited = set()
+        def getRunOrder(job):
+            #Do not add the job to the ordering until all its predecessors have been
+            #added to the ordering
+            for p in job._directPredecessors:
+                if p not in visited:
+                    return
+            if job not in visited:
+                visited.add(job)
+                ordering.append(job)
+                map(getRunOrder, job._children + job._followOns)
+        getRunOrder(self)
+        return ordering
+    
+    def _serialiseJob(self, jobStore, jobsToJobWrappers, rootJobWrapper):
+        """
+        Pickle a job and its jobWrapper to disk.
+        """
+        #Pickle the job so that its run method can be run at a later time.
+        #Drop out the children/followOns/predecessors/services - which are
+        #all recorded within the jobStore and do not need to be stored within
+        #the job
+        self._children = []
+        self._followOns = []
+        self._services = []
+        self._directPredecessors = set()
+        #The pickled job is "run" as the command of the job, see worker
+        #for the mechanism which unpickles the job and executes the Job.run
+        #method.
+        with jobStore.writeFileStream(rootJobWrapper.jobStoreID) as (fileHandle, fileStoreID):
+            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+        jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())      
+        #Update the status of the jobWrapper on disk
+        jobStore.update(jobsToJobWrappers[self])
+    
+    def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):  
+        """
+        Pickle the graph of jobs in the jobStore.
+        """
+        #Modify job graph to run any services correctly
+        self._modifyJobGraphForServices(jobStore, jobWrapper.jobStoreID)
+        #Check if the job graph has created
+        #any cycles of dependencies or has multiple roots
+        self.checkJobGraphForDeadlocks()
+        #Create a UUIDs for each job
+        jobsToUUIDs = self._getHashOfJobsToUUIDs({})
+        #Set the jobs to delete
+        jobWrapper.jobsToDelete = list(jobsToUUIDs.values())
+        #Update the job on disk. The jobs to delete is a record of what to
+        #remove if the update goes wrong
+        jobStore.update(jobWrapper)
+        #Create the jobWrappers for followOns/children
+        jobsToJobWrappers = self._makeJobWrappers(jobWrapper, jobStore, jobsToUUIDs)
+        #Get an ordering on the jobs which we use for pickling the jobs in the 
+        #correct order to ensure the promises are properly established
+        ordering = self.getTopologicalOrderingOfJobs()
+        assert len(ordering) == len(jobsToJobWrappers)
+        #Temporarily set the jobStore strings for the promise call back functions
+        for job in ordering:
+            job._promiseJobStore = jobStore 
+        ordering.reverse()
+        assert self == ordering[-1]
+        if firstJob:
+            #If the first job we serialise all the jobs, including the root job
+            for job in ordering:
+                job._promiseJobStore = None
+                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+            #Finally remove the jobs to delete list 
+            jobWrapper.jobsToDelete = []
+            jobStore.update(jobWrapper)
+        else:
+            #We store the return values at this point, because if a return value
+            #is a promise from another job, we need to register the promise
+            #before we serialise the other jobs
+            self._setReturnValuesForPromises(returnValues, jobStore)
+            #Pickle the non-root jobs
+            for job in ordering[:-1]:
+                job._promiseJobStore = None
+                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+            #This final update marks the atomic signalling of the completion of the job - 
+            #up to this point the jobStore contains sufficient information
+            #to restart the original job
+            jobWrapper.jobsToDelete = []
+            jobWrapper.command = None
+            jobStore.update(jobWrapper)
+            
+    def _serialiseFirstJob(self, jobStore):
+        """
+        Serialises the root job. Returns the wrapping job.
+        """
+        #Create first jobWrapper
+        jobWrapper = self._createEmptyJobForJob(jobStore, None,
+                                                predecessorNumber=0)
+        #Write the graph of jobs to disk
+        self._serialiseJobGraph(jobWrapper, jobStore, None, True)
+        #Store the name of the first job in a file in case of restart
+        #Up to this point the root-job is not recoverable
+        with jobStore.writeSharedFileStream("rootJobStoreID") as f:
+            f.write(jobWrapper.jobStoreID)
+        #Return the first job wrapper
+        return jobWrapper
 
     ####################################################
     #Function which worker calls to ultimately invoke
@@ -855,22 +884,12 @@ class Job(object):
         if stats != None:
             startTime = time.time()
             startClock = getTotalCpuTime()
-
         baseDir = os.getcwd()
         #Run the job, first cleanup then run.
         fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir)
         returnValues = self.run(fileStore)
-        #Modify job graph to run any services correctly
-        self._modifyJobGraphForServices(fileStore)
-        #Check if the job graph has created
-        #any cycles of dependencies or has multiple roots
-        self.checkJobGraphForDeadlocks()
-        #Set the promised value jobStoreFileIDs
-        self._setFileIDsForPromisedValues(jobStore, jobWrapper.jobStoreID, set())
-        #Store the return values for any promised return value
-        self._setReturnValuesForPromises(self, returnValues, jobStore)
-        #Turn the graph into a graph of jobs in the jobStore
-        self._serialiseJobGraph(jobWrapper, jobStore)
+        #Serialize the new jobs defined by the run method to the jobStore
+        self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
@@ -882,8 +901,9 @@ class Job(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
-        #Return any logToMaster logging messages
-        return fileStore.loggingMessages
+        #Return any logToMaster logging messages + the files that should be deleted
+        #from the job store once the job has been registered as complete
+        return fileStore.loggingMessages, fileStore.deletedJobStoreFileIDs.union(promiseFilesToDelete)
 
     ####################################################
     #Method used to resolve the module in which an inherited job instances
@@ -950,7 +970,6 @@ class FunctionWrappingJob(Job):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
         return userFunction(*self._args, **self._kwargs)
@@ -972,15 +991,14 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     job function the attribute "fileStore" of the first argument (the job) is
     an instance of the Job.FileStore class.
     """
-
     def __init__(self, userFunction, *args, **kwargs):
         super(JobFunctionWrappingJob, self).__init__(userFunction, *args, **kwargs)
-        self.fileStore = None
 
     def run(self, fileStore):
         userFunction = self._getUserFunction()
         self.fileStore = fileStore
-        return userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+        return rValue
 
 class ServiceJob(Job):
     """
@@ -1012,25 +1030,24 @@ class ServiceJob(Job):
         #The start credentials  must be communicated to processes connecting to
         #the service, to do this while the run method is running we
         #cheat and set the return value promise within the run method
-        self._setReturnValuesForPromises(self, startCredentials, fileStore.jobStore)
+        self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
         self._rvs = {}  # Set this to avoid the return values being updated after the
         #run method has completed!
         #Now flag that the service is running jobs can connect to it
         assert self.startFileStoreID != None
-        assert fileStore.globalFileExists(self.startFileStoreID)
-        fileStore.deleteGlobalFile(self.startFileStoreID)
-        assert not fileStore.globalFileExists(self.startFileStoreID)
+        assert fileStore.jobStore.fileExists(self.startFileStoreID)
+        fileStore.jobStore.deleteFile(self.startFileStoreID)
+        assert not fileStore.jobStore.fileExists(self.startFileStoreID)
         #Now block until we are told to stop, which is indicated by the removal
         #of a file
         assert self.stopFileStoreID != None
-        while fileStore.globalFileExists(self.stopFileStoreID):
+        while fileStore.jobStore.fileExists(self.stopFileStoreID):
             time.sleep(1) #Avoid excessive polling
         #Now kill the service
         service.stop()
 
     def getUserScript(self):
         return self.serviceModule
-
 
 class EncapsulatedJob(Job):
     """
@@ -1093,30 +1110,35 @@ class PromisedJobReturnValue(object):
     This mechanism allows a return values from one Job's run method to be input
     argument to Job before the former Job's run function has been executed.
     """
-    def __init__(self):
-        #The None values are replaced with a actual values in Job._setFileIDsForPromisedValues
-        self.jobStoreFileID = None #A file containing the actual pickled return value
-        self.jobStoreString = None #This is the string used to load the jobStore.
-
+    def __init__(self, promiseCallBackFunction):
+        self.promiseCallBackFunction = promiseCallBackFunction 
+        
 def promisedJobReturnValuePickleFunction(promise):
     """
     This function and promisedJobReturnValueUnpickleFunction are used as custom pickle/unpickle 
     functions to ensure that when the PromisedJobReturnValue instance p is unpickled it is replaced with 
     the object pickled in p.jobStoreFileID
     """
-    return promisedJobReturnValueUnpickleFunction, (promise.jobStoreString, promise.jobStoreFileID)
+    #The creation of the jobStoreFileID is intentionally lazy, we only
+    #create a fileID if the promise is being pickled. This is done so
+    #that we do not create fileIDs that are discarded/never used.
+    jobStoreFileID, jobStoreString = promise.promiseCallBackFunction()
+    return promisedJobReturnValueUnpickleFunction, (jobStoreString, jobStoreFileID)
+
+#These promise files must be deleted when we know we don't need the promise again.
+promiseFilesToDelete = set()
+promisedJobReturnValueUnpickleFunction_jobStore = None #This is a jobStore instance
+#used to unpickle promises
 
 def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
-    """The PromisedJobReturnValue custom unpickle function.
     """
-    #If the attributes jobStoreFileID and jobStoreString are None then we return
-    #a new empty PromisedJobReturnValue (this can happen if Promise is serialised between its creation
-    #and the running of Job._setFileIDsForPromisedValues.
-    if jobStoreString == None:
-        assert jobStoreFileID == None
-        return PromisedJobReturnValue()
-    jobStore = loadJobStore(jobStoreString)
-    with jobStore.readFileStream(jobStoreFileID) as fileHandle:
+    The PromisedJobReturnValue custom unpickle function.
+    """
+    global promisedJobReturnValueUnpickleFunction_jobStore
+    if promisedJobReturnValueUnpickleFunction_jobStore == None:
+        promisedJobReturnValueUnpickleFunction_jobStore = loadJobStore(jobStoreString)
+    promiseFilesToDelete.add(jobStoreFileID)
+    with promisedJobReturnValueUnpickleFunction_jobStore.readFileStream(jobStoreFileID) as fileHandle:
         value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
         return value
 
@@ -1129,7 +1151,7 @@ def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
     """
     Job function that deletes a bunch of files using their jobStoreFileIDs
     """
-    map(lambda i : job.fileStore.deleteGlobalFile(i), jobStoreFileIDsToDelete)
+    map(lambda i : job.fileStore.jobStore.deleteFile(i), jobStoreFileIDsToDelete)
 
 def blockUntilDeleted(job, jobStoreFileIDs):
     """
@@ -1138,8 +1160,7 @@ def blockUntilDeleted(job, jobStoreFileIDs):
     """
     while True:
         jobStoreFileIDs = [ i for i in jobStoreFileIDs
-                           if job.fileStore.globalFileExists(i) ]
+                           if job.fileStore.jobStore.fileExists(i) ]
         if len(jobStoreFileIDs) == 0:
             break
         time.sleep(1)
-

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 from StringIO import StringIO
 from contextlib import contextmanager
@@ -34,6 +35,7 @@ from boto.s3.connection import S3Connection
 from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
+import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError, BotoServerError
 import itertools
 import time
@@ -70,11 +72,13 @@ class AWSJobStore(AbstractJobStore):
         return bool(self.versions.get_item(item_name=jobStoreFileID, consistent_read=True))
 
     def jobs(self):
+        result = None
         for attempt in retry_sdb():
             with attempt:
                 result = list(self.jobDomain.select(
                     query="select * from `{domain}` ".format(domain=self.jobDomain.name),
                     consistent_read=True))
+        assert result is not None
         for jobItem in result:
             yield AWSJob.fromItem(jobItem)
 
@@ -95,12 +99,14 @@ class AWSJobStore(AbstractJobStore):
 
     def __init__(self, region, namePrefix, config=None):
         """
-        TODO: Document region and namePrefix
-        
-        :param create: If True create the jobStore. 
-        :type create: Boolean
-        :raise RuntimeError: if config != None and the jobStore already exists or
-        config == None and the jobStore does not already exists. 
+        Create a new job store in AWS or load an existing one from there.
+
+        :param region: the AWS region to create the job store in, e.g. 'us-west-2'
+
+        :param namePrefix: S3 bucket names and SDB tables will be prefixed with this
+
+        :param config: the config object to written to this job store. Must be None for existing
+        job stores. Must not be None for new job stores.
         """
         log.debug("Instantiating %s for region %s and name prefix '%s'",
                   self.__class__, region, namePrefix)
@@ -171,6 +177,7 @@ class AWSJobStore(AbstractJobStore):
 
     def load(self, jobStoreID):
         # TODO: check if mentioning individual attributes is faster than using *
+        result = None
         for attempt in retry_sdb():
             with attempt:
                 result = list(self.jobDomain.select(
@@ -178,6 +185,7 @@ class AWSJobStore(AbstractJobStore):
                           "where itemName() = '{jobStoreID}'".format(domain=self.jobDomain.name,
                                                                      jobStoreID=jobStoreID),
                     consistent_read=True))
+        assert result is not None
         if len(result) != 1:
             raise NoSuchJobException(jobStoreID)
         job = AWSJob.fromItem(result[0])
@@ -201,12 +209,14 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 self.jobDomain.delete_attributes(item_name=jobStoreID)
+        items = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(self.versions.select(
                     query="select * from `%s` "
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True))
+        assert items is not None
         if items:
             log.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
             n = self.items_per_batch_delete
@@ -222,7 +232,7 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     self.files.delete_key(key_name=item.name)
 
-    def writeFile(self, jobStoreID, localFilePath):
+    def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         firstVersion = self._upload(jobStoreFileID, localFilePath)
         self._registerFile(jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion)
@@ -231,7 +241,7 @@ class AWSJobStore(AbstractJobStore):
         return jobStoreFileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID):
+    def writeFileStream(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         with self._uploadStream(jobStoreFileID, self.files) as (writable, key):
             yield writable, jobStoreFileID
@@ -323,7 +333,7 @@ class AWSJobStore(AbstractJobStore):
         else:
             log.debug("File %s does not exist", jobStoreFileID)
 
-    def getEmptyFileStoreID(self, jobStoreID):
+    def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         self._registerFile(jobStoreFileID, jobStoreID=jobStoreID)
         log.debug("Registered empty file %s for job %s", jobStoreFileID, jobStoreID)
@@ -338,12 +348,14 @@ class AWSJobStore(AbstractJobStore):
 
     def readStatsAndLogging(self, statsCallBackFn):
         itemsProcessed = 0
+        items = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(self.versions.select(
                     query="select * from `%s` "
                           "where bucketName='stats'" % (self.versions.name,),
                     consistent_read=True))
+        assert items is not None
         for item in items:
             with self._downloadStream(item.name, item['version'], self.stats) as readable:
                 statsCallBackFn(readable)
@@ -452,16 +464,19 @@ class AWSJobStore(AbstractJobStore):
         """
         :rtype: tuple(str version, AWS bucket)
         """
+        item = None
         for attempt in retry_sdb():
             with attempt:
                 item = self.versions.get_attributes(item_name=jobStoreFileID,
                                                     attribute_name=['version', 'bucketName'],
                                                     consistent_read=True)
-        bucketName = item.get('bucketName', None)
+        assert item is not None
+        bucketName = item.get('bucketName')
         if bucketName is None:
             return None, None
         else:
-            return item.get('version', None), getattr(self, bucketName)
+            # noinspection PyTypeChecker
+            return item.get('version'), getattr(self, bucketName)
 
     def _getFileVersion(self, jobStoreFileID, expectedBucket=None):
         version, bucket = self._getFileVersionAndBucket(jobStoreFileID)
@@ -602,8 +617,8 @@ class AWSJobStore(AbstractJobStore):
 
         :param bucketName: the name of the S3 bucket the file was placed in
 
-        :param jobStoreID: the ID of the job owning the file, only allowed for first version of
-                           file or when file is registered without content
+        :param jobStoreID: optional ID of the job owning the file, only allowed for first version of
+                           file
 
         :param newVersion: the file's new version or None if the file is to be registered without
                            content, in which case jobStoreId must be passed
@@ -611,8 +626,6 @@ class AWSJobStore(AbstractJobStore):
         :param oldVersion: the expected previous version of the file or None if newVersion is the
                            first version or file is registered without content
         """
-        # Must pass either jobStoreID or newVersion, or both
-        assert jobStoreID is not None or newVersion is not None
         # Must pass newVersion if passing oldVersion
         assert oldVersion is None or newVersion is not None
         attributes = dict(bucketName=bucketName)
@@ -697,7 +710,7 @@ class AWSJob(JobWrapper):
     """
 
     @classmethod
-    def fromItem(cls, item, jobStoreID=None):
+    def fromItem(cls, item):
         """
         :type item: Item
         :rtype: AWSJob
@@ -711,7 +724,7 @@ class AWSJob(JobWrapper):
             wholeJobString = ''.join(item[1] for item in chunkedJob)
         return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
 
-    def toItem(self, parentJobStoreID=None):
+    def toItem(self):
         """
         :rtype: Item
         """

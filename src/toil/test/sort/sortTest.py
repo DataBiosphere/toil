@@ -38,13 +38,11 @@ defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', '10'))
 defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
 defaultN = int(os.environ.get('TOIL_TEST_SORT_N', str(defaultLineLen * defaultLines / 5)))
 
-
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     """
     Tests Toil by sorting a file in parallel on various combinations of job stores and batch
     systems.
     """
-
     def setUp(self):
         super(SortTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')

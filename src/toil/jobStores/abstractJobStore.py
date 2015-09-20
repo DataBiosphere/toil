@@ -254,23 +254,38 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def writeFile( self, jobStoreID, localFilePath ):
+    def writeFile( self, localFilePath, jobStoreID=None ):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
-        to retrieve the file at a later time. jobStoreID is the id of the job from which the file
-        is being created. When delete(job) is called all files written with the given
-        job.jobStoreID will be removed from the jobStore.
+        to retrieve the file at a later time. 
+        
+        jobStoreID is the id of a job, or None. If specified, when delete(job) 
+        is called all files written with the given job.jobStoreID will be 
+        removed from the jobStore.
         """
         raise NotImplementedError( )
-
+    
     @abstractmethod
-    def updateFile( self, jobStoreFileID, localFilePath ):
+    @contextmanager
+    def writeFileStream( self, jobStoreID=None ):
         """
-        Replaces the existing version of a file in the jobStore. Throws an exception if the file
-        does not exist.
-
-        :raises ConcurrentFileModificationException: if the file was modified concurrently during
-        an invocation of this method
+        Similar to writeFile, but returns a context manager yielding a tuple of 
+        1) a file handle which can be written to and 2) the ID of the resulting 
+        file in the job store. The yielded file handle does not need to and 
+        should not be closed explicitly.
+        """
+        raise NotImplementedError( )
+    
+    @abstractmethod
+    def getEmptyFileStoreID( self, jobStoreID=None ):
+        """
+        :rtype : string, the ID of a new, empty file. 
+        
+        jobStoreID is the id of a job, or None. If specified, when delete(job) 
+        is called all files written with the given job.jobStoreID will be 
+        removed from the jobStore.
+        
+        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
         """
         raise NotImplementedError( )
 
@@ -279,6 +294,15 @@ class AbstractJobStore( object ):
         """
         Copies the file referenced by jobStoreFileID to the given local file path. The version
         will be consistent with the last copy of the file written/updated.
+        """
+        raise NotImplementedError( )
+    
+    @abstractmethod
+    @contextmanager
+    def readFileStream( self, jobStoreFileID ):
+        """
+        Similar to readFile, but returns a context manager yielding a file handle which can be
+        read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
 
@@ -297,44 +321,15 @@ class AbstractJobStore( object ):
         :rtype : True if the jobStoreFileID exists in the jobStore, else False
         """
         raise NotImplementedError()
-
+    
     @abstractmethod
-    @contextmanager
-    def writeFileStream( self, jobStoreID ):
+    def updateFile( self, jobStoreFileID, localFilePath ):
         """
-        Similar to writeFile, but returns a context manager yielding a tuple of 1) a file handle
-        which can be written to and 2) the ID of the resulting file in the job store. The yielded
-        file handle does not need to and should not be closed explicitly.
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    @contextmanager
-    def updateFileStream( self, jobStoreFileID ):
-        """
-        Similar to updateFile, but returns a context manager yielding a file handle which can be
-        written to. The yielded file handle does not need to and should not be closed explicitly.
+        Replaces the existing version of a file in the jobStore. Throws an exception if the file
+        does not exist.
 
         :raises ConcurrentFileModificationException: if the file was modified concurrently during
         an invocation of this method
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    def getEmptyFileStoreID( self, jobStoreID ):
-        """
-        :rtype : string, the ID of a new, empty file. 
-        
-        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
-        """
-        raise NotImplementedError( )
-
-    @abstractmethod
-    @contextmanager
-    def readFileStream( self, jobStoreFileID ):
-        """
-        Similar to readFile, but returns a context manager yielding a file handle which can be
-        read from. The yielded file handle does not need to and should not be closed explicitly.
         """
         raise NotImplementedError( )
     

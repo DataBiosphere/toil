@@ -208,7 +208,7 @@ class hidden:
                     f.truncate(0)
                     f.write("two")
                 # ... and create a second file from the local file.
-                fileTwo = master.writeFile(jobOnMaster.jobStoreID, path)
+                fileTwo = master.writeFile(path, jobOnMaster.jobStoreID)
                 with worker.readFileStream(fileTwo) as f:
                     self.assertEquals(f.read(), "two")
                 # Now update the first file from the local file ...
@@ -343,7 +343,7 @@ class hidden:
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
                                 checksum.update(buf)
-                    fileId = self.master.writeFile(job.jobStoreID, path)
+                    fileId = self.master.writeFile(path, job.jobStoreID)
                 finally:
                     os.unlink(path)
                 before = checksum.hexdigest()
@@ -363,7 +363,7 @@ class hidden:
 
         def testZeroLengthFiles(self):
             job = self.master.create("1", 2, 3, 4, 0)
-            nullFile = self.master.writeFile(job.jobStoreID, '/dev/null')
+            nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
             with self.master.readFileStream(nullFile) as f:
                 self.assertEquals(f.read(), "")
             with self.master.writeFileStream(job.jobStoreID) as (f, nullStream):

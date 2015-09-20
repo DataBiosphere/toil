@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 import logging
 import os
-import subprocess
 import tempfile
 import unittest
 import shutil
@@ -112,10 +111,23 @@ class ToilTest(unittest.TestCase):
         return path
 
 
+try:
+    # noinspection PyUnresolvedReferences
+    from _pytest.mark import MarkDecorator
+except ImportError:
+    # noinspection PyUnusedLocal
+    def _mark_test(name, test_item):
+        return test_item
+else:
+    def _mark_test(name, test_item):
+        return MarkDecorator(name)(test_item)
+
+
 def needs_aws(test_item):
     """
     Use as a decorator before test classes or methods to only run them if AWS usable.
     """
+    test_item = _mark_test('aws', test_item)
     try:
         # noinspection PyUnresolvedReferences
         import boto
@@ -140,6 +152,7 @@ def needs_azure(test_item):
     """
     Use as a decorator before test classes or methods to only run them if Azure is usable.
     """
+    test_item = _mark_test('azure', test_item)
     try:
         # noinspection PyUnresolvedReferences
         import azure.storage
@@ -156,13 +169,15 @@ def needs_azure(test_item):
                                  "'toiltest' storage account." % credential_file_path)(test_item)
         return test_item
 
+
 def needs_gridengine(test_item):
     """
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
+    test_item = _mark_test('gridengine', test_item)
     try:
-        with open('/dev/null','a') as dev_null:
-            subprocess.Popen('qsub',stdout=dev_null,stderr=dev_null)
+        with open('/dev/null', 'a') as dev_null:
+            subprocess.Popen('qsub', stdout=dev_null, stderr=dev_null)
     except OSError:
         return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
     except:
@@ -176,6 +191,7 @@ def needs_mesos(test_item):
     Use as a decorator before test classes or methods to only run them if the Mesos is installed
     and configured.
     """
+    test_item = _mark_test('mesos', test_item)
     try:
         # noinspection PyUnresolvedReferences
         import mesos.native
@@ -191,9 +207,10 @@ def needs_parasol(test_item):
     """
     Use as decorator so tests are only run if Parasol is installed.
     """
+    test_item = _mark_test('parasol', test_item)
     try:
-        with open('/dev/null','a') as dev_null:
-            subprocess.Popen('parasol',stdout=dev_null,stderr=dev_null)
+        with open('/dev/null', 'a') as dev_null:
+            subprocess.Popen('parasol', stdout=dev_null, stderr=dev_null)
     except OSError:
         return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
     except:
@@ -201,11 +218,13 @@ def needs_parasol(test_item):
     else:
         return test_item
 
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
     and configured.
     """
+    test_item = _mark_test('encryption', test_item)
     try:
         # noinspection PyUnresolvedReferences
         import nacl
