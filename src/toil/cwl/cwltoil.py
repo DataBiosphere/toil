@@ -27,6 +27,7 @@ def adjustFiles(rec, op):
         for d in rec:
             adjustFiles(d, op)
 
+
 class StageJob(Job):
     """File staging job to put local files into the global file store.
 
@@ -37,14 +38,18 @@ class StageJob(Job):
 
     """
 
-    def __init__(self, cwljob):
+    def __init__(self, cwlwf, cwljob, basedir):
         Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        self.cwlwf = cwlwf
         self.cwljob = cwljob
+        self.basedir = basedir
 
     def run(self, fileStore):
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
-        adjustFiles(cwljob, lambda x: fileStore.writeGlobalFile(x))
-        return {k: (k, cwljob) for k, v in cwljob.items()}
+        builder = self.cwlwf._init_job(cwljob, self.basedir)
+        adjustFiles(builder.job, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
+        print
+        return {k: (k, builder.job) for k, v in builder.job.items()}
 
 
 class FinalJob(Job):
@@ -65,7 +70,7 @@ class FinalJob(Job):
 
     def run(self, fileStore):
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
-        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x, tempfile.mkstemp(dir=self.outdir)[1]))
+        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(self.outdir, x[1])))
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
         return True
@@ -82,16 +87,25 @@ class CWLJob(Job):
     def run(self, fileStore):
         cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
 
+        inpdir = os.path.join(fileStore.getLocalTempDir(), "inp")
+        outdir = os.path.join(fileStore.getLocalTempDir(), "out")
+        tmpdir = os.path.join(fileStore.getLocalTempDir(), "tmp")
+        os.mkdir(inpdir)
+        os.mkdir(outdir)
+        os.mkdir(tmpdir)
+
         # Copy input files out of the global file store.
-        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x))
+        print cwljob
+
+        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(inpdir, x[1])))
 
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                   os.getcwd(), None,
-                                                  outdir=os.path.join(fileStore.getLocalTempDir(), "out"),
-                                                  tmpdir=os.path.join(fileStore.getLocalTempDir(), "tmp"))
+                                                  outdir=outdir,
+                                                  tmpdir=tmpdir)
 
         # Copy output files into the global file store.
-        adjustFiles(output, lambda x: fileStore.writeGlobalFile(x))
+        adjustFiles(output, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
 
         return output
 
@@ -265,7 +279,7 @@ def main():
     if type(t) == int:
         return t
 
-    staging = StageJob(jobobj)
+    staging = StageJob(t, jobobj, os.path.dirname(os.path.abspath(options.cwljob)))
 
     if t.tool["class"] == "Workflow":
         wf = CWLWorkflow(t, staging.rv())
