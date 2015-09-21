@@ -92,7 +92,7 @@ class DependenciesTest(ToilTest):
             os.close(logFd)
 
         fn("comb", 10, 100, 100, 1, 10)
-        fn("comb", 200, 100, 100, 20, 10)
+        #fn("comb", 200, 100, 100, 20, 10)
 
         fn("fly", 10, 8, 100, 1, 10)
         fn("fly", 10, 8, 100, 2, 10)
