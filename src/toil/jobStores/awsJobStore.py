@@ -39,6 +39,7 @@ import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError, BotoServerError
 import itertools
 import time
+from toil.lib.encryption import encrypt, decrypt, encryptionOverhead
 
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
@@ -119,6 +120,7 @@ class AWSJobStore(AbstractJobStore):
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
         self.sseKey = None
+        self.sseKeyPath = None
 
         # Check global registry domain for existence of this job store. The first time this is
         # being executed in an AWS account, the registry domain will be created on the fly.
@@ -146,7 +148,8 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).__init__(config=config)
 
         if self.config.sseKey is not None:
-            with open(self.config.sseKey) as f:
+            self.sseKeyPath = self.config.sseKey
+            with open(self.sseKeyPath) as f:
                 self.sseKey = f.read()
 
     def qualify(self, name):
@@ -170,8 +173,8 @@ class AWSJobStore(AbstractJobStore):
             item = self.versions.get_item(jobStoreFileID, consistent_read=True)
             # check if the 'stored' quality is just the id..
             file = File(self,jobStoreFileID,File.typeRegular)
-            with self._writeToS3(file) as writeable:
-                writeable.write(self._fromSDBItem(item))
+            with self._writeToS3(file, encrypted=False) as writeable:
+                writeable.write(self._fromSDBItem(item, isProtected=False))
             return self.getPublicUrl(jobStoreFileID)
         # There should be no practical upper limit on when a job is allowed to access a public
         # URL so we set the expiration to 20 years.
@@ -270,7 +273,7 @@ class AWSJobStore(AbstractJobStore):
             yield writable
         newVersion = file.version
         file.jobStoreID = str(self.sharedFileJobID) if oldVersion is None else None
-        self._registerFile(file, oldVersion=oldVersion)
+        self._registerFile(file, oldVersion=oldVersion, isProtected=isProtected)
         if oldVersion is None:
             log.debug("Wrote initial version %s of shared file %s (%s)",
                       newVersion, sharedFileName, jobStoreFileID)
@@ -289,13 +292,16 @@ class AWSJobStore(AbstractJobStore):
     def updateFileStream(self, jobStoreFileID):
         oldFile = self._getFile(jobStoreFileID)
         file = File(self,jobStoreFileID,File.typeRegular)
-        file.jobStoreID=oldFile.jobStoreID
+        oldVersion=None
+        if oldFile is not None:
+            file.jobStoreID=oldFile.jobStoreID
+            oldVersion=oldFile.version
         # the upload stream method still needs to be changed to use inlining
         with self._uploadStreamOrBatch(file) as writable:
             yield writable
-        self._registerFile(file,oldVersion=oldFile.version)
+        self._registerFile(file)
         log.debug("Wrote version %s of file %s, replacing version %s",
-                  file.version, jobStoreFileID, oldFile.version)
+                  file.version, jobStoreFileID, oldVersion)
 
     def readFile(self, jobStoreFileID, localFilePath):
         file = self._getFile(jobStoreFileID)
@@ -317,7 +323,7 @@ class AWSJobStore(AbstractJobStore):
     def readSharedFileStream(self, sharedFileName, isProtected=True):
         assert self._validateSharedFileName(sharedFileName)
         jobStoreFileID = self._newFileID(sharedFileName)
-        file = self._getFile(jobStoreFileID)
+        file = self._getFile(jobStoreFileID, isProtected)
         if file is None: raise NoSuchFileException(jobStoreFileID)
         log.debug("Read version %s from shared file %s (%s)",
                   file, sharedFileName, jobStoreFileID)
@@ -402,25 +408,30 @@ class AWSJobStore(AbstractJobStore):
 
         return region, namePrefix
 
-    def _toSDBItem(self, jobStoreFileID,file):
+    def _toSDBItem(self,file, isProtected=True):
         item = {}
-        serializedAndEncodedJob = base64.b64encode(bz2.compress(file))
-        # this convoluted expression splits the string into chunks of 1024 - the max value for an attribute in SDB
-        jobChunks = [serializedAndEncodedJob[i:i + 1024]
-                     for i in range(0, len(serializedAndEncodedJob), 1024)]
+        bytes_per_attr = 1024 - encryptionOverhead
+        shouldEncrypt = bool(isProtected and self.sseKey)
+        encryptMethod = encrypt if shouldEncrypt else lambda string, path: string
+        serializedAndEncodedJob = base64.b64encode(bz2.compress(encryptMethod(file, self.sseKeyPath)))
+        # this convoluted expression splits the string into the max value for an attribute in SDB
+        jobChunks = [serializedAndEncodedJob[i:i + bytes_per_attr]
+                     for i in range(0, len(serializedAndEncodedJob), bytes_per_attr)]
         for attributeOrder, chunk in enumerate(jobChunks):
             item[str(attributeOrder).zfill(3)] = chunk
         return item
 
-    def _fromSDBItem(self, item):
+    def _fromSDBItem(self, item, isProtected=True):
         chunkedFile = item.items()
         chunkedFile.sort()
+        shouldDecrypt = bool(isProtected and self.sseKey)
+        decryptMethod = decrypt if shouldDecrypt else lambda string, path: string
         if len(chunkedFile) == 1:
             # First element of list = tuple, second element of tuple = serialized job
             wholeFileString = chunkedFile[0][1]
         else:
             wholeFileString = ''.join(item[1] for item in filter(lambda x: x[0].isdigit(), chunkedFile))
-        return bz2.decompress(base64.b64decode(wholeFileString))
+        return decryptMethod(bz2.decompress(base64.b64decode(wholeFileString)), self.sseKeyPath)
     
     def _connectSimpleDB(self):
         """
@@ -493,7 +504,7 @@ class AWSJobStore(AbstractJobStore):
         else:
             return str(uuid.uuid5(self.sharedFileJobID, str(sharedFileName)))
 
-    def _getFile(self, jobStoreFileID):
+    def _getFile(self, jobStoreFileID, isProtected=True):
         """
         new object that is File or Version
         :rtype: tuple(str version, AWS bucket)
@@ -513,7 +524,7 @@ class AWSJobStore(AbstractJobStore):
             try:
                 file.version=item['version']
             except KeyError:
-                file.buffer=self._fromSDBItem(item)
+                file.buffer=self._fromSDBItem(item, isProtected)
             return file
 
     def _getFileVersion(self, jobStoreFileID, expectedBucket=None):
@@ -531,6 +542,7 @@ class AWSJobStore(AbstractJobStore):
     _s3_part_size = 50 * 1024 * 1024
     # actual limit is 256*1024, but we use 1 attribute for fileVersion
     _sdb_size = 255 * 1024
+    _encryption_overhead  = encryptionOverhead
 
     def _upload(self, jobStoreFileID, localFilePath):
         file_size, file_time = self._fileSizeAndTime(localFilePath)
@@ -705,7 +717,7 @@ class AWSJobStore(AbstractJobStore):
         elif file.buffer is not None:
             yield StringIO(file.buffer)
 
-    def _registerFile(self, file, oldVersion=None):
+    def _registerFile(self, file, oldVersion=None, isProtected=True):
         """
         Register a a file in the store
 
@@ -731,11 +743,13 @@ class AWSJobStore(AbstractJobStore):
         if file.version is not None:
             attributes['version'] = file.version
             attributes['fileType'] = file.bucket.name
+            attributes['fileType'] = file.fileType
         elif file.buffer is not None:
-            attributes = self._toSDBItem(file.jobStoreFileID,file.buffer)
+            attributes = self._toSDBItem(file.buffer, isProtected)
+            attributes['fileType'] = file.fileType
         if file.jobStoreID is not None:
             attributes['jobStoreID'] = file.jobStoreID
-        attributes['fileType'] = file.fileType
+
         # False stands for absence- does this mean it would fail if inline->inline?
         expected = ('version', False if oldVersion is None else oldVersion)
         try:

@@ -361,6 +361,46 @@ class hidden:
                 self.assertEquals(before, after)
             self.master.delete(job.jobStoreID)
 
+        def testInline(self):
+            job = self.master.create("1", 2, 3, 4, 0)
+            limit=self.master._sdb_size + self.master._encryption_overhead
+            under_limit = limit-5
+            over_limit = limit+5
+            with self.master.writeSharedFileStream("test") as f:
+                f.write("x"*under_limit)
+            with self.master.readSharedFileStream("test") as f:
+                self.assertEquals("x"*under_limit,f.read())
+
+            with self.master.writeSharedFileStream("test") as f:
+                f.write("x"*over_limit)
+            with self.master.readSharedFileStream("test") as f:
+                self.assertEquals( "x"*over_limit,f.read())
+
+            with self.master.writeSharedFileStream("test") as f:
+                f.write("x"*over_limit)
+            with self.master.readSharedFileStream("test") as f:
+                self.assertEquals( "x"*over_limit, f.read())
+
+            with self.master.writeSharedFileStream("test") as f:
+                f.write("x"*under_limit)
+            with self.master.readSharedFileStream("test") as f:
+                self.assertEquals( "x"*under_limit, f.read())
+
+            with self.master.writeSharedFileStream("test") as f:
+                f.write("b"*under_limit)
+            with self.master.readSharedFileStream("test") as f:
+                self.assertEquals( "b"*under_limit, f.read())
+
+            with self.master.writeSharedFileStream("test2") as f:
+                f.write("b"*over_limit)
+            with self.master.readSharedFileStream("test2") as f:
+                self.assertEquals( "b"*over_limit, f.read())
+
+            with self.master.writeSharedFileStream("test2") as f:
+                f.write("x"*over_limit)
+            with self.master.readSharedFileStream("test2") as f:
+                self.assertEquals( "x"*over_limit, f.read())
+
         def testZeroLengthFiles(self):
             job = self.master.create("1", 2, 3, 4, 0)
             nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
@@ -425,8 +465,8 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.awsJobStore import AWSJobStore
         AWSJobStore._s3_part_size = self.partSize
+        AWSJobStore._sdb_size = 20
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
-
 
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
