@@ -21,9 +21,9 @@ Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
 ensure that develop mode installs support for extras. Consult setup.py for a list of supported
-extras. For example, to install Toil in develop mode with Mesos, AWS and Azure support, run
+extras. For example, to install Toil in develop mode with Mesos, AWS, Azure and CWL support, run
 
-make develop extras=[mesos,aws,azure]
+make develop extras=[mesos,aws,azure,cwl]
 
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
