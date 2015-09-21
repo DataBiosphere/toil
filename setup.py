@@ -34,12 +34,16 @@ kwargs = dict(
         'azure': [
             'azure==0.11.1' ],
         'encryption': [
-            'pynacl==0.3.0' ]},
+            'pynacl==0.3.0' ],
+        'cwl': [
+            'cwltool>=1.0.20150918080732' ]},
     package_dir={ '': 'src' },
     packages=find_packages( 'src', exclude=[ '*.test' ] ),
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',
+            'cwltoil = toil.cwl.cwltoil:main [cwl]',
+            'cwl-runner = toil.cwl.cwltoil:main [cwl]',
             'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]' ] } )
 
 from setuptools.command.test import test as TestCommand
