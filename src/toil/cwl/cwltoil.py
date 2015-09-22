@@ -297,6 +297,8 @@ def main():
             pass
         elif shortname(inp["id"]) not in job and "default" in inp:
             job[shortname(inp["id"])] = inp["default"]
+        elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
+            pass
         else:
             raise Exception("Missing inputs `%s`" % shortname(inp["id"]))
 
