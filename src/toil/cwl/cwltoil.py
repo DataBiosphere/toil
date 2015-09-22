@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 #
 # Implement support for Common Workflow Language (CWL) in Toil.
 #
@@ -10,6 +11,7 @@ import schema_salad.ref_resolver
 import os
 import tempfile
 import json
+import sys
 
 def shortname(n):
     """Trim the leading namespace to get just the final name part of a parameter."""
@@ -28,6 +30,25 @@ def adjustFiles(rec, op):
             adjustFiles(d, op)
 
 
+# The job object passed into CWLJob and CWLWorkflow
+# is a dict mapping to tuple of (key, dict)
+# the final dict is derived by evaluating each
+# tuple looking up the key in the supplied dict.
+#
+# This is necessary because Toil jobs return a single value (a dict)
+# but CWL permits steps to have multiple output parameters that may
+# feed into multiple other steps.  This transformation maps the key in the
+# output object to the correct key of the input object.
+
+class IndirectDict(dict):
+    pass
+
+def resolve_indirect(d):
+    if isinstance(d, IndirectDict):
+        return {k: v[1][v[0]] for k, v in d.items()}
+    else:
+        return d
+
 class StageJob(Job):
     """File staging job to put local files into the global file store.
 
@@ -45,11 +66,10 @@ class StageJob(Job):
         self.basedir = basedir
 
     def run(self, fileStore):
-        cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+        cwljob = resolve_indirect(self.cwljob)
         builder = self.cwlwf._init_job(cwljob, self.basedir)
         adjustFiles(builder.job, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
-        print
-        return {k: (k, builder.job) for k, v in builder.job.items()}
+        return builder.job
 
 
 class FinalJob(Job):
@@ -69,7 +89,7 @@ class FinalJob(Job):
         self.outdir = outdir
 
     def run(self, fileStore):
-        cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+        cwljob = resolve_indirect(self.cwljob)
         adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(self.outdir, x[1])))
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
@@ -85,7 +105,7 @@ class CWLJob(Job):
         self.cwljob = cwljob
 
     def run(self, fileStore):
-        cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+        cwljob = resolve_indirect(self.cwljob)
 
         inpdir = os.path.join(fileStore.getLocalTempDir(), "inp")
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
@@ -95,8 +115,6 @@ class CWLJob(Job):
         os.mkdir(tmpdir)
 
         # Copy input files out of the global file store.
-        print cwljob
-
         adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(inpdir, x[1])))
 
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
@@ -134,16 +152,7 @@ class CWLWorkflow(Job):
         self.cwljob = cwljob
 
     def run(self, fileStore):
-        # The job object passed into CWLJob and CWLWorkflow
-        # is a dict mapping to tuple of (key, dict)
-        # the final dict is derived by evaluating each
-        # tuple looking up the key in the supplied dict.
-        #
-        # This is necessary because Toil jobs return a single value (a dict)
-        # but CWL permits steps to have multiple output parameters that may
-        # feed into multiple other steps.  This transformation maps the key in the
-        # output object to the correct key of the input object.
-        cwljob = {k: v[1][v[0]] for k, v in self.cwljob.items()}
+        cwljob = resolve_indirect(self.cwljob)
 
         # `promises` dict
         # from: each parameter (workflow input or step output)
@@ -187,9 +196,9 @@ class CWLWorkflow(Job):
                                 jobobj[shortname(inp["id"])] = ("default", {"default": inp["default"]})
 
                         if step.embedded_tool.tool["class"] == "Workflow":
-                            job = CWLWorkflow(step.embedded_tool, jobobj)
+                            job = CWLWorkflow(step.embedded_tool, IndirectDict(jobobj))
                         else:
-                            job = CWLJob(step.embedded_tool, jobobj)
+                            job = CWLJob(step.embedded_tool, IndirectDict(jobobj))
 
                         jobs[step.tool["id"]] = job
 
@@ -215,7 +224,7 @@ class CWLWorkflow(Job):
         for out in self.cwlwf.tool["outputs"]:
             outobj[shortname(out["id"])] = (shortname(out["source"]), promises[out["source"]].rv())
 
-        return outobj
+        return IndirectDict(outobj)
 
 supportedProcessRequirements = ["DockerRequirement",
                                 "ExpressionEngineRequirement",
@@ -243,22 +252,39 @@ def main():
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", type=str)
 
-    # TODO: support cwl-runner standard CLI interface (cwl-runner workflow.cwl jobinput.json)
-    # requires selection of default toil jobStore instead of requiring as 1st command line item.
-    #
+    # Will override the "jobStore" positional argument, enables
+    # user to select jobStore or get a default from logic one below.
+    parser.add_argument("--jobStore", type=str)
+    parser.add_argument("--conformance-test", action="store_true")
+    parser.add_argument("--no-container", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--basedir", type=str)
+    parser.add_argument("--outdir", type=str, default=os.getcwd())
+
     # TODO: support cwltest standard CLI interface to support conformance testing cwltoil
     # (see cwltool/cwltest.py)
-    options = parser.parse_args()
+
+    # mkdtemp actually creates the directory, but
+    # toil requires that the directory not exist,
+    # so make it and delete it and allow
+    # toil to create it again (!)
+    workdir = tempfile.mkdtemp()
+    os.rmdir(workdir)
+
+    options = parser.parse_args([workdir] + sys.argv[1:])
 
     uri = "file://" + os.path.abspath(options.cwljob)
-    loader = schema_salad.ref_resolver.Loader({
-        "@base": uri,
-        "path": {
-            "@type": "@id"
-        }
-    })
-    job, _ = loader.resolve_ref(uri)
 
+    if options.conformance_test:
+        loader = schema_salad.ref_resolver.Loader({})
+    else:
+        loader = schema_salad.ref_resolver.Loader({
+            "@base": uri,
+            "path": {
+                "@type": "@id"
+            }
+        })
+    job, _ = loader.resolve_ref(uri)
     adjustFiles(job, lambda x: x.replace("file://", ""))
 
     t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool, True)
@@ -274,23 +300,31 @@ def main():
         else:
             raise Exception("Missing inputs `%s`" % shortname(inp["id"]))
 
-        jobobj[shortname(inp["id"])] = (shortname(inp["id"]), job)
-
     if type(t) == int:
         return t
 
-    staging = StageJob(t, jobobj, os.path.dirname(os.path.abspath(options.cwljob)))
+    if options.conformance_test:
+        sys.stdout.write(json.dumps(cwltool.main.single_job_executor(t, job, options.basedir, options, conformance_test=True), indent=4))
+        return 0
+
+    staging = StageJob(t, job, os.path.dirname(os.path.abspath(options.cwljob)))
 
     if t.tool["class"] == "Workflow":
         wf = CWLWorkflow(t, staging.rv())
     else:
         wf = CWLJob(t, staging.rv())
 
+    outdir = options.outdir
+
     staging.addFollowOn(wf)
-    wf.addFollowOn(FinalJob(wf.rv(), os.getcwd()))
+    wf.addFollowOn(FinalJob(wf.rv(), outdir))
 
     Job.Runner.startToil(staging,  options)
 
+    with open(os.path.join(outdir, "cwl.output.json"), "r") as f:
+        sys.stdout.write(f.read())
+
+    return 0
 
 if __name__=="__main__":
-    main()
+    sys.exit(main())
