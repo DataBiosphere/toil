@@ -125,6 +125,14 @@ class MesosExecutor(mesos.interface.Executor):
             """
             if job.userScript:
                 job.userScript.register()
+                
+            for envKey, envValue in job.environment.iteritems():
+                # Copy the environment from the master, which may have variables
+                # (like AZURE_ACCOUNT_KEY) needed to access the job store.
+                if envKey not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE",
+                    "PYTHONPATH"):
+                    os.environ[envKey] = envValue
+                
             log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
                 return subprocess.Popen(job.command, shell=True)
