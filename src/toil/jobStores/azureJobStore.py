@@ -148,15 +148,18 @@ class AzureJobStore(AbstractJobStore):
                                     entity=job.toItem(chunkSize=self.jobChunkSize))
 
     def delete(self, jobStoreID):
-        self.jobItems.delete_entity(row_key=jobStoreID)
+        try:
+            self.jobItems.delete_entity(row_key=jobStoreID)
+        except WindowsAzureMissingResourceError:
+            # Job deletion is idempotent, and this job has been deleted already
+            return
         filterString = "PartitionKey eq '%s'" % jobStoreID
         for fileEntity in self.jobFileIDs.query_entities(filter=filterString):
             jobStoreFileID = fileEntity.RowKey
             self.deleteFile(jobStoreFileID)
 
     def deleteJobStore(self):
-        self.registryTable.update_entity(row_key=self.namePrefix,
-                                         entity={'exists': 'False'})
+        self.registryTable.delete_entity(row_key=self.namePrefix)
         self.jobItems.delete_table()
         self.jobFileIDs.delete_table()
         self.files.delete_container()
