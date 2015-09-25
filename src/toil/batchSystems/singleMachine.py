@@ -18,7 +18,6 @@ from __future__ import absolute_import
 import logging
 import multiprocessing
 import os
-import random
 import subprocess
 import time
 import math

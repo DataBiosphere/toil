@@ -107,25 +107,18 @@ class AbstractJobStore( object ):
         Fixes jobs that might have been partially updated.
         Resets the try counts.
         """
-        #Collate any jobs that were in the process of being created/deleted
-        jobsToDelete = set()
+        #Delete any files that should already be deleted
         for job in self.jobs():
-            for updateID in job.jobsToDelete:
-                jobsToDelete.add(updateID)
-            
-        #Delete the jobs that should be deleted
-        if len(jobsToDelete) > 0:
-            for job in self.jobs():
-                if job.updateID in jobsToDelete:
-                    self.delete(job.jobStoreID)
+            for fileID in job.filesToDelete:
+                self.deleteFile(fileID)
         
         #Cleanup the state of each job
         for job in self.jobs():
             changed = False #Flag to indicate if we need to update the job
             #on disk
             
-            if len(job.jobsToDelete) != 0:
-                job.jobsToDelete = set()
+            if len(job.filesToDelete) != 0:
+                job.filesToDelete = set()
                 changed = True
                 
             #While jobs at the end of the stack are already deleted remove
@@ -166,12 +159,12 @@ class AbstractJobStore( object ):
     ##########################################  
 
     @abstractmethod
-    def create( self, command, memory, cores, disk, updateID=None,
+    def create( self, command, memory, cores, disk, 
                 predecessorNumber=0 ):
         """
         Creates a job, adding it to the store.
         
-        Command, memory, cores, updateID, predecessorNumber
+        Command, memory, cores and predecessorNumber
         are all arguments to the job's constructor.
 
         :rtype : toil.jobWrapper.JobWrapper

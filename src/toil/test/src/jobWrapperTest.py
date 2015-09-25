@@ -53,10 +53,9 @@ class JobWrapperTest(ToilTest):
         jobStoreID = 100
         remainingRetryCount = 5
         predecessorNumber = 0
-        updateID = 1000
         
-        j = JobWrapper(command, memory, cores, disk, jobStoreID, remainingRetryCount,
-                  updateID, predecessorNumber)
+        j = JobWrapper(command, memory, cores, disk, jobStoreID, 
+                       remainingRetryCount, predecessorNumber)
         
         #Check attributes
         #
@@ -67,14 +66,13 @@ class JobWrapperTest(ToilTest):
         self.assertEquals(j.jobStoreID, jobStoreID)
         self.assertEquals(j.remainingRetryCount, remainingRetryCount)
         self.assertEquals(j.predecessorNumber, predecessorNumber)
-        self.assertEquals(j.updateID, updateID)
         self.assertEquals(j.stack, [])
         self.assertEquals(j.predecessorsFinished, set())
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = JobWrapper(command, memory, cores, disk, jobStoreID, remainingRetryCount,
-                  updateID, predecessorNumber)
+        j2 = JobWrapper(command, memory, cores, disk, jobStoreID, 
+                        remainingRetryCount, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = set(("1", "2"))

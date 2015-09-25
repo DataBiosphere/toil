@@ -77,13 +77,12 @@ class hidden:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create("master1", 12, 34, 35, "foo")
+            jobOnMaster = master.create("master1", 12, 34, 35)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, "master1")
             self.assertEquals(jobOnMaster.memory, 12)
             self.assertEquals(jobOnMaster.cores, 34)
             self.assertEquals(jobOnMaster.disk, 35)
-            self.assertEquals(jobOnMaster.updateID, "foo")
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
@@ -97,23 +96,23 @@ class hidden:
             self.assertEquals(jobOnMaster, jobOnWorker)
             # Update state on job
             #
-            # The following demonstrates the job creation pattern, where jobs
-            # to be created are referenced in "jobsToDelete" array, which is
-            # persisted to disk first
-            # If things go wrong during the update, this list of jobs to delete
-            # is used to fix the state
-            jobOnWorker.jobsToDelete = ["1", "2"]
+            # The following demonstrates the job update pattern, where files
+            # to be deleted are referenced in "filesToDelete" array, which is
+            # persisted to disk first.
+            # If things go wrong during the update, this list of files to delete
+            # is used to remove the unneeded files
+            jobOnWorker.filesToDelete = ["1", "2"]
             worker.update(jobOnWorker)
             # Check jobs to delete persisted
-            self.assertEquals(master.load(jobOnWorker.jobStoreID).jobsToDelete, ["1", "2"])
-            # Create children
-            child1 = worker.create("child1", 23, 45, 46, "1", 1)
-            child2 = worker.create("child2", 34, 56, 57, "2", 1)
+            self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ["1", "2"])
+            # Create children    
+            child1 = worker.create("child1", 23, 45, 46, 1)
+            child2 = worker.create("child2", 34, 56, 57, 1)
             # Update parent
             jobOnWorker.stack.append((
                 (child1.jobStoreID, 23, 45, 46, 1),
                 (child2.jobStoreID, 34, 56, 57, 1)))
-            jobOnWorker.jobsToDelete = []
+            jobOnWorker.filesToDelete = []
             worker.update(jobOnWorker)
 
             # Check equivalence between master and worker

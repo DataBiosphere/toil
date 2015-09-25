@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 import os
 import sys
+import copy
 
 if __name__ == "__main__":
     # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
@@ -54,6 +55,19 @@ def nextOpenDescriptor():
     descriptor = os.open("/dev/null", os.O_RDONLY)
     os.close(descriptor)
     return descriptor
+
+class AsyncJobStoreWrite:
+    def __init__(self, jobStore):
+        pass
+    
+    def writeFile(self, filePath):
+        pass
+    
+    def writeFileStream(self):
+        pass
+    
+    def blockUntilSync(self):
+        pass
     
 def main():
     ########################################## 
@@ -90,10 +104,10 @@ def main():
     config = jobStore.config
 
     ##########################################
-    #Load the environment for the job
+    #Load the environment for the jobWrapper
     ##########################################
     
-    #First load the environment for the job.
+    #First load the environment for the jobWrapper.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = cPickle.load(fileHandle)
     for i in environment:
@@ -174,7 +188,7 @@ def main():
     elementNode = ET.Element("worker")
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
-    fileStoreIDsToDelete = set()
+    blockFn = lambda : True
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -187,32 +201,31 @@ def main():
             nextOpenDescriptor()))
     
         ##########################################
-        #Load the job
+        #Load the jobWrapper
         ##########################################
         
-        job = jobStore.load(jobStoreID)
-        logger.debug("Parsed job")
+        jobWrapper = jobStore.load(jobStoreID)
+        logger.debug("Parsed jobWrapper")
         
         ##########################################
-        #Cleanup from any earlier invocation of the job
+        #Cleanup from any earlier invocation of the jobWrapper
         ##########################################
         
-        if job.command == None:
-            while len(job.stack) > 0:
-                jobs = job.stack[-1]
+        if jobWrapper.command == None:
+            while len(jobWrapper.stack) > 0:
+                jobs = jobWrapper.stack[-1]
                 #If the jobs still exist they have not been run, so break
                 if jobStore.exists(jobs[0][0]):
                     break
                 #However, if they are gone then we can remove them from the stack.
                 #This is the only way to flush successors that have previously been run
                 #, as jobs are, as far as possible, read only in the leader.
-                job.stack.pop()
-                
+                jobWrapper.stack.pop()
                 
         #This cleans the old log file which may 
-        #have been left if the job is being retried after a job failure.
-        if job.logJobStoreFileID != None:
-            job.clearLogFile(jobStore)
+        #have been left if the jobWrapper is being retried after a jobWrapper failure.
+        if jobWrapper.logJobStoreFileID != None:
+            jobWrapper.clearLogFile(jobStore)
     
         ##########################################
         #Setup the stats, if requested
@@ -225,42 +238,43 @@ def main():
         startTime = time.time() 
         while True:
             ##########################################
-            #Run the job, if there is one
+            #Run the jobWrapper, if there is one
             ##########################################
             
-            if job.command != None:
-                if job.command.startswith( "_toil " ):
-                    #Make a temporary file directory for the job
+            if jobWrapper.command != None:
+                if jobWrapper.command.startswith( "_toil " ):
+                    #Make a temporary file directory for the jobWrapper
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
-                    #Is a job command
-                    messages, fileStoreIDsToDelete = Job._loadJob(job.command, 
-                    jobStore)._execute( jobWrapper=job,
+                    #Is a jobWrapper command
+                    messages, blockFn = Job._loadJob(jobWrapper.command, 
+                    jobStore)._execute( jobWrapper=jobWrapper,
                                         stats=elementNode if config.stats else None, 
                                         localTempDir=localTempDir,
-                                        jobStore=jobStore)
+                                        jobStore=jobStore,
+                                        blockFn=blockFn)
                     
                     #Remove the temporary file directory
                     shutil.rmtree(localTempDir)
     
                 else: #Is another command (running outside of jobs may be deprecated)
-                    system(job.command)
+                    system(jobWrapper.command)
             else:
                 #The command may be none, in which case
-                #the job is just a shell ready to be deleted
-                assert len(job.stack) == 0
+                #the jobWrapper is just a shell ready to be deleted
+                assert len(jobWrapper.stack) == 0
                 break
             
             ##########################################
-            #Establish if we can run another job within the worker
+            #Establish if we can run another jobWrapper within the worker
             ##########################################
             
             #No more jobs to run so quit
-            if len(job.stack) == 0:
+            if len(jobWrapper.stack) == 0:
                 break
             
             #Get the next set of jobs to run
-            jobs = job.stack[-1]
+            jobs = jobWrapper.stack[-1]
             assert len(jobs) > 0
             
             #If there are 2 or more jobs to run in parallel we quit
@@ -269,35 +283,38 @@ def main():
                             " it's got %i children", len(jobs)-1)
                 break
             
-            #We check the requirements of the job to see if we can run it
+            #We check the requirements of the jobWrapper to see if we can run it
             #within the current worker
             successorJobStoreID, successorMemory, successorCores, successorsDisk, successorPredecessorID = jobs[0]
-            if successorMemory > job.memory:
-                logger.debug("We need more memory for the next job, so finishing")
+            if successorMemory > jobWrapper.memory:
+                logger.debug("We need more memory for the next jobWrapper, so finishing")
                 break
-            if successorCores > job.cores:
-                logger.debug("We need more cores for the next job, so finishing")
+            if successorCores > jobWrapper.cores:
+                logger.debug("We need more cores for the next jobWrapper, so finishing")
                 break
-            if successorsDisk > job.disk:
-                logger.debug("We need more disk for the next job, so finishing")
+            if successorsDisk > jobWrapper.disk:
+                logger.debug("We need more disk for the next jobWrapper, so finishing")
                 break
             if successorPredecessorID != None: 
-                logger.debug("The job has multiple predecessors, we must return to the leader.")
+                logger.debug("The jobWrapper has multiple predecessors, we must return to the leader.")
                 break
           
             ##########################################
-            #We have a single successor job.
-            #We load the successor job and transplant its command and stack
-            #into the current job so that it can be run
-            #as if it were a command that were part of the current job.
-            #We can then delete the successor job in the jobStore, as it is
-            #wholly incorporated into the current job.
+            #We have a single successor jobWrapper.
+            #We load the successor jobWrapper and transplant its command and stack
+            #into the current jobWrapper so that it can be run
+            #as if it were a command that were part of the current jobWrapper.
+            #We can then delete the successor jobWrapper in the jobStore, as it is
+            #wholly incorporated into the current jobWrapper.
             ##########################################
             
-            #Remove the successor job
-            job.stack.pop()
+            #Clone the jobWrapper and its stack
+            jobWrapper = copy.deepcopy(jobWrapper)
             
-            #Load the successor job
+            #Remove the successor jobWrapper
+            jobWrapper.stack.pop()
+            
+            #Load the successor jobWrapper
             successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
             assert successorJob.memory == successorMemory
@@ -307,22 +324,29 @@ def main():
             assert successorJob.command != None
             assert successorJobStoreID == successorJob.jobStoreID
             
-            #Transplant the command and stack to the current job
-            job.command = successorJob.command
-            job.stack += successorJob.stack
-            assert job.memory >= successorJob.memory
-            assert job.cores >= successorJob.cores
+            #Transplant the command and stack to the current jobWrapper
+            jobWrapper.command = successorJob.command
+            jobWrapper.stack += successorJob.stack
+            assert jobWrapper.memory >= successorJob.memory
+            assert jobWrapper.cores >= successorJob.cores
             
-            #Checkpoint the job and delete the successorJob
-            job.jobsToDelete = [ successorJob.jobStoreID ]
-            jobStore.update(job)
-            jobStore.delete(successorJob.jobStoreID)
+            #Build a fileStore to update the job
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
             
-            #Remove any jobs that the user specified should be removed during the job
-            for f in fileStoreIDsToDelete:
-                jobStore.delete(f)
+            #Add successorJob to those to be deleted
+            fileStore.jobsToDelete.add(successorJob.jobStoreID)
             
-            logger.debug("Starting the next job")
+            #This will update the job once the previous job is done
+            fileStore._updateJobWhenDone()            
+            
+            #Update blockFn
+            blockFn = fileStore._blockFn
+            
+            #Clone the jobWrapper and its stack again, so that updates to it do 
+            #not interfere with this update
+            jobWrapper = copy.deepcopy(jobWrapper)
+            
+            logger.debug("Starting the next jobWrapper")
         
         ##########################################
         #Finish up the stats
@@ -342,9 +366,10 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
-        job = jobStore.load(jobStoreID)
-        job.setupJobAfterFailure(config)
+        logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
+        blockFn() #Wait for any asynchronous writes to finish
+        jobWrapper = jobStore.load(jobStoreID)
+        jobWrapper.setupJobAfterFailure(config)
         workerFailed = True
 
     ##########################################
@@ -377,10 +402,11 @@ def main():
     
     #Copy back the log file to the global dir, if needed
     if workerFailed:
+        blockFn() #Wait for any asynchronous writes to finish
         truncateFile(tempWorkerLogPath)
-        job.setLogFile(tempWorkerLogPath, jobStore)
+        jobWrapper.setLogFile(tempWorkerLogPath, jobStore)
         os.remove(tempWorkerLogPath)
-        jobStore.update(job)
+        jobStore.update(jobWrapper)
     elif debugging: # write log messages
         truncateFile(tempWorkerLogPath)
         with open(tempWorkerLogPath, 'r') as logFile:
@@ -395,14 +421,12 @@ def main():
     shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and job.command == None and len(job.stack) == 0:
-        #Delete files the user specified should be deleted
-        for f in fileStoreIDsToDelete:
-            jobStore.delete(f)
-        #We can now safely get rid of the job
-        jobStore.delete(job.jobStoreID)
+    if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0:
+        #Block until done
+        blockFn()
+        #We can now safely get rid of the jobWrapper
+        jobStore.delete(jobWrapper.jobStoreID)
         
-       
 if __name__ == '__main__':
     logging.basicConfig()
     main()
