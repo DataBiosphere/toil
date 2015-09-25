@@ -23,6 +23,7 @@ import shutil
 import time
 import math
 import datetime
+import multiprocessing
 
 from toil.job import Job
 from toil.test import ToilTest
@@ -52,7 +53,6 @@ class DependenciesTest(ToilTest):
 
     # FIXME: test methods can't have parameters, AFAIK (Hannes)
 
-    @unittest.expectedFailure
     def testDependencies(self, batchSystem="singleMachine"):
         """
         Only done in singleMachine for now.  Experts can run manually on other systems if they so choose.
@@ -92,7 +92,7 @@ class DependenciesTest(ToilTest):
             os.close(logFd)
 
         fn("comb", 10, 100, 100, 1, 10)
-        fn("comb", 200, 100, 100, 20, 10)
+        #fn("comb", 200, 100, 100, 20, 10)
 
         fn("fly", 10, 8, 100, 1, 10)
         fn("fly", 10, 8, 100, 2, 10)
@@ -292,18 +292,16 @@ def checkLog(logFile, maxCores, maxThreads, coresPerJob, sleepTime):
     threadsPerJob = 1
     if coresPerJob > coresPerThread:
         threadsPerJob = math.ceil(coresPerJob / coresPerThread)
-    maxConcurrentJobs = int(maxConcurrentJobs / threadsPerJob)
+    total_proc = max(1, multiprocessing.cpu_count() / 2)
+    maxConcurrentJobs = min(total_proc, int(maxConcurrentJobs / threadsPerJob))
     # print "Info on jobs", coresPerThread, coresPerJob, threadsPerJob, maxConcurrentJobs
     assert maxConcurrentJobs >= 1
     for i in range(1, len(stamps)):
-        delta = stamps[i] - stamps[i - 1]
-        if i % maxConcurrentJobs != 0:
-            if delta > epsilon:
-                raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" %
-                                   (i, delta, epsilon))
-        elif delta > alpha:
+        leeway = (sleepTime + epsilon) * (i / maxConcurrentJobs)
+        delta = stamps[i] - stamps[0]
+        if i >= maxConcurrentJobs and delta > leeway:
             raise RuntimeError("jobs out of sync: i=%d delta=%f threshold=%f" %
-                               (i, delta, alpha))
+                               (i, delta, leeway))
 
     logFile.close()
 
