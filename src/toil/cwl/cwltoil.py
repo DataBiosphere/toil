@@ -12,6 +12,8 @@ import os
 import tempfile
 import json
 import sys
+import toil.lib.bioio as bioio
+import logging
 
 def shortname(n):
     """Trim the leading namespace to get just the final name part of a parameter."""
@@ -60,7 +62,7 @@ class StageJob(Job):
     """
 
     def __init__(self, cwlwf, cwljob, basedir):
-        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        Job.__init__(self)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.basedir = basedir
@@ -84,7 +86,7 @@ class FinalJob(Job):
     """
 
     def __init__(self, cwljob, outdir):
-        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        Job.__init__(self)
         self.cwljob = cwljob
         self.outdir = outdir
 
@@ -95,12 +97,18 @@ class FinalJob(Job):
             json.dump(cwljob, f, indent=4)
         return True
 
+class ResolveIndirect(Job):
+    def __init__(self, cwljob):
+        Job.__init__(self)
+        self.cwljob = cwljob
+    def run(self, fileStore):
+        return resolve_indirect(self.cwljob)
 
 class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
     def __init__(self, cwltool, cwljob):
-        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        Job.__init__(self)
         self.cwltool = cwltool
         self.cwljob = cwljob
 
@@ -147,7 +155,7 @@ class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and schedule a Toil job graph."""
 
     def __init__(self, cwlwf, cwljob):
-        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        Job.__init__(self)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
 
@@ -196,19 +204,22 @@ class CWLWorkflow(Job):
                                 jobobj[shortname(inp["id"])] = ("default", {"default": inp["default"]})
 
                         if step.embedded_tool.tool["class"] == "Workflow":
-                            job = CWLWorkflow(step.embedded_tool, IndirectDict(jobobj))
+                            wfjob = CWLWorkflow(step.embedded_tool, IndirectDict(jobobj))
+                            followOn = ResolveIndirect(wfjob.rv())
+                            wfjob.addFollowOn(followOn)
                         else:
-                            job = CWLJob(step.embedded_tool, IndirectDict(jobobj))
+                            wfjob = CWLJob(step.embedded_tool, IndirectDict(jobobj))
+                            followOn = wfjob
 
-                        jobs[step.tool["id"]] = job
+                        jobs[step.tool["id"]] = followOn
 
                         for inp in step.tool["inputs"]:
                             if "source" in inp:
-                                if job not in promises[inp["source"]]._children:
-                                    promises[inp["source"]].addChild(job)
+                                if wfjob not in promises[inp["source"]]._children:
+                                    promises[inp["source"]].addChild(wfjob)
 
                         for out in step.tool["outputs"]:
-                            promises[out["id"]] = job
+                            promises[out["id"]] = followOn
 
                 for inp in step.tool["inputs"]:
                     if "source" in inp:
@@ -273,19 +284,13 @@ def main():
 
     options = parser.parse_args([workdir] + sys.argv[1:])
 
+    if options.quiet:
+        options.logLevel = "WARNING"
+
     uri = "file://" + os.path.abspath(options.cwljob)
 
-    if options.conformance_test:
-        loader = schema_salad.ref_resolver.Loader({})
-    else:
-        loader = schema_salad.ref_resolver.Loader({
-            "@base": uri,
-            "path": {
-                "@type": "@id"
-            }
-        })
+    loader = schema_salad.ref_resolver.Loader({})
     job, _ = loader.resolve_ref(uri)
-    adjustFiles(job, lambda x: x.replace("file://", ""))
 
     t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool, True)
 
@@ -296,6 +301,8 @@ def main():
         if shortname(inp["id"]) in job:
             pass
         elif shortname(inp["id"]) not in job and "default" in inp:
+            # FIXME: if the default value is a file, it is relative to the tool file path,
+            # not the input object path.
             job[shortname(inp["id"])] = inp["default"]
         elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
             pass
@@ -308,6 +315,11 @@ def main():
     if options.conformance_test:
         sys.stdout.write(json.dumps(cwltool.main.single_job_executor(t, job, options.basedir, options, conformance_test=True), indent=4))
         return 0
+
+    if not options.basedir:
+        options.basedir = os.path.dirname(os.path.abspath(options.cwljob))
+
+    adjustFiles(job, lambda x: os.path.join(options.basedir, x) if not os.path.isabs(x) else x)
 
     staging = StageJob(t, job, os.path.dirname(os.path.abspath(options.cwljob)))
 
