@@ -17,7 +17,7 @@ import os
 from toil.lib.bioio import getTempFile
 from toil.job import Job as T
 from toil.test import ToilTest
-from toil.test.src.jobTest import f
+from toil.test.src.jobTest import testFn1 as f
 
 
 class JobEncapsulationTest(ToilTest):
@@ -50,6 +50,6 @@ class JobEncapsulationTest(ToilTest):
             # Run the workflow, the return value being the number of failed jobs
             T.Runner.startToil(a, options)
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
         finally:
             os.remove(outFile)

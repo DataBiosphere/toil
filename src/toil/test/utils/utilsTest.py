@@ -68,7 +68,8 @@ class UtilsTest(ToilTest):
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
-                             "--retryCount 2".format(**locals()))
+                             "--retryCount 2 --badWorker=0.5 "
+                             "--badWorkerFailInterval=0.01 ".format(**locals()))
 
         # Try restarting it to check that a JobStoreException is thrown
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
@@ -132,7 +133,9 @@ class UtilsTest(ToilTest):
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
-                             "--retryCount 99".format(**locals()))
+                             "--retryCount 99 "
+                             "--badWorker=0.5 "
+                             "--badWorkerFailInterval=0.01 ".format(**locals()))
 
         # Run the script for the first time
         system(toilCommandString)

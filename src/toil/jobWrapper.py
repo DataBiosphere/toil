@@ -83,23 +83,6 @@ class JobWrapper( object ):
             logger.warn("We have increased the default memory of the failed job to %s bytes",
                         self.memory)
 
-    def clearLogFile( self, jobStore ):
-        """
-        Clears the log file, if it is set.
-        """
-        if self.logJobStoreFileID is not None:
-            jobStore.deleteFile( self.logJobStoreFileID )
-            self.logJobStoreFileID = None
-
-    def setLogFile( self, logFile, jobStore ):
-        """
-        Sets the log file in the file store. 
-        """
-        if self.logJobStoreFileID is not None:
-            self.clearLogFile(jobStore)
-        self.logJobStoreFileID = jobStore.writeFile( logFile, self.jobStoreID )
-        assert self.logJobStoreFileID is not None
-
     def getLogFileHandle( self, jobStore ):
         """
         Returns a context manager that yields a file handle to the log file

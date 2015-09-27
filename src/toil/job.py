@@ -354,7 +354,7 @@ class Job(object):
             setLoggingFromOptions(options)
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 if options.restart:
-                    jobStore.clean() #This cleans up any half written jobs after a restart
+                    jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
                     rootJob = job._loadRootJob(jobStore)
                 else:
                     #Setup the first wrapper.
@@ -392,7 +392,9 @@ class Job(object):
                     jobStore.updateFile(jobStoreFileID, localFileName)
             self.workers = map(lambda i : Thread(target=asyncWrite, args=(self.queue, jobStore)), 
                                range(self.workerNumber))
-            map(lambda worker : worker.start(), self.workers)
+            for worker in self.workers:
+                worker.deamon = True
+                worker.start()
             self.inputBlockFn = inputBlockFn
         
         def getLocalTempDir(self):
@@ -528,10 +530,14 @@ class Job(object):
                     #This code will always run
                     self.updateSemaphore.release()
             #The update semaphore is held while the jobWrapper is written to disk
-            self.updateSemaphore.acquire()
-            t = Thread(target=asyncUpdate)
-            t.daemon = True
-            t.start()
+            try:
+                self.updateSemaphore.acquire()
+                t = Thread(target=asyncUpdate)
+                t.daemon = True
+                t.start()
+            except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
+                self.updateSemaphore.release()
+                raise
         
         def _blockFn(self):
             """
@@ -939,15 +945,14 @@ class Job(object):
     #children/followOn jobs
     ####################################################
 
-    def _execute(self, jobWrapper, stats, localTempDir, jobStore, blockFn):
+    def _execute(self, jobWrapper, stats, localTempDir, jobStore, fileStore):
         """This is the core method for running the job within a worker.
         """
         if stats != None:
             startTime = time.time()
             startClock = getTotalCpuTime()
         baseDir = os.getcwd()
-        #Run the job, first cleanup then run.
-        fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
+        #Run the job
         returnValues = self.run(fileStore)
         #Serialize the new jobs defined by the run method to the jobStore
         self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
@@ -968,9 +973,6 @@ class Job(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
-        #Return any logToMaster logging messages + the files that should be deleted
-        #from the job store once the job has been registered as complete
-        return fileStore.loggingMessages, fileStore._blockFn
 
     ####################################################
     #Method used to resolve the module in which an inherited job instances

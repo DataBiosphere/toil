@@ -25,7 +25,6 @@ from bd2k.util.humanize import human2bytes
 from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
-success_ratio = 0.5
 sortMemory = human2bytes('1000M')
 
 def setup(job, inputFile, N):
@@ -41,8 +40,6 @@ def down(job, inputFile, fileStart, fileEnd, N):
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
     if length > N:
         #We will subdivide the file
@@ -65,8 +62,6 @@ def down(job, inputFile, fileStart, fileEnd, N):
 def up(job, inputFileID1, inputFileID2):
     """Merges the two files and places them in the output.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         with job.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
@@ -81,8 +76,6 @@ def up(job, inputFileID1, inputFileID2):
 def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This is a test error and not a failure of the tests
     job.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
     #sort(outputFile)
 

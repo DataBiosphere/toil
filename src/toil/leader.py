@@ -219,27 +219,26 @@ class JobBatcher:
 
     def processFinishedJob(self, jobBatchSystemID, resultStatus):
         """
-        Function reads a processed job file and updates it state.
+        Function reads a processed jobWrapper file and updates it state.
         """    
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
-            job = self.jobStore.load(jobStoreID)
-            if job.logJobStoreFileID is not None:
-                logger.warn("The job seems to have left a log file, indicating failure: %s", jobStoreID)
-                with job.getLogFileHandle( self.jobStore ) as logFileStream:
+            jobWrapper = self.jobStore.load(jobStoreID)
+            if jobWrapper.logJobStoreFileID is not None:
+                logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
+                with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
                     logStream( logFileStream, jobStoreID, logger.warn )
-            assert job not in self.toilState.updatedJobs
             if resultStatus != 0:
-                if job.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite job failing: %s", jobStoreID)
-                job.setupJobAfterFailure(self.config)
-            self.toilState.updatedJobs.add(job) #Now we know the
-            #job is done we can add it to the list of updated job files
-            logger.debug("Added job: %s to active jobs", jobStoreID)
-        else:  #The job is done
+                if jobWrapper.logJobStoreFileID is None:
+                    logger.warn("No log file is present, despite jobWrapper failing: %s", jobStoreID)
+                jobWrapper.setupJobAfterFailure(self.config)
+            self.toilState.updatedJobs.add((jobWrapper, resultStatus)) #Now we know the
+            #jobWrapper is done we can add it to the list of updated jobWrapper files
+            logger.debug("Added jobWrapper: %s to active jobs", jobStoreID)
+        else:  #The jobWrapper is done
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
-                            "job %s seems to have finished and been removed", jobStoreID)
+                            "jobWrapper %s seems to have finished and been removed", jobStoreID)
             self._updatePredecessorStatus(jobStoreID)
             
     def _updatePredecessorStatus(self, jobStoreID):
@@ -260,7 +259,7 @@ class JobBatcher:
                 logger.debug("Job %s has all its successors run successfully", \
                              predecessorJob.jobStoreID)
                 assert predecessorJob not in self.toilState.updatedJobs
-                self.toilState.updatedJobs.add(predecessorJob) #Now we know
+                self.toilState.updatedJobs.add((predecessorJob, 0)) #Now we know
                 #the job is done we can add it to the list of updated job files
 
 ##########################################
@@ -285,28 +284,28 @@ class ToilState( object ):
         ##Algorithm to build this information
         self._buildToilState(rootJob, jobStore)
 
-    def _buildToilState(self, job, jobStore):
+    def _buildToilState(self, jobWrapper, jobStore):
         """
-        Traverses tree of jobs from the root job (rootJob) building the
+        Traverses tree of jobs from the root jobWrapper (rootJob) building the
         ToilState class.
         """
-        if job.command != None or len(job.stack) == 0: #If the job has a command
+        if jobWrapper.command != None or len(jobWrapper.stack) == 0: #If the jobWrapper has a command
             #or is ready to be deleted it is ready to be processed
-            self.updatedJobs.add(job)
+            self.updatedJobs.add((jobWrapper, 0))
         else: #There exist successors
-            self.successorCounts[job] = len(job.stack[-1])
-            for successorJobStoreTuple in job.stack[-1]:
+            self.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
+            for successorJobStoreTuple in jobWrapper.stack[-1]:
                 successorJobStoreID = successorJobStoreTuple[0]
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
-                    #Given that the successor job does not yet point back at a
+                    #Given that the successor jobWrapper does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [job]
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
                     self._buildToilState(jobStore.load(successorJobStoreID), jobStore)
                 else:
                     #We have already looked at the successor, so we don't recurse, 
                     #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
 class FailedJobsException( Exception ):
     def __init__( self, jobStoreString, numberOfFailedJobs ):
@@ -314,7 +313,7 @@ class FailedJobsException( Exception ):
         self.jobStoreString = jobStoreString
         self.numberOfFailedJobs = numberOfFailedJobs
         
-def mainLoop(config, batchSystem, jobStore, rootJob):
+def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     """
     This is the main loop from which jobs are issued and processed.
     
@@ -326,7 +325,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     #Get a snap shot of the current state of the jobs in the jobStore
     ##########################################
 
-    toilState = ToilState(jobStore, rootJob)
+    toilState = ToilState(jobStore, rootJobWrapper)
 
     ##########################################
     #Load the jobBatcher class - used to track jobs submitted to the batch-system
@@ -353,7 +352,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
     #The main loop in which jobs are scheduled/processed
     ##########################################
 
-    #Sets up the timing of the job rescuing method
+    #Sets up the timing of the jobWrapper rescuing method
     timeSinceJobsLastRescued = time.time()
     #Number of jobs that can not be completed successful after exhausting retries
     totalFailedJobs = 0
@@ -368,43 +367,45 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
             logger.debug("Built the jobs list, currently have %i jobs to update and %i jobs issued",
                          len(toilState.updatedJobs), jobBatcher.getNumberOfJobsIssued())
 
-            for job in toilState.updatedJobs:
-                #If the job has a command it must be run before any successors
-                if job.command != None:
-                    if job.remainingRetryCount > 0:
-                        jobBatcher.issueJob(job.jobStoreID, job.memory, job.cores, job.disk)
+            for jobWrapper, resultStatus in toilState.updatedJobs:
+                #If the jobWrapper has a command it must be run before any successors
+                #Similarly, if the job previously failed we rerun it, even if it doesn't have a command to 
+                #run, to eliminate any parts of the stack now completed. 
+                if jobWrapper.command != None or resultStatus != 0:
+                    if jobWrapper.remainingRetryCount > 0:
+                        jobBatcher.issueJob(jobWrapper.jobStoreID, jobWrapper.memory, 
+                                            jobWrapper.cores, jobWrapper.disk)
                     else:
                         totalFailedJobs += 1
-                        logger.warn("Job: %s is completely failed", job.jobStoreID)
+                        logger.warn("Job: %s is completely failed", jobWrapper.jobStoreID)
 
                 #There exist successors to run
-                elif len(job.stack) > 0:
-                    assert len(job.stack[-1]) > 0
+                elif len(jobWrapper.stack) > 0:
+                    assert len(jobWrapper.stack[-1]) > 0
                     logger.debug("Job: %s has %i successors to schedule",
-                                 job.jobStoreID, len(job.stack[-1]))
+                                 jobWrapper.jobStoreID, len(jobWrapper.stack[-1]))
                     #Record the number of successors that must be completed before
-                    #the job can be considered again
-                    assert job not in toilState.successorCounts
-                    toilState.successorCounts[job] = len(job.stack[-1])
+                    #the jobWrapper can be considered again
+                    assert jobWrapper not in toilState.successorCounts
+                    toilState.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
                     #List of successors to schedule
                     successors = []
-                    #For each successor schedule if all predecessors have been
-                    #completed
-                    for successorJobStoreID, memory, cores, disk, predecessorID in job.stack.pop():
+                    #For each successor schedule if all predecessors have been completed
+                    for successorJobStoreID, memory, cores, disk, predecessorID in jobWrapper.stack.pop():
                         #Build map from successor to predecessors.
                         if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
-                        toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(job)
-                        #Case that the job has multiple predecessors
+                        toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
+                        #Case that the jobWrapper has multiple predecessors
                         if predecessorID != None:
-                            #Load the wrapped job
+                            #Load the wrapped jobWrapper
                             job2 = jobStore.load(successorJobStoreID)
                             #Remove the predecessor from the list of predecessors
                             job2.predecessorsFinished.add(predecessorID)
                             #Checkpoint
                             jobStore.update(job2)
                             #If the jobs predecessors have all not all completed then
-                            #ignore the job
+                            #ignore the jobWrapper
                             assert len(job2.predecessorsFinished) >= 1
                             assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                             if len(job2.predecessorsFinished) < job2.predecessorNumber:
@@ -412,7 +413,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                         successors.append((successorJobStoreID, memory, cores, disk))
                     jobBatcher.issueJobs(successors)
 
-                #There are no remaining tasks to schedule within the job, but
+                #There are no remaining tasks to schedule within the jobWrapper, but
                 #we schedule it anyway to allow it to be deleted.
 
                 #TODO: An alternative would be simple delete it here and add it to the
@@ -420,15 +421,15 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
                 #process that deletes jobs and then feeds them back into the set
                 #of jobs to be processed
                 else:
-                    if job.remainingRetryCount > 0:
-                        jobBatcher.issueJob(job.jobStoreID,
+                    if jobWrapper.remainingRetryCount > 0:
+                        jobBatcher.issueJob(jobWrapper.jobStoreID,
                                             config.defaultMemory,
                                             config.defaultCores,
                                             config.defaultDisk)
-                        logger.debug("Job: %s is empty, we are scheduling to clean it up", job.jobStoreID)
+                        logger.debug("Job: %s is empty, we are scheduling to clean it up", jobWrapper.jobStoreID)
                     else:
                         totalFailedJobs += 1
-                        logger.warn("Job: %s is empty but completely failed - something is very wrong", job.jobStoreID)
+                        logger.warn("Job: %s is empty but completely failed - something is very wrong", jobWrapper.jobStoreID)
 
             toilState.updatedJobs = set() #We've considered them all, so reset
 
@@ -441,7 +442,7 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
             break
 
         ##########################################
-        #Gather any new, updated job from the batch system
+        #Gather any new, updated jobWrapper from the batch system
         ##########################################
 
         #Asks the batch system what jobs have been completed,
@@ -451,31 +452,31 @@ def mainLoop(config, batchSystem, jobStore, rootJob):
             jobBatchSystemID, result = updatedJob
             if jobBatcher.hasJob(jobBatchSystemID):
                 if result == 0:
-                    logger.debug("Batch system is reporting that the job with "
-                                 "batch system ID: %s and job store ID: %s ended successfully",
+                    logger.debug("Batch system is reporting that the jobWrapper with "
+                                 "batch system ID: %s and jobWrapper store ID: %s ended successfully",
                                  jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID))
                 else:
-                    logger.warn("Batch system is reporting that the job with "
-                                "batch system ID: %s and job store ID: %s failed with exit value %i",
+                    logger.warn("Batch system is reporting that the jobWrapper with "
+                                "batch system ID: %s and jobWrapper store ID: %s failed with exit value %i",
                                 jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result)
                 jobBatcher.processFinishedJob(jobBatchSystemID, result)
             else:
                 logger.warn("A result seems to already have been processed "
-                            "for job with batch system ID: %i", jobBatchSystemID)
+                            "for jobWrapper with batch system ID: %i", jobBatchSystemID)
         else:
             ##########################################
             #Process jobs that have gone awry
             ##########################################
 
             #In the case that there is nothing happening
-            #(no updated job to gather for 10 seconds)
+            #(no updated jobWrapper to gather for 10 seconds)
             #check if their are any jobs that have run too long
             #(see JobBatcher.reissueOverLongJobs) or which
             #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
             if (time.time() - timeSinceJobsLastRescued >=
                 config.rescueJobsFrequency): #We only
                 #rescue jobs every N seconds, and when we have
-                #apparently exhausted the current job supply
+                #apparently exhausted the current jobWrapper supply
                 jobBatcher.reissueOverLongJobs()
                 logger.info("Reissued any over long jobs")
 

@@ -75,6 +75,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.retryCount = 2
                 options.batchSystem = batchSystem
                 options.clean = "never"
+                options.badWorker = 0.5
+                options.badWorkerFailInterval = 0.01
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 import os
 import sys
 import copy
+import random
 
 if __name__ == "__main__":
     # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
@@ -32,6 +33,8 @@ import logging
 import xml.etree.cElementTree as ET
 import cPickle
 import shutil
+from threading import Thread
+import signal
 
 logger = logging.getLogger( __name__ )
 
@@ -102,6 +105,20 @@ def main():
     
     jobStore = loadJobStore(jobStoreString)
     config = jobStore.config
+    
+    ##########################################
+    #Create the worker killer, if requested
+    ##########################################
+
+    if config.badWorker > 0 and random.random() < config.badWorker:
+        def badWorker():
+            #This will randomly kill the worker process at a random time 
+            time.sleep(config.badWorkerFailInterval * random.random())
+            os.kill(os.getpid(), signal.SIGKILL) #signal.SIGINT)
+        #NOTE: TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
+        t = Thread(target=badWorker)
+        t.daemon = True
+        t.start()
 
     ##########################################
     #Load the environment for the jobWrapper
@@ -224,8 +241,11 @@ def main():
                 
         #This cleans the old log file which may 
         #have been left if the jobWrapper is being retried after a jobWrapper failure.
-        if jobWrapper.logJobStoreFileID != None:
-            jobWrapper.clearLogFile(jobStore)
+        oldLogFile = jobWrapper.logJobStoreFileID
+        jobWrapper.logJobStoreFileID = None
+        jobStore.update(jobWrapper) #Update first, before deleting the file
+        if oldLogFile != None:
+            jobStore.delete(oldLogFile)
     
         ##########################################
         #Setup the stats, if requested
@@ -246,13 +266,18 @@ def main():
                     #Make a temporary file directory for the jobWrapper
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
-                    #Is a jobWrapper command
-                    messages, blockFn = Job._loadJob(jobWrapper.command, 
+                    #Create a fileStore object for the job
+                    fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
+                    #Get the next block function and list that will contain any messages
+                    blockFn = fileStore._blockFn
+                    messages = fileStore.loggingMessages
+                    #Load and run the job
+                    Job._loadJob(jobWrapper.command, 
                     jobStore)._execute( jobWrapper=jobWrapper,
                                         stats=elementNode if config.stats else None, 
                                         localTempDir=localTempDir,
                                         jobStore=jobStore,
-                                        blockFn=blockFn)
+                                        fileStore=fileStore)
                     
                     #Remove the temporary file directory
                     shutil.rmtree(localTempDir)
@@ -333,14 +358,14 @@ def main():
             #Build a fileStore to update the job
             fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
             
+            #Update blockFn
+            blockFn = fileStore._blockFn
+            
             #Add successorJob to those to be deleted
             fileStore.jobsToDelete.add(successorJob.jobStoreID)
             
             #This will update the job once the previous job is done
             fileStore._updateJobWhenDone()            
-            
-            #Update blockFn
-            blockFn = fileStore._blockFn
             
             #Clone the jobWrapper and its stack again, so that updates to it do 
             #not interfere with this update
@@ -367,10 +392,17 @@ def main():
     except: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
-        blockFn() #Wait for any asynchronous writes to finish
+        blockFn() #Wait for any asynchronous writes to finis so we don't try to read
+        #while it is being written
         jobWrapper = jobStore.load(jobStoreID)
         jobWrapper.setupJobAfterFailure(config)
         workerFailed = True
+     
+    ##########################################
+    #Wait for the asynchronous chain of writes/updates to finish
+    ########################################## 
+       
+    blockFn() 
 
     ##########################################
     #Cleanup
@@ -402,9 +434,8 @@ def main():
     
     #Copy back the log file to the global dir, if needed
     if workerFailed:
-        blockFn() #Wait for any asynchronous writes to finish
         truncateFile(tempWorkerLogPath)
-        jobWrapper.setLogFile(tempWorkerLogPath, jobStore)
+        jobWrapper.logJobStoreFileID = jobStore.writeFile( tempWorkerLogPath, jobWrapper.jobStoreID )
         os.remove(tempWorkerLogPath)
         jobStore.update(jobWrapper)
     elif debugging: # write log messages
@@ -422,8 +453,6 @@ def main():
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0:
-        #Block until done
-        blockFn()
         #We can now safely get rid of the jobWrapper
         jobStore.delete(jobWrapper.jobStoreID)
         

@@ -31,8 +31,8 @@ class JobServiceTest(ToilTest):
         outFile = getTempFile(rootDir=self._createTempDir())
         try:
             # Wire up the services/jobs
-            t = Job.wrapFn(f, "1", outFile)
-            t.addChildFn(f, t.addService(TestService("2", "3", outFile)), outFile)
+            t = Job.wrapFn(testFn1, "1", outFile)
+            t.addChildFn(testFn1, t.addService(TestService("2", "3", outFile)), outFile)
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
@@ -54,10 +54,10 @@ class TestService(Job.Service):
         return self.startString
 
     def stop(self):
-        f(self.stopString, self.outFile)
+        testFn1(self.stopString, self.outFile)
 
 
-def f(string, outFile):
+def testFn1(string, outFile):
     """
     Function appends string to output file
     """

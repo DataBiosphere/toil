@@ -164,7 +164,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                 # noinspection PyProtectedMember
                 value = self.coreSemaphore._Semaphore__value
                 logger.debug('Finished job. CPU semaphore value (approximate): %i, overflow: %i', value, self.coreOverflow)
-                self.outputQueue.put((jobID, 0))
+                self.outputQueue.put((jobID, statusCode))
         logger.debug('Exiting worker thread normally.')
 
     def issueBatchJob(self, command, memory, cores, disk):

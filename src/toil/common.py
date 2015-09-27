@@ -81,6 +81,10 @@ class Config(object):
         self.sseKey = None
         self.cseKey = None
         
+        #Debug options
+        self.badWorker = 0.0
+        self.badWorkerFailInterval = 0.01
+        
     def setOptions(self, options):
         """
         Creates a config object from the options object.
@@ -156,6 +160,10 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
+        
+        #Debug options
+        setOption("badWorker", float, iC(0, 1))
+        setOption("badWorkerFailInterval", float, iC(0))
 
 def _addOptions(addGroupFn, config):
     #
@@ -263,6 +271,16 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
+    
+    #
+    #Debug options
+    #
+    addOptionFn = addGroupFn("toil debug options", "Debug options")
+    addOptionFn("--badWorker", dest="badWorker", default=None,
+                      help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
+    addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
+                      help=("When killing the job pick uniformly within the interval from 0.0 to "
+                            "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
 
 def addOptions(parser, config=Config()):
     """
