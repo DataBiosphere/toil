@@ -181,19 +181,31 @@ class ParasolBatchSystem(AbstractBatchSystem):
             if jobID in self.jobIDsToCpu.keys():
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
 
-    def getIssuedBatchJobIDs(self):
-        """Gets the list of jobs issued to parasol.
+    def getJobIDsForResultsFile(self, resultsFile):
+        """Get all queued and running jobs for a results file.
         """
-        #Example issued job, first field is jobID, last is the results file
-        #31816891 localhost  benedictpaten 2009/07/23 10:54:09 python ~/Desktop/out.txt
+        jobIDs = []
+        for line in popenParasolCommand("%s -results=%s pstat2" % (self.parasolCommand, resultsFile))[1]:
+            runningJobMatch = self.runningPattern.match(line)
+            queuedJobMatch = self.queuePattern.match(line)
+            jobID = None
+            if runningJobMatch:
+                jobID = runningJobMatch.group(1)
+            elif queuedJobMatch:
+                jobID = queuedJobMatch.group(1)
+            else:
+                continue
+            jobIDs.append(int(jobID))
+        return set(jobIDs)
 
+    def getIssuedBatchJobIDs(self):
+        """Gets the list of jobs issued to parasol in all results files, but 
+        not including jobs created by other users.
+        """
         issuedJobs = set()
-        for line in popenParasolCommand("%s -extended list jobs" % self.parasolCommand)[1]:
-            if line != '':
-                tokens = line.split()
-                if tokens[-1] in self.resultsFiles.values():
-                    jobID = int(tokens[0])
-                    issuedJobs.add(jobID)
+        for resultsFile in self.resultsFiles.values():
+            issuedJobs.update(self.getJobIDsForResultsFile(resultsFile))
+
         return list(issuedJobs)
 
     def getRunningBatchJobIDs(self):
