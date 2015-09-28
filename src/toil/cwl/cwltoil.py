@@ -1,7 +1,20 @@
 #!/usr/bin/env python
 #
-# Implement support for Common Workflow Language (CWL) in Toil.
+# Implement support for Common Workflow Language (CWL) for Toil.
 #
+# Copyright (C) 2015 Curoverse, Inc
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from toil.job import Job
 from argparse import ArgumentParser
@@ -331,7 +344,7 @@ def checkRequirements(rec):
             checkRequirements(d)
 
 
-def main():
+def main(args=None):
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     parser.add_argument("cwltool", type=str)
@@ -353,7 +366,7 @@ def main():
     workdir = tempfile.mkdtemp()
     os.rmdir(workdir)
 
-    options = parser.parse_args([workdir] + sys.argv[1:])
+    options = parser.parse_args([workdir] + args)
 
     if options.quiet:
         options.logLevel = "WARNING"
@@ -420,4 +433,4 @@ def main():
     return 0
 
 if __name__=="__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
