@@ -388,7 +388,7 @@ def main():
         if shortname(inp["id"]) in job:
             pass
         elif shortname(inp["id"]) not in job and "default" in inp:
-            job[shortname(inp["id"])] = inp["default"]
+            job[shortname(inp["id"])] = copy.copy(inp["default"])
         elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
             pass
         else:
