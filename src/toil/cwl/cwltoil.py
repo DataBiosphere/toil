@@ -14,6 +14,7 @@ import json
 import sys
 import toil.lib.bioio as bioio
 import logging
+import copy
 
 def shortname(n):
     """Trim the leading namespace to get just the final name part of a parameter."""
@@ -136,6 +137,66 @@ class CWLJob(Job):
         return output
 
 
+
+def makeJob(tool, jobobj):
+    if tool.tool["class"] == "Workflow":
+        wfjob = CWLWorkflow(tool, jobobj)
+        followOn = ResolveIndirect(wfjob.rv())
+        wfjob.addFollowOn(followOn)
+        return (wfjob, followOn)
+    else:
+        job = CWLJob(tool, jobobj)
+        return (job, job)
+
+
+class CWLScatter(Job):
+    def __init__(self, step, cwljob):
+        Job.__init__(self)
+        self.step = step
+        self.cwljob = cwljob
+
+    def run(self, fileStore):
+        cwljob = resolve_indirect(self.cwljob)
+
+        if isinstance(self.step.tool["scatter"], basestring):
+            scatter = [self.step.tool["scatter"]]
+        else:
+            scatter = self.step.tool["scatter"]
+
+        outputs = []
+
+        if len(scatter) == 1:
+            # simple scatter
+            for n in cwljob[shortname(scatter[0])]:
+                copyjob = copy.copy(cwljob)
+                copyjob[shortname(scatter[0])] = n
+                (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob)
+                self.addChild(subjob)
+                outputs.append(followOn.rv())
+
+        elif len(scatter) > 1:
+            # complex scatter
+            raise Exception("Unsupported complex scatter type '%s'" % self.step.tool.get("scatterMethod"))
+
+        return outputs
+
+
+class CWLGather(Job):
+    def __init__(self, step, outputs):
+        Job.__init__(self)
+        self.step = step
+        self.outputs = outputs
+
+    def run(self, fileStore):
+        outobj = {}
+        for out in self.outputs:
+            for n in out:
+                if n not in outobj:
+                    outobj[n] = []
+                outobj[n].append(out[n])
+        return outobj
+
+
 class SelfJob(object):
     """Fake job object to facilitate implementation of CWLWorkflow.run()"""
 
@@ -158,6 +219,7 @@ class CWLWorkflow(Job):
         Job.__init__(self)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
+
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -201,22 +263,30 @@ class CWLWorkflow(Job):
                             if "source" in inp:
                                 jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
                             elif "default" in inp:
-                                jobobj[shortname(inp["id"])] = ("default", {"default": inp["default"]})
+                                d = copy.copy(inp["default"])
+                                adjustFiles(d, lambda x: x.replace("file://", ""))
+                                adjustFiles(d, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
+                                jobobj[shortname(inp["id"])] = ("default", {"default": d})
 
-                        if step.embedded_tool.tool["class"] == "Workflow":
-                            wfjob = CWLWorkflow(step.embedded_tool, IndirectDict(jobobj))
-                            followOn = ResolveIndirect(wfjob.rv())
+                        if "scatter" in step.tool:
+                            wfjob = CWLScatter(step, IndirectDict(jobobj))
+                            followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                         else:
-                            wfjob = CWLJob(step.embedded_tool, IndirectDict(jobobj))
-                            followOn = wfjob
+                            (wfjob, followOn) = makeJob(step.embedded_tool, IndirectDict(jobobj))
 
                         jobs[step.tool["id"]] = followOn
 
+                        connected = False
                         for inp in step.tool["inputs"]:
                             if "source" in inp:
                                 if wfjob not in promises[inp["source"]]._children:
                                     promises[inp["source"]].addChild(wfjob)
+                                    connected = True
+                        if not connected:
+                            # workflow step has default inputs only, isn't connected to other jobs,
+                            # so add it as child of workflow.
+                            self.addChild(wfjob)
 
                         for out in step.tool["outputs"]:
                             promises[out["id"]] = followOn
@@ -242,7 +312,8 @@ supportedProcessRequirements = ["DockerRequirement",
                                 "SchemaDefRequirement",
                                 "EnvVarRequirement",
                                 "CreateFileRequirement",
-                                "SubworkflowFeatureRequirement"]
+                                "SubworkflowFeatureRequirement",
+                                "ScatterFeatureRequirement"]
 
 def checkRequirements(rec):
     if isinstance(rec, dict):
@@ -250,6 +321,9 @@ def checkRequirements(rec):
             for r in rec["requirements"]:
                 if r["class"] not in supportedProcessRequirements:
                     raise Exception("Unsupported requirement %s" % r["class"])
+        if "scatter" in rec:
+            if isinstance(rec["scatter"], list) and rec["scatter"] > 1:
+                raise Exception("Unsupported complex scatter type '%s'" % rec.get("scatterMethod"))
         for d in rec:
             checkRequirements(rec[d])
     if isinstance(rec, list):
@@ -272,9 +346,6 @@ def main():
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
 
-    # TODO: support cwltest standard CLI interface to support conformance testing cwltoil
-    # (see cwltool/cwltest.py)
-
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
     # so make it and delete it and allow
@@ -289,28 +360,41 @@ def main():
 
     uri = "file://" + os.path.abspath(options.cwljob)
 
-    loader = schema_salad.ref_resolver.Loader({})
+    if options.conformance_test:
+        loader = schema_salad.ref_resolver.Loader({})
+    else:
+        loader = schema_salad.ref_resolver.Loader({
+            "@base": uri,
+            "path": {
+                "@type": "@id"
+            }
+        })
+
     job, _ = loader.resolve_ref(uri)
 
     t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool, True)
 
-    checkRequirements(t.tool)
+    if type(t) == int:
+        return t
+
+    try:
+        checkRequirements(t.tool)
+    except Exception as e:
+        logging.error(e)
+        return 33
 
     jobobj = {}
     for inp in t.tool["inputs"]:
         if shortname(inp["id"]) in job:
             pass
         elif shortname(inp["id"]) not in job and "default" in inp:
-            # FIXME: if the default value is a file, it is relative to the tool file path,
-            # not the input object path.
             job[shortname(inp["id"])] = inp["default"]
         elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
             pass
         else:
             raise Exception("Missing inputs `%s`" % shortname(inp["id"]))
 
-    if type(t) == int:
-        return t
+    adjustFiles(job, lambda x: x.replace("file://", ""))
 
     if options.conformance_test:
         sys.stdout.write(json.dumps(cwltool.main.single_job_executor(t, job, options.basedir, options, conformance_test=True), indent=4))
@@ -319,19 +403,14 @@ def main():
     if not options.basedir:
         options.basedir = os.path.dirname(os.path.abspath(options.cwljob))
 
-    adjustFiles(job, lambda x: os.path.join(options.basedir, x) if not os.path.isabs(x) else x)
+    outdir = options.outdir
 
     staging = StageJob(t, job, os.path.dirname(os.path.abspath(options.cwljob)))
 
-    if t.tool["class"] == "Workflow":
-        wf = CWLWorkflow(t, staging.rv())
-    else:
-        wf = CWLJob(t, staging.rv())
+    (wf1, wf2) = makeJob(t, staging.rv())
 
-    outdir = options.outdir
-
-    staging.addFollowOn(wf)
-    wf.addFollowOn(FinalJob(wf.rv(), outdir))
+    staging.addFollowOn(wf1)
+    wf2.addFollowOn(FinalJob(wf2.rv(), outdir))
 
     Job.Runner.startToil(staging,  options)
 
