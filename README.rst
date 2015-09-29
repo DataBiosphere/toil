@@ -27,9 +27,9 @@ simple and easy to reason about the state of the workflow.
 Prerequisites
 =============
 
- * Python 2.7.x
+* Python 2.7.x
 
- * pip_ > 7.x
+* pip_ > 7.x
 
 .. _pip: https://pip.readthedocs.org/en/latest/installing.html
 
@@ -47,21 +47,21 @@ like support for Mesos or AWS. To install Toil with all bells and whistles use
 
 Here's what each extra provides:
 
- * The ``aws`` extra provides support for storing workflow state in Amazon AWS.
+* The ``aws`` extra provides support for storing workflow state in Amazon AWS.
 
- * The ``azure`` extra provides support for storing workflow state in Microsoft
-   Azure Storage.
+* The ``azure`` extra provides support for storing workflow state in Microsoft
+  Azure Storage.
 
- * The ``mesos`` extra provides support for running Toil on an `Apache Mesos`_
-   cluster. Note that running Toil on SGE (GridEngine), Parasol or a single
-   machine is enabled by default and does not require an extra.
+* The ``mesos`` extra provides support for running Toil on an `Apache Mesos`_
+  cluster. Note that running Toil on SGE (GridEngine), Parasol or a single
+  machine is enabled by default and does not require an extra.
 
- * The ``encryption`` extra provides client-side encryption for files stored in
-   the job store. Currently, client-side encryption is only used by the Azure
-   job store. The AWS job store uses server side encryption and is not affected
-   by this extra. Note that if you install Toil without the encryption extra,
-   files in an Azure job store will **not** be encrypted, even if you provide
-   encryption keys (see issue #407).
+* The ``encryption`` extra provides client-side encryption for files stored in
+  the job store. Currently, client-side encryption is only used by the Azure
+  job store. The AWS job store uses server side encryption and is not affected
+  by this extra. Note that if you install Toil without the encryption extra,
+  files in an Azure job store will **not** be encrypted, even if you provide
+  encryption keys (see issue #407).
 
 .. _Apache Mesos: http://mesos.apache.org/gettingstarted/
 
