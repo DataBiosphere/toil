@@ -151,7 +151,8 @@ class AWSJobStore(AbstractJobStore):
 
     def _sseKey(self):
         with open(self.sseKeyPath) as f:
-            f.read()
+            return f.read()
+
 
     def qualify(self, name):
         return self.namePrefix + self.nameSeparator + name
@@ -169,7 +170,7 @@ class AWSJobStore(AbstractJobStore):
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
         Encrypted fileInfo urls are currently not supported
         """
-        fileInfo = FileInfo.load(self,jobStoreFileID,FileInfo.typeRegular)
+        fileInfo = FileInfo.load(self,jobStoreFileID,False)
         newFile = FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
         newFile.jobStoreID = fileInfo.jobStoreID
         if fileInfo is None:
