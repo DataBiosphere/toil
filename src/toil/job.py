@@ -363,7 +363,7 @@ class Job(object):
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
 
-    class FileStore:
+    class FileStore( object ):
         """
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
@@ -510,17 +510,18 @@ class Job(object):
             """
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
+            
             #If fileStoreID is in the cache provide a handle from the local cache
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
                 self.lockedJobStoreFileIDs.add(fileStoreID)
-                def f():
-                    with open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
-                        yield fH
-                        fH.close()
-                return f()
+                return open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') 
+                #with open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
+                #        yield fH
             else:
                 #TODO: Progressively add the file to the cache
                 return self.jobStore.readFileStream(fileStoreID)
+                #with self.jobStore.readFileStream(fileStoreID) as fH:
+                #    yield fH
 
         def deleteGlobalFile(self, fileStoreID):
             """
