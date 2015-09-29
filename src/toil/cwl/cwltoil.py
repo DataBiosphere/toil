@@ -216,13 +216,15 @@ class SelfJob(object):
     def __init__(self, j, v):
         self.j = j
         self.v = v
-        self._children = j._children
 
     def rv(self):
         return self.v
 
     def addChild(self, c):
-        self.j.addChild(c)
+        return self.j.addChild(c)
+
+    def hasChild(self, c):
+        return self.j.hasChild(c)
 
 
 class CWLWorkflow(Job):
@@ -293,7 +295,7 @@ class CWLWorkflow(Job):
                         connected = False
                         for inp in step.tool["inputs"]:
                             if "source" in inp:
-                                if wfjob not in promises[inp["source"]]._children:
+                                if not promises[inp["source"]].hasChild(wfjob):
                                     promises[inp["source"]].addChild(wfjob)
                                     connected = True
                         if not connected:
