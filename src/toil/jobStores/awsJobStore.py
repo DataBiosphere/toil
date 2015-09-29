@@ -908,7 +908,7 @@ def parse_bool(s):
 
 class FileInfo(object):
     """
-    >>> f = FileInfo(None, None)
+    >>> f = FileInfo(None, None, None)
     >>> f.version=3
     >>> f.version
     3
@@ -920,7 +920,7 @@ class FileInfo(object):
     Traceback (most recent call last):
     ...
     AssertionError
-    >>> f = FileInfo(None, None)
+    >>> f = FileInfo(None, None, None)
     >>> f.buffer={}
     >>> f.buffer
     {}
