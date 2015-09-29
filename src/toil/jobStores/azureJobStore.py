@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
 
-from azure import WindowsAzureMissingResourceError
+from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
                            BlobSharedAccessPermissions)
@@ -576,13 +576,20 @@ class AzureJob(JobWrapper):
             item['_' + str(attributeOrder).zfill(3)] = chunk
         return item
 
+def retryOnAzureTimeout(exception):
+    timeoutMsg = "could not be completed within the specified time"
+    return isinstance(exception, WindowsAzureError) and timeoutMsg in str(exception)
 
 def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException)):
+                                                      httplib.HTTPException),
+                   retriable_check=retryOnAzureTimeout):
     """
-    Retries on a set of allowable exceptions, mimicking boto's behavior by default.
+    Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
 
     :param num_tries: number of times to try before giving up.
+    :param retriable_exceptions: a tuple of exceptions that should always be retried.
+    :param retriable_check: a function that takes an exception not in retriable_exceptions
+    and returns True if it should be retried, and False otherwise.
 
     :return: a generator yielding contextmanagers
 
@@ -610,6 +617,22 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
     >>> i
     1
 
+    Retriable check function works as expected
+    >>> i = 0
+    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=(),
+    ...                               retriable_check=lambda x: str(x) == 'foo'):
+    ...     with attempt:
+    ...         i += 1
+    ...         if i == 3:
+    ...             raise RuntimeError("bar")
+    ...         else:
+    ...             raise RuntimeError("foo")
+    Traceback (most recent call last):
+    ...
+    RuntimeError: bar
+    >>> i
+    3
+
     Do things only once if they succeed!
     >>> i = 0
     >>> for attempt in retry_on_error():
@@ -625,10 +648,17 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
         try:
             yield
         except retriable_exceptions as e:
+            # Any instance of these exceptions is automatically retriable.
             if last:
                 raise
             else:
                 log.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
+        except Exception as e:
+            # For other exceptions, the retriable_check function determines whether to retry
+            if retriable_check(e):
+                log.info("Exception %s passed predicate, trying again" % e.__class__.__name__)
+            else:
+                raise
         else:
             go.pop()
 
