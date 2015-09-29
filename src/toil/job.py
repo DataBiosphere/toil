@@ -26,6 +26,8 @@ import time
 import copy_reg
 import cPickle
 import logging
+import shutil
+import stat
 from threading import Thread, Semaphore
 from Queue import Queue
 from bd2k.util.humanize import human2bytes
@@ -366,7 +368,9 @@ class Job(object):
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
         """
-        def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+        def __init__(self, jobStore, jobWrapper, localTempDir, 
+                     inputBlockFn, jobStoreFileIDToCacheLocation,
+                     lockedJobStoreFileIDs):
             """
             This constructor should not be called by the user, 
             FileStore instances are only provided as arguments 
@@ -396,6 +400,16 @@ class Job(object):
                 worker.deamon = True
                 worker.start()
             self.inputBlockFn = inputBlockFn
+            #Caching 
+            #
+            #For files in jobStore that are on the local disk, 
+            #map of jobStoreFileIDs to locations in localTempDir.
+            self.jobStoreFileIDToCacheLocation = jobStoreFileIDToCacheLocation
+            #A subset of the keys of jobStoreFileIDToCacheLocation, indicating
+            #which files are already known to the user. 
+            self.lockedJobStoreFileIDs = lockedJobStoreFileIDs
+            #TODO: For cleanup: run a background thread that iteratively removes unlocked files if the total disk usage exceeds
+    #a threshold. 
         
         def getLocalTempDir(self):
             """
@@ -403,15 +417,15 @@ class Job(object):
             duration of the job only, and is guaranteed to be deleted once
             the job terminates, removing all files it contains recursively. 
             """
-            #TODO: FIX THIS TO BE CONSISTENT WITH THE FUNCTION DOCUMENTATION
-            return self.localTempDir
+            return tempfile.mkdtemp(prefix="t", dir=self.localTempDir)
         
         def getLocalTempFile(self):
             """
             Get a local temporary file. This file will exist for the duration of the job only, and
             is guaranteed to be deleted once the job terminates.
             """
-            handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
+            handle, tmpFile = tempfile.mkstemp(prefix="tmp", 
+                                               suffix=".tmp", dir=self.localTempDir)
             os.close(handle)
             return tmpFile
 
@@ -426,12 +440,15 @@ class Job(object):
             
             The write is asynchronous, so further modifications to the file pointed by
             localFileName will result in undetermined behavior. The file is safely removed 
-            at the end of the job by placing it in (a subdirectory) of the location returned 
+            at the end of the job by placing it in a location returned 
             by getLocalTempDir.
             """
             jobStoreFileID = self.jobStore.getEmptyFileStoreID(None 
                             if not cleanup else self.jobWrapper.jobStoreID)
             self.queue.put((localFileName, jobStoreFileID))
+            #Now put the file into the cache
+            self.jobStoreFileIDToCacheLocation[jobStoreFileID] = localFileName
+            self.lockedJobStoreFileIDs.add(localFileName)
             return jobStoreFileID
         
         def writeGlobalFileStream(self, cleanup=False):
@@ -441,26 +458,49 @@ class Job(object):
             the resulting file in the job store. The yielded file handle does
             not need to and should not be closed explicitly.
             
-            owner is as in writeGlobalFile.
+            cleanup is as in writeGlobalFile.
             """
+            #TODO: Make this work with the caching??
             return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
 
         def readGlobalFile(self, fileStoreID, localFilePath=None):
             """
             Returns a path to a local copy of the file keyed by fileStoreID. 
-            If localFilePath is not None, the returned file path will be localFilePath
-            within the location returned by getLocalTempDir().
+            If localFilePath is not None the returned file path will be localFilePath.
             The returned file will be read only.
             """
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
-            if localFilePath is None:
-                fd, localFilePath = tempfile.mkstemp(dir=self.getLocalTempDir())
-                self.jobStore.readFile(fileStoreID, localFilePath)
-                os.close(fd)
+            #When requesting a new file from the jobStore first check if fileStoreID
+            #is a key in jobStoreFileIDToCacheLocation.
+            if fileStoreID in self.jobStoreFileIDToCacheLocation:
+                #If it is check if fileStoreID is in locked files
+                if fileStoreID in self.lockedJobStoreFileIDs:
+                    #If a desired location is specified then make a symlink to the file
+                    if localFilePath != None:
+                        os.symlink(self.jobStoreFileIDToCacheLocation[fileStoreID], localFilePath)
+                        return localFilePath
+                    #Else just return the existing path to the cached file
+                    return self.jobStoreFileIDToCacheLocation[fileStoreID]
+                else:
+                    #if it is not in the locked files then add it to locked files and return it, 
+                    self.lockedJobStoreFileIDs.add(fileStoreID)
+                    #Moving the location if requested
+                    if localFilePath != None:
+                        shutil.move(self.jobStoreFileIDToCacheLocation[fileStoreID], localFilePath)
+                        self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
+                    return self.jobStoreFileIDToCacheLocation[fileStoreID]   
             else:
+                #If it is not in the cache read it from the jobStore to the 
+                #desired location
+                if localFilePath is None:
+                    localFilePath = self.getLocalTempFile()
                 self.jobStore.readFile(fileStoreID, localFilePath)
-            return localFilePath
+                self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
+                self.lockedJobStoreFileIDs.add(fileStoreID)
+                #Chmod to make file read only
+                os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                return localFilePath
         
         def readGlobalFileStream(self, fileStoreID):
             """
@@ -470,7 +510,17 @@ class Job(object):
             """
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
-            return self.jobStore.readFileStream(fileStoreID)
+            #If fileStoreID is in the cache provide a handle from the local cache
+            if fileStoreID in self.jobStoreFileIDToCacheLocation:
+                self.lockedJobStoreFileIDs.add(fileStoreID)
+                def f():
+                    with open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
+                        yield fH
+                        fH.close()
+                return f()
+            else:
+                #TODO: Progressively add the file to the cache
+                return self.jobStore.readFileStream(fileStoreID)
 
         def deleteGlobalFile(self, fileStoreID):
             """
@@ -479,6 +529,16 @@ class Job(object):
             the delete will not happen until after the job's run method has completed.
             """
             self.filesToDelete.add(fileStoreID)
+            #If the fileStoreID is in the cache:
+            if fileStoreID in self.jobStoreFileIDToCacheLocation:
+                if fileStoreID in self.lockedJobStoreFileIDs:
+                    #Remove it so it will be deleted at the end of the job
+                    self.lockedJobStoreFileIDs.remove(fileStoreID)
+                else:
+                    #If the fileStoreID is not locked (so being used by user) we delete it
+                    #from the local disk
+                    os.remove(self.jobStoreFileIDToCacheLocation[fileStoreID])
+                self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
         def logToMaster(self, string):
             """
@@ -538,6 +598,27 @@ class Job(object):
             except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
                 self.updateSemaphore.release()
                 raise
+            
+        def _cleanLocalTempDir(self):
+            """
+            At the end of the job, remove all localTempDir files except those whose value is in
+            jobStoreFileIDToCacheLocation.
+            """
+            #Iterate from the base of localTempDir and remove all files/empty directories, recursively
+            cachedFiles = set(self.jobStoreFileIDToCacheLocation.values())
+            def clean(dirOrFile):
+                canRemove = True 
+                if os.path.isdir(dirOrFile):
+                    for f in os.listdir(dirOrFile):
+                        canRemove = canRemove and clean(os.path.join(dirOrFile, f))
+                    if canRemove:
+                        os.rmdir(dirOrFile) #Dir should be empty if canRemove is true
+                    return canRemove
+                if dirOrFile in cachedFiles:
+                    return False
+                os.remove(dirOrFile)
+                return True    
+            clean(self.localTempDir)
         
         def _blockFn(self):
             """

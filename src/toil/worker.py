@@ -206,6 +206,8 @@ def main():
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
     blockFn = lambda : True
+    jobStoreFileIDToCacheLocation = {}
+    lockedJobStoreFileIDs = set()
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -267,7 +269,9 @@ def main():
                     localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
                     
                     #Create a fileStore object for the job
-                    fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
+                    fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
+                                              blockFn, jobStoreFileIDToCacheLocation,
+                                              lockedJobStoreFileIDs)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -279,9 +283,8 @@ def main():
                                         jobStore=jobStore,
                                         fileStore=fileStore)
                     
-                    #Remove the temporary file directory
-                    shutil.rmtree(localTempDir)
-    
+                    #Cleanup the temporary file directory
+                    fileStore._cleanLocalTempDir()
                 else: #Is another command (running outside of jobs may be deprecated)
                     system(jobWrapper.command)
             else:
@@ -356,7 +359,9 @@ def main():
             assert jobWrapper.cores >= successorJob.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, 
+                                      jobStoreFileIDToCacheLocation,
+                                      lockedJobStoreFileIDs)
             
             #Update blockFn
             blockFn = fileStore._blockFn
