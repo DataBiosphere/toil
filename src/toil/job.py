@@ -896,11 +896,11 @@ class Job(object):
         #Finish up the stats
         if stats != None:
             stats = ET.SubElement(stats, "job")
-            stats.attrib["time"] = str(time.time() - startTime)
+            stats.attrib["time"] = unicode(time.time() - startTime)
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            stats.attrib["clock"] = str(totalCpuTime - startClock)
-            stats.attrib["class"] = self._jobName()
-            stats.attrib["memory"] = str(totalMemoryUsage)
+            stats.attrib["clock"] = unicode(totalCpuTime - startClock)
+            stats.attrib["class"] = unicode(self._jobName())
+            stats.attrib["memory"] = unicode(totalMemoryUsage)
         #Return any logToMaster logging messages + the files that should be deleted
         #from the job store once the job has been registered as complete
         return fileStore.loggingMessages, fileStore.deletedJobStoreFileIDs.union(promiseFilesToDelete)

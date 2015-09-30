@@ -329,11 +329,15 @@ def main():
         ##########################################
         if config.stats:
             totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            elementNode.attrib["time"] = str(time.time() - startTime)
-            elementNode.attrib["clock"] = str(totalCPUTime - startClock)
-            elementNode.attrib["memory"] = str(totalMemoryUsage)
+            elementNode.attrib["time"] = unicode(time.time() - startTime)
+            elementNode.attrib["clock"] = unicode(totalCPUTime - startClock)
+            elementNode.attrib["memory"] = unicode(totalMemoryUsage)
         for message in messages:
-            ET.SubElement(messageNode, "message").text = message
+            # The message may contain arbitrary bytes, some of which aren't
+            # allowed in encoded Unicode XML. We need to deal with them here.
+            # Generally text is expected to be UTF-8. If we get bogus
+            # characters, we replace them.
+            ET.SubElement(messageNode, "message").text = message.decode("uft-8", "replace")
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
@@ -386,7 +390,11 @@ def main():
         with open(tempWorkerLogPath, 'r') as logFile:
             logMessages = logFile.read().splitlines()
         for logMessage in logMessages:
-            ET.SubElement(messageNode, "log").text = jobStoreID+"!"+logMessage
+            # Again, we have to make sure that everything is representable in
+            # Unicode, because it needs to become XML entities at some point.
+            # Generally text is expected to be UTF-8. If we get bogus
+            # characters, we replace them.
+            ET.SubElement(messageNode, "log").text = (jobStoreID+"!"+logMessage).decode("utf-8", "replace")
 
     if (debugging or config.stats or messages) and not workerFailed: # We have stats/logging to report back
         jobStore.writeStatsAndLogging(ET.tostring(elementNode))
