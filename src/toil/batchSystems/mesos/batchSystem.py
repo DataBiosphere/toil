@@ -107,7 +107,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                          resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
                          command=command,
                          userScript=self.userScript,
-                         toilDistribution=self.toilDistribution)
+                         toilDistribution=self.toilDistribution,
+                         environment=os.environ) # Send the environment, in case it describes how to access the job store
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
