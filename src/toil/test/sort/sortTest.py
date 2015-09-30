@@ -117,6 +117,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.restart = True
 
                 # This loop tests the restart behavior
+                totalTrys = 1
                 while i != 0:
                     options.useExistingOptions = random.random() > 0.5
                     try:
@@ -124,6 +125,9 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
+                        if totalTrys > 16:
+                            self.fail() #Exceeded a reasonable number of restarts    
+                        totalTrys += 1    
 
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.

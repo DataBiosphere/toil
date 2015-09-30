@@ -94,12 +94,16 @@ class UtilsTest(ToilTest):
         self.assertRaises(CalledProcessError, system, toilCommandString)
 
         # Now restart it until done
+        totalTrys = 1
         while not finished:
             try:
                 system(toilCommandString + " --restart")
                 finished = True
             except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
                 self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+                if totalTrys > 16:
+                    self.fail() #Exceeded a reasonable number of restarts    
+                totalTrys += 1   
 
         # Check the toil status command does not issue an exception
         system(toilStatusCommandString)
