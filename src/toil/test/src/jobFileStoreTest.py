@@ -39,6 +39,7 @@ class JobFileStoreTest(ToilTest):
         testStrings = dict(map(lambda i : randomString(), xrange(20)))
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
+        options.cacheSize = 1000000
         options.retryCount=100
         options.badWorker=0.5
         options.badWorkerFailInterval = 0.01
@@ -55,16 +56,19 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     for fileStoreID in inputFileStoreIDs:
         #Load the input jobStoreFileIDs and check that they map to the 
         #same set of random input strings
-        if random.random() > 0.5:
+        if random.random() > 0.666:
             tempFile = job.fileStore.readGlobalFile(fileStoreID)
             with open(tempFile, 'r') as fH:
                 string = fH.readline()
                 assert testStrings[string[:PREFIX_LENGTH]] == string
-        else:
+        elif random.random() > 0.666:
             #with job.fileStore.jobStore.readFileStream(fileStoreID) as fH:
             with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
                 string = fH.readline()
                 assert testStrings[string[:PREFIX_LENGTH]] == string
+        else:
+            #This tests deletion
+            job.fileStore.deleteGlobalFile(fileStoreID)
 
     if chainLength > 0:
         #For each job write some these strings into the file store, collecting 

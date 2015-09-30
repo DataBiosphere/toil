@@ -349,6 +349,18 @@ class AbstractJobStore( object ):
         """
         raise NotImplementedError( )
     
+    @abstractmethod
+    def updateFileStream( self, jobStoreFileID ):
+        """
+        Similar to writeFile, but returns a context manager yielding a file handle 
+        which can be written to. The yielded file handle does not need to and 
+        should not be closed explicitly.
+
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
+        an invocation of this method
+        """
+        raise NotImplementedError( )
+    
     ##########################################
     #The following methods deal with shared files, i.e. files not associated 
     #with specific jobs.

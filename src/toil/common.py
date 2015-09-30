@@ -80,6 +80,7 @@ class Config(object):
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
+        self.cacheSize = 2147483648 #Cache is 2GB
         
         #Debug options
         self.badWorker = 0.0
@@ -160,6 +161,7 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
+        setOption("cacheSize", h2b, iC(0))
         
         #Debug options
         setOption("badWorker", float, iC(0, 1))
@@ -271,6 +273,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
+    
+    addOptionFn("--cacheSize", dest="cacheSize", default=None,
+                help=("The maximum amount of disk space to use in caching "
+                      "files shared between jobs. default=%s" % config.cacheSize))
     
     #
     #Debug options

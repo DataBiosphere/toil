@@ -369,8 +369,7 @@ class Job(object):
         passed as argument to the Job.run method.
         """
         def __init__(self, jobStore, jobWrapper, localTempDir, 
-                     inputBlockFn, jobStoreFileIDToCacheLocation,
-                     lockedJobStoreFileIDs):
+                     inputBlockFn, jobStoreFileIDToCacheLocation):
             """
             This constructor should not be called by the user, 
             FileStore instances are only provided as arguments 
@@ -390,10 +389,22 @@ class Job(object):
             def asyncWrite(queue, jobStore):
                 while True:
                     args = queue.get()
+                    #time.sleep(2)
                     if args == None:
                         break
-                    localFileName, jobStoreFileID = args
-                    jobStore.updateFile(jobStoreFileID, localFileName)
+                    inputFileHandle, jobStoreFileID = args
+                    #We pass in a fileHandle, rather than the file-name, in case 
+                    #the file itself is deleted. The fileHandle itself should persist 
+                    #while we maintain the open file handle
+                    with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
+                        bufferSize=1000000 #This buffer number probably needs to be modified
+                        while 1:
+                            copyBuffer = inputFileHandle.read(bufferSize)
+                            if not copyBuffer:
+                                break
+                            outputFileHandle.write(copyBuffer)
+                    inputFileHandle.close()
+                    
             self.workers = map(lambda i : Thread(target=asyncWrite, args=(self.queue, jobStore)), 
                                range(self.workerNumber))
             for worker in self.workers:
@@ -407,10 +418,8 @@ class Job(object):
             self.jobStoreFileIDToCacheLocation = jobStoreFileIDToCacheLocation
             #A subset of the keys of jobStoreFileIDToCacheLocation, indicating
             #which files are already known to the user. 
-            self.lockedJobStoreFileIDs = lockedJobStoreFileIDs
-            #TODO: For cleanup: run a background thread that iteratively removes unlocked files if the total disk usage exceeds
-    #a threshold. 
-        
+            self.lockedJobStoreFileIDs = set()
+
         def getLocalTempDir(self):
             """
             Get a new local temporary directory. This directory will exist for the 
@@ -445,7 +454,7 @@ class Job(object):
             """
             jobStoreFileID = self.jobStore.getEmptyFileStoreID(None 
                             if not cleanup else self.jobWrapper.jobStoreID)
-            self.queue.put((localFileName, jobStoreFileID))
+            self.queue.put((open(localFileName, 'r'), jobStoreFileID))
             #Now put the file into the cache
             self.jobStoreFileIDToCacheLocation[jobStoreFileID] = localFileName
             self.lockedJobStoreFileIDs.add(localFileName)
@@ -514,6 +523,7 @@ class Job(object):
             #If fileStoreID is in the cache provide a handle from the local cache
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
                 self.lockedJobStoreFileIDs.add(fileStoreID)
+                #This leaks file handles (but the commented out code does not work properly)
                 return open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') 
                 #with open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
                 #        yield fH
@@ -600,13 +610,36 @@ class Job(object):
                 self.updateSemaphore.release()
                 raise
             
-        def _cleanLocalTempDir(self):
+        def _cleanLocalTempDir(self, cacheSize):
             """
             At the end of the job, remove all localTempDir files except those whose value is in
             jobStoreFileIDToCacheLocation.
+            
+            The param cacheSize is the total number of bytes of files allowed in the cache.
             """
-            #Iterate from the base of localTempDir and remove all files/empty directories, recursively
+            #Remove files so that the total cached files are smaller than a cacheSize
+            
+            #List of pairs of (fileSize, fileStoreID) for cached files
+            cachedFileSizes = map(lambda x : (os.stat(self.jobStoreFileIDToCacheLocation[x]).st_size, x), 
+                                  self.jobStoreFileIDToCacheLocation.keys())
+            #Total number of bytes stored in cached files
+            totalCachedFileSizes = sum(map(lambda x : x[0], cachedFileSizes))
+            #Remove largest files first - this is not obviously best, could do it a different
+            #way
+            cachedFileSizes.sort()
+            #Now do the actual file removal
+            while totalCachedFileSizes > cacheSize:
+                fileSize, fileStoreID =  cachedFileSizes.pop()
+                filePath = self.jobStoreFileIDToCacheLocation[fileStoreID]
+                self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
+                os.remove(filePath)
+                totalCachedFileSizes -= fileSize
+                assert totalCachedFileSizes >= 0
+            
+            #Iterate from the base of localTempDir and remove all 
+            #files/empty directories, recursively
             cachedFiles = set(self.jobStoreFileIDToCacheLocation.values())
+            
             def clean(dirOrFile):
                 canRemove = True 
                 if os.path.isdir(dirOrFile):
@@ -627,8 +660,8 @@ class Job(object):
             """ 
             self.updateSemaphore.acquire()
             self.updateSemaphore.release() #Release so that the block function can be recalled
-            #This works, because one acquired the semaphore will not be acquired
-            #_updateJobWhenDone again.
+            #This works, because once acquired the semaphore will not be acquired
+            #by _updateJobWhenDone again.
             return
         
         def __del__(self): 

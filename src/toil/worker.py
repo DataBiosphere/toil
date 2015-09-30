@@ -207,7 +207,6 @@ def main():
     messages = []
     blockFn = lambda : True
     jobStoreFileIDToCacheLocation = {}
-    lockedJobStoreFileIDs = set()
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -270,8 +269,7 @@ def main():
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn, jobStoreFileIDToCacheLocation,
-                                              lockedJobStoreFileIDs)
+                                              blockFn, jobStoreFileIDToCacheLocation)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -284,7 +282,7 @@ def main():
                                         fileStore=fileStore)
                     
                     #Cleanup the temporary file directory
-                    fileStore._cleanLocalTempDir()
+                    fileStore._cleanLocalTempDir(config.cacheSize)
                 else: #Is another command (running outside of jobs may be deprecated)
                     system(jobWrapper.command)
             else:
@@ -360,8 +358,7 @@ def main():
             
             #Build a fileStore to update the job
             fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, 
-                                      jobStoreFileIDToCacheLocation,
-                                      lockedJobStoreFileIDs)
+                                      jobStoreFileIDToCacheLocation)
             
             #Update blockFn
             blockFn = fileStore._blockFn
