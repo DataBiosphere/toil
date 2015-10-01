@@ -22,7 +22,6 @@ from uuid import uuid4
 import logging
 import subprocess
 
-from unittest import skip
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
@@ -190,8 +189,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testFileGridEngine(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='gridengine')
 
-    @skip
     @needs_parasol
+    @unittest.skip("skipping until parasol support is less flaky")
     def testFileParasol(self):
         self._startParasol()
         try:

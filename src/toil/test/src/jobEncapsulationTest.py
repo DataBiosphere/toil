@@ -17,7 +17,7 @@ import os
 from toil.lib.bioio import getTempFile
 from toil.job import Job as T
 from toil.test import ToilTest
-from toil.test.src.jobTest import testFn1 as f
+from toil.test.src.jobTest import fn1Test as f
 
 
 class JobEncapsulationTest(ToilTest):

@@ -42,12 +42,12 @@ class JobTest(ToilTest):
         try:
 
             # Create the jobs
-            A = Job.wrapFn(testFn1, "A", outFile)
-            B = Job.wrapFn(testFn1, A.rv(), outFile)
-            C = Job.wrapFn(testFn1, B.rv(), outFile)
-            D = Job.wrapFn(testFn1, C.rv(), outFile)
-            E = Job.wrapFn(testFn1, D.rv(), outFile)
-            F = Job.wrapFn(testFn1, E.rv(), outFile)
+            A = Job.wrapFn(fn1Test, "A", outFile)
+            B = Job.wrapFn(fn1Test, A.rv(), outFile)
+            C = Job.wrapFn(fn1Test, B.rv(), outFile)
+            D = Job.wrapFn(fn1Test, C.rv(), outFile)
+            E = Job.wrapFn(fn1Test, D.rv(), outFile)
+            F = Job.wrapFn(fn1Test, E.rv(), outFile)
             # Connect them into a workflow
             A.addChild(B)
             A.addChild(C)
@@ -86,10 +86,10 @@ class JobTest(ToilTest):
         try:
 
             # Create the jobs
-            A = Job.wrapFn(testFn1, "A", outFile)
-            B = Job.wrapFn(testFn1, A.rv(), outFile)
-            C = Job.wrapFn(testFn1, B.rv(), outFile)
-            D = Job.wrapFn(testFn1, C.rv(), outFile)
+            A = Job.wrapFn(fn1Test, "A", outFile)
+            B = Job.wrapFn(fn1Test, A.rv(), outFile)
+            C = Job.wrapFn(fn1Test, B.rv(), outFile)
+            D = Job.wrapFn(fn1Test, C.rv(), outFile)
             
             # Connect them into a workflow
             A.addChild(B)
@@ -377,7 +377,7 @@ class JobTest(ToilTest):
         #Function for making job
         def makeJob(string):
             promises = []
-            job = Job.wrapFn(testFn2, promises, string, 
+            job = Job.wrapFn(fn2Test, promises, string, 
                              os.path.join(outPath, string) if outPath != None else None)
             jobsToPromisesMap[job] = promises
             return job
@@ -428,7 +428,7 @@ class JobTest(ToilTest):
                 return False
         return True
 
-def testFn1(string, outputFile, promises=[]):
+def fn1Test(string, outputFile, promises=[]):
     """
     Function appends string to output file, then returns the 
     next ascii character of the first character in the string, e.g.
@@ -439,7 +439,7 @@ def testFn1(string, outputFile, promises=[]):
         fH.write(rV)
     return rV
 
-def testFn2(pStrings, s, outputFile):
+def fn2Test(pStrings, s, outputFile):
     """
     Function concatenates the strings in pStrings and s, in that order, and writes
     the result to the output file. Returns s.
