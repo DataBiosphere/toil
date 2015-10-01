@@ -76,7 +76,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.batchSystem = batchSystem
                 options.clean = "never"
                 options.badWorker = 0.5
-                options.badWorkerFailInterval = 0.01
+                options.badWorkerFailInterval = 0.05
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
@@ -125,7 +125,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
-                        if totalTrys > 16:
+                        if totalTrys > 16: #p(fail after this many restarts) = 0.5**32
                             self.fail() #Exceeded a reasonable number of restarts    
                         totalTrys += 1    
 

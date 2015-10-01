@@ -69,7 +69,7 @@ class UtilsTest(ToilTest):
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
                              "--retryCount 2 --badWorker=0.5 "
-                             "--badWorkerFailInterval=0.01 ".format(**locals()))
+                             "--badWorkerFailInterval=0.05 ".format(**locals()))
 
         # Try restarting it to check that a JobStoreException is thrown
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")

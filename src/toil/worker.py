@@ -287,8 +287,8 @@ def main():
                     system(jobWrapper.command)
             else:
                 #The command may be none, in which case
-                #the jobWrapper is just a shell ready to be deleted
-                assert len(jobWrapper.stack) == 0
+                #the jobWrapper is either a shell ready to be deleted or has 
+                #been scheduled after a failure to cleanup
                 break
             
             ##########################################

@@ -29,25 +29,26 @@ class JobFileStoreTest(ToilTest):
         Job.FileStore interface. Verifies the files written are always what we expect.
         The chain tests the caching behavior. 
         """
-        #Make a list of random strings, each of 100k chars and hash the first 200 
-        #base prefix to the string
-        def randomString():
-            chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            s = "".join(map(lambda i : random.choice(chars), xrange(100000)))
-            return s[:PREFIX_LENGTH], s
-        #Total length is 2 million characters (20 strings of length 100K each) 
-        testStrings = dict(map(lambda i : randomString(), xrange(20)))
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
-        options.cacheSize = 1000000
-        options.retryCount=100
-        options.badWorker=0.5
-        options.badWorkerFailInterval = 0.01
-        chainLength = 10
-        # Run the workflow, the return value being the number of failed jobs
-        Job.Runner.startToil(Job.wrapJobFn(fileTestJob, [], 
-                                           testStrings, chainLength), 
-                             options)
+        for test in xrange(10):
+            #Make a list of random strings, each of 100k chars and hash the first 200 
+            #base prefix to the string
+            def randomString():
+                chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                s = "".join(map(lambda i : random.choice(chars), xrange(100000)))
+                return s[:PREFIX_LENGTH], s
+            #Total length is 2 million characters (20 strings of length 100K each) 
+            testStrings = dict(map(lambda i : randomString(), xrange(20)))
+            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+            options.logLevel = "INFO"
+            options.cacheSize = 1000000
+            options.retryCount=100
+            options.badWorker=0.5
+            options.badWorkerFailInterval = 1.0
+            chainLength = 10
+            # Run the workflow, the return value being the number of failed jobs
+            Job.Runner.startToil(Job.wrapJobFn(fileTestJob, [], 
+                                               testStrings, chainLength), 
+                                 options)
         
 def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     """
