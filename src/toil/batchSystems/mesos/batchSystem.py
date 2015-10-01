@@ -151,14 +151,14 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
         # TODO: Ensure jobList holds jobs that have been "launched" from Mesos
-        jobList = []
-        for k, queue in self.jobQueueList.iteritems():
+        jobList = set()
+        for queue in self.jobQueueList.values():
             for item in queue:
-                jobList.append(item.jobID)
-        for k, v in self.runningJobMap.iteritems():
-            jobList.append(k)
+                jobList.add(item.jobID)
+        for key in self.runningJobMap.keys():
+            jobList.add(key)
 
-        return jobList
+        return list(jobList)
 
     def getRunningBatchJobIDs(self):
         """
@@ -166,7 +166,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         (in seconds).
         """
         currentTime = dict()
-        for jobID, data in self.runningJobMap.iteritems():
+        for jobID, data in self.runningJobMap.items():
             currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
@@ -265,7 +265,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         log.debug("Registered with framework ID %s" % frameworkId.value)
 
     def _sortJobsByResourceReq(self):
-        job_types = list(self.jobQueueList.keys())
+        job_types = self.jobQueueList.keys()
         # sorts from largest to smallest core usage
         # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
         job_types.sort(key=lambda resourceRequirement: ResourceRequirement.cores)
@@ -297,7 +297,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _deleteByJobID(self, jobID, ):
         # FIXME: not efficient, I'm sure.
-        for key, jobType in self.jobQueueList.iteritems():
+        for jobType in self.jobQueueList.values():
             for job in jobType:
                 if jobID == job.jobID:
                     jobType.remove(job)
@@ -456,7 +456,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         now = time.time()
         if now > self.lastReconciliation + self.reconciliationPeriod:
             self.lastReconciliation = now
-            driver.reconcileTasks(list(self.runningJobMap.keys()))
+            driver.reconcileTasks(self.runningJobMap.keys())
 
     def reregistered(self, driver, masterInfo):
         """
