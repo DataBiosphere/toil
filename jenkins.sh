@@ -9,4 +9,4 @@ virtualenv --system-site-packages venv
 make develop extras=[aws,mesos,azure,encryption]
 export LIBPROCESS_IP=127.0.0.1
 export PYTEST_ADDOPTS="--junitxml=test-report.xml"
-make $make_targets
+make $make_targets tests="-s src"
