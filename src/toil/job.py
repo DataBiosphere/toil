@@ -1236,7 +1236,7 @@ class ServiceJob(Job):
 class EncapsulatedJob(Job):
     """
     An convenience Job class used to make a job subgraph appear to
-    be a single job.
+    be a single job. 
     
     Let A be a root job potentially with children and follow-ons.
     Without an encapsulated job the simplest way to specify a job B which
@@ -1262,6 +1262,10 @@ class EncapsulatedJob(Job):
     A.addFollowOn(C)
     
     Note the call to encapsulate creates the EncapsulatedJob.
+    
+    The return value of an encapusulatd job (as accessed by the Job.rv function)
+    is the return value of the root job, e.g. A().encapsulate().rv() and A().rv()
+    will resolve to the same value after A or A.encapsulate() has been run.
     """
     def __init__(self, job):
         """
