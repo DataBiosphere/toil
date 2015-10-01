@@ -33,14 +33,11 @@ class JobEncapsulationTest(ToilTest):
         # Temporary file
         outFile = getTempFile(rootDir=self._createTempDir())
         try:
-            # Make a job graph
-            a = T.wrapFn(f, "A", outFile)
-            b = a.addChildFn(f, a.rv(), outFile)
-            c = a.addFollowOnFn(f, b.rv(), outFile)
-            # Encapsulate it
+            # Encapsulate a job graph
+            a = T.wrapJobFn(encapsulatedJobFn, "A", outFile)
             a = a.encapsulate()
             # Now add children/follow to the encapsulated graph
-            d = T.wrapFn(f, c.rv(), outFile)
+            d = T.wrapFn(f, a.rv(), outFile)
             e = T.wrapFn(f, d.rv(), outFile)
             a.addChild(d)
             a.addFollowOn(e)
@@ -50,6 +47,11 @@ class JobEncapsulationTest(ToilTest):
             # Run the workflow, the return value being the number of failed jobs
             T.Runner.startToil(a, options)
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
+            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
+            
+def encapsulatedJobFn(job, string, outFile):
+    a = job.addChildFn(f, string, outFile)
+    b = a.addFollowOnFn(f, a.rv(), outFile)
+    return b.rv()

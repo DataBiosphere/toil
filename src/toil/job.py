@@ -1268,21 +1268,22 @@ class EncapsulatedJob(Job):
         job is the job to encapsulate.
         """
         Job.__init__(self)
+        self.encapsulatedJob = job
         Job.addChild(self, job)
-        self.followOn = Job()
-        Job.addFollowOn(self, self.followOn)
+        self.encapsulatedFollowOn = Job()
+        Job.addFollowOn(self, self.encapsulatedFollowOn)
 
     def addChild(self, childJob):
-        return Job.addChild(self.followOn, childJob)
+        return Job.addChild(self.encapsulatedFollowOn, childJob)
 
     def addService(self, service):
-        return Job.addService(self.followOn, service)
+        return Job.addService(self.encapsulatedFollowOn, service)
 
     def addFollowOn(self, followOnJob):
-        return Job.addFollowOn(self.followOn, followOnJob)
+        return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
-    def rv(self, argIndex=0):
-        return self.followOn.rv(argIndex)
+    def rv(self, argIndex=None):
+        return self.encapsulatedJob.rv(argIndex)
 
 class PromisedJobReturnValue(object):
     """
