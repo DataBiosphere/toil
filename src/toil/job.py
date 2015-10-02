@@ -397,7 +397,7 @@ class Job(object):
                     #the file itself is deleted. The fileHandle itself should persist 
                     #while we maintain the open file handle
                     with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
-                        bufferSize=1000000 #This buffer number probably needs to be modified
+                        bufferSize=1000000 #TODO: This buffer number probably needs to be modified/tuned
                         while 1:
                             copyBuffer = inputFileHandle.read(bufferSize)
                             if not copyBuffer:
@@ -932,8 +932,7 @@ class Job(object):
         for successors in (self._followOns, self._children):
             jobs = map(lambda successor:
                 successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
-            if len(jobs) > 0:
-                jobWrapper.stack.append(jobs)
+            jobWrapper.stack.append(jobs)
         return jobsToJobWrappers
 
     def _makeJobWrappers2(self, jobStore, jobsToJobWrappers):
@@ -945,8 +944,7 @@ class Job(object):
             for successors in (self._followOns, self._children):
                 jobs = map(lambda successor:
                     successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
-                if len(jobs) > 0:
-                    jobWrapper.stack.append(jobs)
+                jobWrapper.stack.append(jobs)
         else:
             jobWrapper = jobsToJobWrappers[self]
         #The return is a tuple stored within a job.stack 
@@ -1035,7 +1033,19 @@ class Job(object):
                 job._promiseJobStore = None
                 job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
             #Drop the completed command
+            assert jobWrapper.command != None
             jobWrapper.command = None
+            #Merge any children (follow-ons) created in the initial serialisation
+            #with children (follow-ons) created in the subsequent scale-up.
+            assert len(jobWrapper.stack) >= 4
+            combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
+            combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
+            jobWrapper.stack = jobWrapper.stack[:-4]
+            if len(combinedFollowOns) > 0:
+                jobWrapper.stack.append(combinedFollowOns)
+            if len(combinedChildren) > 0:
+                jobWrapper.stack.append(combinedChildren)
+            
             
     def _serialiseFirstJob(self, jobStore):
         """
