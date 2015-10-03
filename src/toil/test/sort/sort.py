@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from argparse import ArgumentParser
 import os
 import random
+import logging
 from bd2k.util.humanize import human2bytes
 
 from toil.job import Job
@@ -44,7 +45,7 @@ def down(job, inputFile, fileStart, fileEnd, N):
     if length > N:
         #We will subdivide the file
         job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile) )
+                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         return job.addFollowOnJobFn(up,
             job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N, memory=sortMemory).rv(),
@@ -52,7 +53,7 @@ def down(job, inputFile, fileStart, fileEnd, N):
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile) )
+                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
         t = job.fileStore.getLocalTempFile()
         with open(t, 'w') as fH:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fH)

@@ -52,8 +52,8 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
             node = ET.parse(fileHandle2).getroot()
             nodesNamed = node.find("messages").findall
             for message in nodesNamed("message"):
-                logger.warn("Got message from job at time: %s : %s",
-                                    time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
+                logger.log(int(message.attrib["level"]), "Got message from job at time: %s : %s",
+                           time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
             for log in nodesNamed("log"):
                 logger.info("%s:     %s" %
                                     tuple(log.text.split("!",1)))# the jobID is separated from log by "!"

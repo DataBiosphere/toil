@@ -388,8 +388,8 @@ def main():
             elementNode.attrib["time"] = str(time.time() - startTime)
             elementNode.attrib["clock"] = str(totalCPUTime - startClock)
             elementNode.attrib["memory"] = str(totalMemoryUsage)
-        for message in messages:
-            ET.SubElement(messageNode, "message").text = message
+        for message, level in messages:
+            ET.SubElement(messageNode, "message", {"level":str(level)}).text = message
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     

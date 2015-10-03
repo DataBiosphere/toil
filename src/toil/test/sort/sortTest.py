@@ -190,7 +190,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='gridengine')
 
     @needs_parasol
-    @unittest.skip("skipping until parasol support is less flaky")
     def testFileParasol(self):
         self._startParasol()
         try:

@@ -552,13 +552,13 @@ class Job(object):
                     os.remove(self.jobStoreFileIDToCacheLocation[fileStoreID])
                 self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
-        def logToMaster(self, string):
+        def logToMaster(self, string, level=logging.INFO):
             """
-            Send a logging message to the leader. Will only be reported if logging 
-            is set to INFO level (or lower) in the leader.
+            Send a logging message to the leader. 
+            The message will also be logged by the worker at the same level.
             """
-            logger.critical("LOG TO MASTER: " + string)
-            self.loggingMessages.append(str(string))
+            logger.log(level=level, msg=("LOG-TO-MASTER: " + string))
+            self.loggingMessages.append((str(string), level))
             
         #Private methods 
         
