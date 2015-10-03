@@ -29,7 +29,7 @@ import logging
 import shutil
 import stat
 from threading import Thread, Semaphore
-from Queue import Queue
+from Queue import Queue, Empty
 from bd2k.util.humanize import human2bytes
 from io import BytesIO
 
@@ -369,7 +369,7 @@ class Job(object):
         passed as argument to the Job.run method.
         """
         def __init__(self, jobStore, jobWrapper, localTempDir, 
-                     inputBlockFn, jobStoreFileIDToCacheLocation):
+                     inputBlockFn, jobStoreFileIDToCacheLocation, terminateEvent):
             """
             This constructor should not be called by the user, 
             FileStore instances are only provided as arguments 
@@ -385,30 +385,42 @@ class Job(object):
             self.workerNumber = 2
             self.queue = Queue()
             self.updateSemaphore = Semaphore() 
+            self.terminateEvent = terminateEvent
             #Function to write files to job store
-            def asyncWrite(queue, jobStore):
-                while True:
-                    args = queue.get()
-                    #time.sleep(2)
-                    if args == None:
-                        break
-                    inputFileHandle, jobStoreFileID = args
-                    #We pass in a fileHandle, rather than the file-name, in case 
-                    #the file itself is deleted. The fileHandle itself should persist 
-                    #while we maintain the open file handle
-                    with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
-                        bufferSize=1000000 #TODO: This buffer number probably needs to be modified/tuned
-                        while 1:
-                            copyBuffer = inputFileHandle.read(bufferSize)
-                            if not copyBuffer:
-                                break
-                            outputFileHandle.write(copyBuffer)
-                    inputFileHandle.close()
+            def asyncWrite():
+                try:
+                    while True:
+                        try:
+                            #Block for up to two seconds waiting for a file
+                            args = self.queue.get(timeout=2)
+                        except Empty:
+                            #Check if termination event is signaled 
+                            #(set in the event of an exception in the worker)
+                            if terminateEvent.isSet():
+                                raise RuntimeError("The termination flag is set, exiting")
+                            continue
+                        #Normal termination condition is getting None from queue
+                        if args == None:
+                            break
+                        inputFileHandle, jobStoreFileID = args
+                        #We pass in a fileHandle, rather than the file-name, in case 
+                        #the file itself is deleted. The fileHandle itself should persist 
+                        #while we maintain the open file handle
+                        with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
+                            bufferSize=1000000 #TODO: This buffer number probably needs to be modified/tuned
+                            while 1:
+                                copyBuffer = inputFileHandle.read(bufferSize)
+                                if not copyBuffer:
+                                    break
+                                outputFileHandle.write(copyBuffer)
+                        inputFileHandle.close()
+                except:
+                    terminateEvent.set()
+                    raise
                     
-            self.workers = map(lambda i : Thread(target=asyncWrite, args=(self.queue, jobStore)), 
+            self.workers = map(lambda i : Thread(target=asyncWrite), 
                                range(self.workerNumber))
             for worker in self.workers:
-                worker.deamon = True
                 worker.start()
             self.inputBlockFn = inputBlockFn
             #Caching 
@@ -556,6 +568,7 @@ class Job(object):
             Send a logging message to the leader. Will only be reported if logging 
             is set to INFO level (or lower) in the leader.
             """
+            logger.critical("LOG TO MASTER: " + string)
             self.loggingMessages.append(str(string))
             
         #Private methods 
@@ -575,8 +588,15 @@ class Job(object):
                     for thread in self.workers:
                         thread.join()
                     
-                    #Wait till input block-fn returns
+                    #Wait till input block-fn returns - in the event of an exception
+                    #this will eventually terminate 
                     self.inputBlockFn()
+                    
+                    #Check the terminate event, if set we can not guarantee
+                    #that the workers ended correctly, therefore we exit without
+                    #completing the update
+                    if self.terminateEvent.isSet():
+                        raise RuntimeError("The termination flag is set, exiting before update")
                     
                     #Indicate any files that should be deleted once the update of 
                     #the job wrapper is completed.
@@ -596,6 +616,9 @@ class Job(object):
                         self.jobWrapper.filesToDelete = []
                         #Update, removing emptying files to delete
                         self.jobStore.update(self.jobWrapper)
+                except:
+                    self.terminateEvent.set()
+                    raise
                 finally:
                     #Indicate that _blockFn can return
                     #This code will always run
@@ -604,7 +627,6 @@ class Job(object):
             try:
                 self.updateSemaphore.acquire()
                 t = Thread(target=asyncUpdate)
-                t.daemon = True
                 t.start()
             except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
                 self.updateSemaphore.release()
@@ -1046,7 +1068,6 @@ class Job(object):
             if len(combinedChildren) > 0:
                 jobWrapper.stack.append(combinedChildren)
             
-            
     def _serialiseFirstJob(self, jobStore):
         """
         Serialises the root job. Returns the wrapping job.
@@ -1086,6 +1107,7 @@ class Job(object):
             fileStore.deleteGlobalFile(jobStoreFileID)
         promiseFilesToDelete.clear() 
         #Now indicate the asynchronous update of the job can happen
+            
         fileStore._updateJobWhenDone()
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:

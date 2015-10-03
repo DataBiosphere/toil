@@ -358,7 +358,6 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     totalFailedJobs = 0
     logger.info("Starting the main loop")
     while True:
-
         ##########################################
         #Process jobs that are ready to be scheduled/have successors to schedule
         ##########################################

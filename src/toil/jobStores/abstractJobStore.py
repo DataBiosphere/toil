@@ -159,7 +159,7 @@ class AbstractJobStore( object ):
                     break
                           
             #Reset the retry count of the jobWrapper 
-            if jobWrapper.remainingRetryCount < self._defaultTryCount():
+            if jobWrapper.remainingRetryCount != self._defaultTryCount():
                 jobWrapper.remainingRetryCount = self._defaultTryCount()
                 changed = True
                           

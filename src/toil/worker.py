@@ -33,7 +33,7 @@ import logging
 import xml.etree.cElementTree as ET
 import cPickle
 import shutil
-from threading import Thread
+from threading import Thread, Event
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -115,7 +115,7 @@ def main():
             #This will randomly kill the worker process at a random time 
             time.sleep(config.badWorkerFailInterval * random.random())
             os.kill(os.getpid(), signal.SIGKILL) #signal.SIGINT)
-        #NOTE: TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
+            #TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
         t = Thread(target=badWorker)
         t.daemon = True
         t.start()
@@ -207,6 +207,7 @@ def main():
     messages = []
     blockFn = lambda : True
     jobStoreFileIDToCacheLocation = {}
+    terminateEvent = Event() #This is used to signify crashes in threads
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -269,7 +270,8 @@ def main():
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn, jobStoreFileIDToCacheLocation)
+                                              blockFn, jobStoreFileIDToCacheLocation, 
+                                              terminateEvent)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -290,6 +292,9 @@ def main():
                 #the jobWrapper is either a shell ready to be deleted or has 
                 #been scheduled after a failure to cleanup
                 break
+            
+            if terminateEvent.isSet():
+                raise RuntimeError("The termination flag is set")
             
             ##########################################
             #Establish if we can run another jobWrapper within the worker
@@ -358,7 +363,7 @@ def main():
             
             #Build a fileStore to update the job
             fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, 
-                                      jobStoreFileIDToCacheLocation)
+                                      jobStoreFileIDToCacheLocation, terminateEvent)
             
             #Update blockFn
             blockFn = fileStore._blockFn
@@ -394,17 +399,23 @@ def main():
     except: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
-        blockFn() #Wait for any asynchronous writes to finis so we don't try to read
-        #while it is being written
-        jobWrapper = jobStore.load(jobStoreID)
-        jobWrapper.setupJobAfterFailure(config)
-        workerFailed = True
-     
+        terminateEvent.set()
+    
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
     ########################################## 
        
     blockFn() 
+    
+    ##########################################
+    #All the asynchronous worker/update threads must be finished now, 
+    #so safe to test if they completed okay
+    ########################################## 
+    
+    if terminateEvent.isSet():
+        jobWrapper = jobStore.load(jobStoreID)
+        jobWrapper.setupJobAfterFailure(config)
+        workerFailed = True
 
     ##########################################
     #Cleanup
