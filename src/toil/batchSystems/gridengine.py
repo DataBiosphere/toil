@@ -31,7 +31,7 @@ sleepSeconds = 1
 
 class MemoryString:
     def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G':
+        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T':
             self.unit = string[-1]
             self.val = float(string[:-1])
         else:
@@ -54,6 +54,8 @@ class MemoryString:
             return self.val * 1048576
         elif self.unit == 'G':
             return self.val * 1073741824
+        elif self.unit == 'T':
+            return self.val * 1099511627776
 
     def __cmp__(self, other):
         return cmp(self.bytes, other.bytes)
@@ -76,7 +78,8 @@ def prepareQsub(cpu, mem, jobID):
     if len(reqline) > 0:
         qsubline.extend(["-hard", "-l", ",".join(reqline)])
     if cpu is not None and math.ceil(cpu) > 1:
-        qsubline.extend(["-pe", "smp", str(int(math.ceil(cpu)))])
+        peConfig = os.getenv('TOIL_GRIDENGINE_PE') or "shm"
+        qsubline.extend(["-pe", peConfig, str(int(math.ceil(cpu)))])
     return qsubline
 
 
