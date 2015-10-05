@@ -13,10 +13,14 @@
 # limitations under the License.
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
+from fractions import Fraction
 import logging
 import os
+import tempfile
+from textwrap import dedent
 import time
 import multiprocessing
+import sys
 
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -187,11 +191,126 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                                         maxDisk=1001)
 
 
+class MaxCoresSingleMachineBatchSystemTest(ToilTest):
+    """
+    This test ensures that single machine batch system doesn't exceed more than maxCores.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super(MaxCoresSingleMachineBatchSystemTest, cls).setUpClass()
+        logging.basicConfig(level=logging.DEBUG)
+
+    def setUp(self):
+        super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
+
+        def writeTempFile(s):
+            fd, path = tempfile.mkstemp()
+            try:
+                assert os.write(fd, s) == len(s)
+            except:
+                os.unlink(path)
+                raise
+            else:
+                return path
+            finally:
+                os.close(fd)
+
+        # Write initial value of counter file containing a tuple of two integers (i, n) where i
+        # is the number of currently executing tasks and n the maximum observed value of i
+        self.counterPath = writeTempFile('0,0')
+
+        # Write test script that increments i, adjusts n, sleeps 1s and then decrements i again
+        self.scriptPath = writeTempFile(dedent("""
+            import os, sys, fcntl, time
+            def count(delta):
+                fd = os.open(sys.argv[1], os.O_RDWR)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+                    try:
+                        s = os.read(fd, 10)
+                        value, maxValue = map(int, s.split(','))
+                        value += delta
+                        if value > maxValue: maxValue = value
+                        os.lseek(fd,0,0)
+                        os.ftruncate(fd, 0)
+                        os.write(fd, ','.join(map(str, (value, maxValue))))
+                    finally:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(fd)
+            count(1)
+            try:
+                time.sleep(1)
+            finally:
+                count(-1)
+        """))
+
+    def tearDown(self):
+        os.unlink(self.scriptPath)
+        os.unlink(self.counterPath)
+
+    def test(self):
+        # We'll use fractions to avoid rounding errors. Remember that only certain, discrete
+        # fractions can be represented as a floating point number.
+        F = Fraction
+        # This test isn't general enought to cover every possible value of minCores in
+        # SingleMachineBatchSystem. Instead we hard-code a value and assert it.
+        minCores = F(1, 10)
+        self.assertEquals(float(minCores), SingleMachineBatchSystem.minCores)
+        for maxCores in {F(minCores), minCores * 10, F(1), F(numCores, 2), F(numCores)}:
+            for coresPerJob in {F(minCores), F(minCores * 10), F(1), F(maxCores, 2), F(maxCores)}:
+                for load in (F(1, 10), F(1), F(10)):
+                    jobs = int(maxCores / coresPerJob * load)
+                    if jobs >= 1 and minCores <= coresPerJob < maxCores:
+                        self.assertEquals(maxCores, float(maxCores))
+                        bs = SingleMachineBatchSystem(config=Config(),
+                                                      maxCores=float(maxCores),
+                                                      # Ensure that memory or disk requirements
+                                                      # don't get in the way.
+                                                      maxMemory=jobs * 10,
+                                                      maxDisk=jobs * 10)
+                        try:
+                            jobIds = set()
+                            for i in range(0, int(jobs)):
+                                cmd = ' '.join([sys.executable, self.scriptPath, self.counterPath])
+                                jobIds.add(bs.issueBatchJob(command=cmd,
+                                                            cores=float(coresPerJob),
+                                                            memory=1,
+                                                            disk=1))
+                            self.assertEquals(len(jobIds), jobs)
+                            while jobIds:
+                                job = bs.getUpdatedBatchJob(maxWait=10)
+                                self.assertIsNotNone(job)
+                                jobId, status = job
+                                self.assertEquals(status, 0)
+                                # would raise KeyError on absence
+                                jobIds.remove(jobId)
+                        finally:
+                            bs.shutdown()
+                        with open(self.counterPath, 'r+') as f:
+                            s = f.read()
+                            log.info('Counter is %s', s)
+                            concurrentTasks, maxConcurrentTasks = map(int, s.split(','))
+                            self.assertEquals(concurrentTasks, 0)
+                            log.info("maxCores: {maxCores}, "
+                                     "coresPerJob: {coresPerJob}, "
+                                     "load: {load}".format(**locals()))
+                            # This is the key assertion
+                            expectedMaxConcurrentTasks = min(maxCores / coresPerJob, jobs)
+                            self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
+                            # Reset the counter
+                            f.seek(0)
+                            f.truncate(0)
+                            f.write('0,0')
+
+
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
     """
     Tests the Parasol batch system
     """
+
     def _createDummyConfig(self):
         config = super(ParasolBatchSystemTest, self)._createDummyConfig()
         # can't use _getTestJobStorePath since that method removes the directory
@@ -207,7 +326,6 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
         super(ParasolBatchSystemTest, self).tearDown()
 
-
     def testIssueJob(self):
         # TODO
         # parasol treats 'touch test.txt; sleep 1' as one
@@ -218,7 +336,6 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.batchSystem.issueBatchJob(jobCommand, memory=100e6, cores=1, disk=1000)
         self.wait_for_jobs(wait_for_completion=True)
         self.assertTrue(os.path.exists(test_path))
-
 
 
 @needs_gridengine
@@ -235,7 +352,8 @@ class GridEngineTest(hidden.AbstractBatchSystemTest):
 
     def createBatchSystem(self):
         from toil.batchSystems.gridengine import GridengineBatchSystem
-        return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9)
+        return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
+                                     maxDisk=1e9)
 
     @classmethod
     def setUpClass(cls):
