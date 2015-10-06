@@ -36,9 +36,6 @@ def hello_world_child(job, hw):
 
     path = job.fileStore.readGlobalFile(hw)
 
-    with open(path, 'a') as handle:
-        handle.write("\nFileStoreID works!\n")
-
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
     with open(path, 'r') as r:
