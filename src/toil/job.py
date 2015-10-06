@@ -113,7 +113,10 @@ class Job(object):
         Add a service of type Job.Service. The Job.Service.start() method
         will be called after the run method has completed but before any successors 
         are run. It's Job.Service.stop() method will be called once the
-        successors of the job have been run.
+        successors of the job have been run. 
+        
+        Services allow things like databases and servers to be started and accessed
+        by jobs in a workflow.
         
         :rtype : An instance of PromisedJobReturnValue which will be replaced
         with the return value from the service.start() in any successor of the job.
