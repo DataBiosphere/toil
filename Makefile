@@ -88,7 +88,7 @@ _sdist:
 tests=src
 
 test:
-	$(python) setup.py test --pytest-args "-vv $(tests)"
+	$(python) setup.py test --pytest-args "-vv $(tests) --assert plain"
 
 check_clean_working_copy:
 	@echo "$(green)Checking if your working copy is clean ...$(normal)"
