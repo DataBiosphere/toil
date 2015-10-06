@@ -36,7 +36,7 @@ class JobServiceTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            # Run the workflow, the return value being the number of failed jobs
+            # Run the workflow
             Job.Runner.startToil(t, options)
             # Check output
             self.assertEquals(open(outFile, 'r').readline(), "123")
@@ -55,7 +55,6 @@ class TestService(Job.Service):
 
     def stop(self):
         fn1Test(self.stopString, self.outFile)
-
 
 def fn1Test(string, outFile):
     """

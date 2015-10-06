@@ -21,6 +21,7 @@ from argparse import ArgumentParser
 import os
 import random
 import logging
+import shutil
 from bd2k.util.humanize import human2bytes
 
 from toil.job import Job
@@ -77,7 +78,8 @@ def up(job, inputFileID1, inputFileID2):
 def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    job.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
+    localTempFile = job.fileStore.readGlobalFile(tempOutputFileStoreID)
+    shutil.copyfile(localTempFile, outputFile)
     #sort(outputFile)
 
 def main():

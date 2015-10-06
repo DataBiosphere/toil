@@ -417,9 +417,6 @@ class Job(object):
             #For files in jobStore that are on the local disk, 
             #map of jobStoreFileIDs to locations in localTempDir.
             self.jobStoreFileIDToCacheLocation = jobStoreFileIDToCacheLocation
-            #A subset of the keys of jobStoreFileIDToCacheLocation, indicating
-            #which files are already known to the user. 
-            self.lockedJobStoreFileIDs = set()
 
         def getLocalTempDir(self):
             """
@@ -444,12 +441,12 @@ class Job(object):
             Takes a file (as a path) and uploads it to to the global file store, returns
             an ID that can be used to retrieve the file. 
             
-            If cleanup is True then the file will be deleted once the job
-            and all its successors have completed running. If not the file must be deleted
+            If cleanup is True then the global file will be deleted once the job
+            and all its successors have completed running. If not the global file must be deleted
             manually.
             
             The write is asynchronous, so further modifications to the file pointed by
-            localFileName will result in undetermined behavior. The file is safely removed 
+            localFileName will result in undetermined behavior. The local file is safely removed 
             at the end of the job by placing it in a location returned 
             by getLocalTempDir.
             """
@@ -458,7 +455,6 @@ class Job(object):
             self.queue.put((open(localFileName, 'r'), jobStoreFileID))
             #Now put the file into the cache
             self.jobStoreFileIDToCacheLocation[jobStoreFileID] = localFileName
-            self.lockedJobStoreFileIDs.add(localFileName)
             return jobStoreFileID
         
         def writeGlobalFileStream(self, cleanup=False):
@@ -472,46 +468,29 @@ class Job(object):
             """
             #TODO: Make this work with the caching??
             return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
-
-        def readGlobalFile(self, fileStoreID, localFilePath=None):
+        
+        def readGlobalFile(self, fileStoreID):
             """
             Returns a path to a local copy of the file keyed by fileStoreID. 
-            If localFilePath is not None the returned file path will be localFilePath.
-            The returned file will be read only.
+            The file will be read only. 
             """
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             #When requesting a new file from the jobStore first check if fileStoreID
             #is a key in jobStoreFileIDToCacheLocation.
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
-                #If it is check if fileStoreID is in locked files
-                if fileStoreID in self.lockedJobStoreFileIDs:
-                    #If a desired location is specified then make a symlink to the file
-                    if localFilePath != None:
-                        os.symlink(self.jobStoreFileIDToCacheLocation[fileStoreID], localFilePath)
-                        return localFilePath
-                    #Else just return the existing path to the cached file
-                    return self.jobStoreFileIDToCacheLocation[fileStoreID]
-                else:
-                    #if it is not in the locked files then add it to locked files and return it, 
-                    self.lockedJobStoreFileIDs.add(fileStoreID)
-                    #Moving the location if requested
-                    if localFilePath != None:
-                        shutil.move(self.jobStoreFileIDToCacheLocation[fileStoreID], localFilePath)
-                        self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
-                    return self.jobStoreFileIDToCacheLocation[fileStoreID]   
+                #IF it is, return it
+                return self.jobStoreFileIDToCacheLocation[fileStoreID]   
             else:
                 #If it is not in the cache read it from the jobStore to the 
                 #desired location
-                if localFilePath is None:
-                    localFilePath = self.getLocalTempFile()
+                localFilePath = self.getLocalTempFile()
                 self.jobStore.readFile(fileStoreID, localFilePath)
                 self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
-                self.lockedJobStoreFileIDs.add(fileStoreID)
                 #Chmod to make file read only
                 os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 return localFilePath
-        
+
         def readGlobalFileStream(self, fileStoreID):
             """
             Similar to readGlobalFile, but returns a context manager yielding a 
@@ -523,7 +502,6 @@ class Job(object):
             
             #If fileStoreID is in the cache provide a handle from the local cache
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
-                self.lockedJobStoreFileIDs.add(fileStoreID)
                 #This leaks file handles (but the commented out code does not work properly)
                 return open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') 
                 #with open(self.jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
@@ -543,13 +521,7 @@ class Job(object):
             self.filesToDelete.add(fileStoreID)
             #If the fileStoreID is in the cache:
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
-                if fileStoreID in self.lockedJobStoreFileIDs:
-                    #Remove it so it will be deleted at the end of the job
-                    self.lockedJobStoreFileIDs.remove(fileStoreID)
-                else:
-                    #If the fileStoreID is not locked (so being used by user) we delete it
-                    #from the local disk
-                    os.remove(self.jobStoreFileIDToCacheLocation[fileStoreID])
+                #This will result in the files removal from the cache at the end of the current job
                 self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
         def logToMaster(self, string, level=logging.INFO):
