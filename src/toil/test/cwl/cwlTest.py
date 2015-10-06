@@ -17,21 +17,28 @@ import os
 
 from toil.test import ToilTest, needs_cwl
 
+
 @needs_cwl
 class CWLTest(ToilTest):
     def test_run_revsort(self):
         from toil.cwl import cwltoil
-        if os.path.exists("cwl.output.json"):
-            os.remove("cwl.output.json")
-
-        cwltoil.main(["src/toil/test/cwl/revsort.cwl", "src/toil/test/cwl/revsort-job.json"])
-        with open("cwl.output.json") as f:
-            out = json.load(f)
-        os.remove("cwl.output.json")
+        outDir = self._createTempDir()
+        rootDir = self._projectRootPath()
+        outputJson = os.path.join(outDir, 'cwl.output.json')
+        try:
+            cwltoil.main(['--outdir', outDir,
+                          os.path.join(rootDir, 'src/toil/test/cwl/revsort.cwl'),
+                          os.path.join(rootDir, 'src/toil/test/cwl/revsort-job.json')])
+            with open(outputJson) as f:
+                out = json.load(f)
+        finally:
+            if os.path.exists(outputJson):
+                os.remove(outputJson)
         self.assertEquals(out, {
-            "output": {
-                "path": "/home/peter/work/toil/output.txt",
-                "size": 1111,
-                "class": "File",
-                "checksum": "sha1$b9214658cc453331b62c2282b772a5c063dbd284"
-            }})
+            # Having unicode string literals isn't necessary for the assertion but makes for a
+            # less noisy diff in case the assertion fails.
+            u'output': {
+                u'path': unicode(os.path.join(outDir, 'output.txt')),
+                u'size': 1111,
+                u'class': u'File',
+                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
