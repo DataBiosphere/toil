@@ -150,15 +150,15 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
-        # TODO: Ensure jobList holds jobs that have been "launched" from Mesos
-        jobList = set()
+        # TODO: Ensure jobSet holds jobs that have been "launched" from Mesos
+        jobSet= set()
         for queue in self.jobQueueList.values():
             for item in queue:
-                jobList.add(item.jobID)
+                jobSet.add(item.jobID)
         for key in self.runningJobMap.keys():
-            jobList.add(key)
+            jobSet.add(key)
 
-        return list(jobList)
+        return list(jobSet)
 
     def getRunningBatchJobIDs(self):
         """
