@@ -107,10 +107,10 @@ check_running_on_jenkins:
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
 pypi: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER register sdist bdist_egg upload
+	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER sdist bdist_egg upload
 
 pypi_stable: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info register sdist bdist_egg upload
+	$(python) setup.py egg_info sdist bdist_egg upload
 
 _pypi:
 	- rm -rf build/
