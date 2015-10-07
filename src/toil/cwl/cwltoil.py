@@ -25,13 +25,14 @@ import os
 import tempfile
 import json
 import sys
-import toil.lib.bioio as bioio
 import logging
 import copy
+
 
 def shortname(n):
     """Trim the leading namespace to get just the final name part of a parameter."""
     return n.split("#")[-1].split("/")[-1].split(".")[-1]
+
 
 def adjustFiles(rec, op):
     """Apply a mapping function to each File path in the object `rec`."""
@@ -59,11 +60,13 @@ def adjustFiles(rec, op):
 class IndirectDict(dict):
     pass
 
+
 def resolve_indirect(d):
     if isinstance(d, IndirectDict):
         return {k: v[1][v[0]] for k, v in d.items()}
     else:
         return d
+
 
 class StageJob(Job):
     """File staging job to put local files into the global file store.
@@ -106,17 +109,27 @@ class FinalJob(Job):
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
-        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(self.outdir, x[1])))
+
+        def getFile(fileStoreID, fileName):
+            srcPath = fileStore.readGlobalFile(fileStoreID)
+            dstPath = os.path.join(self.outdir, fileName)
+            os.link(srcPath, dstPath)
+            return dstPath
+
+        adjustFiles(cwljob, lambda x: getFile(*x))
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
         return True
+
 
 class ResolveIndirect(Job):
     def __init__(self, cwljob):
         Job.__init__(self)
         self.cwljob = cwljob
+
     def run(self, fileStore):
         return resolve_indirect(self.cwljob)
+
 
 class CWLJob(Job):
     """Execute a CWL tool wrapper."""
@@ -137,7 +150,14 @@ class CWLJob(Job):
         os.mkdir(tmpdir)
 
         # Copy input files out of the global file store.
-        adjustFiles(cwljob, lambda x: fileStore.readGlobalFile(x[0], os.path.join(inpdir, x[1])))
+
+        def getFile(fileStoreID, fileName):
+            srcPath = fileStore.readGlobalFile(fileStoreID)
+            dstPath = os.path.join(inpdir, fileName)
+            os.link(srcPath, dstPath)
+            return dstPath
+
+        adjustFiles(cwljob, lambda x: getFile(*x))
 
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                   os.getcwd(), None,
@@ -148,7 +168,6 @@ class CWLJob(Job):
         adjustFiles(output, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
 
         return output
-
 
 
 def makeJob(tool, jobobj):
@@ -189,7 +208,8 @@ class CWLScatter(Job):
 
         elif len(scatter) > 1:
             # complex scatter
-            raise Exception("Unsupported complex scatter type '%s'" % self.step.tool.get("scatterMethod"))
+            raise Exception(
+                "Unsupported complex scatter type '%s'" % self.step.tool.get("scatterMethod"))
 
         return outputs
 
@@ -235,7 +255,6 @@ class CWLWorkflow(Job):
         self.cwlwf = cwlwf
         self.cwljob = cwljob
 
-
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
 
@@ -276,11 +295,13 @@ class CWLWorkflow(Job):
 
                         for inp in step.tool["inputs"]:
                             if "source" in inp:
-                                jobobj[shortname(inp["id"])] = (shortname(inp["source"]), promises[inp["source"]].rv())
+                                jobobj[shortname(inp["id"])] = (
+                                shortname(inp["source"]), promises[inp["source"]].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 adjustFiles(d, lambda x: x.replace("file://", ""))
-                                adjustFiles(d, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
+                                adjustFiles(d, lambda x: (
+                                fileStore.writeGlobalFile(x), x.split('/')[-1]))
                                 jobobj[shortname(inp["id"])] = ("default", {"default": d})
 
                         if "scatter" in step.tool:
@@ -322,6 +343,7 @@ class CWLWorkflow(Job):
 
         return IndirectDict(outobj)
 
+
 supportedProcessRequirements = ["DockerRequirement",
                                 "ExpressionEngineRequirement",
                                 "SchemaDefRequirement",
@@ -329,6 +351,7 @@ supportedProcessRequirements = ["DockerRequirement",
                                 "CreateFileRequirement",
                                 "SubworkflowFeatureRequirement",
                                 "ScatterFeatureRequirement"]
+
 
 def checkRequirements(rec):
     if isinstance(rec, dict):
@@ -387,7 +410,8 @@ def main(args=None):
 
     job, _ = loader.resolve_ref(uri)
 
-    t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool, True)
+    t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool,
+                               True)
 
     if type(t) == int:
         return t
@@ -412,7 +436,9 @@ def main(args=None):
     adjustFiles(job, lambda x: x.replace("file://", ""))
 
     if options.conformance_test:
-        sys.stdout.write(json.dumps(cwltool.main.single_job_executor(t, job, options.basedir, options, conformance_test=True), indent=4))
+        sys.stdout.write(json.dumps(
+            cwltool.main.single_job_executor(t, job, options.basedir, options,
+                                             conformance_test=True), indent=4))
         return 0
 
     if not options.basedir:
@@ -427,12 +453,13 @@ def main(args=None):
     staging.addFollowOn(wf1)
     wf2.addFollowOn(FinalJob(wf2.rv(), outdir))
 
-    Job.Runner.startToil(staging,  options)
+    Job.Runner.startToil(staging, options)
 
     with open(os.path.join(outdir, "cwl.output.json"), "r") as f:
         sys.stdout.write(f.read())
 
     return 0
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
