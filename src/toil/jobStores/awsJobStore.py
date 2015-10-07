@@ -82,7 +82,7 @@ class AWSJobStore(AbstractJobStore):
         for jobItem in result:
             yield AWSJob.fromItem(jobItem)
 
-    def create(self, command, memory, cores, disk, updateID=None,
+    def create(self, command, memory, cores, disk, 
                predecessorNumber=0):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
@@ -90,7 +90,7 @@ class AWSJobStore(AbstractJobStore):
         job = AWSJob(jobStoreID=jobStoreID,
                      command=command, memory=memory, cores=cores, disk=disk,
                      remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     updateID=updateID, predecessorNumber=predecessorNumber)
+                     predecessorNumber=predecessorNumber)
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobDomain.put_attributes(item_name=jobStoreID,

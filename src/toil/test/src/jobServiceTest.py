@@ -31,12 +31,12 @@ class JobServiceTest(ToilTest):
         outFile = getTempFile(rootDir=self._createTempDir())
         try:
             # Wire up the services/jobs
-            t = Job.wrapFn(f, "1", outFile)
-            t.addChildFn(f, t.addService(TestService("2", "3", outFile)), outFile)
+            t = Job.wrapFn(fn1Test, "1", outFile)
+            t.addChildFn(fn1Test, t.addService(TestService("2", "3", outFile)), outFile)
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            # Run the workflow, the return value being the number of failed jobs
+            # Run the workflow
             Job.Runner.startToil(t, options)
             # Check output
             self.assertEquals(open(outFile, 'r').readline(), "123")
@@ -54,10 +54,9 @@ class TestService(Job.Service):
         return self.startString
 
     def stop(self):
-        f(self.stopString, self.outFile)
+        fn1Test(self.stopString, self.outFile)
 
-
-def f(string, outFile):
+def fn1Test(string, outFile):
     """
     Function appends string to output file
     """

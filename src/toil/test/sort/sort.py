@@ -20,12 +20,13 @@ from __future__ import absolute_import
 from argparse import ArgumentParser
 import os
 import random
+import logging
+import shutil
 from bd2k.util.humanize import human2bytes
 
 from toil.job import Job
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
-success_ratio = 0.5
 sortMemory = human2bytes('1000M')
 
 def setup(job, inputFile, N):
@@ -41,13 +42,11 @@ def down(job, inputFile, fileStart, fileEnd, N):
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     length = fileEnd - fileStart
     if length > N:
         #We will subdivide the file
         job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile) )
+                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
         midPoint = getMidPoint(inputFile, fileStart, fileEnd)
         return job.addFollowOnJobFn(up,
             job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N, memory=sortMemory).rv(),
@@ -55,7 +54,7 @@ def down(job, inputFile, fileStart, fileEnd, N):
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile) )
+                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
         t = job.fileStore.getLocalTempFile()
         with open(t, 'w') as fH:
             copySubRangeOfFile(inputFile, fileStart, fileEnd, fH)
@@ -65,8 +64,6 @@ def down(job, inputFile, fileStart, fileEnd, N):
 def up(job, inputFileID1, inputFileID2):
     """Merges the two files and places them in the output.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This error is a test error, it does not mean the tests have failed.
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         with job.fileStore.readGlobalFileStream( inputFileID1 ) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream( inputFileID2 ) as inputFileHandle2:
@@ -81,9 +78,8 @@ def up(job, inputFileID1, inputFileID2):
 def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    if random.random() > success_ratio:
-        raise RuntimeError() #This is a test error and not a failure of the tests
-    job.fileStore.readGlobalFile(tempOutputFileStoreID, outputFile)
+    localTempFile = job.fileStore.readGlobalFile(tempOutputFileStoreID)
+    shutil.copyfile(localTempFile, outputFile)
     #sort(outputFile)
 
 def main():

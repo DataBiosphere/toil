@@ -68,7 +68,8 @@ class UtilsTest(ToilTest):
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
-                             "--retryCount 2".format(**locals()))
+                             "--retryCount 2 --badWorker=0.5 "
+                             "--badWorkerFailInterval=0.05 ".format(**locals()))
 
         # Try restarting it to check that a JobStoreException is thrown
         self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
@@ -93,12 +94,16 @@ class UtilsTest(ToilTest):
         self.assertRaises(CalledProcessError, system, toilCommandString)
 
         # Now restart it until done
+        totalTrys = 1
         while not finished:
             try:
                 system(toilCommandString + " --restart")
                 finished = True
             except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
                 self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+                if totalTrys > 16:
+                    self.fail() #Exceeded a reasonable number of restarts    
+                totalTrys += 1   
 
         # Check the toil status command does not issue an exception
         system(toilStatusCommandString)
@@ -132,7 +137,9 @@ class UtilsTest(ToilTest):
                              "--logLevel=DEBUG "
                              "--fileToSort={self.tempFile} "
                              "--N {self.N} --stats "
-                             "--retryCount 99".format(**locals()))
+                             "--retryCount 99 "
+                             "--badWorker=0.5 "
+                             "--badWorkerFailInterval=0.01 ".format(**locals()))
 
         # Run the script for the first time
         system(toilCommandString)

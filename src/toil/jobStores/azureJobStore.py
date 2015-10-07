@@ -120,13 +120,13 @@ class AzureJobStore(AbstractJobStore):
         for jobEntity in self.jobItems.query_entities():
             yield AzureJob.fromEntity(jobEntity)
 
-    def create(self, command, memory, cores, disk, updateID=None,
+    def create(self, command, memory, cores, disk,
                predecessorNumber=0):
         jobStoreID = self._newJobID()
         job = AzureJob(jobStoreID=jobStoreID,
                        command=command, memory=memory, cores=cores, disk=disk,
                        remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                       updateID=updateID, predecessorNumber=predecessorNumber)
+                       predecessorNumber=predecessorNumber)
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)

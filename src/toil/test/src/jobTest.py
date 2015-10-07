@@ -16,7 +16,7 @@ import unittest
 import os
 import random
 
-from toil.lib.bioio import getTempFile
+from toil.lib.bioio import getTempFile, getTempDirectory
 from toil.job import Job, JobGraphDeadlockException
 from toil.test import ToilTest
 
@@ -25,6 +25,7 @@ class JobTest(ToilTest):
     """
     Tests testing the job class
     """
+    
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -41,12 +42,12 @@ class JobTest(ToilTest):
         try:
 
             # Create the jobs
-            A = Job.wrapFn(f, "A", outFile)
-            B = Job.wrapFn(f, A.rv(), outFile)
-            C = Job.wrapFn(f, B.rv(), outFile)
-            D = Job.wrapFn(f, C.rv(), outFile)
-            E = Job.wrapFn(f, D.rv(), outFile)
-            F = Job.wrapFn(f, E.rv(), outFile)
+            A = Job.wrapFn(fn1Test, "A", outFile)
+            B = Job.wrapFn(fn1Test, A.rv(), outFile)
+            C = Job.wrapFn(fn1Test, B.rv(), outFile)
+            D = Job.wrapFn(fn1Test, C.rv(), outFile)
+            E = Job.wrapFn(fn1Test, D.rv(), outFile)
+            F = Job.wrapFn(fn1Test, E.rv(), outFile)
             # Connect them into a workflow
             A.addChild(B)
             A.addChild(C)
@@ -58,11 +59,14 @@ class JobTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
+            options.retryCount=100
+            options.badWorker=0.5
+            options.badWorkerFailInterval = 0.01
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
+            self.assertEquals(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
     
@@ -82,10 +86,10 @@ class JobTest(ToilTest):
         try:
 
             # Create the jobs
-            A = Job.wrapFn(f, "A", outFile)
-            B = Job.wrapFn(f, "B", outFile)
-            C = Job.wrapFn(f, "C", outFile)
-            D = Job.wrapFn(f, B.rv(), outFile)
+            A = Job.wrapFn(fn1Test, "A", outFile)
+            B = Job.wrapFn(fn1Test, A.rv(), outFile)
+            C = Job.wrapFn(fn1Test, B.rv(), outFile)
+            D = Job.wrapFn(fn1Test, C.rv(), outFile)
             
             # Connect them into a workflow
             A.addChild(B)
@@ -95,11 +99,14 @@ class JobTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
+            options.retryCount=100
+            options.badWorker=0.5
+            options.badWorkerFailInterval = 0.01
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCC")
+            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -205,7 +212,7 @@ class JobTest(ToilTest):
         jobStore = self._getTestJobStorePath()
         for test in xrange(30):
             # Temporary file
-            outFile = getTempFile(rootDir=os.getcwd())
+            tempDir = self._createTempDir(purpose='tempDir')
             # Make a random DAG for the set of child edges
             nodeNumber = random.choice(xrange(2, 20))
             childEdges = self.makeRandomDAG(nodeNumber)
@@ -217,18 +224,24 @@ class JobTest(ToilTest):
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
             # Make the job graph
-            rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile)
+            rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, tempDir)
             # Run the job  graph
             options = Job.Runner.getDefaultOptions("%s.%i" % (jobStore, test))
+            options.retryCount = 100
+            options.badWorker=0.5
+            options.badWorkerFailInterval = 0.01
+            #options.logLevel = "DEBUG"
             Job.Runner.startToil(rootJob, options)
-            # Get the ordering add the implied ordering to the graph
-            with open(outFile, 'r') as fH:
-                ordering = map(int, fH.readline().split())
-            # Check all the jobs were run
-            self.assertEquals(set(ordering), set(xrange(nodeNumber)))
-            # Add the ordering to the graph
-            for i in xrange(nodeNumber - 1):
-                adjacencyList[ordering[i]].add(ordering[i + 1])
+            # For each job check it created a valid output file
+            # and add the ordering relationships contained within the output
+            # file to the ordering relationship, so we can check they are compatible
+            # with the relationships defined by the job DAG.
+            for i in xrange(nodeNumber):
+                with open(os.path.join(tempDir, str(i)), 'r') as fH:
+                    ordering = map(int, fH.readline().split())
+                    self.assertEquals(int(ordering[-1]), i)
+                    for j in ordering[:-1]:
+                        adjacencyList[int(j)].add(int(ordering[-1]))
             # Check the ordering retains an acyclic graph
             if not self.isAcyclic(adjacencyList):
                 print "ORDERING", ordering
@@ -236,8 +249,6 @@ class JobTest(ToilTest):
                 print "FOLLOW ON EDGES", followOnEdges
                 print "ADJACENCY LIST", adjacencyList
             self.assertTrue(self.isAcyclic(adjacencyList))
-            # Cleanup
-            os.remove(outFile)
 
     @staticmethod
     def getRandomEdge(nodeNumber):
@@ -356,7 +367,7 @@ class JobTest(ToilTest):
         return followOnEdges
 
     @staticmethod
-    def makeJobGraph(nodeNumber, childEdges, followOnEdges, outFile):
+    def makeJobGraph(nodeNumber, childEdges, followOnEdges, outPath):
         """
         Converts a DAG into a job graph. childEdges and followOnEdges are
         the lists of child and followOn edges.
@@ -366,11 +377,12 @@ class JobTest(ToilTest):
         #Function for making job
         def makeJob(string):
             promises = []
-            job = Job.wrapFn(f, string, outFile, promises)
+            job = Job.wrapFn(fn2Test, promises, string, 
+                             os.path.join(outPath, string) if outPath != None else None)
             jobsToPromisesMap[job] = promises
             return job
         #Make the jobs
-        jobs = map(lambda i: makeJob(str(i) + " "), xrange(nodeNumber))
+        jobs = map(lambda i: makeJob(str(i)), xrange(nodeNumber))
         #Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
@@ -416,17 +428,25 @@ class JobTest(ToilTest):
                 return False
         return True
 
-
-def f(string, outFile, promises=[]):
+def fn1Test(string, outputFile, promises=[]):
     """
     Function appends string to output file, then returns the 
     next ascii character of the first character in the string, e.g.
     if string is "AA" returns "B"
     """
-    fH = open(outFile, 'a')
-    fH.write(string)
-    fH.close()
-    return chr(ord(string[0]) + 1)
+    rV = string + chr(ord(string[-1]) + 1)
+    with open(outputFile, 'w') as fH:
+        fH.write(rV)
+    return rV
+
+def fn2Test(pStrings, s, outputFile):
+    """
+    Function concatenates the strings in pStrings and s, in that order, and writes
+    the result to the output file. Returns s.
+    """
+    with open(outputFile, 'w') as fH:
+        fH.write(" ".join(pStrings) + " " + s)
+    return s
 
 if __name__ == '__main__':
     unittest.main()

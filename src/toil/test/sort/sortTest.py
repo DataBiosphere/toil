@@ -75,6 +75,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.retryCount = 2
                 options.batchSystem = batchSystem
                 options.clean = "never"
+                options.badWorker = 0.5
+                options.badWorkerFailInterval = 0.05
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
@@ -115,6 +117,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.restart = True
 
                 # This loop tests the restart behavior
+                totalTrys = 1
                 while i != 0:
                     options.useExistingOptions = random.random() > 0.5
                     try:
@@ -122,6 +125,9 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
+                        if totalTrys > 16: #p(fail after this many restarts) = 0.5**32
+                            self.fail() #Exceeded a reasonable number of restarts    
+                        totalTrys += 1    
 
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
@@ -184,6 +190,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='gridengine')
 
     @needs_parasol
+    @unittest.skip("skipping until parasol support is less flaky (see github issue #449")
     def testFileParasol(self):
         self._startParasol()
         try:

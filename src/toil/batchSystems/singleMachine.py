@@ -131,7 +131,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             finally:
                 log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
                           self.coreFractions.value, self.memory.value)
-                self.outputQueue.put((jobID, 0))
+                self.outputQueue.put((jobID, statusCode))
         log.debug('Exiting worker thread normally.')
 
     def issueBatchJob(self, command, memory, cores, disk):
