@@ -116,6 +116,12 @@ class Job(object):
         childJob._addPredecessor(self)
         return childJob
 
+    def hasChild(self, childJob):
+        """
+        Check if the job is already a child of this job.
+        """
+        return childJob in self._children
+
     def addService(self, service):
         """
         Add a service of type Job.Service. The Job.Service.start() method

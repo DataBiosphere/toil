@@ -17,11 +17,6 @@
 collect_ignore = []
 
 try:
-    import azure
+    import cwltool
 except ImportError:
-    collect_ignore.append("azureJobStore.py")
-
-try:
-    import boto
-except ImportError:
-    collect_ignore.append("awsJobStore.py")
+    collect_ignore.append("cwltoil.py")
