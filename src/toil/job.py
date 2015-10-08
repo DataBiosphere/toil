@@ -489,7 +489,7 @@ class Job(object):
             
             *The returned file will be read only (have permissions 444).* 
             
-            userPath is a path to the name of file to which the global file will be 
+            :param userPath: a path to the name of file to which the global file will be 
             copied or hard-linked (see below). userPath must either be: (1) a 
             file path contained within a directory or, recursively, a subdirectory 
             of a temporary directory returned by Job.FileStore.getLocalTempDir(), 
