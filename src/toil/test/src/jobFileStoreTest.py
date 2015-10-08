@@ -58,7 +58,17 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
         #Load the input jobStoreFileIDs and check that they map to the 
         #same set of random input strings
         if random.random() > 0.666:
-            tempFile = job.fileStore.readGlobalFile(fileStoreID)
+            #Check we get an exception if we try a file out side of the file path
+            try:
+                job.fileStore.readGlobalFile(fileStoreID, userPath="THIS/IS/NOT/A/REAL/PATH")
+            except RuntimeError:
+                pass
+            if random.random() > 0.5:
+                tempFile = job.fileStore.readGlobalFile(fileStoreID)
+            else:
+                userPath = job.fileStore.getLocalTempFile()
+                tempFile = job.fileStore.readGlobalFile(fileStoreID, userPath)
+                assert userPath == tempFile
             with open(tempFile, 'r') as fH:
                 string = fH.readline()
                 assert testStrings[string[:PREFIX_LENGTH]] == string
