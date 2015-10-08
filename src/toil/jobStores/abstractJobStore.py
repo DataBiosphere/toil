@@ -204,26 +204,20 @@ class AbstractJobStore( object ):
         raise NotImplementedError( )
 
     @abstractmethod
-    def getPublicUrl( self,  FileName):
+    def getPublicUrl(self, fileName):
         """
-        Returns a publicly accessible URL to the given file in the job store.
-        The returned URL starts with 'http:',  'https:' or 'file:'.
-        The returned URL may expire as early as 1h after its been returned.
-        Throw an exception if the file does not exist.
-        :param jobStoreFileID:
-        :return:
+        Returns a publicly accessible URL to the given file in the job store. The returned URL
+        starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
+        after its been returned. Throw an exception if the file does not exist.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def getSharedPublicUrl( self,  jobStoreFileID):
+    def getSharedPublicUrl(self, sharedFileName):
         """
-        Returns a publicly accessible URL to the given file in the job store.
-        The returned URL starts with 'http:',  'https:' or 'file:'.
-        The returned URL may expire as early as 1h after its been returned.
-        Throw an exception if the file does not exist.
-        :param jobStoreFileID:
-        :return:
+        Returns a publicly accessible URL to the given file in the job store. The returned URL
+        starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
+        after its been returned. Throw an exception if the file does not exist.
         """
         raise NotImplementedError()
 

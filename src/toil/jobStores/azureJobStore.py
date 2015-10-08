@@ -287,8 +287,8 @@ class AzureJobStore(AbstractJobStore):
                                                                 shared_access_policy=sap)
         return self.files.make_blob_url(blob_name=jobStoreFileID) + '?' + sas_token
 
-    def getSharedPublicUrl(self, fileName):
-        jobStoreFileID = self._newFileID(fileName)
+    def getSharedPublicUrl(self, sharedFileName):
+        jobStoreFileID = self._newFileID(sharedFileName)
         return self.getPublicUrl(jobStoreFileID)
 
     def _newJobID(self):

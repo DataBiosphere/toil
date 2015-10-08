@@ -166,8 +166,8 @@ class AWSJobStore(AbstractJobStore):
         # URL so we set the expiration to 20 years.
         return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
 
-    def getSharedPublicUrl(self, FileName):
-        jobStoreFileID = self._newFileID(FileName)
+    def getSharedPublicUrl(self, sharedFileName):
+        jobStoreFileID = self._newFileID(sharedFileName)
         return self.getPublicUrl(jobStoreFileID)
 
     def load(self, jobStoreID):
