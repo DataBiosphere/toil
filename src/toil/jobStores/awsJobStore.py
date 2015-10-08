@@ -171,18 +171,13 @@ class AWSJobStore(AbstractJobStore):
         return self.getPublicUrl(jobStoreFileID)
 
     def load(self, jobStoreID):
-        # TODO: check if mentioning individual attributes is faster than using *
-        result = None
+        item = None
         for attempt in retry_sdb():
             with attempt:
-                result = list(self.jobDomain.select(
-                    query="select * from `%s` "
-                          "where itemName() = '%s'" % (self.jobDomain.name, jobStoreID),
-                    consistent_read=True))
-        assert result is not None
-        if len(result) != 1:
+                item = self.jobDomain.get_attributes(jobStoreID, consistent_read=True)
+        if not item:
             raise NoSuchJobException(jobStoreID)
-        job = AWSJob.fromItem(result[0])
+        job = AWSJob.fromItem(item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
         log.debug("Loaded job %s", jobStoreID)
@@ -207,7 +202,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 items = list(self.versions.select(
-                    query="select * from `%s` "
+                    query="select itemName() from `%s` "
                           "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
                     consistent_read=True))
         assert items is not None
