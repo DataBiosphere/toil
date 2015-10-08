@@ -24,7 +24,8 @@ import uuid
 import shutil
 
 from toil.common import Config
-from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+                                             NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption
 
