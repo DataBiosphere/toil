@@ -11,21 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 from contextlib import contextmanager
 import logging
 import marshal as pickler
-#import cPickle as pickler
-#import pickle as pickler
-#import json as pickler
 import random
 import shutil
 import os
 import tempfile
 import stat
+import errno
 from toil.lib.bioio import absSymPath
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
-    NoSuchFileException
+from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+                                             NoSuchFileException)
 from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
@@ -212,8 +211,14 @@ class FileJobStore(AbstractJobStore):
     def readSharedFileStream(self, sharedFileName, isProtected=True):
         # the isProtected parameter has no effect on the fileStore, but is needed on the awsJobStore
         assert self._validateSharedFileName( sharedFileName )
-        with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
-            yield f
+        try:
+            with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
+                yield f
+        except IOError as e:
+            if e.errno == errno.ENOENT:
+                raise NoSuchFileException(sharedFileName,sharedFileName)
+            else:
+                raise
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         #Temporary files are placed in the set of temporary files/directoies
