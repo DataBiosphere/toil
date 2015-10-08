@@ -39,6 +39,7 @@ import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError, BotoServerError
 import itertools
 import time
+from toil.lib.encryption import encrypt, decrypt, encryptionOverhead
 
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
     ConcurrentFileModificationException, NoSuchFileException
@@ -118,7 +119,7 @@ class AWSJobStore(AbstractJobStore):
         self.stats = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
-        self.sseKey = None
+        self.sseKeyPath = None
 
         # Check global registry domain for existence of this job store. The first time this is
         # being executed in an AWS account, the registry domain will be created on the fly.
@@ -146,8 +147,12 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).__init__(config=config)
 
         if self.config.sseKey is not None:
-            with open(self.config.sseKey) as f:
-                self.sseKey = f.read()
+            self.sseKeyPath = self.config.sseKey
+
+    def _sseKey(self):
+        with open(self.sseKeyPath) as f:
+            return f.read()
+
 
     def qualify(self, name):
         return self.namePrefix + self.nameSeparator + name
@@ -163,13 +168,23 @@ class AWSJobStore(AbstractJobStore):
         """
         For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
         http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
-        Create url, check if valid, return.
-        Encrypted file urls are currently not supported
+        Encrypted fileInfo urls are currently not supported
         """
-        key = self.files.get_key(key_name=jobStoreFileID)
+        fileInfo = FileInfo.load(self,jobStoreFileID,False)
+        newFile = FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
+        newFile.jobStoreID = fileInfo.jobStoreID
+        if fileInfo is None:
+            raise NoSuchFileException
+        if fileInfo.buffer:
+            with self._writeToS3(newFile, encrypted=False) as writeable:
+                writeable.write(fileInfo.buffer)
+            return self.getPublicUrl(jobStoreFileID)
+        key = self.files.get_key(key_name=jobStoreFileID, version_id=fileInfo.version)
+
         # There should be no practical upper limit on when a job is allowed to access a public
         # URL so we set the expiration to 20 years.
-        return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
+        url = key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
+        return url
 
     def getSharedPublicUrl(self, FileName):
         jobStoreFileID = self._newFileID(FileName)
@@ -234,117 +249,125 @@ class AWSJobStore(AbstractJobStore):
 
     def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        firstVersion = self._upload(jobStoreFileID, localFilePath)
-        self._registerFile(jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion)
-        log.debug("Wrote initial version %s of file %s for job %s from path '%s'",
-                  firstVersion, jobStoreFileID, jobStoreID, localFilePath)
+        fileInfo = self._upload(jobStoreFileID, localFilePath)
+        fileInfo.jobStoreID=jobStoreID
+        self._registerFile(fileInfo)
+        log.debug("Wrote initial version %s of fileInfo %s for job %s from path '%s'",
+                  fileInfo.version, jobStoreFileID, jobStoreID, localFilePath)
         return jobStoreFileID
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        with self._uploadStream(jobStoreFileID, self.files) as (writable, key):
+        fileInfo = FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
+        fileInfo.jobStoreID=jobStoreID
+        with self._uploadStream(fileInfo) as writable:
             yield writable, jobStoreFileID
-        firstVersion = key.version_id
-        assert firstVersion is not None
-        self._registerFile(jobStoreFileID, jobStoreID=jobStoreID, newVersion=firstVersion)
-        log.debug("Wrote initial version %s of file %s for job %s",
-                  firstVersion, jobStoreFileID, jobStoreID)
+        self._registerFile(fileInfo)
+        log.debug("Wrote initial version %s of fileInfo %s for job %s",
+                  fileInfo.version, jobStoreFileID, jobStoreID)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=True):
         assert self._validateSharedFileName(sharedFileName)
         jobStoreFileID = self._newFileID(sharedFileName)
         oldVersion = self._getFileVersion(jobStoreFileID)
-        with self._uploadStream(jobStoreFileID, self.files,
-                                encrypted=isProtected) as (writable, key):
+        fileInfo = FileInfo(self, jobStoreFileID, FileInfo.typeRegular)
+        with self._uploadStream(fileInfo, # use multipart=false
+                                encrypted=isProtected) as writable:
             yield writable
-        newVersion = key.version_id
-        jobStoreId = str(self.sharedFileJobID) if oldVersion is None else None
-        self._registerFile(jobStoreFileID,
-                           jobStoreID=jobStoreId, oldVersion=oldVersion, newVersion=newVersion)
+        newVersion = fileInfo.version
+        fileInfo.jobStoreID = str(self.sharedFileJobID) if oldVersion is None else None
+        self._registerFile(fileInfo, oldVersion=oldVersion, isProtected=isProtected)
         if oldVersion is None:
-            log.debug("Wrote initial version %s of shared file %s (%s)",
+            log.debug("Wrote initial version %s of shared fileInfo %s (%s)",
                       newVersion, sharedFileName, jobStoreFileID)
         else:
-            log.debug("Wrote version %s of file %s (%s), replacing version %s",
+            log.debug("Wrote version %s of fileInfo %s (%s), replacing version %s",
                       newVersion, sharedFileName, jobStoreFileID, oldVersion)
 
     def updateFile(self, jobStoreFileID, localFilePath):
         oldVersion = self._getFileVersion(jobStoreFileID)
-        newVersion = self._upload(jobStoreFileID, localFilePath)
-        self._registerFile(jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion)
-        log.debug("Wrote version %s of file %s from path '%s', replacing version %s",
-                  newVersion, jobStoreFileID, localFilePath, oldVersion)
+        fileInfo = self._upload(jobStoreFileID, localFilePath)
+        self._registerFile(fileInfo, oldVersion=oldVersion)
+        log.debug("Wrote version %s of fileInfo %s from path '%s', replacing version %s",
+                  fileInfo.version, jobStoreFileID, localFilePath, oldVersion)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        oldVersion = self._getFileVersion(jobStoreFileID)
-        with self._uploadStream(jobStoreFileID, self.files) as (writable, key):
+        oldFile = FileInfo.load(self,jobStoreFileID)
+        fileInfo = FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
+        oldVersion=None
+        if oldFile is not None:
+            fileInfo.jobStoreID=oldFile.jobStoreID
+            oldVersion=oldFile.version
+        with self._uploadStream(fileInfo) as writable:
             yield writable
-        newVersion = key.version_id
-        self._registerFile(jobStoreFileID, oldVersion=oldVersion, newVersion=newVersion)
-        log.debug("Wrote version %s of file %s, replacing version %s",
-                  newVersion, jobStoreFileID, oldVersion)
+        self._registerFile(fileInfo)
+        log.debug("Wrote version %s of fileInfo %s, replacing version %s",
+                  fileInfo.version, jobStoreFileID, oldVersion)
 
     def readFile(self, jobStoreFileID, localFilePath):
-        version = self._getFileVersion(jobStoreFileID)
-        if version is None: raise NoSuchFileException(jobStoreFileID)
-        log.debug("Reading version %s of file %s to path '%s'",
-                  version, jobStoreFileID, localFilePath)
-        self._download(jobStoreFileID, localFilePath, version)
+        fileInfo = FileInfo.load(self,jobStoreFileID)
+        if fileInfo is None: raise NoSuchFileException(jobStoreFileID)
+        log.debug("Reading version %s of fileInfo %s to path '%s'",
+                  fileInfo.version, jobStoreFileID, localFilePath)
+        self._download(fileInfo, localFilePath)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        version = self._getFileVersion(jobStoreFileID)
-        if version is None: raise NoSuchFileException(jobStoreFileID)
-        log.debug("Reading version %s of file %s", version, jobStoreFileID)
-        with self._downloadStream(jobStoreFileID, version, self.files) as readable:
+        fileInfo = FileInfo.load(self,jobStoreFileID)
+        if fileInfo is None: raise NoSuchFileException(jobStoreFileID)
+        version = fileInfo.version if fileInfo.version else "inlined"
+        log.debug("Reading version %s of fileInfo %s", version, jobStoreFileID)
+        with self._downloadStream(fileInfo) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, isProtected=True):
         assert self._validateSharedFileName(sharedFileName)
         jobStoreFileID = self._newFileID(sharedFileName)
-        version = self._getFileVersion(jobStoreFileID)
-        if version is None: raise NoSuchFileException(jobStoreFileID)
-        log.debug("Read version %s from shared file %s (%s)",
-                  version, sharedFileName, jobStoreFileID)
-        with self._downloadStream(jobStoreFileID, version, self.files,
-                                  encrypted=isProtected) as readable:
+        fileInfo = FileInfo.load(self, jobStoreFileID, isProtected)
+        if fileInfo is None: raise NoSuchFileException(jobStoreFileID)
+        log.debug("Read version %s from shared fileInfo %s (%s)",
+                  fileInfo, sharedFileName, jobStoreFileID)
+        with self._downloadStream(fileInfo, encrypted=isProtected) as readable:
             yield readable
 
     def deleteFile(self, jobStoreFileID):
-        version, bucket = self._getFileVersionAndBucket(jobStoreFileID)
-        if bucket:
+        fileInfo = FileInfo.load(self,jobStoreFileID)
+        if fileInfo is not None:
             for attempt in retry_sdb():
                 with attempt:
-                    if version:
-                        self.versions.delete_attributes(jobStoreFileID,
-                                                        expected_values=['version', version])
+                    if fileInfo.version:
+                            self.versions.delete_attributes(jobStoreFileID,
+                                                        expected_values=['version', fileInfo.version])
+                            fileInfo.bucket.delete_key(key_name=jobStoreFileID, version_id=fileInfo.version)
                     else:
                         self.versions.delete_attributes(jobStoreFileID)
 
-            bucket.delete_key(key_name=jobStoreFileID, version_id=version)
-            if version:
-                log.debug("Deleted version %s of file %s", version, jobStoreFileID)
-            else:
-                log.debug("Deleted unversioned file %s", jobStoreFileID)
+
+                if fileInfo.version:
+                    log.debug("Deleted version %s of fileInfo %s", fileInfo.version, jobStoreFileID)
+                else:
+                    log.debug("Deleted unversioned fileInfo %s", jobStoreFileID)
         else:
             log.debug("File %s does not exist", jobStoreFileID)
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        self._registerFile(jobStoreFileID, jobStoreID=jobStoreID)
-        log.debug("Registered empty file %s for job %s", jobStoreFileID, jobStoreID)
+        fileInfo=FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
+        fileInfo.jobStoreID=jobStoreID
+        self._registerFile(fileInfo)
+        log.debug("Registered empty fileInfo %s for job %s", jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        jobStoreFileId = self._newFileID()
-        with self._uploadStream(jobStoreFileId, self.stats, multipart=False) as (writeable, key):
+        jobStoreFileID = self._newFileID()
+        fileInfo=FileInfo(self,jobStoreFileID,FileInfo.typeStats)
+        with self._uploadStream(fileInfo) as writeable:
             writeable.write(statsAndLoggingString)
-        firstVersion = key.version_id
-        self._registerFile(jobStoreFileId, bucketName='stats', newVersion=firstVersion)
+        self._registerFile(fileInfo)
 
     def readStatsAndLogging(self, statsCallBackFn):
         itemsProcessed = 0
@@ -353,11 +376,12 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = list(self.versions.select(
                     query="select * from `%s` "
-                          "where bucketName='stats'" % (self.versions.name,),
+                          "where fileType='stats'" % (self.versions.name,),
                     consistent_read=True))
         assert items is not None
         for item in items:
-            with self._downloadStream(item.name, item['version'], self.stats) as readable:
+            fileInfo=FileInfo.load(self,item.name)
+            with self._downloadStream(fileInfo) as readable:
                 statsCallBackFn(readable)
             self.deleteFile(item.name)
             itemsProcessed += 1
@@ -388,7 +412,7 @@ class AWSJobStore(AbstractJobStore):
                              "%s." % (namePrefix, cls.nameSeparator))
 
         return region, namePrefix
-
+    
     def _connectSimpleDB(self):
         """
         rtype: SDBConnection
@@ -460,35 +484,22 @@ class AWSJobStore(AbstractJobStore):
         else:
             return str(uuid.uuid5(self.sharedFileJobID, str(sharedFileName)))
 
-    def _getFileVersionAndBucket(self, jobStoreFileID):
-        """
-        :rtype: tuple(str version, AWS bucket)
-        """
-        item = None
-        for attempt in retry_sdb():
-            with attempt:
-                item = self.versions.get_attributes(item_name=jobStoreFileID,
-                                                    attribute_name=['version', 'bucketName'],
-                                                    consistent_read=True)
-        assert item is not None
-        bucketName = item.get('bucketName')
-        if bucketName is None:
-            return None, None
-        else:
-            # noinspection PyTypeChecker
-            return item.get('version'), getattr(self, bucketName)
-
     def _getFileVersion(self, jobStoreFileID, expectedBucket=None):
-        version, bucket = self._getFileVersionAndBucket(jobStoreFileID)
-        if bucket is None:
-            assert version is None
+        fileInfo = FileInfo.load(self,jobStoreFileID)
+        if fileInfo is None or fileInfo.bucket is None:
+            if fileInfo is not None:
+                assert fileInfo.version is None
+            return None
         else:
             if expectedBucket is None:
                 expectedBucket = self.files
-            assert bucket is expectedBucket
-        return version
+            assert fileInfo.bucket is expectedBucket
+        return fileInfo.version
 
     _s3_part_size = 50 * 1024 * 1024
+    # actual limit is 256*1024, but we use 1 attribute for fileVersion
+    _sdb_size = 255 * 1024
+    _encryption_overhead  = encryptionOverhead
 
     def _upload(self, jobStoreFileID, localFilePath):
         file_size, file_time = self._fileSizeAndTime(localFilePath)
@@ -523,14 +534,28 @@ class AWSJobStore(AbstractJobStore):
         key = self.files.get_key(jobStoreFileID, headers=headers)
 
         assert key.size == file_size
-        # Make resonably sure that the file wasn't touched during the upload
+        # Make resonably sure that the fileInfo wasn't touched during the upload
         assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
-        return version
+        fileInfo = FileInfo(self,jobStoreFileID,FileInfo.typeRegular)
+        fileInfo.version=version
+        return fileInfo
 
     @contextmanager
-    def _uploadStream(self, jobStoreFileID, bucket, multipart=True, encrypted=True):
-        key = bucket.new_key(key_name=jobStoreFileID)
-        assert key.version_id is None
+    def _uploadStream(self, fileInfo, encrypted=True, inline=True):
+        def _read(readable, size):
+            """
+            Read until readable is exhausted or size bytes have been read.
+            """
+            bufs = []
+            n = 0
+            while n < size:
+                buf = readable.read(size - n)
+                m = len(buf)
+                if m == 0:
+                    break
+                bufs.append(buf)
+                n += m
+            return ''.join(bufs)
         readable_fh, writable_fh = os.pipe()
         headers = {}
         if encrypted:
@@ -539,17 +564,17 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(writable_fh, 'w') as writable:
                 def reader():
                     try:
-                        upload = bucket.initiate_multipart_upload(key_name=jobStoreFileID,
+                        upload = fileInfo.bucket.initiate_multipart_upload(key_name=fileInfo.jobStoreFileID,
                                                                   headers=headers)
                         try:
                             for part_num in itertools.count():
-                                # FIXME: Consider using a key.set_contents_from_stream and rip ...
-                                # FIXME: ... the query_args logic from upload_part_from_file in ...
-                                # FIXME: ... in MultipartUpload. Possible downside is that ...
-                                # FIXME: ... implicit retries won't work.
-                                buf = readable.read(self._s3_part_size)
+                                buf = _read(readable, self._s3_part_size)
                                 # There must be at least one part, even if the file is empty.
                                 if len(buf) == 0 and part_num > 0: break
+                                if len(buf) < (self._sdb_size+encryptionOverhead) and part_num == 0 and inline:
+                                    fileInfo.buffer = buf
+                                    upload.cancel_upload()
+                                    break
                                 upload.upload_part_from_file(fp=StringIO(buf),
                                                              # S3 part numbers are 1-based
                                                              part_num=part_num + 1, headers=headers)
@@ -558,58 +583,65 @@ class AWSJobStore(AbstractJobStore):
                             upload.cancel_upload()
                             raise
                         else:
-                            key.version_id = upload.complete_upload().version_id
+                            if fileInfo.buffer is None:
+                                fileInfo.version = upload.complete_upload().version_id
                     except:
                         log.exception('Exception in reader thread')
 
-                def simpleReader():
-                    log.debug("Using single part upload")
-                    try:
-                        buf = StringIO(readable.read())
-                        assert key.set_contents_from_file(fp=buf, headers=headers) == buf.len
-                    except:
-                        log.exception("Exception in simple reader thread")
-
-                thread = Thread(target=reader if multipart else simpleReader)
+                thread = Thread(target=reader)
                 thread.start()
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
-                yield writable, key
+                yield writable
             # The writable is now closed. This will send EOF to the readable and cause that
             # thread to finish.
             thread.join()
-            assert key.version_id is not None
-
-    def _download(self, jobStoreFileID, localFilePath, version):
-        headers = {}
-        self.__add_encryption_headers(headers)
-        key = self.files.get_key(jobStoreFileID, headers=headers)
-        key.get_contents_to_filename(localFilePath, version_id=version, headers=headers)
+            # assertion error here...
+            assert (fileInfo.version is None) != (fileInfo.buffer is None)
 
     @contextmanager
-    def _downloadStream(self, jobStoreFileID, version, bucket, encrypted=True):
+    def _writeToS3(self, fileInfo, encrypted=True):
+            oldVersion = fileInfo.version
+            with self._uploadStream(fileInfo, encrypted=encrypted, inline=False) as f:
+                yield f
+            fileInfo.jobStoreID = str(self.sharedFileJobID) if oldVersion is None else None
+            self._registerFile(fileInfo, oldVersion=oldVersion, isProtected=encrypted)
+
+    def _download(self, fileInfo,localFilePath):
+        headers = {}
+        self.__add_encryption_headers(headers)
+        if fileInfo.version:
+            key = self.files.get_key(fileInfo.jobStoreFileID, headers=headers)
+            key.get_contents_to_filename(localFilePath, version_id=fileInfo.version, headers=headers)
+        else:
+            with open(localFilePath, "w") as f:
+                f.write(fileInfo.buffer)
+
+    @contextmanager
+    def _downloadStream(self, fileInfo, encrypted=True):
+        def writer():
+            key.get_contents_to_file(writable, headers=headers, version_id=fileInfo.version)
+            # This close() will send EOF to the reading end and ultimately cause the
+            # yield to return. It also makes the implict .close() done by the enclosing
+            # "with" context redundant but that should be ok since .close() on file
+            # objects are idempotent.
+            writable.close()
         headers = {}
         if encrypted:
             self.__add_encryption_headers(headers)
-        key = bucket.get_key(jobStoreFileID, headers=headers)
-        readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
-                def writer():
-                    key.get_contents_to_file(writable, headers=headers, version_id=version)
-                    # This close() will send EOF to the reading end and ultimately cause the
-                    # yield to return. It also makes the implict .close() done by the enclosing
-                    # "with" context redundant but that should be ok since .close() on file
-                    # objects are idempotent.
-                    writable.close()
+        if fileInfo.version:
+            key = fileInfo.bucket.get_key(fileInfo.jobStoreFileID, headers=headers)
+            readable_fh, writable_fh = os.pipe()
+            with os.fdopen(readable_fh, 'r') as readable:
+                with os.fdopen(writable_fh, 'w') as writable:
+                    thread = Thread(target=writer)
+                    thread.start()
+                    yield readable
+                    thread.join()
+        elif fileInfo.buffer is not None:
+            yield StringIO(fileInfo.buffer)
 
-                thread = Thread(target=writer)
-                thread.start()
-                yield readable
-                thread.join()
-
-    def _registerFile(self, jobStoreFileID,
-                      bucketName='files', jobStoreID=None, newVersion=None, oldVersion=None):
+    def _registerFile(self, fileInfo, oldVersion=None, isProtected=True):
         """
         Register a a file in the store
 
@@ -620,36 +652,44 @@ class AWSJobStore(AbstractJobStore):
         :param jobStoreID: optional ID of the job owning the file, only allowed for first version of
                            file
 
-        :param newVersion: the file's new version or None if the file is to be registered without
+        :param newFile: the file's new version or None if the file is to be registered without
                            content, in which case jobStoreId must be passed
 
-        :param oldVersion: the expected previous version of the file or None if newVersion is the
+        :param oldVersion: the expected previous version of the file or None if newFile is the
                            first version or file is registered without content
         """
-        # Must pass newVersion if passing oldVersion
-        assert oldVersion is None or newVersion is not None
-        attributes = dict(bucketName=bucketName)
-        if newVersion is not None:
-            attributes['version'] = newVersion
-        if jobStoreID is not None:
-            attributes['jobStoreID'] = jobStoreID
+        attributes = {}
+        if fileInfo.version is not None:
+            attributes['version'] = fileInfo.version
+            attributes['fileType'] = fileInfo.bucket.name
+            attributes['fileType'] = fileInfo.fileType
+        elif fileInfo.buffer is not None:
+            attributes = fileInfo.toSDBItem(isProtected)
+            attributes['fileType'] = fileInfo.fileType
+        if fileInfo.jobStoreID is not None:
+            attributes['jobStoreID'] = fileInfo.jobStoreID
+
         # False stands for absence
-        expected = ['version', False if oldVersion is None else oldVersion]
+
+        expected = ('version', oldVersion) if oldVersion else None
+        if not attributes:
+            return
+        if fileInfo.version is None and oldVersion is not None:
+            attributes['version']=FileInfo.NoneString
         try:
             for attempt in retry_sdb():
                 with attempt:
-                    assert self.versions.put_attributes(item_name=jobStoreFileID,
+                    assert self.versions.put_attributes(item_name=fileInfo.jobStoreFileID,
                                                         attributes=attributes,
                                                         expected_value=expected)
             if oldVersion is not None:
-                bucket = getattr(self, bucketName)
-                bucket.delete_key(jobStoreFileID, version_id=oldVersion)
+                bucket = fileInfo.bucket
+                bucket.delete_key(fileInfo.jobStoreFileID, version_id=oldVersion)
         except SDBResponseError as e:
             if e.error_code == 'ConditionalCheckFailed':
-                raise ConcurrentFileModificationException(jobStoreFileID)
+                raise ConcurrentFileModificationException(fileInfo.jobStoreFileID)
             else:
                 raise
-
     def _fileSizeAndTime(self, localFilePath):
         file_stat = os.stat(localFilePath)
         file_size, file_time = file_stat.st_size, file_stat.st_mtime
@@ -674,8 +714,8 @@ class AWSJobStore(AbstractJobStore):
         return bool(status) and self.versionings[status['Versioning']]
 
     def __add_encryption_headers(self, headers):
-        if self.sseKey is not None:
-            self._add_encryption_headers(self.sseKey, headers)
+        if self.sseKeyPath is not None:
+            self._add_encryption_headers(self._sseKey(), headers)
 
     def deleteJobStore(self):
         self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
@@ -865,3 +905,131 @@ def parse_bool(s):
         return False
     else:
         raise ValueError(s)
+
+class FileInfo(object):
+    """
+    >>> f = FileInfo(None, None, None)
+    >>> f.version=3
+    >>> f.version
+    3
+    >>> f.version=4
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> f.buffer={}
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> f = FileInfo(None, None, None)
+    >>> f.buffer={}
+    >>> f.buffer
+    {}
+    >>> f.buffer={}
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    >>> f.version=4
+    Traceback (most recent call last):
+    ...
+    AssertionError
+    """
+    typeRegular="regular"
+    typeStats="stats"
+    def __init__(self, jobStore,jobStoreFileID, fileType):
+        """
+        :param fileType: "regular" or "stats"
+        """
+        self.jobStore=jobStore
+        self.jobStoreFileID=jobStoreFileID
+        self.fileType=fileType
+        self.jobStoreID=None
+        self._version=None
+        self._buffer=None
+
+    @property
+    def bucket(self):
+        if self.fileType==FileInfo.typeRegular:
+            return self.jobStore.files
+        elif self.fileType==FileInfo.typeStats:
+            return self.jobStore.stats
+        else:
+            assert False
+    @property
+    def version(self):
+        return self._version
+    @version.setter
+    def version(self, version):
+        assert self._version is None and self._buffer is None
+        self._version = version
+    @property
+    def buffer(self):
+        return self._buffer
+    @buffer.setter
+    def buffer(self, buffer):
+        assert self._buffer is None and self._version is None
+        self._buffer = buffer
+
+    def toSDBItem(self, isProtected=True):
+        """
+        Transforms the buffer into an optionally encrypted SDB-storable item
+        :param isProtected: bool indicating whether this file is encrypted
+        :return:
+        """
+        item = {}
+        bytes_per_attr = 1024 - encryptionOverhead
+        if bool(isProtected and self.jobStore.sseKeyPath):
+            stringToEncode = encrypt(self.buffer,self.jobStore.sseKeyPath)
+        else:
+            stringToEncode = self.buffer
+        serializedAndEncodedJob = base64.b64encode(bz2.compress(stringToEncode))
+        # this convoluted expression splits the string into the max value for an attribute in SDB
+        jobChunks = [serializedAndEncodedJob[i:i + bytes_per_attr]
+                     for i in range(0, len(serializedAndEncodedJob), bytes_per_attr)]
+        for attributeOrder, chunk in enumerate(jobChunks):
+            item[str(attributeOrder).zfill(3)] = chunk
+        return item
+
+    def fromSDBItem(self, item, isProtected=True):
+        """
+        Transforms an optionally enctyped SDB item into it's original string form
+        :param sseKey: str encryption key
+        :param isProtected: bool indicating whether this file is encrypted
+        :return:
+        """
+        chunkedFile = item.items()
+        chunkedFile.sort()
+        if len(chunkedFile) == 1:
+            # First element of list = tuple, second element of tuple = serialized job
+            wholeFileString = chunkedFile[0][1]
+        else:
+            wholeFileString = ''.join(item[1] for item in filter(lambda x: x[0].isdigit(), chunkedFile))
+        decoded = bz2.decompress(base64.b64decode(wholeFileString))
+        if bool(isProtected and self.jobStore.sseKeyPath):
+            return decrypt(decoded,self.jobStore.sseKeyPath)
+        else:
+            return decoded
+
+    NoneString = ""
+    @classmethod
+    def load(cls, jobStore, jobStoreFileID, isProtected=True):
+        """
+        new object that is File or Version
+        :rtype: tuple(str version, AWS bucket)
+        """
+        item = None
+        for attempt in retry_sdb():
+            with attempt:
+                #what attributes does this table have
+                item = jobStore.versions.get_attributes(item_name=jobStoreFileID,
+                                                    consistent_read=True)
+        fileType = item.get('fileType', None)
+        if fileType is None:
+            # this is only possible if register was not calledo
+            return None
+        else:
+            fileInfo = FileInfo(jobStore,jobStoreFileID,fileType)
+            if 'version' in item and item['version']!= FileInfo.NoneString:
+                fileInfo.version=item['version']
+            else:
+                fileInfo.buffer=fileInfo.fromSDBItem(item, isProtected)
+            return fileInfo

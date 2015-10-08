@@ -424,8 +424,45 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.awsJobStore import AWSJobStore
         AWSJobStore._s3_part_size = self.partSize
+        AWSJobStore._sdb_size = 20
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 
+    def testInlining(self):
+        # This tests the creation and modification of both inlined and non-inlined files,
+        # and various combinations of both
+        limit=self.master._sdb_size + self.master._encryption_overhead
+        under_limit = limit-5
+        over_limit = limit+5
+        # This tests the creation of an inlined file
+        with self.master.writeSharedFileStream("test") as f:
+            f.write("x"*under_limit)
+        with self.master.readSharedFileStream("test") as f:
+            self.assertEquals("x"*under_limit,f.read())
+        # inlined to s3 file path
+        with self.master.writeSharedFileStream("test") as f:
+            f.write("x"*over_limit)
+        with self.master.readSharedFileStream("test") as f:
+            self.assertEquals( "x"*over_limit,f.read())
+        # s3 to inlined
+        with self.master.writeSharedFileStream("test") as f:
+            f.write("x"*under_limit)
+        with self.master.readSharedFileStream("test") as f:
+            self.assertEquals( "x"*under_limit, f.read())
+        # inlined to inlined
+        with self.master.writeSharedFileStream("test") as f:
+            f.write("b"*under_limit)
+        with self.master.readSharedFileStream("test") as f:
+            self.assertEquals( "b"*under_limit, f.read())
+        # creation of s3 file
+        with self.master.writeSharedFileStream("test2") as f:
+            f.write("b"*over_limit)
+        with self.master.readSharedFileStream("test2") as f:
+            self.assertEquals( "b"*over_limit, f.read())
+        # s3 to s3
+        with self.master.writeSharedFileStream("test2") as f:
+            f.write("x"*over_limit)
+        with self.master.readSharedFileStream("test2") as f:
+            self.assertEquals( "x"*over_limit, f.read())
 
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
