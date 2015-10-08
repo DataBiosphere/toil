@@ -24,24 +24,21 @@ import bz2
 import cPickle
 import base64
 import hashlib
+import itertools
+import time
 
-# noinspection PyUnresolvedReferences
 from boto.sdb.domain import Domain
-# noinspection PyUnresolvedReferences
 from boto.s3.bucket import Bucket
-# noinspection PyUnresolvedReferences
 from boto.s3.connection import S3Connection
-# noinspection PyUnresolvedReferences
 from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError, BotoServerError
-import itertools
-import time
 
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, \
-    ConcurrentFileModificationException, NoSuchFileException
+from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+                                             ConcurrentFileModificationException,
+                                             NoSuchFileException)
 from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger(__name__)
@@ -82,8 +79,7 @@ class AWSJobStore(AbstractJobStore):
         for jobItem in result:
             yield AWSJob.fromItem(jobItem)
 
-    def create(self, command, memory, cores, disk, 
-               predecessorNumber=0):
+    def create(self, command, memory, cores, disk, predecessorNumber=0):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if command is None else command)
@@ -391,7 +387,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _connectSimpleDB(self):
         """
-        rtype: SDBConnection
+        :rtype: SDBConnection
         """
         db = boto.sdb.connect_to_region(self.region)
         if db is None:
@@ -412,7 +408,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _getOrCreateBucket(self, bucket_name, versioning=False):
         """
-        :rtype Bucket
+        :rtype: Bucket
         """
         assert self.bucketNameRe.match(bucket_name)
         assert 3 <= len(bucket_name) <= 63
