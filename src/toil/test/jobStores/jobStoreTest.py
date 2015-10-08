@@ -237,7 +237,13 @@ class hidden:
             #
             for store in worker, master:
                 self.assertFalse(store.fileExists(fileOne))
-                self.assertRaises(NoSuchFileException,store.readFile,fileOne,'')
+                self.assertRaises(NoSuchFileException, store.readFile, fileOne, '')
+                try:
+                    with store.readFileStream(fileOne) as f:
+                        pass
+                    self.fail('Expecting NoSuchFileException')
+                except NoSuchFileException:
+                    pass
 
             # Test stats and logging
             #
