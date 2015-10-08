@@ -18,7 +18,6 @@ from contextlib import contextmanager
 import logging
 import os
 import re
-from threading import Thread
 import uuid
 import bz2
 import cPickle
@@ -26,6 +25,7 @@ import base64
 import hashlib
 import itertools
 import time
+from bd2k.util.threading import ExceptionalThread
 
 from boto.sdb.domain import Domain
 from boto.s3.bucket import Bucket
@@ -528,39 +528,33 @@ class AWSJobStore(AbstractJobStore):
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
                 def reader():
+                    upload = self.filesBucket.initiate_multipart_upload(key_name=jobStoreFileID,
+                                                                        headers=headers)
                     try:
-                        upload = self.filesBucket.initiate_multipart_upload(key_name=jobStoreFileID,
-                                                                            headers=headers)
-                        try:
-                            for part_num in itertools.count():
-                                # FIXME: Consider using a key.set_contents_from_stream and rip ...
-                                # FIXME: ... the query_args logic from upload_part_from_file in ...
-                                # FIXME: ... in MultipartUpload. Possible downside is that ...
-                                # FIXME: ... implicit retries won't work.
-                                buf = readable.read(self._s3_part_size)
-                                # There must be at least one part, even if the file is empty.
-                                if len(buf) == 0 and part_num > 0: break
-                                upload.upload_part_from_file(fp=StringIO(buf),
-                                                             # S3 part numbers are 1-based
-                                                             part_num=part_num + 1, headers=headers)
-                                if len(buf) == 0: break
-                        except:
-                            upload.cancel_upload()
-                            raise
-                        else:
-                            key.version_id = upload.complete_upload().version_id
+                        for part_num in itertools.count():
+                            # FIXME: Consider using a key.set_contents_from_stream and rip ...
+                            # FIXME: ... the query_args logic from upload_part_from_file in ...
+                            # FIXME: ... in MultipartUpload. Possible downside is that ...
+                            # FIXME: ... implicit retries won't work.
+                            buf = readable.read(self._s3_part_size)
+                            # There must be at least one part, even if the file is empty.
+                            if len(buf) == 0 and part_num > 0: break
+                            upload.upload_part_from_file(fp=StringIO(buf),
+                                                         # S3 part numbers are 1-based
+                                                         part_num=part_num + 1, headers=headers)
+                            if len(buf) == 0: break
                     except:
-                        log.exception('Exception in reader thread')
+                        upload.cancel_upload()
+                        raise
+                    else:
+                        key.version_id = upload.complete_upload().version_id
 
                 def simpleReader():
                     log.debug("Using single part upload")
-                    try:
-                        buf = StringIO(readable.read())
-                        assert key.set_contents_from_file(fp=buf, headers=headers) == buf.len
-                    except:
-                        log.exception("Exception in simple reader thread")
+                    buf = StringIO(readable.read())
+                    assert key.set_contents_from_file(fp=buf, headers=headers) == buf.len
 
-                thread = Thread(target=reader if multipart else simpleReader)
+                thread = ExceptionalThread(target=reader if multipart else simpleReader)
                 thread.start()
                 # Yield the key now with version_id unset. When reader() returns
                 # key.version_id will be set.
@@ -593,7 +587,7 @@ class AWSJobStore(AbstractJobStore):
                     # objects are idempotent.
                     writable.close()
 
-                thread = Thread(target=writer)
+                thread = ExceptionalThread(target=writer)
                 thread.start()
                 yield readable
                 thread.join()
@@ -628,11 +622,13 @@ class AWSJobStore(AbstractJobStore):
         file_size, file_time = file_stat.st_size, file_stat.st_mtime
         return file_size, file_time
 
+    # FIXME: Should use Enum for this
+
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
     def __getBucketVersioning(self, bucket):
         """
-        A valueable lesson in how to feck up a simple tri-state boolean.
+        A valueable lesson in how to botch a simple tri-state boolean.
 
         For newly created buckets get_versioning_status returns None. We map that to False.
 
