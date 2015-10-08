@@ -165,6 +165,13 @@ class hidden:
             self.assertEquals(set(), set(worker.jobs()))
             self.assertEquals(set(), set(master.jobs()))
 
+            try:
+                with master.readSharedFileStream('foo') as f:
+                    pass
+                self.fail('Expecting NoSuchFileException')
+            except NoSuchFileException:
+                pass
+
             # Test shared files: Write shared file on master, ...
             #
             with master.writeSharedFileStream("foo") as f:
