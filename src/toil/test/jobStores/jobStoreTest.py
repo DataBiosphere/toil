@@ -74,6 +74,7 @@ class hidden:
             # Test initial state
             #
             self.assertFalse(master.exists("foo"))
+            self.assertRaises(NoSuchJobException, master.load, 'foo')
 
             # Create parent job and verify its existence/properties
             #
@@ -232,8 +233,10 @@ class hidden:
             worker.deleteFile(fileOne)
 
             # Check the file is gone
-            self.assertTrue(not worker.fileExists(fileOne))
-            self.assertTrue(not master.fileExists(fileOne))
+            #
+            for store in worker, master:
+                self.assertFalse(store.fileExists(fileOne))
+                self.assertRaises(NoSuchFileException,store.readFile,fileOne,'')
 
             # Test stats and logging
             #
