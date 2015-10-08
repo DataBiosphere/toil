@@ -127,6 +127,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
         worker.start()
         self.usedCpus = 0
         self.jobIDsToCpu = {}
+
+        #Set of jobs that have been issued but aren't known to
+        #have finished or been killed yet. Jobs that end
+        #by themselves are removed in getUpdatedJob, and jobs
+        #that are killed are removed in killBatchJobs.
+        self.runningJobs = set()
          
     def issueBatchJob(self, command, memory, cores, disk):
         """Issues parasol with job commands.
@@ -161,6 +167,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 time.sleep(5)
         jobID = int(match.group(1))
         self.jobIDsToCpu[jobID] = cores
+        self.runningJobs.add(jobID)
         logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
         logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID
@@ -171,6 +178,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """
         while True:
             for jobID in jobIDs:
+                if jobID in self.runningJobs:
+                    self.runningJobs.remove(jobID)
                 exitValue = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
@@ -215,6 +224,12 @@ class ParasolBatchSystem(AbstractBatchSystem):
         jobID = self.getFromQueueSafely(self.outputQueue2, maxWait)
         if jobID != None:
             self.outputQueue2.task_done()
+            if jobID[0] not in self.runningJobs:
+                #we tried to kill this job, but it ended by itself
+                #instead, so skip it.
+                return self.getUpdatedJob(maxWait)
+            else:
+                self.runningJobs.remove(jobID[0])
         return jobID
     
     @classmethod

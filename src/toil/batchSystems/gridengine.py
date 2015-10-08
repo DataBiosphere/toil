@@ -302,7 +302,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return self.worker.getRunningJobIDs()
 
     def getUpdatedBatchJob(self, maxWait):
-        i = self.updatedJobsQueue.get()
+        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
         logger.debug('UpdatedJobsQueue Item: %s', i)
         if i is None:
             return None

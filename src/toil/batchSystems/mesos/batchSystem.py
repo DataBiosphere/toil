@@ -68,6 +68,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # queue of jobs to kill, by jobID.
         self.killSet = set()
 
+        # contains jobs on which killBatchJobs were called,
+        #regardless of whether or not they actually were killed or
+        #ended by themselves.
+        self.intendedKill = set()
+
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and slaveID.
         self.runningJobMap = {}
 
@@ -127,6 +132,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             log.debug("passing tasks to kill to Mesos driver")
             self.killSet.add(jobID)
             localSet.add(jobID)
+            self.intendedKill.add(jobID)
 
             if jobID not in self.getIssuedBatchJobIDs():
                 self.killSet.remove(jobID)
@@ -180,6 +186,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
+        if jobID in self.intendedKill:
+            self.intendedKill.remove(jobID)
+            return self.getUpdatedBatchJob(maxWait)
         log.debug("Job updated with code {}".format(retcode))
         return i
 
