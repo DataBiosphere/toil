@@ -67,14 +67,14 @@ class AWSJobStore(AbstractJobStore):
     """
 
     def fileExists(self, jobStoreFileID):
-        return bool(self.versions.get_item(item_name=jobStoreFileID, consistent_read=True))
+        return bool(self.filesDomain.get_item(item_name=jobStoreFileID, consistent_read=True))
 
     def jobs(self):
         result = None
         for attempt in retry_sdb():
             with attempt:
-                result = list(self.jobDomain.select(
-                    query="select * from `{domain}` ".format(domain=self.jobDomain.name),
+                result = list(self.jobsDomain.select(
+                    query="select * from `{domain}` ".format(domain=self.jobsDomain.name),
                     consistent_read=True))
         assert result is not None
         for jobItem in result:
@@ -90,8 +90,8 @@ class AWSJobStore(AbstractJobStore):
                      predecessorNumber=predecessorNumber)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobDomain.put_attributes(item_name=jobStoreID,
-                                                     attributes=job.toItem())
+                assert self.jobsDomain.put_attributes(item_name=jobStoreID,
+                                                      attributes=job.toItem())
         return job
 
     def __init__(self, region, namePrefix, config=None):
@@ -109,9 +109,9 @@ class AWSJobStore(AbstractJobStore):
                   self.__class__, region, namePrefix)
         self.region = region
         self.namePrefix = namePrefix
-        self.jobDomain = None
-        self.versions = None
-        self.bucket = None
+        self.jobsDomain = None
+        self.filesDomain = None
+        self.filesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
         self.sseKey = None
@@ -128,9 +128,9 @@ class AWSJobStore(AbstractJobStore):
                 exists = parse_bool(attributes.get('exists', str(False)))
                 self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
 
-        self.jobDomain = self._getOrCreateDomain(self.qualify('jobs'))
-        self.versions = self._getOrCreateDomain(self.qualify('versions'))
-        self.bucket = self._getOrCreateBucket(self.qualify(), versioning=True)
+        self.jobsDomain = self._getOrCreateDomain(self.qualify('jobs'))
+        self.filesDomain = self._getOrCreateDomain(self.qualify('files'))
+        self.filesBucket = self._getOrCreateBucket(self.qualify('files'), versioning=True)
 
         # Now register this job store
         for attempt in retry_sdb():
@@ -150,9 +150,9 @@ class AWSJobStore(AbstractJobStore):
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
             with attempt:
-                return bool(self.jobDomain.get_attributes(item_name=jobStoreID,
-                                                          attribute_name=[],
-                                                          consistent_read=True))
+                return bool(self.jobsDomain.get_attributes(item_name=jobStoreID,
+                                                           attribute_name=[],
+                                                           consistent_read=True))
 
     def getPublicUrl(self, jobStoreFileID):
         """
@@ -161,7 +161,7 @@ class AWSJobStore(AbstractJobStore):
         Create url, check if valid, return.
         Encrypted file urls are currently not supported
         """
-        key = self.bucket.get_key(key_name=jobStoreFileID)
+        key = self.filesBucket.get_key(key_name=jobStoreFileID)
         # There should be no practical upper limit on when a job is allowed to access a public
         # URL so we set the expiration to 20 years.
         return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
@@ -174,7 +174,7 @@ class AWSJobStore(AbstractJobStore):
         item = None
         for attempt in retry_sdb():
             with attempt:
-                item = self.jobDomain.get_attributes(jobStoreID, consistent_read=True)
+                item = self.jobsDomain.get_attributes(jobStoreID, consistent_read=True)
         if not item:
             raise NoSuchJobException(jobStoreID)
         job = AWSJob.fromItem(item)
@@ -187,8 +187,8 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Updating job %s", job.jobStoreID)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobDomain.put_attributes(item_name=job.jobStoreID,
-                                                     attributes=job.toItem())
+                assert self.jobsDomain.put_attributes(item_name=job.jobStoreID,
+                                                      attributes=job.toItem())
 
     items_per_batch_delete = 25
 
@@ -197,13 +197,13 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Deleting job %s", jobStoreID)
         for attempt in retry_sdb():
             with attempt:
-                self.jobDomain.delete_attributes(item_name=jobStoreID)
+                self.jobsDomain.delete_attributes(item_name=jobStoreID)
         items = None
         for attempt in retry_sdb():
             with attempt:
-                items = list(self.versions.select(
+                items = list(self.filesDomain.select(
                     query="select itemName() from `%s` "
-                          "where jobStoreID='%s'" % (self.versions.name, jobStoreID),
+                          "where jobStoreID='%s'" % (self.filesDomain.name, jobStoreID),
                     consistent_read=True))
         assert items is not None
         if items:
@@ -211,15 +211,16 @@ class AWSJobStore(AbstractJobStore):
             n = self.items_per_batch_delete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
+                itemsDict = {item.name: None for item in batch}
                 for attempt in retry_sdb():
                     with attempt:
-                        self.versions.batch_delete_attributes({item.name: None for item in batch})
+                        self.filesDomain.batch_delete_attributes(itemsDict)
             for item in items:
                 if 'version' in item:
-                    self.bucket.delete_key(key_name=item.name,
-                                           version_id=item['version'])
+                    self.filesBucket.delete_key(key_name=item.name,
+                                                version_id=item['version'])
                 else:
-                    self.bucket.delete_key(key_name=item.name)
+                    self.filesBucket.delete_key(key_name=item.name)
 
     def writeFile(self, localFilePath, jobStoreID=None):
         info = FileInfo(self._newFileID(), jobID=jobStoreID)
@@ -314,11 +315,12 @@ class AWSJobStore(AbstractJobStore):
             for attempt in retry_sdb():
                 with attempt:
                     if info.version:
-                        self.versions.delete_attributes(jobStoreFileID,
-                                                        expected_values=['version', info.version])
+                        self.filesDomain.delete_attributes(
+                            jobStoreFileID,
+                            expected_values=['version', info.version])
                     else:
-                        self.versions.delete_attributes(jobStoreFileID)
-            self.bucket.delete_key(key_name=jobStoreFileID, version_id=info.version)
+                        self.filesDomain.delete_attributes(jobStoreFileID)
+            self.filesBucket.delete_key(key_name=jobStoreFileID, version_id=info.version)
             if info.version is None:
                 log.debug("Deleted unversioned file %s", jobStoreFileID)
             else:
@@ -342,9 +344,9 @@ class AWSJobStore(AbstractJobStore):
         items = None
         for attempt in retry_sdb():
             with attempt:
-                items = list(self.versions.select(
+                items = list(self.filesDomain.select(
                     query="select * from `%s` "
-                          "where fileType='%s'" % (self.versions.name, FileType.stats.name),
+                          "where fileType='%s'" % (self.filesDomain.name, FileType.stats.name),
                     consistent_read=True))
         assert items is not None
         for item in items:
@@ -461,10 +463,10 @@ class AWSJobStore(AbstractJobStore):
         item = None
         for attempt in retry_sdb():
             with attempt:
-                item = self.versions.get_attributes(item_name=jobStoreFileID,
-                                                    attribute_name=['version', 'fileType',
-                                                                    'jobStoreID'],
-                                                    consistent_read=True)
+                item = self.filesDomain.get_attributes(item_name=jobStoreFileID,
+                                                       attribute_name=['version', 'fileType',
+                                                                       'jobStoreID'],
+                                                       consistent_read=True)
         assert item is not None
         fileType = item.get('fileType')
         if fileType is None:
@@ -483,14 +485,14 @@ class AWSJobStore(AbstractJobStore):
         headers = {}
         self.__add_encryption_headers(headers)
         if file_size <= self._s3_part_size:
-            key = self.bucket.new_key(key_name=jobStoreFileID)
+            key = self.filesBucket.new_key(key_name=jobStoreFileID)
             key.name = jobStoreFileID
             key.set_contents_from_filename(localFilePath, headers=headers)
             version = key.version_id
         else:
             with open(localFilePath, 'rb') as f:
-                upload = self.bucket.initiate_multipart_upload(key_name=jobStoreFileID,
-                                                               headers=headers)
+                upload = self.filesBucket.initiate_multipart_upload(key_name=jobStoreFileID,
+                                                                    headers=headers)
                 try:
                     start = 0
                     part_num = itertools.count()
@@ -508,7 +510,7 @@ class AWSJobStore(AbstractJobStore):
                     raise
                 else:
                     version = upload.complete_upload().version_id
-        key = self.bucket.get_key(jobStoreFileID, headers=headers)
+        key = self.filesBucket.get_key(jobStoreFileID, headers=headers)
 
         assert key.size == file_size
         # Make resonably sure that the file wasn't touched during the upload
@@ -517,7 +519,7 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def _uploadStream(self, jobStoreFileID, multipart=True, encrypted=True):
-        key = self.bucket.new_key(key_name=jobStoreFileID)
+        key = self.filesBucket.new_key(key_name=jobStoreFileID)
         assert key.version_id is None
         readable_fh, writable_fh = os.pipe()
         headers = {}
@@ -527,8 +529,8 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(writable_fh, 'w') as writable:
                 def reader():
                     try:
-                        upload = self.bucket.initiate_multipart_upload(key_name=jobStoreFileID,
-                                                                       headers=headers)
+                        upload = self.filesBucket.initiate_multipart_upload(key_name=jobStoreFileID,
+                                                                            headers=headers)
                         try:
                             for part_num in itertools.count():
                                 # FIXME: Consider using a key.set_contents_from_stream and rip ...
@@ -571,7 +573,7 @@ class AWSJobStore(AbstractJobStore):
     def _download(self, jobStoreFileID, localFilePath, version):
         headers = {}
         self.__add_encryption_headers(headers)
-        key = self.bucket.get_key(jobStoreFileID, headers=headers)
+        key = self.filesBucket.get_key(jobStoreFileID, headers=headers)
         key.get_contents_to_filename(localFilePath, version_id=version, headers=headers)
 
     @contextmanager
@@ -579,7 +581,7 @@ class AWSJobStore(AbstractJobStore):
         headers = {}
         if encrypted:
             self.__add_encryption_headers(headers)
-        key = self.bucket.get_key(jobStoreFileID, headers=headers)
+        key = self.filesBucket.get_key(jobStoreFileID, headers=headers)
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
@@ -610,11 +612,11 @@ class AWSJobStore(AbstractJobStore):
         try:
             for attempt in retry_sdb():
                 with attempt:
-                    assert self.versions.put_attributes(item_name=info.fileID,
-                                                        attributes=attributes,
-                                                        expected_value=expected)
+                    assert self.filesDomain.put_attributes(item_name=info.fileID,
+                                                           attributes=attributes,
+                                                           expected_value=expected)
             if info.oldVersion is not None:
-                self.bucket.delete_key(info.fileID, version_id=info.oldVersion)
+                self.filesBucket.delete_key(info.fileID, version_id=info.oldVersion)
         except SDBResponseError as e:
             if e.error_code == 'ConditionalCheckFailed':
                 raise ConcurrentFileModificationException(info.fileID)
@@ -650,17 +652,17 @@ class AWSJobStore(AbstractJobStore):
 
     def deleteJobStore(self):
         self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
-        if self.bucket is not None:
-            for upload in self.bucket.list_multipart_uploads():
+        if self.filesBucket is not None:
+            for upload in self.filesBucket.list_multipart_uploads():
                 upload.cancel_upload()
-            if self.__getBucketVersioning(self.bucket) in (True, None):
-                for key in list(self.bucket.list_versions()):
-                    self.bucket.delete_key(key.name, version_id=key.version_id)
+            if self.__getBucketVersioning(self.filesBucket) in (True, None):
+                for key in list(self.filesBucket.list_versions()):
+                    self.filesBucket.delete_key(key.name, version_id=key.version_id)
             else:
-                for key in list(self.bucket.list()):
+                for key in list(self.filesBucket.list()):
                     key.delete()
-            self.bucket.delete()
-        for domain in (self.versions, self.jobDomain):
+            self.filesBucket.delete()
+        for domain in (self.filesDomain, self.jobsDomain):
             if domain is not None:
                 domain.delete()
 
