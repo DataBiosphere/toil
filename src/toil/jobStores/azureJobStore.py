@@ -16,7 +16,6 @@ import os
 import uuid
 import logging
 from contextlib import contextmanager
-from threading import Thread
 import inspect
 import bz2
 import cPickle
@@ -31,6 +30,8 @@ from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
                            BlobSharedAccessPermissions)
+
+from bd2k.util.threading import ExceptionalThread
 
 from toil.jobWrapper import JobWrapper
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
@@ -364,53 +365,50 @@ class AzureJobStore(AbstractJobStore):
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
                 def reader():
+                    blockIDs = []
                     try:
-                        blockIDs = []
-                        try:
-                            while True:
-                                buf = readable.read(maxBlockSize)
-                                if len(buf) == 0:
-                                    # We're safe to break here even if we never read anything, since
-                                    # putting an empty block list creates an empty blob.
-                                    break
-                                if encrypted:
-                                    buf = encrypt(buf, self.keyPath)
-                                blockID = self._newFileID()
-                                container.put_block(blob_name=jobStoreFileID, block=buf,
-                                                    blockid=blockID)
-                                blockIDs.append(blockID)
-                        except:
-                            # This is guaranteed to delete any uncommitted
-                            # blocks.
-                            container.delete_blob(blob_name=jobStoreFileID)
-                            raise
-
-                        if checkForModification and expectedVersion is not None:
-                            # Acquire a (60-second) write lock,
-                            leaseID = container.lease_blob(blob_name=jobStoreFileID,
-                                                           x_ms_lease_action='acquire'
-                                                           )['x-ms-lease-id']
-                            # check for modification,
-                            blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
-                            if blobProperties['etag'] != expectedVersion:
-                                container.lease_blob(blob_name=jobStoreFileID,
-                                                     x_ms_lease_action='release',
-                                                     x_ms_lease_id=leaseID)
-                                raise ConcurrentFileModificationException(jobStoreFileID)
-                            # commit the file,
-                            container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs,
-                                                     x_ms_lease_id=leaseID)
-                            # then release the lock.
-                            container.lease_blob(blob_name=jobStoreFileID,
-                                                 x_ms_lease_action='release', x_ms_lease_id=leaseID)
-                        else:
-                            # No need to check for modification, just blindly write over whatever
-                            # was there.
-                            container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs)
+                        while True:
+                            buf = readable.read(maxBlockSize)
+                            if len(buf) == 0:
+                                # We're safe to break here even if we never read anything, since
+                                # putting an empty block list creates an empty blob.
+                                break
+                            if encrypted:
+                                buf = encrypt(buf, self.keyPath)
+                            blockID = self._newFileID()
+                            container.put_block(blob_name=jobStoreFileID, block=buf,
+                                                blockid=blockID)
+                            blockIDs.append(blockID)
                     except:
-                        log.exception("Multipart reader thread encountered an exception")
+                        # This is guaranteed to delete any uncommitted
+                        # blocks.
+                        container.delete_blob(blob_name=jobStoreFileID)
+                        raise
 
-                thread = Thread(target=reader)
+                    if checkForModification and expectedVersion is not None:
+                        # Acquire a (60-second) write lock,
+                        leaseID = container.lease_blob(blob_name=jobStoreFileID,
+                                                       x_ms_lease_action='acquire'
+                                                       )['x-ms-lease-id']
+                        # check for modification,
+                        blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
+                        if blobProperties['etag'] != expectedVersion:
+                            container.lease_blob(blob_name=jobStoreFileID,
+                                                 x_ms_lease_action='release',
+                                                 x_ms_lease_id=leaseID)
+                            raise ConcurrentFileModificationException(jobStoreFileID)
+                        # commit the file,
+                        container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs,
+                                                 x_ms_lease_id=leaseID)
+                        # then release the lock.
+                        container.lease_blob(blob_name=jobStoreFileID,
+                                             x_ms_lease_action='release', x_ms_lease_id=leaseID)
+                    else:
+                        # No need to check for modification, just blindly write over whatever
+                        # was there.
+                        container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs)
+
+                thread = ExceptionalThread(target=reader)
                 thread.start()
                 yield writable
             # The writable is now closed. This will send EOF to the readable and cause that
@@ -423,14 +421,14 @@ class AzureJobStore(AbstractJobStore):
         if encrypted and self.keyPath is None:
             encrypted = False
             log.warning("Encryption requested but no key available, not decrypting")
-
+        # The reason this is not in the writer is so we catch non-existant blobs early
+        blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
                 def writer():
                     try:
                         chunkStartPos = 0
-                        blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
                         fileSize = int(blobProps['Content-Length'])
                         while chunkStartPos < fileSize:
                             chunkEndPos = chunkStartPos + self._maxAzureBlockBytes - 1
@@ -441,8 +439,6 @@ class AzureJobStore(AbstractJobStore):
                                 buf = decrypt(buf, self.keyPath)
                             writable.write(buf)
                             chunkStartPos = chunkEndPos + 1
-                    except:
-                        log.exception("Exception encountered in writer thread")
                     finally:
                         # Ensure readers aren't left blocking if this thread crashes.
                         # This close() will send EOF to the reading end and ultimately cause the
@@ -451,7 +447,7 @@ class AzureJobStore(AbstractJobStore):
                         # objects are idempotent.
                         writable.close()
 
-                thread = Thread(target=writer)
+                thread = ExceptionalThread(target=writer)
                 thread.start()
                 yield readable
                 thread.join()
