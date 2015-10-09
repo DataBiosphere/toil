@@ -23,56 +23,55 @@ kwargs = dict(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib==1.8.dev3',
-        'enum34' ],
+        'bd2k-python-lib==1.8.dev3'],
     tests_require=[
         'mock==1.0.1',
-        'pytest==2.7.2' ],
+        'pytest==2.7.2'],
     test_suite='toil',
     extras_require={
         'mesos': [
             'mesos.interface==0.22.0',
-            'psutil==3.0.1' ],
+            'psutil==3.0.1'],
         'aws': [
-            'boto==2.38.0' ],
+            'boto==2.38.0'],
         'azure': [
-            'azure==0.11.1' ],
+            'azure==0.11.1'],
         'encryption': [
-            'pynacl==0.3.0' ],
+            'pynacl==0.3.0'],
         'cwl': [
-            'cwltool>=1.0.20150918080732' ]},
-    package_dir={ '': 'src' },
-    packages=find_packages( 'src', exclude=[ '*.test' ] ),
+            'cwltool>=1.0.20150918080732']},
+    package_dir={'': 'src'},
+    packages=find_packages('src', exclude=['*.test']),
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',
             'cwltoil = toil.cwl.cwltoil:main [cwl]',
             'cwl-runner = toil.cwl.cwltoil:main [cwl]',
-            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]' ] } )
+            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 from setuptools.command.test import test as TestCommand
 
 
-class PyTest( TestCommand ):
-    user_options = [ ('pytest-args=', 'a', "Arguments to pass to py.test") ]
+class PyTest(TestCommand):
+    user_options = [('pytest-args=', 'a', "Arguments to pass to py.test")]
 
-    def initialize_options( self ):
-        TestCommand.initialize_options( self )
-        self.pytest_args = [ ]
+    def initialize_options(self):
+        TestCommand.initialize_options(self)
+        self.pytest_args = []
 
-    def finalize_options( self ):
-        TestCommand.finalize_options( self )
-        self.test_args = [ ]
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = []
         self.test_suite = True
 
-    def run_tests( self ):
+    def run_tests(self):
         import pytest
         # Sanitize command line arguments to avoid confusing Toil code attempting to parse them
         sys.argv[1:] = []
-        errno = pytest.main( self.pytest_args )
-        sys.exit( errno )
+        errno = pytest.main(self.pytest_args)
+        sys.exit(errno)
 
 
-kwargs[ 'cmdclass' ] = { 'test': PyTest }
+kwargs['cmdclass'] = {'test': PyTest}
 
-setup( **kwargs )
+setup(**kwargs)
