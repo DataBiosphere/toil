@@ -65,33 +65,6 @@ class AWSJobStore(AbstractJobStore):
     item representing the job. UUIDs are used to identify jobs and files.
     """
 
-    def fileExists(self, jobStoreFileID):
-        return bool(self.filesDomain.get_item(item_name=jobStoreFileID, consistent_read=True))
-
-    def jobs(self):
-        result = None
-        for attempt in retry_sdb():
-            with attempt:
-                result = list(self.jobsDomain.select(
-                    consistent_read=True,
-                    query="select * from `%s`" % self.jobsDomain.name))
-        assert result is not None
-        for jobItem in result:
-            yield AWSJob.fromItem(jobItem)
-
-    def create(self, command, memory, cores, disk, predecessorNumber=0):
-        jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if command is None else command)
-        job = AWSJob(jobStoreID=jobStoreID,
-                     command=command, memory=memory, cores=cores, disk=disk,
-                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     predecessorNumber=predecessorNumber)
-        for attempt in retry_sdb():
-            with attempt:
-                assert self.jobsDomain.put_attributes(*job.toItem())
-        return job
-
     def __init__(self, region, namePrefix, config=None):
         """
         Create a new job store in AWS or load an existing one from there.
@@ -126,9 +99,12 @@ class AWSJobStore(AbstractJobStore):
                 exists = parse_bool(attributes.get('exists', str(False)))
                 self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
 
-        self.jobsDomain = self._getOrCreateDomain(self.qualify('jobs'))
-        self.filesDomain = self._getOrCreateDomain(self.qualify('files'))
-        self.filesBucket = self._getOrCreateBucket(self.qualify('files'), versioning=True)
+        def qualify(name):
+            return self.namePrefix + self.nameSeparator + name
+
+        self.jobsDomain = self._getOrCreateDomain(qualify('jobs'))
+        self.filesDomain = self._getOrCreateDomain(qualify('files'))
+        self.filesBucket = self._getOrCreateBucket(qualify('files'), versioning=True)
 
         # Now register this job store
         for attempt in retry_sdb():
@@ -142,8 +118,18 @@ class AWSJobStore(AbstractJobStore):
             with open(self.config.sseKey) as f:
                 self.sseKey = f.read()
 
-    def qualify(self, name=None):
-        return self.namePrefix if name is None else self.namePrefix + self.nameSeparator + name
+    def create(self, command, memory, cores, disk, predecessorNumber=0):
+        jobStoreID = self._newJobID()
+        log.debug("Creating job %s for '%s'",
+                  jobStoreID, '<no command>' if command is None else command)
+        job = AWSJob(jobStoreID=jobStoreID,
+                     command=command, memory=memory, cores=cores, disk=disk,
+                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
+                     predecessorNumber=predecessorNumber)
+        for attempt in retry_sdb():
+            with attempt:
+                assert self.jobsDomain.put_attributes(*job.toItem())
+        return job
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
@@ -152,18 +138,16 @@ class AWSJobStore(AbstractJobStore):
                                                            attribute_name=[],
                                                            consistent_read=True))
 
-    def getPublicUrl(self, jobStoreFileID):
-        info = self._loadFileInfo(jobStoreFileID)
-        if info is None:
-            raise NoSuchFileException(jobStoreFileID)
-        key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-        # There should be no practical upper limit on when a job is allowed to access a public
-        # URL so we set the expiration to 20 years.
-        return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
-
-    def getSharedPublicUrl(self, sharedFileName):
-        assert self._validateSharedFileName(sharedFileName)
-        return self.getPublicUrl(self._sharedFileID(sharedFileName))
+    def jobs(self):
+        result = None
+        for attempt in retry_sdb():
+            with attempt:
+                result = list(self.jobsDomain.select(
+                    consistent_read=True,
+                    query="select * from `%s`" % self.jobsDomain.name))
+        assert result is not None
+        for jobItem in result:
+            yield AWSJob.fromItem(jobItem)
 
     def load(self, jobStoreID):
         item = None
@@ -216,6 +200,12 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     self.filesBucket.delete_key(key_name=item.name)
 
+    def getEmptyFileStoreID(self, jobStoreID=None):
+        info = FileInfo(self._newFileID(), ownerID=jobStoreID)
+        self._saveFileInfo(info)
+        log.debug("Registered empty file %s for job %s", info.fileID, info.ownerID)
+        return info.fileID
+
     def writeFile(self, localFilePath, jobStoreID=None):
         info = FileInfo(self._newFileID(), ownerID=jobStoreID)
         self._upload(info, localFilePath)
@@ -266,6 +256,9 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Wrote version %s of file %s, replacing version %s",
                   info.version, info.fileID, info.oldVersion)
 
+    def fileExists(self, jobStoreFileID):
+        return self._loadFileInfo(jobStoreFileID) is not None
+
     def readFile(self, jobStoreFileID, localFilePath):
         info = self._loadFileInfo(jobStoreFileID)
         if info is None:
@@ -314,12 +307,6 @@ class AWSJobStore(AbstractJobStore):
             else:
                 log.debug("Deleted version %s of file %s", info.version, jobStoreFileID)
 
-    def getEmptyFileStoreID(self, jobStoreID=None):
-        info = FileInfo(self._newFileID(), ownerID=jobStoreID)
-        self._saveFileInfo(info)
-        log.debug("Registered empty file %s for job %s", info.fileID, info.ownerID)
-        return info.fileID
-
     def writeStatsAndLogging(self, statsAndLoggingString):
         info = FileInfo(self._newFileID(), ownerID=str(self.statsFileOwnerID))
         with self._uploadStream(info, multipart=False) as writeable:
@@ -343,6 +330,19 @@ class AWSJobStore(AbstractJobStore):
             self.deleteFile(item.name)
             itemsProcessed += 1
         return itemsProcessed
+
+    def getPublicUrl(self, jobStoreFileID):
+        info = self._loadFileInfo(jobStoreFileID)
+        if info is None:
+            raise NoSuchFileException(jobStoreFileID)
+        key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
+        # There should be no practical upper limit on when a job is allowed to access a public
+        # URL so we set the expiration to 20 years.
+        return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
+
+    def getSharedPublicUrl(self, sharedFileName):
+        assert self._validateSharedFileName(sharedFileName)
+        return self.getPublicUrl(self._sharedFileID(sharedFileName))
 
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double
@@ -598,8 +598,6 @@ class AWSJobStore(AbstractJobStore):
         file_stat = os.stat(localFilePath)
         file_size, file_time = file_stat.st_size, file_stat.st_mtime
         return file_size, file_time
-
-    # FIXME: Should use Enum for this
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
