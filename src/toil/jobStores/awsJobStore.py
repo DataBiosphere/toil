@@ -153,13 +153,10 @@ class AWSJobStore(AbstractJobStore):
                                                            consistent_read=True))
 
     def getPublicUrl(self, jobStoreFileID):
-        """
-        For Amazon SimpleDB requests, use HTTP GET requests that are URLs with query strings.
-        http://awsdocs.s3.amazonaws.com/SDB/latest/sdb-dg.pdf
-        Create url, check if valid, return.
-        Encrypted file urls are currently not supported
-        """
-        key = self.filesBucket.get_key(key_name=jobStoreFileID)
+        info = self._loadFileInfo(jobStoreFileID)
+        if info is None:
+            raise NoSuchFileException(jobStoreFileID)
+        key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
         # There should be no practical upper limit on when a job is allowed to access a public
         # URL so we set the expiration to 20 years.
         return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)

@@ -168,7 +168,7 @@ class hidden:
             self.assertEquals(set(), set(master.jobs()))
 
             try:
-                with master.readSharedFileStream('foo') as f:
+                with master.readSharedFileStream('missing') as f:
                     pass
                 self.fail('Expecting NoSuchFileException')
             except NoSuchFileException:
@@ -187,8 +187,9 @@ class hidden:
 
             with master.writeSharedFileStream("nonEncrypted", isProtected=False) as f:
                 f.write("bar")
-            sharedUrl = master.getSharedPublicUrl("nonEncrypted")
-            self.assertUrl(sharedUrl)
+            self.assertUrl(master.getSharedPublicUrl('nonEncrypted'))
+            self.assertRaises(NoSuchFileException, master.getSharedPublicUrl, 'missing')
+
             # Test per-job files: Create empty file on master, ...
             #
             # First recreate job
