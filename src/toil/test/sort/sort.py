@@ -32,34 +32,44 @@ sortMemory = human2bytes('1000M')
 def setup(job, inputFile, N):
     """Sets up the sort.
     """
+    #Write the input file to the file store
+    inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
     job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
-        inputFile, 0, os.path.getsize(inputFile), N).rv(), inputFile, memory=sortMemory)
+                        inputFileStoreID, N).rv(), inputFile, memory=sortMemory)
 
-def down(job, inputFile, fileStart, fileEnd, N):
+def down(job, inputFileStoreID, N):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    length = fileEnd - fileStart
+    #Read the file
+    inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
+    length = os.path.getsize(inputFile)
     if length > N:
         #We will subdivide the file
-        job.fileStore.logToMaster( "Splitting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
-        midPoint = getMidPoint(inputFile, fileStart, fileEnd)
+        job.fileStore.logToMaster( "Splitting file: %s of size: %s"
+                                      % (inputFileStoreID, length), level=logging.CRITICAL )
+        #Split the file into two copies
+        midPoint = getMidPoint(inputFile, 0, length)
+        t1 = job.fileStore.getLocalTempFile()
+        with open(t1, 'w') as fH:
+            copySubRangeOfFile(inputFile, 0, midPoint+1, fH)
+        t2 = job.fileStore.getLocalTempFile()
+        with open(t2, 'w') as fH:
+            copySubRangeOfFile(inputFile, midPoint+1, length, fH)
+        #Call down recursively
         return job.addFollowOnJobFn(up,
-            job.addChildJobFn(down, inputFile, fileStart, midPoint+1, N, memory=sortMemory).rv(),
-            job.addChildJobFn(down, inputFile, midPoint+1, fileEnd, N, memory=sortMemory).rv()).rv()          
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, memory=sortMemory).rv(),
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, memory=sortMemory).rv()).rv()          
     else:
         #We can sort this bit of the file
-        job.fileStore.logToMaster( "Sorting range (%i..%i) of file: %s"
-                                      % (fileStart, fileEnd, inputFile), level=logging.CRITICAL )
-        t = job.fileStore.getLocalTempFile()
-        with open(t, 'w') as fH:
-            copySubRangeOfFile(inputFile, fileStart, fileEnd, fH)
-        sort(t)
-        return job.fileStore.writeGlobalFile(t)
+        job.fileStore.logToMaster( "Sorting file: %s of size: %s"
+                                      % (inputFileStoreID, length), level=logging.CRITICAL )
+        #Sort the copy and write back to the fileStore
+        sort(inputFile)
+        return job.fileStore.writeGlobalFile(inputFile)
 
 def up(job, inputFileID1, inputFileID2):
     """Merges the two files and places them in the output.
@@ -78,9 +88,7 @@ def up(job, inputFileID1, inputFileID2):
 def cleanup(job, tempOutputFileStoreID, outputFile):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    localTempFile = job.fileStore.readGlobalFile(tempOutputFileStoreID)
-    shutil.copyfile(localTempFile, outputFile)
-    #sort(outputFile)
+    job.fileStore.readGlobalFile(tempOutputFileStoreID, userPath=outputFile)
 
 def main():
     parser = ArgumentParser()
