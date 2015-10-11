@@ -375,7 +375,7 @@ class Job(object):
             """
             self.jobStore = jobStore
             self.jobWrapper = jobWrapper
-            self.localTempDir = localTempDir
+            self.localTempDir = os.path.abspath(localTempDir)
             self.loggingMessages = []
             self.filesToDelete = set()
             self.jobsToDelete = set()
@@ -445,7 +445,7 @@ class Job(object):
             handle, tmpFile = tempfile.mkstemp(prefix="tmp", 
                                                suffix=".tmp", dir=self.localTempDir)
             os.close(handle)
-            return os.path.abspath(tmpFile)
+            return os.path.abspath(tmpFile) 
 
         def writeGlobalFile(self, localFileName, cleanup=False):
             """
@@ -456,18 +456,25 @@ class Job(object):
             and all its successors have completed running. If not the global file 
             must be deleted manually.
             
-            The write is asynchronous, so further modifications during execution 
-            to the file pointed by localFileName will result in undetermined behavior. 
+            If the local file is a file returned by Job.FileStore.getLocalTempFile
+            or is in a directory, or, recursively, a subdirectory, returned by 
+            Job.FileStore.getLocalTempDir then the write is asynchronous, 
+            so further modifications during execution to the file pointed by 
+            localFileName will result in undetermined behavior. Otherwise, the 
+            method will block until the file is written to the file store. 
             """
-            jobStoreFileID = self.jobStore.getEmptyFileStoreID(None 
-                            if not cleanup else self.jobWrapper.jobStoreID)
-            self.queue.put((open(localFileName, 'r'), jobStoreFileID))
-            #Now put the file into the cache if it is a path within localTempDir
+            #Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
+            cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
             if absLocalFileName.startswith(self.localTempDir):
-                #Chmod to make file read only
+                jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
+                self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
+                #Chmod to make file read only to try to prevent accidental user modification
                 os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 self.jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
+            else:
+                #Write the file directly to the file store
+                jobStoreFileID = self.jobStore.writeFile(localFileName, cleanupID)
             return jobStoreFileID
         
         def writeGlobalFileStream(self, cleanup=False):
@@ -482,53 +489,71 @@ class Job(object):
             #TODO: Make this work with the caching??
             return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
         
-        def readGlobalFile(self, fileStoreID, userPath=None):
+        def readGlobalFile(self, fileStoreID, userPath=None, cache=True):
             """
             Returns an absolute path to a local, temporary copy of the file 
             keyed by fileStoreID. 
             
-            *The returned file will be read only (have permissions 444).* 
-            
             :param userPath: a path to the name of file to which the global file will be 
-            copied or hard-linked (see below). userPath must either be: (1) a 
-            file path contained within a directory or, recursively, a subdirectory 
-            of a temporary directory returned by Job.FileStore.getLocalTempDir(), 
-            or (2) a file path returned by Job.FileStore.getLocalTempFile(). 
-            If userPath is specified and this is not true a RuntimeError exception 
-            will be raised. If userPath is specified and the file is already cached, 
+            copied or hard-linked (see below). 
+            
+            :param cache: a boolean to switch on caching (see below). Caching will 
+            attempt to keep copies of files between sequences of jobs run on the same 
+            worker. 
+            
+            If cache=True and userPath is either: 
+            (1) a file path contained within a directory or, 
+            recursively, a subdirectory of a temporary directory returned by 
+            Job.FileStore.getLocalTempDir(), or (2) a file path returned by 
+            Job.FileStore.getLocalTempFile() then the file will be cached and
+            returned file will be read only (have permissions 444).
+            If userPath is specified and the file is already cached, 
             the userPath file will be a hard link to the actual location, else it 
-            will be an actual copy of the file.  
+            will be an actual copy of the file. 
+            
+            If the cache=False or userPath is not either of the above the file 
+            will not be cached and will have default permissions. Note, if the file
+            is already cached this will result in two copies of the file on the system.
+            
+            :rtype : the absolute path to the read file
             """
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             if userPath != None:
                 userPath = os.path.abspath(userPath) #Make an absolute path
-                #Check it is a valid location
-                if not userPath.startswith(self.localTempDir):
-                    raise RuntimeError("The user path is not contained within the"
-                                       " temporary file hierarchy created by the job."
-                                       " User path: %s, temporary file root path: %s" % 
-                                       (userPath, self.localTempDir))
+                #Turn off caching if user file is not in localTempDir
+                if cache and not userPath.startswith(self.localTempDir):
+                    cache = False  
             #When requesting a new file from the jobStore first check if fileStoreID
             #is a key in jobStoreFileIDToCacheLocation.
             if fileStoreID in self.jobStoreFileIDToCacheLocation:
                 cachedAbsFilePath = self.jobStoreFileIDToCacheLocation[fileStoreID]   
-                #If the user specifies a location and it is not the current location
-                # return a hardlink to the location, else return the original location
-                if userPath == None or userPath == cachedAbsFilePath:
-                    return cachedAbsFilePath
-                if os.path.exists(userPath):
-                    os.remove(userPath)
-                os.link(cachedAbsFilePath, userPath)
-                return userPath
+                if cache:
+                    #If the user specifies a location and it is not the current location
+                    #return a hardlink to the location, else return the original location
+                    if userPath == None or userPath == cachedAbsFilePath:
+                        return cachedAbsFilePath
+                    #Chmod to make file read only
+                    if os.path.exists(userPath):
+                        os.remove(userPath)
+                    os.link(cachedAbsFilePath, userPath)
+                    return userPath
+                else:
+                    #If caching is not true then make a copy of the file
+                    localFilePath = userPath if userPath != None else self.getLocalTempFile()
+                    shutil.copyfile(cachedAbsFilePath, localFilePath)
+                    return localFilePath
             else:
                 #If it is not in the cache read it from the jobStore to the 
                 #desired location
                 localFilePath = userPath if userPath != None else self.getLocalTempFile()
                 self.jobStore.readFile(fileStoreID, localFilePath)
-                self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
-                #Chmod to make file read only
-                os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                #If caching is enabled and the file is in local temp dir then
+                #add to cache and make read only
+                if cache:
+                    assert localFilePath.startswith(self.localTempDir)
+                    self.jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
+                    os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 return localFilePath
 
         def readGlobalFileStream(self, fileStoreID):
@@ -601,7 +626,7 @@ class Job(object):
                     
                     #Indicate any files that should be deleted once the update of 
                     #the job wrapper is completed.
-                    self.jobWrapper.filesToDelete = len(self.filesToDelete)
+                    self.jobWrapper.filesToDelete = list(self.filesToDelete)
                     
                     #Complete the job
                     self.jobStore.update(self.jobWrapper)
@@ -638,7 +663,7 @@ class Job(object):
             At the end of the job, remove all localTempDir files except those whose value is in
             jobStoreFileIDToCacheLocation.
             
-            The param cacheSize is the total number of bytes of files allowed in the cache.
+            :param cacheSize: the total number of bytes of files allowed in the cache.
             """
             #Remove files so that the total cached files are smaller than a cacheSize
             

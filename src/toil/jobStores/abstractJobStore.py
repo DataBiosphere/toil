@@ -134,7 +134,7 @@ class AbstractJobStore( object ):
                 for fileID in jobWrapper.filesToDelete:
                     logger.critical("Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
                     self.deleteFile(fileID)
-                jobWrapper.filesToDelete = set()
+                jobWrapper.filesToDelete = []
                 changed = True
             
             #Delete a jobWrapper if it is not reachable from the rootJobWrapper
