@@ -702,7 +702,7 @@ class Job(object):
                 os.remove(dirOrFile)
                 return True    
             clean(self.localTempDir)
-        
+            
         def _blockFn(self):
             """
             Blocks while _updateJobWhenDone is running.

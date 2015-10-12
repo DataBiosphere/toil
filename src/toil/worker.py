@@ -256,6 +256,9 @@ def main():
         if config.stats:
             startTime = time.time()
             startClock = getTotalCpuTime()
+            
+        #Make a temporary file directory for the jobWrapper
+        localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
 
         startTime = time.time() 
         while True:
@@ -265,9 +268,6 @@ def main():
             
             if jobWrapper.command != None:
                 if jobWrapper.command.startswith( "_toil " ):
-                    #Make a temporary file directory for the jobWrapper
-                    localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
-                    
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
                                               blockFn, jobStoreFileIDToCacheLocation, 
