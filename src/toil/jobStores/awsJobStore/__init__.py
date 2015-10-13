@@ -702,9 +702,7 @@ class AWSJobStore(AbstractJobStore):
                                 writable.write(self._extract())
                             elif self.version:
                                 headers = self._s3EncryptionHeaders()
-                                key = self.outer.filesBucket.get_key(self.fileID,
-                                                                     headers=headers,
-                                                                     validate=False)
+                                key = self.outer.filesBucket.get_key(self.fileID, validate=False)
                                 key.get_contents_to_file(writable,
                                                          headers=headers,
                                                          version_id=self.version)
