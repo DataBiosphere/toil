@@ -33,11 +33,11 @@ class ConcurrentFileModificationException( Exception ):
             'Concurrent update to file %s detected.' % jobStoreFileID )
 
 class NoSuchFileException( Exception ):
-    def __init__( self, jobStoreFileID, sharedFileName=None ):
-        if sharedFileName is None:
+    def __init__( self, jobStoreFileID, customName=None ):
+        if customName is None:
             message = "File '%s' does not exist" % jobStoreFileID
         else:
-            message = "Shared file '%s' (%s) does not exist" % ( sharedFileName, jobStoreFileID )
+            message = "File '%s' (%s) does not exist" % ( customName, jobStoreFileID )
         super( NoSuchFileException, self ).__init__(message)
 
 class JobStoreCreationException( Exception ):

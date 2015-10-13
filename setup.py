@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import sys
 from version import version
 from setuptools import find_packages, setup
@@ -23,7 +24,7 @@ kwargs = dict(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib==1.8.dev3'],
+        'bd2k-python-lib==1.9.dev1'],
     tests_require=[
         'mock==1.0.1',
         'pytest==2.7.2'],
