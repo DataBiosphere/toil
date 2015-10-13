@@ -427,8 +427,8 @@ class AWSJobStore(AbstractJobStore):
         :type: AWSJobStore
         """
 
-        def __init__(self, fileID, ownerID,
-                     encrypted=True, version=None, content=None, numContentChunks=0):
+        def __init__(self, fileID, ownerID, encrypted,
+                     version=None, content=None, numContentChunks=0):
             """
             :type fileID: str
             :param fileID: the file's ID
@@ -489,7 +489,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def create(cls, ownerID):
-            return cls(str(uuid.uuid4()), ownerID)
+            return cls(str(uuid.uuid4()), ownerID, encrypted=True)
 
         @classmethod
         def load(cls, jobStoreFileID):
@@ -501,14 +501,15 @@ class AWSJobStore(AbstractJobStore):
                     return self
 
         @classmethod
-        def loadOrCreate(cls, fileID, ownerID, encrypted=True):
+        def loadOrCreate(cls, fileID, ownerID, encrypted):
             self = cls.load(fileID)
             if self is None:
-                self = cls(fileID, ownerID=ownerID, encrypted=encrypted)
+                self = cls(fileID, ownerID, encrypted)
             else:
                 assert self.fileID == fileID
                 assert self.ownerID == ownerID
-                assert self.encrypted is encrypted, "Can't change encryption status of file"
+                # Honor encryption request. We might still fall back to unencrypted on save.
+                self.encrypted = encrypted
             return self
 
         @classmethod
@@ -536,30 +537,43 @@ class AWSJobStore(AbstractJobStore):
                 assert encrypted is None
                 return None
             else:
+                version = item['version']
+                encrypted = parse_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
-                self = cls(fileID=item.name,
-                           ownerID=ownerID,
-                           encrypted=parse_bool(encrypted),
-                           version=item['version'],
-                           content=content,
-                           numContentChunks=numContentChunks)
+                # If there is not content
+                if encrypted and content:
+                    sseKeyPath = cls.outer.sseKeyPath
+                    assert sseKeyPath is not None
+                    content = decrypt(content, sseKeyPath)
+                self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
+                           content=content, numContentChunks=numContentChunks)
                 return self
 
         def toAttributes(self):
-            numChunks = 0
-            attributes = dict(ownerID=self.ownerID,
-                              encrypted=self.encrypted,
-                              version=self.version or '')
-            if self.content is not None:
-                chunks = self.binaryToAttributes(self.content)
-                numChunks = len(chunks)
-                attributes.update(chunks)
+            if self.content is None:
+                numChunks = 0
+                attributes = {}
+            else:
+                content = self.content
+                if self.encrypted:
+                    sseKeyPath = self.outer.sseKeyPath
+                    if sseKeyPath is None:
+                        self.encrypted = False
+                        log.warning("No encryption key set, falling back to plain text for "
+                                    "inlined content of %r.", self)
+                    else:
+                        content = encrypt(content, sseKeyPath)
+                attributes = self.binaryToAttributes(content)
+                numChunks = len(attributes)
+            attributes.update(dict(ownerID=self.ownerID,
+                                   encrypted=self.encrypted,
+                                   version=self.version or ''))
             return attributes, numChunks
 
         def save(self):
+            attributes, numNewContentChunks = self.toAttributes()
             # False stands for absence
             expected = ['version', False if self.previousVersion is None else self.previousVersion]
-            attributes, numNewContentChunks = self.toAttributes()
             try:
                 for attempt in retry_sdb():
                     with attempt:
@@ -589,7 +603,7 @@ class AWSJobStore(AbstractJobStore):
             file_size, file_time = self._fileSizeAndTime(localFilePath)
             if file_size < self.maxInlinedSize():
                 with open(localFilePath) as f:
-                    self._inline(f.read())
+                    self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
                 if file_size <= self._s3_part_size:
@@ -635,7 +649,7 @@ class AWSJobStore(AbstractJobStore):
                     def multipartReader():
                         buf = readable.read(self._s3_part_size)
                         if allowInlining and len(buf) <= self.maxInlinedSize():
-                            self._inline(buf)
+                            self.content = buf
                         else:
                             headers = self._s3EncryptionHeaders()
                             upload = store.filesBucket.initiate_multipart_upload(
@@ -660,7 +674,7 @@ class AWSJobStore(AbstractJobStore):
                     def reader():
                         buf = readable.read()
                         if allowInlining and len(buf) <= self.maxInlinedSize():
-                            self._inline(buf)
+                            self.content = buf
                         else:
                             key = store.filesBucket.new_key(key_name=self.fileID)
                             buf = StringIO(buf)
@@ -679,7 +693,7 @@ class AWSJobStore(AbstractJobStore):
         def download(self, localFilePath):
             if self.content is not None:
                 with open(localFilePath, 'w') as f:
-                    f.write(self._extract())
+                    f.write(self.content)
             elif self.version:
                 headers = self._s3EncryptionHeaders()
                 key = self.outer.filesBucket.get_key(self.fileID, validate=False)
@@ -697,7 +711,7 @@ class AWSJobStore(AbstractJobStore):
                     def writer():
                         try:
                             if self.content is not None:
-                                writable.write(self._extract())
+                                writable.write(self.content)
                             elif self.version:
                                 headers = self._s3EncryptionHeaders()
                                 key = self.outer.filesBucket.get_key(self.fileID, validate=False)
@@ -717,30 +731,6 @@ class AWSJobStore(AbstractJobStore):
                     thread.start()
                     yield readable
                     thread.join()
-
-        def _inline(self, content):
-            """
-            Inline the given content in this file info object. This will skip uploading the
-            content to S3 and store along (aka inline) with the other file-related metadata in SDB.
-            """
-            if self.encrypted:
-                sseKeyPath = self.outer.sseKeyPath
-                if sseKeyPath is not None:
-                    content = encrypt(content, sseKeyPath)
-                else:
-                    self.encrypted = False
-            self.content = content
-
-        def _extract(self):
-            """
-            Extract inlined content from this file info object.
-            """
-            content = self.content
-            if self.encrypted:
-                sseKeyPath = self.outer.sseKeyPath
-                if sseKeyPath is not None:
-                    content = decrypt(content, sseKeyPath)
-            return content
 
         def delete(self):
             store = self.outer
