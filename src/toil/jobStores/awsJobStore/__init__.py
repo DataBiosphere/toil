@@ -314,9 +314,7 @@ class AWSJobStore(AbstractJobStore):
             with info.uploadStream(allowInlining=False) as f:
                 f.write(info.content)
         key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-        # There should be no practical upper limit on when a job is allowed to access a public
-        # URL so we set the expiration to 20 years.
-        return key.generate_url(expires_in=60 * 60 * 24 * 365 * 20)
+        return key.generate_url(expires_in=60 * 60 * 24 * 365)
 
     def getSharedPublicUrl(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)

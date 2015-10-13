@@ -280,8 +280,10 @@ class AzureJobStore(AbstractJobStore):
 
     def getPublicUrl(self, jobStoreFileID):
         # By default, we provide a link to the file which expires in one hour.
+        # Compensate of a little bit of clock skew
         startTimeStr = (datetime.utcnow() - timedelta(minutes=5)).strftime(self._azureTimeFormat)
-        endTimeStr = (datetime.utcnow() + timedelta(hours=1)).strftime(self._azureTimeFormat)
+        # One year should be sufficient to finish any pipeline ;-)
+        endTimeStr = (datetime.utcnow() + timedelta(days=365)).strftime(self._azureTimeFormat)
         sap = SharedAccessPolicy(AccessPolicy(startTimeStr, endTimeStr,
                                               BlobSharedAccessPermissions.READ))
         sas_token = self.files.generate_shared_access_signature(blob_name=jobStoreFileID,
