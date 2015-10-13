@@ -279,7 +279,10 @@ class AzureJobStore(AbstractJobStore):
     _azureTimeFormat = "%Y-%m-%dT%H:%M:%SZ"
 
     def getPublicUrl(self, jobStoreFileID):
-        # By default, we provide a link to the file which expires in one hour.
+        try:
+            self.files.get_blob_properties(blob_name=jobStoreFileID)
+        except WindowsAzureMissingResourceError:
+            raise NoSuchFileException(jobStoreFileID)
         # Compensate of a little bit of clock skew
         startTimeStr = (datetime.utcnow() - timedelta(minutes=5)).strftime(self._azureTimeFormat)
         # One year should be sufficient to finish any pipeline ;-)
@@ -574,9 +577,11 @@ class AzureJob(JobWrapper):
             item['_' + str(attributeOrder).zfill(3)] = chunk
         return item
 
+
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
     return isinstance(exception, WindowsAzureError) and timeoutMsg in str(exception)
+
 
 def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
                                                       httplib.HTTPException),
