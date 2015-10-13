@@ -314,7 +314,7 @@ class AWSJobStore(AbstractJobStore):
             with info.uploadStream(allowInlining=False) as f:
                 f.write(info.content)
         key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-        return key.generate_url(expires_in=60 * 60 * 24 * 365)
+        return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
 
     def getSharedPublicUrl(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)

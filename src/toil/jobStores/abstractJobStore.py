@@ -15,6 +15,8 @@ from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 import re
+from datetime import timedelta
+
 try:
     import cPickle 
 except ImportError:
@@ -206,6 +208,9 @@ class AbstractJobStore( object ):
         :rtype : bool
         """
         raise NotImplementedError( )
+
+    # One year should be sufficient to finish any pipeline ;-)
+    publicUrlExpiration = timedelta(days=365)
 
     @abstractmethod
     def getPublicUrl(self, fileName):

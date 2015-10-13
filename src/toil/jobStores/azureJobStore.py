@@ -285,8 +285,8 @@ class AzureJobStore(AbstractJobStore):
             raise NoSuchFileException(jobStoreFileID)
         # Compensate of a little bit of clock skew
         startTimeStr = (datetime.utcnow() - timedelta(minutes=5)).strftime(self._azureTimeFormat)
-        # One year should be sufficient to finish any pipeline ;-)
-        endTimeStr = (datetime.utcnow() + timedelta(days=365)).strftime(self._azureTimeFormat)
+        endTime = datetime.utcnow() + self.publicUrlExpiration
+        endTimeStr = endTime.strftime(self._azureTimeFormat)
         sap = SharedAccessPolicy(AccessPolicy(startTimeStr, endTimeStr,
                                               BlobSharedAccessPermissions.READ))
         sas_token = self.files.generate_shared_access_signature(blob_name=jobStoreFileID,
