@@ -137,6 +137,12 @@ class hidden:
             # self.assertEqual([0], self.batchSystem.getRunningJobIDs().keys())
             self.batchSystem.killBatchJobs([jobID])
             self.assertEqual({}, self.batchSystem.getRunningBatchJobIDs())
+
+            #Make sure the batch system doesn't add killed jobs
+            #to the updated jobs queue if they were killed.
+            updatedJobID = self.batchSystem.getUpdatedBatchJob(5);
+            self.assertEqual(updatedJobID, None)
+
             # Make sure that killJob doesn't hang / raise KeyError on unknown job IDs
             self.batchSystem.killBatchJobs([0])
 

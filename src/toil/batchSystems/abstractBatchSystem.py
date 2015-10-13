@@ -90,7 +90,7 @@ class AbstractBatchSystem:
         """Gets a job that has updated its status,
         according to the job manager. Max wait gives the number of seconds to pause
         waiting for a result. If a result is available returns (jobID, exitValue)
-        else it returns None.
+        else it returns None. Does not return anything for jobs that were killed.
         """
         raise NotImplementedError('Abstract method: getUpdatedBatchJob')
 
