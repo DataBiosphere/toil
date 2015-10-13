@@ -440,7 +440,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = "us-west-2"
 
     def _createJobStore(self, config=None):
-        from toil.jobStores.awsJobStore import AWSJobStore
+        from toil.jobStores.aws.jobStore import AWSJobStore
         AWSJobStore._s3_part_size = self.partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 

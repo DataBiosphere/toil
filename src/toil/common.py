@@ -381,7 +381,7 @@ def loadJobStore( jobStoreString, config=None ):
         from toil.jobStores.fileJobStore import FileJobStore
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
-        from toil.jobStores.awsJobStore import AWSJobStore
+        from toil.jobStores.aws.jobStore import AWSJobStore
         region, namePrefix = jobStoreArgs.split( ':', 1 )
         return AWSJobStore( region, namePrefix, config=config )
     elif jobStoreName == 'azure':

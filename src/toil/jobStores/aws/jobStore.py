@@ -39,8 +39,7 @@ from boto.exception import SDBResponseError, S3ResponseError
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.jobStores.awsJobStore.sdbUtils import SDBHelper, retry_sdb, no_such_domain, \
-    sdb_unavailable
+from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable)
 from toil.jobWrapper import JobWrapper
 from toil.lib.encryption import encryptionOverhead, encrypt, decrypt
 
