@@ -72,7 +72,15 @@ class SDBHelper(object):
         assert len(encoded) < cls.maxBinarySize(encoded=True)
         n = cls.maxValueSize
         chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
-        return {str(index).zfill(3): chunk for index, chunk in enumerate(chunks)}
+        return {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
+
+    @classmethod
+    def _chunkName(cls, i):
+        return str(i).zfill(3)
+
+    @classmethod
+    def _isValidChunkName(cls, s):
+        return len(s) == 3 and s.isdigit()
 
     @classmethod
     def attributesToBinary(cls, attributes):
@@ -80,7 +88,7 @@ class SDBHelper(object):
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in attributes.iteritems() if len(k) == 3 and k.isdigit()]
+        chunks = [(int(k), v) for k, v in attributes.iteritems() if cls._isValidChunkName(k)]
         chunks.sort()
         numChunks = len(chunks)
         if numChunks:

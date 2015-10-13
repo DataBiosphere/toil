@@ -24,7 +24,7 @@ import base64
 import hashlib
 import itertools
 
-from bd2k.util import memoize
+from bd2k.util import memoize, strict_bool
 from bd2k.util.objects import InnerClass
 from bd2k.util.threading import ExceptionalThread
 from boto.sdb.domain import Domain
@@ -45,16 +45,6 @@ from toil.lib.encryption import encryptionOverhead, encrypt, decrypt
 
 log = logging.getLogger(__name__)
 
-
-# FIXME: Command length is currently limited to 1024 characters
-
-# FIXME: Passing in both headers and validate=False caused BotoClientError: When providing 'validate=False', no other
-# params are allowed. Solution, validate=False was removed completely, but could potentially be passed if not encrypting
-
-# NB: Number of messages per job is limited to 256-x, 1024 bytes each, with x being the number of
-# other attributes in the item
-
-# FIXME: enforce SimpleDB limits early
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -85,7 +75,6 @@ class AWSJobStore(AbstractJobStore):
         self.filesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
-        self.sseKey = None
 
         # Check global registry domain for existence of this job store. The first time this is
         # being executed in an AWS account, the registry domain will be created on the fly.
@@ -96,7 +85,7 @@ class AWSJobStore(AbstractJobStore):
                 attributes = self.registry_domain.get_attributes(item_name=namePrefix,
                                                                  attribute_name='exists',
                                                                  consistent_read=True)
-                exists = parse_bool(attributes.get('exists', str(False)))
+                exists = strict_bool(attributes.get('exists', str(False)))
                 self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
 
         def qualify(name):
@@ -118,11 +107,12 @@ class AWSJobStore(AbstractJobStore):
 
     @property
     @memoize
-    def _sseKey(self):
+    def sseKey(self):
         if self.sseKeyPath is None:
             return None
-        with open(self.sseKeyPath) as f:
-            return f.read()
+        else:
+            with open(self.sseKeyPath) as f:
+                return f.read()
 
     def create(self, command, memory, cores, disk, predecessorNumber=0):
         jobStoreID = self._newJobID()
@@ -230,7 +220,7 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=True):
         assert self._validateSharedFileName(sharedFileName)
-        info = self.FileInfo.loadOrCreate(fileID=self._sharedFileID(sharedFileName),
+        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
                                           ownerID=str(self.sharedFileOwnerID),
                                           encrypted=isProtected)
         with info.uploadStream() as writable:
@@ -419,7 +409,7 @@ class AWSJobStore(AbstractJobStore):
     @InnerClass
     class FileInfo(SDBHelper):
         """
-        Represents the metadata describing a file in the job store
+        Represents a file in this job store.
         """
         outer = None
         """
@@ -435,13 +425,21 @@ class AWSJobStore(AbstractJobStore):
             :type ownerID: str
             :param ownerID: ID of the entity owning this file, typically a job ID aka jobStoreID
 
-            :type version: str
-
-            :param version: the most recent version of the S3 key storing the file or None if this
-                            file is inlined
-
             :type encrypted: bool
             :param encrypted: whether the file is stored in encrypted form
+
+            :type version: str|None
+            :param version: the most recent version of the S3 object storing this file's content
+                            or None if no S3 object exists for this file, i.e. if the file is
+                            new and empty or inlined.
+
+            :type content: str|None
+            :param content: this file's inlined content
+
+            :type numContentChunks: int
+            :param numContentChunks: the number of SDB domain attributes occupied by this files
+                                     inlined content. Note that an inlined empty string still
+                                     occupies one chunk.
             """
             super(AWSJobStore.FileInfo, self).__init__()
             self._fileID = fileID
@@ -500,12 +498,12 @@ class AWSJobStore(AbstractJobStore):
                     return self
 
         @classmethod
-        def loadOrCreate(cls, fileID, ownerID, encrypted):
-            self = cls.load(fileID)
+        def loadOrCreate(cls, jobStoreFileID, ownerID, encrypted):
+            self = cls.load(jobStoreFileID)
             if self is None:
-                self = cls(fileID, ownerID, encrypted)
+                self = cls(jobStoreFileID, ownerID, encrypted)
             else:
-                assert self.fileID == fileID
+                assert self.fileID == jobStoreFileID
                 assert self.ownerID == ownerID
                 # Honor encryption request. We might still fall back to unencrypted on save.
                 self.encrypted = encrypted
@@ -514,7 +512,7 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def loadOrFail(cls, jobStoreFileID, customName=None):
             """
-            :rtype: FileInfo
+            :return: an instance of this class representing the file with the given ID
             :raises NoSuchFileException: if given file does not exist
             """
             self = cls.load(jobStoreFileID)
@@ -526,6 +524,8 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def fromItem(cls, item):
             """
+            Convert an SDB item to an instance of this class.
+
             :type item: Item
             """
             assert item is not None
@@ -537,10 +537,9 @@ class AWSJobStore(AbstractJobStore):
                 return None
             else:
                 version = item['version']
-                encrypted = parse_bool(encrypted)
+                encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
-                # If there is not content
-                if encrypted and content:
+                if encrypted and content is not None:
                     sseKeyPath = cls.outer.sseKeyPath
                     assert sseKeyPath is not None
                     content = decrypt(content, sseKeyPath)
@@ -548,7 +547,15 @@ class AWSJobStore(AbstractJobStore):
                            content=content, numContentChunks=numContentChunks)
                 return self
 
-        def toAttributes(self):
+        def toItem(self):
+            """
+            Convert this instance to an attribute dictionary suitable for SDB put_attributes().
+
+            :rtype: (dict,int)
+
+            :return: the attributes dict and an integer specifying the the number of chunk
+                     attributes in the dictionary that are used for storing inlined content.
+            """
             if self.content is None:
                 numChunks = 0
                 attributes = {}
@@ -570,7 +577,7 @@ class AWSJobStore(AbstractJobStore):
             return attributes, numChunks
 
         def save(self):
-            attributes, numNewContentChunks = self.toAttributes()
+            attributes, numNewContentChunks = self.toItem()
             # False stands for absence
             expected = ['version', False if self.previousVersion is None else self.previousVersion]
             try:
@@ -583,8 +590,8 @@ class AWSJobStore(AbstractJobStore):
                     self.outer.filesBucket.delete_key(self.fileID, version_id=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
-                    extraneousChunks = xrange(numNewContentChunks, self._numContentChunks)
-                    attributes = [str(i).zfill(3) for i in extraneousChunks]
+                    residualChunks = xrange(numNewContentChunks, self._numContentChunks)
+                    attributes = [self._chunkName(i) for i in residualChunks]
                     for attempt in retry_sdb():
                         with attempt:
                             self.outer.filesDomain.delete_attributes(self.fileID,
@@ -610,6 +617,7 @@ class AWSJobStore(AbstractJobStore):
                     key.name = self.fileID
                     key.set_contents_from_filename(localFilePath, headers=headers)
                     self.version = key.version_id
+                    self.encrypted = bool(headers)
                 else:
                     with open(localFilePath, 'rb') as f:
                         upload = self.outer.filesBucket.initiate_multipart_upload(
@@ -632,6 +640,7 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             self.version = upload.complete_upload().version_id
+                            self.encrypted = bool(headers)
                 key = self.outer.filesBucket.get_key(self.fileID,
                                                      headers=headers,
                                                      version_id=self.version)
@@ -669,6 +678,7 @@ class AWSJobStore(AbstractJobStore):
                                 raise
                             else:
                                 self.version = upload.complete_upload().version_id
+                                self.encrypted = bool(headers)
 
                     def reader():
                         buf = readable.read()
@@ -749,7 +759,7 @@ class AWSJobStore(AbstractJobStore):
             return self.maxBinarySize() - (encryptionOverhead if self.encrypted else 0)
 
         def _s3EncryptionHeaders(self):
-            sseKey = self.outer._sseKey
+            sseKey = self.outer.sseKey
             if not self.encrypted or sseKey is None:
                 return {}
             else:
@@ -826,12 +836,3 @@ class AWSJob(JobWrapper, SDBHelper):
         :return: a str for the item's name and a dictionary for the item's attributes
         """
         return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self))
-
-
-def parse_bool(s):
-    if s == 'True':
-        return True
-    elif s == 'False':
-        return False
-    else:
-        raise ValueError(s)
