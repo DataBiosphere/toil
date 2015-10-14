@@ -299,27 +299,6 @@ class hidden:
                 for fileID in fileIDs:
                     self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
 
-        def testLargeFile(self):
-            dirPath = self._createTempDir()
-            filePath = os.path.join(dirPath, 'large')
-            hashIn = hashlib.md5()
-            with open(filePath, 'w') as f:
-                for i in xrange(0, 10):
-                    buf = os.urandom(self._partSize())
-                    f.write(buf)
-                    hashIn.update(buf)
-            job = self.master.create('1', 2, 3, 4, 0)
-            jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
-            os.unlink(filePath)
-            self.master.readFile(jobStoreFileID, filePath)
-            hashOut = hashlib.md5()
-            with open(filePath, 'r') as f:
-                while True:
-                    buf = f.read(self._partSize())
-                    if not buf: break
-                    hashOut.update(buf)
-            self.assertEqual(hashIn.digest(),hashOut.digest())
-
         def testMultipartUploads(self):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
@@ -496,6 +475,27 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
                     f.write(s)
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
+
+    def testLargeFile(self):
+        dirPath = self._createTempDir()
+        filePath = os.path.join(dirPath, 'large')
+        hashIn = hashlib.md5()
+        with open(filePath, 'w') as f:
+            for i in xrange(0, 10):
+                buf = os.urandom(self._partSize())
+                f.write(buf)
+                hashIn.update(buf)
+        job = self.master.create('1', 2, 3, 4, 0)
+        jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
+        os.unlink(filePath)
+        self.master.readFile(jobStoreFileID, filePath)
+        hashOut = hashlib.md5()
+        with open(filePath, 'r') as f:
+            while True:
+                buf = f.read(self._partSize())
+                if not buf: break
+                hashOut.update(buf)
+        self.assertEqual(hashIn.digest(),hashOut.digest())
 
     def _largeLogEntrySize(self):
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
