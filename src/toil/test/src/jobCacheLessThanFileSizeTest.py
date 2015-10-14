@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import random
 import os
 import sys
@@ -29,7 +29,7 @@ class JobFileStoreTest(ToilTest):
 
     def testCacheGreaterThanFileSize(self):
         """
-        Test read/writeGlobalFile if filesize >> cacheSize
+        Test read/writeGlobalFile if cacheSize >> filesize
         """
         #  This test Creates a chain of jobs, each job
         #       a) accepts a jobStoreID and the string contained in the file held in that jobStoreID
@@ -37,30 +37,30 @@ class JobFileStoreTest(ToilTest):
         #       c) create a new 100K character string and write to a file in a folder obtained with getLocalTempDir
         #       d) write file to filestore and collect JobStoreID
         #       e) pass jobStoreID and string to next job
-        #  Since we (read Arjun) cannot elegantly catch the RuntimeError thrown by worker threads, we write the toil
-        #  log to a file, then look for a fail case line in the log.
+        #  Since we (read Arjun) cannot elegantly catch the RuntimeError thrown by worker threads, we write the value
+        #  of the test to a file and read the test result from there instead.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
         options.cacheSize = 1000000 # = 10 x filesize
         options.retryCount=0
         options.badWorker=0.5
         options.badWorkerFailInterval = 1.0
-        options.logFile = 'cacheGTFS_logfile.txt'
+        logfile = 'cache_GTFS_logfile.txt'
         # Run the workflow, the return value being the number of failed jobs
-        A = Job.wrapJobFn(fileTestJob, (None, None, 10))
+        A = Job.wrapJobFn(fileTestJob, (None, None, 10, logfile))
         Job.Runner.startToil(A, options)
         job_passed = True
-        with open(options.logFile, 'r') as logfile:
-            for line in logfile:
-                if 'failed with exit value -9' in line:
+        with open(logfile, 'r') as lf:
+            for line in lf:
+                if line.strip() == 'False':
                     job_passed=False
                     break
-        os.remove(logfile.name)
+        os.remove(logfile)
         assert job_passed
 
     def testCacheLessThanFileSize(self):
         """
-        Test read/writeGlobalFile if filesize << cacheSize
+        Test read/writeGlobalFile if cacheSize << filesize
         """
         #  This test Creates a chain of jobs, each job
         #       a) accepts a jobStoreID and the string contained in the file held in that jobStoreID
@@ -68,25 +68,25 @@ class JobFileStoreTest(ToilTest):
         #       c) create a new 100K character string and write to a file in a folder obtained with getLocalTempDir
         #       d) write file to filestore and collect JobStoreID
         #       e) pass jobStoreID and string to next job
-        #  Since we (read Arjun) cannot elegantly catch the RuntimeError thrown by worker threads, we write the toil
-        #  log to a file, then look for a fail case line in the log.
+        #  Since we (read Arjun) cannot elegantly catch the RuntimeError thrown by worker threads, we write the value
+        #  of the test to a file and read the test result from there instead.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
         options.cacheSize = 10000 # = 0.1 x filesize
         options.retryCount=0
         options.badWorker=0.5
         options.badWorkerFailInterval = 1.0
-        options.logFile = 'cache_LTFS_logfile.txt'
+        logfile = 'cache_LTFS_logfile.txt'
         # Run the workflow, the return value being the number of failed jobs
-        A = Job.wrapJobFn(fileTestJob, (None, None, 5))
+        A = Job.wrapJobFn(fileTestJob, (None, None, 5, logfile))
         Job.Runner.startToil(A, options)
         job_passed = True
-        with open(options.logFile, 'r') as logfile:
-            for line in logfile:
-                if 'failed with exit value -9' in line:
+        with open(logfile, 'r') as lf:
+            for line in lf:
+                if line.strip() == 'False':
                     job_passed=False
                     break
-        os.remove(logfile.name)
+        os.remove(logfile)
         assert job_passed
 
 
@@ -95,7 +95,7 @@ def fileTestJob(job, inargs):
     Test job exercises Job.FileStore functions
     """
     # split inargs
-    input_fs_id, test_string, depth = inargs
+    input_fs_id, test_string, depth, logfile = inargs
     #  Make a local directory to store the file passed by inputFileStoreID
     work_dir = job.fileStore.getLocalTempDir()
     # If an inputFileStoreID is provided, process else nvm
@@ -105,7 +105,8 @@ def fileTestJob(job, inargs):
         inputfile = job.fileStore.readGlobalFile(input_fs_id, inputfile)
         with open(inputfile, 'r') as fH:
             string = fH.readline()
-        assert test_string == string, 'Failed Unit Test'
+        with open(logfile, 'a') as lf:
+            print(test_string == string, file=lf)
 
     if depth == 0:
         return None
@@ -116,7 +117,7 @@ def fileTestJob(job, inargs):
     with open(outfile_name, 'w') as outfile:
         outfile.write(test_string)
     outputfilestoreid = job.fileStore.writeGlobalFile(outfile.name)
-    job.addChildJobFn(fileTestJob, (outputfilestoreid, test_string, depth-1))
+    job.addChildJobFn(fileTestJob, (outputfilestoreid, test_string, depth-1, logfile))
 
 
         
