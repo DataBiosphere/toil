@@ -254,8 +254,8 @@ class hidden:
             #
             stats = None
 
-            def callback(f):
-                stats.add(f.read())
+            def callback(f2):
+                stats.add(f2.read())
 
             stats = set()
             self.assertEquals(0, master.readStatsAndLogging(callback))
@@ -269,6 +269,11 @@ class hidden:
             stats = set()
             self.assertEquals(2, master.readStatsAndLogging(callback))
             self.assertEquals({'1', '2'}, stats)
+            largeLogEntry = os.urandom(self._largeLogEntrySize())
+            stats = set()
+            master.writeStatsAndLogging(largeLogEntry)
+            self.assertEquals(1, master.readStatsAndLogging(callback))
+            self.assertEquals({largeLogEntry}, stats)
 
             # Delete parent and its associated files
             #
@@ -286,7 +291,7 @@ class hidden:
             running it on the other job stores.
             """
             master = self.master
-            n = AWSJobStore.itemsPerBatchDelete
+            n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
                 job = master.create('1', 2, 3, 4, 0)
                 fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
@@ -294,7 +299,26 @@ class hidden:
                 for fileID in fileIDs:
                     self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
 
-        partSize = 5 * 1024 * 1024
+        def testLargeFile(self):
+            dirPath = self._createTempDir()
+            filePath = os.path.join(dirPath, 'large')
+            hashIn = hashlib.md5()
+            with open(filePath, 'w') as f:
+                for i in xrange(0, 10):
+                    buf = os.urandom(self._partSize())
+                    f.write(buf)
+                    hashIn.update(buf)
+            job = self.master.create('1', 2, 3, 4, 0)
+            jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
+            os.unlink(filePath)
+            self.master.readFile(jobStoreFileID, filePath)
+            hashOut = hashlib.md5()
+            with open(filePath, 'r') as f:
+                while True:
+                    buf = f.read(self._partSize())
+                    if not buf: break
+                    hashOut.update(buf)
+            self.assertEqual(hashIn.digest(),hashOut.digest())
 
         def testMultipartUploads(self):
             """
@@ -305,7 +329,8 @@ class hidden:
             random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
-            self.assertEquals(self.partSize % bufSize, 0)
+            partSize = self._partSize()
+            self.assertEquals(partSize % bufSize, 0)
             job = self.master.create('1', 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
@@ -330,7 +355,7 @@ class hidden:
                 try:
                     with open(random_device) as readable:
                         with self.master.writeFileStream(job.jobStoreID) as (writable, fileId):
-                            for i in range(int(self.partSize * partsPerFile / bufSize)):
+                            for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 checksumQueue.put(buf)
                                 writable.write(buf)
@@ -358,7 +383,7 @@ class hidden:
                 try:
                     with os.fdopen(fh, 'r+') as writable:
                         with open(random_device) as readable:
-                            for i in range(int(self.partSize * partsPerFile / bufSize)):
+                            for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
                                 checksum.update(buf)
@@ -400,6 +425,17 @@ class hidden:
                     urllib2.urlopen(urllib2.Request(url))
                 except:
                     self.fail()
+
+        # Sub-classes may want to override these in order to maximize test coverage
+
+        def _largeLogEntrySize(self):
+            return 1 * 1024 * 1024
+
+        def _batchDeletionSize(self):
+            return 10
+
+        def _partSize(self):
+            return 5 * 1024 * 1024
 
     class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
         """
@@ -443,7 +479,10 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        AWSJobStore._s3_part_size = self.partSize
+        partSize = self._partSize()
+        for encrypted in (True, False):
+            self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
+        AWSJobStore.FileInfo.s3PartSize = partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 
     def testInlinedFiles(self):
@@ -451,12 +490,19 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
             sizes = (1, n / 2, n - 1, n, n + 1, 2 * n)
-            for size in chain(sizes, islice(reversed(sizes),1)):
+            for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)
                 with master.writeSharedFileStream('foo') as f:
                     f.write(s)
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
+
+    def _largeLogEntrySize(self):
+        # So we get into the else branch of reader() in uploadStream(multiPart=False):
+        return AWSJobStore.FileInfo.maxBinarySize() * 2
+
+    def _batchDeletionSize(self):
+        return AWSJobStore.itemsPerBatchDelete
 
 
 @needs_azure

@@ -177,7 +177,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
-                    query="select itemName() from `%s` where ownerID='%s'" % (
+                    query="select version from `%s` where ownerID='%s'" % (
                         self.filesDomain.name, jobStoreID)))
         assert items is not None
         if items:
@@ -190,9 +190,10 @@ class AWSJobStore(AbstractJobStore):
                     with attempt:
                         self.filesDomain.batch_delete_attributes(itemsDict)
             for item in items:
-                if 'version' in item:
+                version = item.get('version')
+                if version:
                     self.filesBucket.delete_key(key_name=item.name,
-                                                version_id=item['version'])
+                                                version_id=version)
                 else:
                     self.filesBucket.delete_key(key_name=item.name)
 
@@ -614,16 +615,16 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     raise
 
-        _s3_part_size = 50 * 1024 * 1024
+        s3PartSize = 50 * 1024 * 1024
 
         def upload(self, localFilePath):
             file_size, file_time = self._fileSizeAndTime(localFilePath)
-            if file_size < self._maxInlinedSize():
+            if file_size <= self._maxInlinedSize():
                 with open(localFilePath) as f:
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                if file_size <= self._s3_part_size:
+                if file_size <= self.s3PartSize:
                     key = self.outer.filesBucket.new_key(key_name=self.fileID)
                     key.name = self.fileID
                     key.set_contents_from_filename(localFilePath, headers=headers)
@@ -638,7 +639,7 @@ class AWSJobStore(AbstractJobStore):
                             start = 0
                             part_num = itertools.count()
                             while start < file_size:
-                                end = min(start + self._s3_part_size, file_size)
+                                end = min(start + self.s3PartSize, file_size)
                                 assert f.tell() == start
                                 upload.upload_part_from_file(fp=f,
                                                              part_num=next(part_num) + 1,
@@ -666,7 +667,7 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(readable_fh, 'r') as readable:
                 with os.fdopen(writable_fh, 'w') as writable:
                     def multipartReader():
-                        buf = readable.read(self._s3_part_size)
+                        buf = readable.read(self.s3PartSize)
                         if allowInlining and len(buf) <= self._maxInlinedSize():
                             self.content = buf
                         else:
@@ -683,7 +684,7 @@ class AWSJobStore(AbstractJobStore):
                                                                  part_num=part_num + 1,
                                                                  headers=headers)
                                     if len(buf) == 0: break
-                                    buf = readable.read(self._s3_part_size)
+                                    buf = readable.read(self.s3PartSize)
                             except:
                                 upload.cancel_upload()
                                 raise
