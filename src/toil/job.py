@@ -442,7 +442,7 @@ class Job(object):
             This file will exist for the duration of the job only, and
             is guaranteed to be deleted once the job terminates.
             """
-            handle, tmpFile = tempfile.mkstemp(prefix="tmp", 
+            handle, tmpFile = tempfile.mkstemp(prefix="tmp",
                                                suffix=".tmp", dir=self.localTempDir)
             os.close(handle)
             return os.path.abspath(tmpFile) 
@@ -667,18 +667,20 @@ class Job(object):
             """
             #Remove files so that the total cached files are smaller than a cacheSize
             
-            #List of pairs of (fileSize, fileStoreID) for cached files
-            cachedFileSizes = map(lambda x : (os.stat(self.jobStoreFileIDToCacheLocation[x]).st_size, x), 
-                                  self.jobStoreFileIDToCacheLocation.keys())
+            #List of pairs of (fileCreateTime, fileStoreID) for cached files
+            cachedFileCreateTimes = map(lambda x : (os.stat(self.jobStoreFileIDToCacheLocation[x]).st_ctime, x),
+                                        self.jobStoreFileIDToCacheLocation.keys())
             #Total number of bytes stored in cached files
-            totalCachedFileSizes = sum(map(lambda x : x[0], cachedFileSizes))
-            #Remove smallest files first - this is not obviously best, could do it a different
-            #way
-            cachedFileSizes.sort()
-            cachedFileSizes.reverse()
+            totalCachedFileSizes = sum([os.stat(self.jobStoreFileIDToCacheLocation[x]).st_size for x in
+                                        self.jobStoreFileIDToCacheLocation.keys()])
+            #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
+            #not be the best strategy.
+            cachedFileCreateTimes.sort()
+            cachedFileCreateTimes.reverse()
             #Now do the actual file removal
             while totalCachedFileSizes > cacheSize:
-                fileSize, fileStoreID =  cachedFileSizes.pop()
+                fileCreateTime, fileStoreID =  cachedFileCreateTimes.pop()
+                fileSize = os.stat(self.jobStoreFileIDToCacheLocation[fileStoreID]).st_size
                 filePath = self.jobStoreFileIDToCacheLocation[fileStoreID]
                 self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
                 os.remove(filePath)
