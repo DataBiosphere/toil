@@ -92,6 +92,14 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                     fH.write(testStrings[testPrefix])
                 #Write a local copy of the file using the local file
                 outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
+            elif random.random() > 0.5:
+                #Make a copy of the file in a new LocalTempDir
+                tempDir = job.fileStore.getLocalTempDir()
+                tempFile = '/'.join([tempDir, 'temp.txt'])
+                with open(tempFile, 'w') as fH:
+                    fH.write(testStrings[testPrefix])
+                #Write a local copy of the file using the local file
+                outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
             else:
                 with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
                     fH.write(testStrings[testPrefix])
