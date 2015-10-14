@@ -13,6 +13,7 @@ class SDBHelper(object):
     """
     A mixin with methods for storing limited amounts of binary data in an SDB item
 
+    >>> import os
     >>> H=SDBHelper
     >>> H.binaryToAttributes(None)
     {}
@@ -22,14 +23,26 @@ class SDBHelper(object):
     {'000': 'VQ=='}
     >>> H.attributesToBinary({'000': 'VQ=='})
     ('', 1)
-    >>> a = H.binaryToAttributes('l'*100)
-    >>> a
-    {'000': 'Q0JaaDkxQVkmU1kS6uw5AAACAQBABCAAIQCCCxdyRThQkBLq7Dk='}
-    >>> H.attributesToBinary(a) == ('l'*100,1)
+
+    Good pseudo-random data is very likely smaller than its bzip2ed form. Subtract 1 for the type
+    character, i.e  'C' or 'U', with which the string is prefixed. We should get one full chunk:
+
+    >>> s = os.urandom(H.maxRawValueSize-1)
+    >>> d = H.binaryToAttributes(s)
+    >>> len(d), len(d['000'])
+    (1, 1024)
+    >>> H.attributesToBinary(d) == (s, 1)
     True
-    >>> import os
-    >>> sorted( H.binaryToAttributes(os.urandom(2048)).keys() )
-    ['000', '001', '002']
+
+    One byte more and we should overflow four bytes into the second chunk, two bytes for
+    base64-encoding the additional character and two bytes for base64-padding to the next quartet.
+
+    >>> s += s[0]
+    >>> d = H.binaryToAttributes(s)
+    >>> len(d), len(d['000']), len(d['001'])
+    (2, 1024, 4)
+    >>> H.attributesToBinary(d) == (s, 2)
+    True
 
     """
     # The SDB documentation is not clear as to whether the attribute value size limit of 1024
@@ -40,7 +53,11 @@ class SDBHelper(object):
     # requests to fail signature verification, resulting in a 403. We therefore have to
     # base64-encode values ourselves even if that means we loose a quarter of capacity.
 
-    maxAttributesPerItem = 256
+    # BEWARE: http://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SDBLimits.html
+    # says that we can have 256 attributes per item but found that to be inaccurate. I did a
+    # binary search and determined that it is actually only 228.
+
+    maxAttributesPerItem = 228
     maxValueSize = 1024
     maxRawValueSize = maxValueSize * 3 / 4
     # Just make sure we don't have a problem with padding or integer truncation:
@@ -49,18 +66,29 @@ class SDBHelper(object):
 
     @classmethod
     def _reservedAttributes(cls):
+        """
+        Override in subclass to reserve a certain number of attributes that can't be used for
+        chunks.
+        """
         return 0
 
     @classmethod
-    def maxBinarySize(cls, encoded=False):
-        numAttributes = cls.maxAttributesPerItem - cls._reservedAttributes()
-        maxValueSize = cls.maxValueSize if encoded else cls.maxRawValueSize
-        return numAttributes * maxValueSize
+    def _maxChunks(cls):
+        return cls.maxAttributesPerItem - cls._reservedAttributes()
+
+    @classmethod
+    def maxBinarySize(cls):
+        return cls._maxChunks() * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
+
+    @classmethod
+    def _maxEncodedSize(cls):
+        return cls._maxChunks() * cls.maxValueSize
+
 
     @classmethod
     def binaryToAttributes(cls, binary):
         if binary is None: return {}
-        assert len(binary) <= cls.maxBinarySize(encoded=False)
+        assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
         # computation because the compression ratio depends on the input.
         compressed = bz2.compress(binary)
@@ -69,7 +97,7 @@ class SDBHelper(object):
         else:
             compressed = 'C' + compressed
         encoded = base64.b64encode(compressed)
-        assert len(encoded) < cls.maxBinarySize(encoded=True)
+        assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
         chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
         return {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
@@ -115,7 +143,9 @@ a_long_time = 60 * 60
 
 
 def no_such_domain(e):
-    return isinstance(e, SDBResponseError) and e.error_code.endswith('NoSuchDomain')
+    return (isinstance(e, SDBResponseError)
+            and e.error_code
+            and e.error_code.endswith('NoSuchDomain'))
 
 
 def sdb_unavailable(e):

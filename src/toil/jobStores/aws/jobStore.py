@@ -164,7 +164,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 assert self.jobsDomain.put_attributes(*job.toItem())
 
-    items_per_batch_delete = 25
+    itemsPerBatchDelete = 25
 
     def delete(self, jobStoreID):
         # remove job and replace with jobStoreId.
@@ -182,7 +182,7 @@ class AWSJobStore(AbstractJobStore):
         assert items is not None
         if items:
             log.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
-            n = self.items_per_batch_delete
+            n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
                 itemsDict = {item.name: None for item in batch}
@@ -576,6 +576,17 @@ class AWSJobStore(AbstractJobStore):
                                    version=self.version or ''))
             return attributes, numChunks
 
+        @classmethod
+        def _reservedAttributes(cls):
+            return 3
+
+        @classmethod
+        def maxInlinedSize(cls, encrypted):
+            return cls.maxBinarySize() - (encryptionOverhead if encrypted else 0)
+
+        def _maxInlinedSize(self):
+            return self.maxInlinedSize(self.encrypted)
+
         def save(self):
             attributes, numNewContentChunks = self.toItem()
             # False stands for absence
@@ -607,7 +618,7 @@ class AWSJobStore(AbstractJobStore):
 
         def upload(self, localFilePath):
             file_size, file_time = self._fileSizeAndTime(localFilePath)
-            if file_size < self.maxInlinedSize():
+            if file_size < self._maxInlinedSize():
                 with open(localFilePath) as f:
                     self.content = f.read()
             else:
@@ -656,7 +667,7 @@ class AWSJobStore(AbstractJobStore):
                 with os.fdopen(writable_fh, 'w') as writable:
                     def multipartReader():
                         buf = readable.read(self._s3_part_size)
-                        if allowInlining and len(buf) <= self.maxInlinedSize():
+                        if allowInlining and len(buf) <= self._maxInlinedSize():
                             self.content = buf
                         else:
                             headers = self._s3EncryptionHeaders()
@@ -682,7 +693,7 @@ class AWSJobStore(AbstractJobStore):
 
                     def reader():
                         buf = readable.read()
-                        if allowInlining and len(buf) <= self.maxInlinedSize():
+                        if allowInlining and len(buf) <= self._maxInlinedSize():
                             self.content = buf
                         else:
                             key = store.filesBucket.new_key(key_name=self.fileID)
@@ -750,13 +761,6 @@ class AWSJobStore(AbstractJobStore):
                             self.fileID,
                             expected_values=['version', self.previousVersion])
                 store.filesBucket.delete_key(key_name=self.fileID, version_id=self.previousVersion)
-
-        @classmethod
-        def _reservedAttributes(cls):
-            return 3
-
-        def maxInlinedSize(self):
-            return self.maxBinarySize() - (encryptionOverhead if self.encrypted else 0)
 
         def _s3EncryptionHeaders(self):
             sseKey = self.outer.sseKey
