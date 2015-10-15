@@ -49,19 +49,16 @@ Here's what each extra provides:
 
 * The ``aws`` extra provides support for storing workflow state in Amazon AWS.
 
-* The ``azure`` extra provides support for storing workflow state in Microsoft
-  Azure Storage.
+* The ``azure`` extra stores workflow state in Microsoft Azure Storage.
 
 * The ``mesos`` extra provides support for running Toil on an `Apache Mesos`_
   cluster. Note that running Toil on SGE (GridEngine), Parasol or a single
   machine is enabled by default and does not require an extra.
 
 * The ``encryption`` extra provides client-side encryption for files stored in
-  the job store. Currently, client-side encryption is only used by the Azure
-  job store. The AWS job store uses server side encryption and is not affected
-  by this extra. Note that if you install Toil without the encryption extra,
-  files in an Azure job store will **not** be encrypted, even if you provide
-  encryption keys (see issue #407).
+  the Azure and AWS job stores. Note that if you install Toil without the
+  ``encryption`` extra, files in these job stores will **not** be encrypted,
+  even if you provide encryption keys (see issue #407).
 
 .. _Apache Mesos: http://mesos.apache.org/gettingstarted/
 
@@ -107,7 +104,7 @@ Run an individual test with
 The default value for ``tests`` is ``"src"`` which includes all tests in the
 ``src`` subdirectory of the project root. Tests that require a particular
 feature will be skipped implicitly. If you want to explicitly skip tests that
-depend on a currently installed feature, use
+depend on a currently installed *feature*, use
 
 ::
 
@@ -116,7 +113,8 @@ depend on a currently installed feature, use
 This will run only the tests that don't depend on the ``azure`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
-not extras, e.g. ``gridengine`` and ``parasol``. One last example: In order to
-skip tests involving Parasol and Azure, the following can be used::
+not extras, the ``gridengine`` and ``parasol`` features fall into that
+category. So in order to skip tests involving both the Parasol feature and the
+Azure extra, the following can be used::
 
    make test tests="-m 'not azure and not parasol' src"
