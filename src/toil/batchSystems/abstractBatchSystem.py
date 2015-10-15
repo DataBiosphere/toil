@@ -108,25 +108,10 @@ class AbstractBatchSystem:
         """
         raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
 
-    # FIXME: Add a link to the issue tracker for this bug in multiprocessing
-
-    # FIXME: Should be a no-op unless queue is a multiprocessing.Queue
-    
-    def getFromQueueSafely(self, queue, maxWait):
-        """
-        Returns an object from the given queue, avoiding a nasty bug in some versions of the
-        multiprocessing queue python
-        """
-        if maxWait <= 0:
-            try:
-                return queue.get(block=False)
-            except Empty:
-                return None
-        try:
-            return queue.get(timeout=maxWait)
-        except Empty:
-            return None
     def _getResultsFileName(self, toilPath):
+        """Get a path for the batch systems to store results. GridEngine
+        and LSF currently use this.
+        """
         return os.path.join(toilPath, "results.txt")
 
 

@@ -301,10 +301,11 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return self.worker.getRunningJobIDs()
 
     def getUpdatedBatchJob(self, maxWait):
-        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        if i is None:
+        try:
+            i = self.updatedJobsQueue.get(timeout=maxWait)
+        except Empty:
             return None
+        logger.debug('UpdatedJobsQueue Item: %s', i)
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
         self.currentJobs.remove(jobID)
