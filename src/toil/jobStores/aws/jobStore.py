@@ -23,6 +23,7 @@ import cPickle
 import base64
 import hashlib
 import itertools
+import repr as reprlib
 
 from bd2k.util import memoize, strict_bool
 from bd2k.util.objects import InnerClass
@@ -530,14 +531,17 @@ class AWSJobStore(AbstractJobStore):
             :type item: Item
             """
             assert item is not None
+            # Strings come back from SDB as unicode
+            def strOrNone(s):
+                return s if s is None else str(s)
             # ownerID and encrypted are the only mandatory attributes
-            ownerID = item.get('ownerID')
+            ownerID = strOrNone( item.get('ownerID') )
             encrypted = item.get('encrypted')
             if ownerID is None:
                 assert encrypted is None
                 return None
             else:
-                version = item['version']
+                version = strOrNone( item['version'] )
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
                 if encrypted and content is not None:
@@ -780,6 +784,18 @@ class AWSJobStore(AbstractJobStore):
             file_size, file_time = file_stat.st_size, file_stat.st_mtime
             return file_size, file_time
 
+        def __repr__(self):
+            r = custom_repr
+            d = (('fileID', r(self.fileID)),
+                 ('ownerID', r(self.ownerID)),
+                 ('encrypted', r(self.encrypted)),
+                 ('version', r(self.version)),
+                 ('previousVersion', r(self.previousVersion)),
+                 ('content', r(self.content)),
+                 ('_numContentChunks', r(self._numContentChunks)))
+            return "{}({})".format(type(self).__name__,
+                                   ', '.join('%s=%s' % (k, v) for k, v in d))
+
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
     def __getBucketVersioning(self, bucket):
@@ -813,6 +829,11 @@ class AWSJobStore(AbstractJobStore):
         for domain in (self.filesDomain, self.jobsDomain):
             if domain is not None:
                 domain.delete()
+
+
+aRepr = reprlib.Repr()
+aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
+custom_repr = aRepr.repr
 
 
 class AWSJob(JobWrapper, SDBHelper):
