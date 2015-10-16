@@ -11,10 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
+from itertools import chain, islice
 import logging
 import os
 import urllib2
@@ -24,7 +26,9 @@ import uuid
 import shutil
 
 from toil.common import Config
-from toil.jobStores.abstractJobStore import (NoSuchJobException, NoSuchFileException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+                                             NoSuchFileException)
+from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption
 
@@ -73,13 +77,14 @@ class hidden:
 
             # Test initial state
             #
-            self.assertFalse(master.exists("foo"))
+            self.assertFalse(master.exists('foo'))
+            self.assertRaises(NoSuchJobException, master.load, 'foo')
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create("master1", 12, 34, 35)
+            jobOnMaster = master.create('master1', 12, 34, 35)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
-            self.assertEquals(jobOnMaster.command, "master1")
+            self.assertEquals(jobOnMaster.command, 'master1')
             self.assertEquals(jobOnMaster.memory, 12)
             self.assertEquals(jobOnMaster.cores, 34)
             self.assertEquals(jobOnMaster.disk, 35)
@@ -94,20 +99,20 @@ class hidden:
             # ... and load the parent job there.
             jobOnWorker = worker.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnMaster, jobOnWorker)
+
             # Update state on job
             #
-            # The following demonstrates the job update pattern, where files
-            # to be deleted are referenced in "filesToDelete" array, which is
-            # persisted to disk first.
-            # If things go wrong during the update, this list of files to delete
-            # is used to remove the unneeded files
-            jobOnWorker.filesToDelete = ["1", "2"]
+            # The following demonstrates the job update pattern, where files to be deleted are
+            # referenced in "filesToDelete" array, which is persisted to disk first. If things go
+            # wrong during the update, this list of files to delete is used to remove the
+            # unneeded files
+            jobOnWorker.filesToDelete = ['1', '2']
             worker.update(jobOnWorker)
             # Check jobs to delete persisted
-            self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ["1", "2"])
+            self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
             # Create children    
-            child1 = worker.create("child1", 23, 45, 46, 1)
-            child2 = worker.create("child2", 34, 56, 57, 1)
+            child1 = worker.create('child1', 23, 45, 46, 1)
+            child2 = worker.create('child2', 34, 56, 57, 1)
             # Update parent
             jobOnWorker.stack.append((
                 (child1.jobStoreID, 23, 45, 46, 1),
@@ -139,6 +144,7 @@ class hidden:
                 self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
             # Test job iterator
+            #
             self.assertEquals(set(childJobs + [jobOnMaster]), set(worker.jobs()))
             self.assertEquals(set(childJobs + [jobOnMaster]), set(master.jobs()))
 
@@ -165,35 +171,43 @@ class hidden:
             self.assertEquals(set(), set(worker.jobs()))
             self.assertEquals(set(), set(master.jobs()))
 
+            try:
+                with master.readSharedFileStream('missing') as _:
+                    pass
+                self.fail('Expecting NoSuchFileException')
+            except NoSuchFileException:
+                pass
+
             # Test shared files: Write shared file on master, ...
             #
-            with master.writeSharedFileStream("foo") as f:
-                f.write("bar")
+            with master.writeSharedFileStream('foo') as f:
+                f.write('bar')
             # ... read that file on worker, ...
-            with worker.readSharedFileStream("foo") as f:
-                self.assertEquals("bar", f.read())
+            with worker.readSharedFileStream('foo') as f:
+                self.assertEquals('bar', f.read())
             # ... and read it again on master.
-            with master.readSharedFileStream("foo") as f:
-                self.assertEquals("bar", f.read())
+            with master.readSharedFileStream('foo') as f:
+                self.assertEquals('bar', f.read())
 
-            with master.writeSharedFileStream("nonEncrypted", isProtected=False) as f:
-                f.write("bar")
-            sharedUrl = master.getSharedPublicUrl("nonEncrypted")
-            self.assertUrl(sharedUrl)
+            with master.writeSharedFileStream('nonEncrypted', isProtected=False) as f:
+                f.write('bar')
+            self.assertUrl(master.getSharedPublicUrl('nonEncrypted'))
+            self.assertRaises(NoSuchFileException, master.getSharedPublicUrl, 'missing')
+
             # Test per-job files: Create empty file on master, ...
             #
             # First recreate job
-            jobOnMaster = master.create("master1", 12, 34, 35, "foo")
+            jobOnMaster = master.create('master1', 12, 34, 35, 'foo')
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
             self.assertTrue(worker.fileExists(fileOne))
             self.assertTrue(master.fileExists(fileOne))
             # ... write to the file on worker, ...
             with worker.updateFileStream(fileOne) as f:
-                f.write("one")
+                f.write('one')
             # ... read the file as a stream on the master, ....
             with master.readFileStream(fileOne) as f:
-                self.assertEquals(f.read(), "one")
+                self.assertEquals(f.read(), 'one')
 
             # ... and copy it to a temporary physical file on the master.
             fh, path = tempfile.mkstemp()
@@ -201,39 +215,47 @@ class hidden:
                 os.close(fh)
                 master.readFile(fileOne, path)
                 with open(path, 'r+') as f:
-                    self.assertEquals(f.read(), "one")
+                    self.assertEquals(f.read(), 'one')
                     # Write a different string to the local file ...
                     f.seek(0)
                     f.truncate(0)
-                    f.write("two")
+                    f.write('two')
                 # ... and create a second file from the local file.
                 fileTwo = master.writeFile(path, jobOnMaster.jobStoreID)
                 with worker.readFileStream(fileTwo) as f:
-                    self.assertEquals(f.read(), "two")
+                    self.assertEquals(f.read(), 'two')
                 # Now update the first file from the local file ...
                 master.updateFile(fileOne, path)
                 with worker.readFileStream(fileOne) as f:
-                    self.assertEquals(f.read(), "two")
+                    self.assertEquals(f.read(), 'two')
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
             with worker.writeFileStream(jobOnMaster.jobStoreID) as (f, fileThree):
-                f.write("three")
+                f.write('three')
             with master.readFileStream(fileThree) as f:
-                self.assertEquals(f.read(), "three")
+                self.assertEquals(f.read(), 'three')
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             worker.deleteFile(fileOne)
 
             # Check the file is gone
-            self.assertTrue(not worker.fileExists(fileOne))
-            self.assertTrue(not master.fileExists(fileOne))
+            #
+            for store in worker, master:
+                self.assertFalse(store.fileExists(fileOne))
+                self.assertRaises(NoSuchFileException, store.readFile, fileOne, '')
+                try:
+                    with store.readFileStream(fileOne) as _:
+                        pass
+                    self.fail('Expecting NoSuchFileException')
+                except NoSuchFileException:
+                    pass
 
             # Test stats and logging
             #
             stats = None
 
-            def callback(f):
-                stats.add(f.read())
+            def callback(f2):
+                stats.add(f2.read())
 
             stats = set()
             self.assertEquals(0, master.readStatsAndLogging(callback))
@@ -247,6 +269,11 @@ class hidden:
             stats = set()
             self.assertEquals(2, master.readStatsAndLogging(callback))
             self.assertEquals({'1', '2'}, stats)
+            largeLogEntry = os.urandom(self._largeLogEntrySize())
+            stats = set()
+            master.writeStatsAndLogging(largeLogEntry)
+            self.assertEquals(1, master.readStatsAndLogging(callback))
+            self.assertEquals({largeLogEntry}, stats)
 
             # Delete parent and its associated files
             #
@@ -258,23 +285,19 @@ class hidden:
 
             # TODO: Who deletes the shared files?
 
-            # TODO: Test stats methods
-
         def testFileDeletion(self):
             """
-            Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt running it on the
-            other job stores.
+            Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
+            running it on the other job stores.
             """
-            job = self.master.create("1", 2, 3, 4, 0)
-            file_list = []
-            # FIXME: tie 30 to batch limit in AWSJobStore
-            for file in xrange(0, 30):
-                file_list.append(self.master.getEmptyFileStoreID(job.jobStoreID))
-            self.master.delete(job.jobStoreID)
-            for file in file_list:
-                self.assertRaises(NoSuchFileException, self.master.readFileStream(file).__enter__)
-
-        partSize = 5 * 1024 * 1024
+            master = self.master
+            n = self._batchDeletionSize()
+            for numFiles in (1, n - 1, n, n + 1, 2 * n):
+                job = master.create('1', 2, 3, 4, 0)
+                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
+                master.delete(job.jobStoreID)
+                for fileID in fileIDs:
+                    self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
 
         def testMultipartUploads(self):
             """
@@ -285,8 +308,9 @@ class hidden:
             random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
-            self.assertEquals(self.partSize % bufSize, 0)
-            job = self.master.create("1", 2, 3, 4, 0)
+            partSize = self._partSize()
+            self.assertEquals(partSize % bufSize, 0)
+            job = self.master.create('1', 2, 3, 4, 0)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -310,7 +334,7 @@ class hidden:
                 try:
                     with open(random_device) as readable:
                         with self.master.writeFileStream(job.jobStoreID) as (writable, fileId):
-                            for i in range(int(self.partSize * partsPerFile / bufSize)):
+                            for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 checksumQueue.put(buf)
                                 writable.write(buf)
@@ -338,7 +362,7 @@ class hidden:
                 try:
                     with os.fdopen(fh, 'r+') as writable:
                         with open(random_device) as readable:
-                            for i in range(int(self.partSize * partsPerFile / bufSize)):
+                            for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
                                 checksum.update(buf)
@@ -361,7 +385,7 @@ class hidden:
             self.master.delete(job.jobStoreID)
 
         def testZeroLengthFiles(self):
-            job = self.master.create("1", 2, 3, 4, 0)
+            job = self.master.create('1', 2, 3, 4, 0)
             nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
             with self.master.readFileStream(nullFile) as f:
                 self.assertEquals(f.read(), "")
@@ -381,6 +405,17 @@ class hidden:
                 except:
                     self.fail()
 
+        # Sub-classes may want to override these in order to maximize test coverage
+
+        def _largeLogEntrySize(self):
+            return 1 * 1024 * 1024
+
+        def _batchDeletionSize(self):
+            return 10
+
+        def _partSize(self):
+            return 5 * 1024 * 1024
+
     class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
         """
         A mixin test case that creates a job store that encrypts files stored within it
@@ -399,13 +434,13 @@ class hidden:
 
         def _createConfig(self):
             config = super(hidden.AbstractEncryptedJobStoreTest, self)._createConfig()
-            sseKeyFile = os.path.join(self.sseKeyDir, "keyFile")
+            sseKeyFile = os.path.join(self.sseKeyDir, 'keyFile')
             with open(sseKeyFile, 'w') as f:
-                f.write("01234567890123456789012345678901")
+                f.write('01234567890123456789012345678901')
             config.sseKey = sseKeyFile
-            # config.attrib["sse_key"] = sseKeyFile
+            # config.attrib['sse_key'] = sseKeyFile
 
-            cseKeyFile = os.path.join(self.cseKeyDir, "keyFile")
+            cseKeyFile = os.path.join(self.cseKeyDir, 'keyFile')
             with open(cseKeyFile, 'w') as f:
                 f.write("i am a fake key, so don't use me")
             config.cseKey = cseKeyFile
@@ -419,12 +454,55 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
-    testRegion = "us-west-2"
+    testRegion = 'us-west-2'
 
     def _createJobStore(self, config=None):
-        from toil.jobStores.awsJobStore import AWSJobStore
-        AWSJobStore._s3_part_size = self.partSize
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        partSize = self._partSize()
+        for encrypted in (True, False):
+            self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
+        AWSJobStore.FileInfo.s3PartSize = partSize
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
+
+    def testInlinedFiles(self):
+        master = self.master
+        for encrypted in (True, False):
+            n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
+            sizes = (1, n / 2, n - 1, n, n + 1, 2 * n)
+            for size in chain(sizes, islice(reversed(sizes), 1)):
+                s = os.urandom(size)
+                with master.writeSharedFileStream('foo') as f:
+                    f.write(s)
+                with master.readSharedFileStream('foo') as f:
+                    self.assertEqual(s, f.read())
+
+    def testLargeFile(self):
+        dirPath = self._createTempDir()
+        filePath = os.path.join(dirPath, 'large')
+        hashIn = hashlib.md5()
+        with open(filePath, 'w') as f:
+            for i in xrange(0, 10):
+                buf = os.urandom(self._partSize())
+                f.write(buf)
+                hashIn.update(buf)
+        job = self.master.create('1', 2, 3, 4, 0)
+        jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
+        os.unlink(filePath)
+        self.master.readFile(jobStoreFileID, filePath)
+        hashOut = hashlib.md5()
+        with open(filePath, 'r') as f:
+            while True:
+                buf = f.read(self._partSize())
+                if not buf: break
+                hashOut.update(buf)
+        self.assertEqual(hashIn.digest(),hashOut.digest())
+
+    def _largeLogEntrySize(self):
+        # So we get into the else branch of reader() in uploadStream(multiPart=False):
+        return AWSJobStore.FileInfo.maxBinarySize() * 2
+
+    def _batchDeletionSize(self):
+        return AWSJobStore.itemsPerBatchDelete
 
 
 @needs_azure

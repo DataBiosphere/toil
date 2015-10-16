@@ -15,6 +15,8 @@ from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 import re
+from datetime import timedelta
+
 try:
     import cPickle 
 except ImportError:
@@ -33,8 +35,12 @@ class ConcurrentFileModificationException( Exception ):
             'Concurrent update to file %s detected.' % jobStoreFileID )
 
 class NoSuchFileException( Exception ):
-    def __init__( self, fileJobStoreID ):
-        super( NoSuchFileException, self ).__init__( "The file '%s' does not exist" % fileJobStoreID )
+    def __init__( self, jobStoreFileID, customName=None ):
+        if customName is None:
+            message = "File '%s' does not exist" % jobStoreFileID
+        else:
+            message = "File '%s' (%s) does not exist" % ( customName, jobStoreFileID )
+        super( NoSuchFileException, self ).__init__(message)
 
 class JobStoreCreationException( Exception ):
     def __init__( self, message ):
@@ -203,27 +209,24 @@ class AbstractJobStore( object ):
         """
         raise NotImplementedError( )
 
+    # One year should be sufficient to finish any pipeline ;-)
+    publicUrlExpiration = timedelta(days=365)
+
     @abstractmethod
-    def getPublicUrl( self,  FileName):
+    def getPublicUrl(self, fileName):
         """
-        Returns a publicly accessible URL to the given file in the job store.
-        The returned URL starts with 'http:',  'https:' or 'file:'.
-        The returned URL may expire as early as 1h after its been returned.
-        Throw an exception if the file does not exist.
-        :param jobStoreFileID:
-        :return:
+        Returns a publicly accessible URL to the given file in the job store. The returned URL
+        starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
+        after its been returned. Throw an exception if the file does not exist.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def getSharedPublicUrl( self,  jobStoreFileID):
+    def getSharedPublicUrl(self, sharedFileName):
         """
-        Returns a publicly accessible URL to the given file in the job store.
-        The returned URL starts with 'http:',  'https:' or 'file:'.
-        The returned URL may expire as early as 1h after its been returned.
-        Throw an exception if the file does not exist.
-        :param jobStoreFileID:
-        :return:
+        Returns a publicly accessible URL to the given file in the job store. The returned URL
+        starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
+        after its been returned. Throw an exception if the file does not exist.
         """
         raise NotImplementedError()
 
