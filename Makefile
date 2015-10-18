@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-python=/usr/bin/env python2.7
-pip=/usr/bin/env pip2.7
-
 define help
 
 Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
 
 The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
 ensure that develop mode installs support for extras. Consult setup.py for a list of supported
-extras. For example, to install Toil in develop mode with Mesos, AWS, Azure and CWL support, run
+extras. To install Toil in develop mode with all extras, run
 
-make develop extras=[mesos,aws,azure,cwl]
+	make develop extras=[mesos,aws,azure,cwl,encryption]
 
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
@@ -34,7 +31,7 @@ The 'docs' target uses Sphinx to create HTML documentation in the docs/_build di
 
 The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
 
-make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
+	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
@@ -43,52 +40,59 @@ The 'pypi_stable' target is like 'pypi' except that it doesn't tag the build as 
 IOW, it publishes a stable release.
 
 endef
-
 export help
+help:
+	@echo "$$help"
+
+
+python=python2.7
+pip=pip2.7
+tests=src
+extras=
 
 green=\033[0;32m
 normal=\033[0m
 red=\033[0;31m
 
-all: help
 
-help:
-	@echo "$$help"
-
-clean: _develop _sdist _pypi _docs
-
-extras=
-
-# Inside a virtualenv, we can't use pip with --user (http://stackoverflow.com/questions/1871549).
-#
-__user=$(shell python -c 'import sys; print "" if hasattr(sys, "real_prefix") else "--user"')
-
-check_user_base_on_path:
-	@echo "$(green)Checking if Python's user-specific bin directory is on the PATH ...$(normal)"
-	@test -z "$(__user)" || python -c 'import site,sys,os; \
-	bin_dir = os.path.join( site.USER_BASE, "bin" ) ; \
-	path_entries = map( os.path.realpath, os.environ["PATH"].split( os.path.pathsep ) ) ; \
-	result = os.path.realpath( bin_dir ) in path_entries ; \
-	print "$(green)OK$(normal)" if result else "$(red)Please add %s to your PATH$(normal)" % bin_dir ; \
-	sys.exit(0 if result else 1)'
-
-develop: check_user_base_on_path
-	$(pip) install $(__user) -e .$(extras)
-
-_develop:
+develop: check_venv
+	$(pip) install -e .$(extras)
+clean_develop: check_venv
 	- $(pip) uninstall -y toil
 	- rm -rf src/*.egg-info
 
-sdist:
-	$(python) setup.py sdist
 
-_sdist:
+sdist: check_venv
+	$(python) setup.py sdist
+clean_sdist:
 	- rm -rf dist
 
-tests=src
 
-test:
+test: check_venv
 	$(python) setup.py test --pytest-args "-vv $(tests)"
+
+
+pypi: check_venv check_clean_working_copy check_running_on_jenkins
+	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER sdist bdist_egg upload
+pypi_stable: check_venv check_clean_working_copy check_running_on_jenkins
+	$(python) setup.py egg_info sdist bdist_egg upload
+clean_pypi:
+	- rm -rf build/
+
+
+docs: check_venv
+	cd docs && make html
+clean_docs: check_venv
+	cd docs && make clean
+
+
+clean: clean_develop clean_sdist clean_pypi clean_docs
+
+
+check_venv:
+	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
+		|| ( echo "$(red)A virtualenv must be active.$(normal)" ; false )
+
 
 check_clean_working_copy:
 	@echo "$(green)Checking if your working copy is clean ...$(normal)"
@@ -101,22 +105,13 @@ check_clean_working_copy:
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
+
 check_running_on_jenkins:
 	@echo "$(green)Checking if running on Jenkins ...$(normal)"
-	test -n "$$BUILD_NUMBER" \
+	@test -n "$$BUILD_NUMBER" \
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
-pypi: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info --tag-build=.dev$$BUILD_NUMBER sdist bdist_egg upload
 
-pypi_stable: check_clean_working_copy check_running_on_jenkins
-	$(python) setup.py egg_info sdist bdist_egg upload
-
-_pypi:
-	- rm -rf build/
-
-docs:
-	cd docs && make html
-
-_docs:
-	cd docs && make clean
+.PHONY: help develop clean_develop sdist clean_sdist test \
+		pypi pypi_stable clean_pypi docs clean_docs clean \
+		check_venv check_clean_working_copy check_running_on_jenkins
