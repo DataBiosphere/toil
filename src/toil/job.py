@@ -679,7 +679,7 @@ class Job(object):
             cachedFileCreateTimes.reverse()
             #Now do the actual file removal
             while totalCachedFileSizes > cacheSize:
-                fileCreateTime, fileStoreID =  cachedFileCreateTimes.pop()
+                fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
                 fileSize = os.stat(self.jobStoreFileIDToCacheLocation[fileStoreID]).st_size
                 filePath = self.jobStoreFileIDToCacheLocation[fileStoreID]
                 self.jobStoreFileIDToCacheLocation.pop(fileStoreID)
