@@ -13,7 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import
 import random
-
+import os
 from toil.job import Job
 from toil.test import ToilTest
 
@@ -63,7 +63,11 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, 
                                                         cache=random.random() > 0.5)
             else:
-                userPath = job.fileStore.getLocalTempFile()
+                if random.random() > 0.5:
+                    userPath = job.fileStore.getLocalTempFile()
+                else:
+                    userPath = os.path.join(job.fileStore.getLocalTempDir(), "tempFile.txt") #Testing case where file is placed in 
+                    #a local temp dir.
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, userPath, 
                                                         cache=random.random() > 0.5)
                 assert userPath == tempFile
@@ -87,7 +91,11 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
         for testPrefix in testStrings:
             if random.random() > 0.5:
                 #Make a local copy of the file
-                tempFile = job.fileStore.getLocalTempFile()
+                if random.random() > 0.5:
+                    tempFile = job.fileStore.getLocalTempFile()
+                else:
+                    tempFile = os.path.join(job.fileStore.getLocalTempDir(), "tempFile.txt") #Testing case where file is placed in 
+                    #a local temp dir.
                 with open(tempFile, 'w') as fH:
                     fH.write(testStrings[testPrefix])
                 #Write a local copy of the file using the local file
