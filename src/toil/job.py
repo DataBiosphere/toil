@@ -1043,7 +1043,7 @@ class Job(object):
         #method.
         with jobStore.writeFileStream(rootJobWrapper.jobStoreID) as (fileHandle, fileStoreID):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
-        jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())      
+        jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + self.userModule.globalize())
         #Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
     
@@ -1149,35 +1149,6 @@ class Job(object):
             stats.attrib["clock"] = str(totalCpuTime - startClock)
             stats.attrib["class"] = self._jobName()
             stats.attrib["memory"] = str(totalMemoryUsage)
-
-    ####################################################
-    #Method used to resolve the module in which an inherited job instances
-    #class is defined
-    ####################################################
-
-    @staticmethod
-    def _resolveMainModule( moduleName ):
-        """
-        Returns a tuple of two elements, the first element being the path 
-        to the directory containing the given
-        module and the second element being the name of the module. 
-        If the given module name is "__main__",
-        then that is translated to the actual file name of the top-level 
-        script without .py or .pyc extensions. The
-        caller can then add the first element of the returned tuple to 
-        sys.path and load the module from there. See also worker.loadJob().
-        """
-        # looks up corresponding module in sys.modules, gets base name, drops .py or .pyc
-        moduleDirPath, moduleName = os.path.split(os.path.abspath(sys.modules[moduleName].__file__))
-        if moduleName.endswith('.py'):
-            moduleName = moduleName[:-3]
-        elif moduleName.endswith('.pyc'):
-            moduleName = moduleName[:-4]
-        else:
-            raise RuntimeError(
-                "Can only handle main modules loaded from .py or .pyc files, but not '%s'" %
-                moduleName)
-        return moduleDirPath, moduleName
 
     def _jobName(self):
         """
