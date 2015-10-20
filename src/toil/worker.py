@@ -206,6 +206,7 @@ def main():
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
     blockFn = lambda : True
+    cleanCacheFn = lambda x : True
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -246,6 +247,9 @@ def main():
         jobStore.update(jobWrapper) #Update first, before deleting the file
         if oldLogFile != None:
             jobStore.delete(oldLogFile)
+            
+        #Make a temporary file directory for the jobWrapper
+        localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
     
         ##########################################
         #Setup the stats, if requested
@@ -263,8 +267,11 @@ def main():
             
             if jobWrapper.command != None:
                 if jobWrapper.command.startswith( "_toil " ):
-                    #Make a temporary file directory for the jobWrapper
-                    localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    #Load the job
+                    job = Job._loadJob(jobWrapper.command, jobStore)
+                    
+                    #Cleanup the cache from the previous job
+                    cleanCacheFn(job.cache if job.cache != None else config.defaultCache)
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
@@ -272,18 +279,23 @@ def main():
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
-                    #Load and run the job
-                    Job._loadJob(jobWrapper.command, 
-                    jobStore)._execute( jobWrapper=jobWrapper,
-                                        stats=elementNode if config.stats else None, 
-                                        localTempDir=localTempDir,
-                                        jobStore=jobStore,
-                                        fileStore=fileStore)
                     
-                    #Cleanup the temporary file directory
-                    fileStore._cleanLocalTempDir(config.cacheSize)
+                    #Run the job
+                    job._execute( jobWrapper=jobWrapper,
+                                  stats=elementNode if config.stats else None, 
+                                  localTempDir=localTempDir, jobStore=jobStore,
+                                  fileStore=fileStore)
+                    
+                    #Set the clean cache function
+                    cleanCacheFn = fileStore._cleanLocalTempDir
+                    
                 else: #Is another command (running outside of jobs may be deprecated)
+                    #Cleanup the cache from the previous job
+                    cleanCacheFn(0)
+                    
                     system(jobWrapper.command)
+                    #Set a dummy clean cache fn
+                    cleanCacheFn = lambda x : None
             else:
                 #The command may be none, in which case
                 #the jobWrapper is either a shell ready to be deleted or has 
