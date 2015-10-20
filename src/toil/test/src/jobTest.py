@@ -16,7 +16,7 @@ import unittest
 import os
 import random
 
-from toil.lib.bioio import getTempFile, getTempDirectory
+from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException
 from toil.test import ToilTest
 
