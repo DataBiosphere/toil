@@ -80,49 +80,53 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     """
     Test job exercises Job.FileStore functions
     """
+    outputFileStoreIds = [] #Strings passed to the next job in the chain
+    
+    #Load the input jobStoreFileIDs and check that they map to the 
+    #same set of random input strings, exercising the different functions in the fileStore interface
     for fileStoreID in inputFileStoreIDs:
-        #Load the input jobStoreFileIDs and check that they map to the 
-        #same set of random input strings
-        if random.random() > 0.666:
+        if random.random() > 0.5:
             #Read the file for the fileStoreID, randomly picking a way to invoke readGlobalFile
             if random.random() > 0.5:
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, 
+                                                        job.fileStore.getLocalTempFile() if 
+                                                        random.random() > 0.5 else None,
                                                         cache=random.random() > 0.5)
+                with open(tempFile, 'r') as fH:
+                    string = fH.readline()
             else:
-                userPath = job.fileStore.getLocalTempFile()
-                tempFile = job.fileStore.readGlobalFile(fileStoreID, userPath, 
-                                                        cache=random.random() > 0.5)
-                assert userPath == tempFile
-            #Check the local file is as we expect
-            with open(tempFile, 'r') as fH:
-                string = fH.readline()
-                assert testStrings[string[:PREFIX_LENGTH]] == string
-        elif random.random() > 0.666:
-            #Try reading the file using the stream method.
-            with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
-                string = fH.readline()
-                assert testStrings[string[:PREFIX_LENGTH]] == string
+                #Check the local file is as we expect
+                with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
+                    string = fH.readline()
+                    
+            #Check the string we get back is what we expect
+            assert testStrings[string[:PREFIX_LENGTH]] == string
+            
+            #This allows the file to be passed to the next job
+            outputFileStoreIds.append(fileStoreID)
         else:
             #This tests deletion
             job.fileStore.deleteGlobalFile(fileStoreID)
+    
+    #Fill out the output strings until we have the same number as the input strings
+    #exercising different ways of writing files to the file store
+    while len(outputFileStoreIds) < len(testStrings):
+        #Pick a string and write it into a file
+        testString = random.choice(testStrings.values())
+        if random.random() > 0.5:
+            #Make a local copy of the file
+            tempFile = job.fileStore.getLocalTempFile() if random.random() > 0.5 \
+            else os.path.join(job.fileStore.getLocalTempDir(), "temp.txt")
+            with open(tempFile, 'w') as fH:
+                fH.write(testString)
+            #Write a local copy of the file using the local file
+            outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
+        else:
+            #Use the writeGlobalFileStream method to write the file
+            with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
+                fH.write(testString)
+                outputFileStoreIds.append(fileStoreID)
 
     if chainLength > 0:
-        #For each job write some these strings into the file store, collecting 
-        #the fileIDs
-        outputFileStoreIds = []
-        for testPrefix in testStrings:
-            if random.random() > 0.5:
-                #Make a local copy of the file
-                tempFile = job.fileStore.getLocalTempFile() if random.random() > 0.5 \
-                else os.path.join(job.fileStore.getLocalTempDir(), "temp.txt")
-                with open(tempFile, 'w') as fH:
-                    fH.write(testStrings[testPrefix])
-                #Write a local copy of the file using the local file
-                outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
-            else:
-                with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
-                    fH.write(testStrings[testPrefix])
-                    outputFileStoreIds.append(fileStoreID)
-    
         #Make a child that will read these files and check it gets the same results
         job.addChildJobFn(fileTestJob, outputFileStoreIds, testStrings, chainLength-1)
