@@ -289,33 +289,6 @@ def getTempFile(suffix="", rootDir=None):
         os.chmod(tmpFile, 0777) #Ensure everyone has access to the file.
         return tmpFile
 
-def getTempDirectory(rootDir=None):
-    """
-    returns a temporary directory that must be manually deleted. rootDir will be
-    created if it does not exist.
-    """
-    if rootDir is None:
-        return tempfile.mkdtemp()
-    else:
-        if not os.path.exists(rootDir):
-            try:
-                os.makedirs(rootDir)
-            except OSError:
-                # Maybe it got created between the test and the makedirs call?
-                pass
-            
-        while True:
-            # Keep trying names until we find one that doesn't exist. If one
-            # does exist, don't nest inside it, because someone else may be
-            # using it for something.
-            tmpDir = os.path.join(rootDir, "tmp_" + getRandomAlphaNumericString())
-            if not os.path.exists(tmpDir):
-                break
-                
-        os.mkdir(tmpDir)
-        os.chmod(tmpDir, 0777) #Ensure everyone has access to the file.
-        return tmpDir
-
 def main():
     pass
 
