@@ -32,7 +32,6 @@ from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
 from bd2k.util.humanize import human2bytes
 from io import BytesIO
-
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
 
@@ -55,16 +54,27 @@ class Job(object):
     This public functions of this class and its  nested classes are the API 
     to toil.
     """
-    def __init__(self, memory=None, cores=None, disk=None):
+    def __init__(self, memory=None, cores=None, disk=None, cache=None):
         """
         This method must be called by any overiding constructor.
         
-        Memory is the maximum number of bytes of memory the job will
-        require to run. Cores is the number of CPU cores required.
+        memory is the maximum number of bytes of memory the job will
+        require to run. 
+        
+        cores is the number of CPU cores required.
+        
+        disk is the amount of local disk space required by the job, 
+        expressed in bytes.
+        
+        cache is the amount of disk (so that cache <= disk), expressed in bytes,
+        for storing files from previous jobs computed on the worker so 
+        that they can be accessed from a local copy. 
         """
         self.cores = cores
-        self.memory = human2bytes(str(memory)) if memory is not None else memory
-        self.disk = human2bytes(str(disk)) if disk is not None else disk
+        parse = lambda x : human2bytes(str(x)) if x is not None else x
+        self.memory = parse(memory)
+        self.disk = parse(disk)
+        self.cache = parse(cache)
         #Private class variables
 
         #See Job.addChild
@@ -699,19 +709,19 @@ class Job(object):
             #files/empty directories, recursively
             cachedFiles = set(self.jobStoreFileIDToCacheLocation.values())
             
-            def clean(dirOrFile):
+            def clean(dirOrFile, remove=True):
                 canRemove = True 
                 if os.path.isdir(dirOrFile):
                     for f in os.listdir(dirOrFile):
                         canRemove = canRemove and clean(os.path.join(dirOrFile, f))
-                    if canRemove:
+                    if canRemove and remove:
                         os.rmdir(dirOrFile) #Dir should be empty if canRemove is true
                     return canRemove
                 if dirOrFile in cachedFiles:
                     return False
                 os.remove(dirOrFile)
                 return True    
-            clean(self.localTempDir)
+            clean(self.localTempDir, False)
         
         def _blockFn(self):
             """
@@ -974,13 +984,21 @@ class Job(object):
         """
         Create an empty job for the job.
         """
+        memory=(self.memory if self.memory is not None
+               else float(jobStore.config.defaultMemory))
+        cores=(self.cores if self.cores is not None
+               else float(jobStore.config.defaultCores))
+        disk=(self.disk if self.disk is not None
+              else float(jobStore.config.defaultDisk))
+        cache=(self.cache if self.cache is not None
+              else float(jobStore.config.defaultCache))
+        
+        if cache > disk:
+            raise RuntimeError("Trying to allocate a cache (cache: %s) larger"
+                               " than the disk requirement for the job! (disk: %s)" % (cache, disk))
+
         return jobStore.create(command=command,
-                               memory=(self.memory if self.memory is not None
-                                       else jobStore.config.defaultMemory),
-                               cores=(self.cores if self.cores is not None
-                                    else float(jobStore.config.defaultCores)),
-                               disk=(self.disk if self.disk is not None
-                                    else float(jobStore.config.defaultDisk)),
+                               memory=memory, cores=cores, disk=disk,
                                predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobWrapper, jobStore):

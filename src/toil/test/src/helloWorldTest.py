@@ -18,9 +18,9 @@ class HelloWorldTest(ToilTest):
 
 class HelloWorld(Job):
     def __init__(self):
-        Job.__init__(self,  memory=100000, cores=2, disk=20000)
+        Job.__init__(self,  memory=100000, cores=2, disk="3G")
     def run(self, fileStore):
-        fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="10M").rv()
+        fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="3G").rv()
         self.addFollowOn(FollowOn(fileID))
 
 def childFn(job):

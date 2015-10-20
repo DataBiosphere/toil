@@ -67,6 +67,7 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
+        self.defaultCache = 2147483648 #Cache is 2GB
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -80,7 +81,6 @@ class Config(object):
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
-        self.cacheSize = 2147483648 #Cache is 2GB
         
         #Debug options
         self.badWorker = 0.0
@@ -145,6 +145,7 @@ class Config(object):
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", h2b, iC(1))
         setOption("defaultDisk", h2b, iC(1))
+        setOption("defaultCache", h2b, iC(0))
         setOption("maxCores", h2b, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
@@ -161,7 +162,6 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
-        setOption("cacheSize", h2b, iC(0))
         
         #Debug options
         setOption("badWorker", float, iC(0, 1))
@@ -228,9 +228,13 @@ def _addOptions(addGroupFn, config):
                       help=("The default amount of memory to request for a job (in bytes), "
                             "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
     addOptionFn("--defaultCores", dest="defaultCores", default=None,
-                      help="The number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
+                      help="The default number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
-                      help="The amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
+                      help="The default amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
+    addOptionFn("--defaultCache", dest="defaultCache", default=None,
+                help=("The default amount of disk space to use in caching "
+                      "files shared between jobs. This must be less than the disk requirement "
+                      "for the job default=%s" % config.defaultCache))
     addOptionFn("--maxCores", dest="maxCores", default=None,
                       help=("The maximum number of cpu cores to request from the batch system at any "
                             "one time. default=%s" % config.maxCores))
@@ -273,10 +277,6 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
-    
-    addOptionFn("--cacheSize", dest="cacheSize", default=None,
-                help=("The maximum amount of disk space to use in caching "
-                      "files shared between jobs. default=%s" % config.cacheSize))
     
     #
     #Debug options
