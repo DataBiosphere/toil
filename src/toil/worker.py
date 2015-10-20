@@ -33,7 +33,7 @@ import logging
 import xml.etree.cElementTree as ET
 import cPickle
 import shutil
-from threading import Thread, Event
+from threading import Thread
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -206,8 +206,6 @@ def main():
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
     blockFn = lambda : True
-    jobStoreFileIDToCacheLocation = {}
-    terminateEvent = Event() #This is used to signify crashes in threads
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -270,8 +268,7 @@ def main():
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn, jobStoreFileIDToCacheLocation, 
-                                              terminateEvent)
+                                              blockFn)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -293,7 +290,7 @@ def main():
                 #been scheduled after a failure to cleanup
                 break
             
-            if terminateEvent.isSet():
+            if Job.FileStore.terminateEvent.isSet():
                 raise RuntimeError("The termination flag is set")
             
             ##########################################
@@ -362,8 +359,7 @@ def main():
             assert jobWrapper.cores >= successorJob.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, 
-                                      jobStoreFileIDToCacheLocation, terminateEvent)
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
             
             #Update blockFn
             blockFn = fileStore._blockFn
@@ -399,7 +395,7 @@ def main():
     except: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
-        terminateEvent.set()
+        Job.FileStore.terminateEvent.set()
     
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
@@ -412,7 +408,7 @@ def main():
     #so safe to test if they completed okay
     ########################################## 
     
-    if terminateEvent.isSet():
+    if Job.FileStore.terminateEvent.isSet():
         jobWrapper = jobStore.load(jobStoreID)
         jobWrapper.setupJobAfterFailure(config)
         workerFailed = True

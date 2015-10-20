@@ -28,7 +28,7 @@ import cPickle
 import logging
 import shutil
 import stat
-from threading import Thread, Semaphore
+from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
 from bd2k.util.humanize import human2bytes
 from io import BytesIO
@@ -366,8 +366,15 @@ class Job(object):
         Class used to manage temporary files and log messages, 
         passed as argument to the Job.run method.
         """
-        def __init__(self, jobStore, jobWrapper, localTempDir, 
-                     inputBlockFn, jobStoreFileIDToCacheLocation, terminateEvent):
+        #Variables used for synching reads/writes
+        lockFilesLock = Semaphore()
+        lockFiles = set()
+        #For files in jobStore that are on the local disk, 
+        #map of jobStoreFileIDs to locations in localTempDir.
+        jobStoreFileIDToCacheLocation = {}
+        terminateEvent = Event() #Used to signify crashes in threads
+        
+        def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
             """
             This constructor should not be called by the user, 
             FileStore instances are only provided as arguments 
@@ -383,7 +390,6 @@ class Job(object):
             self.workerNumber = 2
             self.queue = Queue()
             self.updateSemaphore = Semaphore() 
-            self.terminateEvent = terminateEvent
             #Function to write files to job store
             def asyncWrite():
                 try:
@@ -394,7 +400,7 @@ class Job(object):
                         except Empty:
                             #Check if termination event is signaled 
                             #(set in the event of an exception in the worker)
-                            if terminateEvent.isSet():
+                            if self.terminateEvent.isSet():
                                 raise RuntimeError("The termination flag is set, exiting")
                             continue
                         #Normal termination condition is getting None from queue
@@ -412,8 +418,11 @@ class Job(object):
                                     break
                                 outputFileHandle.write(copyBuffer)
                         inputFileHandle.close()
+                        #Remove the file from the lock files
+                        with self.lockFilesLock:
+                            self.lockFiles.remove(jobStoreFileID)
                 except:
-                    terminateEvent.set()
+                    self.terminateEvent.set()
                     raise
                     
             self.workers = map(lambda i : Thread(target=asyncWrite), 
@@ -421,11 +430,6 @@ class Job(object):
             for worker in self.workers:
                 worker.start()
             self.inputBlockFn = inputBlockFn
-            #Caching 
-            #
-            #For files in jobStore that are on the local disk, 
-            #map of jobStoreFileIDs to locations in localTempDir.
-            self.jobStoreFileIDToCacheLocation = jobStoreFileIDToCacheLocation
 
         def getLocalTempDir(self):
             """
@@ -471,6 +475,8 @@ class Job(object):
                 self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
                 #Chmod to make file read only to try to prevent accidental user modification
                 os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                with self.lockFilesLock:
+                    self.lockFiles.add(jobStoreFileID)
                 self.jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
             else:
                 #Write the file directly to the file store
@@ -668,8 +674,10 @@ class Job(object):
             #Remove files so that the total cached files are smaller than a cacheSize
             
             #List of pairs of (fileCreateTime, fileStoreID) for cached files
+            with self.lockFilesLock:
+                deletableCacheFiles = set(self.jobStoreFileIDToCacheLocation.keys()) - self.lockFiles
             cachedFileCreateTimes = map(lambda x : (os.stat(self.jobStoreFileIDToCacheLocation[x]).st_ctime, x),
-                                        self.jobStoreFileIDToCacheLocation.keys())
+                                        deletableCacheFiles)
             #Total number of bytes stored in cached files
             totalCachedFileSizes = sum([os.stat(self.jobStoreFileIDToCacheLocation[x]).st_size for x in
                                         self.jobStoreFileIDToCacheLocation.keys()])
@@ -678,7 +686,7 @@ class Job(object):
             cachedFileCreateTimes.sort()
             cachedFileCreateTimes.reverse()
             #Now do the actual file removal
-            while totalCachedFileSizes > cacheSize:
+            while totalCachedFileSizes > cacheSize and len(cachedFileCreateTimes) > 0:
                 fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
                 fileSize = os.stat(self.jobStoreFileIDToCacheLocation[fileStoreID]).st_size
                 filePath = self.jobStoreFileIDToCacheLocation[fileStoreID]
