@@ -17,6 +17,7 @@ import base64
 import bz2
 from contextlib import contextmanager
 import logging
+import types
 from boto.exception import SDBResponseError, BotoServerError
 import time
 
@@ -67,11 +68,7 @@ class SDBHelper(object):
     # requests to fail signature verification, resulting in a 403. We therefore have to
     # base64-encode values ourselves even if that means we loose a quarter of capacity.
 
-    # BEWARE: http://docs.aws.amazon.com/AmazonSimpleDB/latest/DeveloperGuide/SDBLimits.html
-    # says that we can have 256 attributes per item but found that to be inaccurate. I did a
-    # binary search and determined that it is actually only 228.
-
-    maxAttributesPerItem = 228
+    maxAttributesPerItem = 256
     maxValueSize = 1024
     maxRawValueSize = maxValueSize * 3 / 4
     # Just make sure we don't have a problem with padding or integer truncation:
@@ -146,6 +143,33 @@ class SDBHelper(object):
         else:
             binary = None
         return binary, numChunks
+
+from boto.sdb.connection import SDBConnection
+
+def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
+                              replace=True, expected_value=None):
+    """
+    Monkey-patched version of SDBConnection.put_attributes that uses POST instead of GET
+
+    The GET version is subject to the URL length limit which kicks in before the 256 x 1024 limit
+    for attribute values. Using POST prevents that.
+
+    https://github.com/BD2KGenomics/toil/issues/502
+    """
+    domain, domain_name = self.get_domain_and_name(domain_or_name)
+    params = {'DomainName': domain_name,
+              'ItemName': item_name}
+    self._build_name_value_list(params, attributes, replace)
+    if expected_value:
+        self._build_expected_value(params, expected_value)
+    # The addition of the verb keyword argument is the only difference to put_attributes (Hannes)
+    return self.get_status('PutAttributes', params, verb='POST')
+
+def monkeyPatchSdbConnection(sdb):
+    """
+    :type sdb: SDBConnection
+    """
+    sdb.put_attributes = types.MethodType(_put_attributes_using_post, sdb)
 
 
 # FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference

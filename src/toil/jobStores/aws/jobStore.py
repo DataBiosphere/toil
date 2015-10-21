@@ -40,7 +40,8 @@ from boto.exception import SDBResponseError, S3ResponseError
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable)
+from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
+                                         monkeyPatchSdbConnection)
 from toil.jobWrapper import JobWrapper
 from toil.lib.encryption import encryptionOverhead, encrypt, decrypt
 
@@ -346,6 +347,7 @@ class AWSJobStore(AbstractJobStore):
             raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB "
                              "region." % self.region)
         assert db is not None
+        monkeyPatchSdbConnection(db)
         return db
 
     def _connectS3(self):
@@ -534,14 +536,15 @@ class AWSJobStore(AbstractJobStore):
             # Strings come back from SDB as unicode
             def strOrNone(s):
                 return s if s is None else str(s)
+
             # ownerID and encrypted are the only mandatory attributes
-            ownerID = strOrNone( item.get('ownerID') )
+            ownerID = strOrNone(item.get('ownerID'))
             encrypted = item.get('encrypted')
             if ownerID is None:
                 assert encrypted is None
                 return None
             else:
-                version = strOrNone( item['version'] )
+                version = strOrNone(item['version'])
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
                 if encrypted and content is not None:
