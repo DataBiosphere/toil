@@ -59,14 +59,14 @@ class UserDefinedJobArgTypeTest(ToilTest):
 
 class JobClass(Job):
     def __init__(self, level, foo):
-        Job.__init__(self, memory=100000, cores=2, disk=20000)
+        Job.__init__(self, memory=100000, cores=2, disk="3G")
         self.level = level
         self.foo = foo
 
     def run(self, fileStore):
         self.foo.assertIsCopy()
         if self.level < 2:
-            self.addChildJobFn(jobFunction, self.level + 1, Foo(), cores=1, memory="1M", disk="10M")
+            self.addChildJobFn(jobFunction, self.level + 1, Foo(), cores=1, memory="1M", disk="30G")
 
 
 def jobFunction(job, level, foo):
