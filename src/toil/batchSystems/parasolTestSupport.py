@@ -73,6 +73,6 @@ class ParasolTestSupport(object):
     class ParasolWorkerThread(ParasolThread):
         def parasolCommand(self):
             return ['paraNode',
-                    '-cpu=4',
+                    '-cpu=%i' % self.numCores,
                     '-debug',
                     'start']

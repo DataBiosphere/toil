@@ -22,7 +22,6 @@ from Queue import Queue, Empty
 from threading import Thread
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from toil.batchSystems.parasol import getParasolResultsFileName
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +241,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
-        self.gridengineResultsFile = getParasolResultsFileName(config.jobStore)
+        self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         # We lose any previous state in this file, and ensure the files existence
@@ -302,10 +301,11 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return self.worker.getRunningJobIDs()
 
     def getUpdatedBatchJob(self, maxWait):
-        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        if i is None:
+        try:
+            i = self.updatedJobsQueue.get(timeout=maxWait)
+        except Empty:
             return None
+        logger.debug('UpdatedJobsQueue Item: %s', i)
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
         self.currentJobs.remove(jobID)

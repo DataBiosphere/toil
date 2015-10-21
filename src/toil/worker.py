@@ -26,6 +26,7 @@ if __name__ == "__main__":
     toilSrcDir = os.path.dirname(os.path.realpath(__file__))
     sys.path = [directory for directory in sys.path if not os.path.realpath(directory) == toilSrcDir]
 
+import tempfile
 import traceback
 import time
 import socket
@@ -86,7 +87,6 @@ def main():
     from toil.lib.bioio import setLogLevel
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-    from toil.lib.bioio import getTempDirectory
     from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
     from toil.common import loadJobStore
@@ -148,8 +148,9 @@ def main():
         
     #Dir to put all the temp files in. If tempRootDir is None, tempdir looks at environment variables to determine
     # where to put the tempDir.
-    localWorkerTempDir = getTempDirectory(tempRootDir)
-    
+    localWorkerTempDir = tempfile.mkdtemp(dir=tempRootDir)
+    os.chmod(localWorkerTempDir, 0755)
+
     ##########################################
     #Setup the logging
     ##########################################

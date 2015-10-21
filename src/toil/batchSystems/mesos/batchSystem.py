@@ -17,7 +17,7 @@ from collections import defaultdict
 import os
 import time
 import pickle
-from Queue import Queue
+from Queue import Queue, Empty
 import logging
 import sys
 
@@ -181,8 +181,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
         pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
         """
-        i = self.getFromQueueSafely(self.updatedJobsQueue, maxWait)
-        if i is None:
+        try:
+            i = self.updatedJobsQueue.get(timeout=maxWait)
+        except Empty:
             return None
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
