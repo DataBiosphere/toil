@@ -34,7 +34,7 @@ import logging
 import xml.etree.cElementTree as ET
 import cPickle
 import shutil
-from threading import Thread, Event
+from threading import Thread
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -207,8 +207,7 @@ def main():
     messageNode = ET.SubElement(elementNode, "messages")
     messages = []
     blockFn = lambda : True
-    jobStoreFileIDToCacheLocation = {}
-    terminateEvent = Event() #This is used to signify crashes in threads
+    cleanCacheFn = lambda x : True
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -249,6 +248,9 @@ def main():
         jobStore.update(jobWrapper) #Update first, before deleting the file
         if oldLogFile != None:
             jobStore.delete(oldLogFile)
+            
+        #Make a temporary file directory for the jobWrapper
+        localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
     
         ##########################################
         #Setup the stats, if requested
@@ -266,35 +268,42 @@ def main():
             
             if jobWrapper.command != None:
                 if jobWrapper.command.startswith( "_toil " ):
-                    #Make a temporary file directory for the jobWrapper
-                    localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
+                    #Load the job
+                    job = Job._loadJob(jobWrapper.command, jobStore)
+                    
+                    #Cleanup the cache from the previous job
+                    cleanCacheFn(job.cache if job.cache != None else config.defaultCache)
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn, jobStoreFileIDToCacheLocation, 
-                                              terminateEvent)
+                                              blockFn)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
-                    #Load and run the job
-                    Job._loadJob(jobWrapper.command, 
-                    jobStore)._execute( jobWrapper=jobWrapper,
-                                        stats=elementNode if config.stats else None, 
-                                        localTempDir=localTempDir,
-                                        jobStore=jobStore,
-                                        fileStore=fileStore)
                     
-                    #Cleanup the temporary file directory
-                    fileStore._cleanLocalTempDir(config.cacheSize)
+                    #Run the job
+                    job._execute( jobWrapper=jobWrapper,
+                                  stats=elementNode if config.stats else None, 
+                                  localTempDir=localTempDir, jobStore=jobStore,
+                                  fileStore=fileStore)
+                    
+                    #Set the clean cache function
+                    cleanCacheFn = fileStore._cleanLocalTempDir
+                    
                 else: #Is another command (running outside of jobs may be deprecated)
+                    #Cleanup the cache from the previous job
+                    cleanCacheFn(0)
+                    
                     system(jobWrapper.command)
+                    #Set a dummy clean cache fn
+                    cleanCacheFn = lambda x : None
             else:
                 #The command may be none, in which case
                 #the jobWrapper is either a shell ready to be deleted or has 
                 #been scheduled after a failure to cleanup
                 break
             
-            if terminateEvent.isSet():
+            if Job.FileStore.terminateEvent.isSet():
                 raise RuntimeError("The termination flag is set")
             
             ##########################################
@@ -363,8 +372,7 @@ def main():
             assert jobWrapper.cores >= successorJob.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, 
-                                      jobStoreFileIDToCacheLocation, terminateEvent)
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
             
             #Update blockFn
             blockFn = fileStore._blockFn
@@ -400,7 +408,7 @@ def main():
     except: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
-        terminateEvent.set()
+        Job.FileStore.terminateEvent.set()
     
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
@@ -413,7 +421,7 @@ def main():
     #so safe to test if they completed okay
     ########################################## 
     
-    if terminateEvent.isSet():
+    if Job.FileStore.terminateEvent.isSet():
         jobWrapper = jobStore.load(jobStoreID)
         jobWrapper.setupJobAfterFailure(config)
         workerFailed = True

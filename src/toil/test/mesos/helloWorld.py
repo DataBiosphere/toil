@@ -29,7 +29,7 @@ def hello_world(job):
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
 
     # Spawn child
-    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk=2000)
+    job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk="3G")
 
 
 def hello_world_child(job, hw):
@@ -58,7 +58,7 @@ def main():
 
     print args.jobStore
     # Launch first toil Job
-    i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk=2000)
+    i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk="3G")
     j = Job.Runner.startToil(i, args)
 
 
