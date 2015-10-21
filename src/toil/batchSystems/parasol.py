@@ -13,13 +13,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 import logging
 
-import os 
+import os
 import re
 import sys
 import subprocess
+import tempfile
 import time
 
 from Queue import Empty
@@ -27,7 +29,7 @@ from Queue import Queue
 from threading import Thread
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-from toil.lib.bioio import getTempFile, getTempDirectory
+from toil.lib.bioio import getTempFile
 
 logger = logging.getLogger( __name__ )
 
@@ -65,7 +67,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         "this batchsystem interface does not support such limiting" % maxMemory)
         #Keep the name of the results file for the pstat2 command..
         self.parasolCommand = config.parasolCommand
-        self.parasolResultsDir = getTempDirectory(rootDir=config.jobStore)
+        self.parasolResultsDir = tempfile.mkdtemp(dir=config.jobStore)
 
         self.queuePattern = re.compile("q\s+([0-9]+)")
         self.runningPattern = re.compile("r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")
@@ -225,7 +227,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                     if jobID in issuedJobs: #It's one of our jobs
                         runningJobs[jobID] = time.time() - startTime
         return runningJobs
-    
+
     def getUpdatedBatchJob(self, maxWait):
         try:
             info = self.updatedJobsQueue.get(timeout=maxWait)
@@ -240,7 +242,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         else:
             self.runningJobs.remove(jobID)
         return (jobID, exitValue)
-    
+
     @classmethod
     def getRescueBatchJobFrequency(cls):
         """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
@@ -315,7 +317,7 @@ def main():
     pass
 
 def _test():
-    import doctest      
+    import doctest
     return doctest.testmod()
 
 if __name__ == '__main__':
