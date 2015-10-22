@@ -65,6 +65,11 @@ Here's what each extra provides:
 Building & Testing
 ==================
 
+After cloning the source and ``cd``-ing into the project root, create a virtualenv and activate it::
+
+    virtualenv venv
+    . venv/bin/activate
+
 Simply running
 
 ::
