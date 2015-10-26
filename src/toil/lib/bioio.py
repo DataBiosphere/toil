@@ -54,13 +54,17 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
     return handler
 
 
-def setLogLevel(level):
+def setLogLevel(level, logger=rootLogger):
+    """
+    Sets the log level to a given string level (like "INFO"). Operates on the
+    root logger by default, but another logger can be specified instead.
+    """
     level = level.upper()
     if level == "OFF": level = "CRITICAL"
     # Note that getLevelName works in both directions, numeric to textual and textual to numeric
     numericLevel = logging.getLevelName(level)
     assert logging.getLevelName(numericLevel) == level
-    rootLogger.setLevel(numericLevel)
+    logger.setLevel(numericLevel)
 
 def logFile(fileName, printFunction=logger.info):
     """Writes out a formatted version of the given log file
@@ -114,8 +118,8 @@ def _addLoggingOptions(addOptionFn):
     for level in supportedLogLevels:
         levelName = logging.getLevelName(level)
         levelNameCapitalized = levelName.capitalize()
-        addOptionFn("--log" + levelNameCapitalized, dest="log" + levelNameCapitalized,
-                    action="store_true", default=False,
+        addOptionFn("--log" + levelNameCapitalized, dest="logLevel",
+                    action="store_const", const=levelName,
                     help="Turn on logging at level %s and above. (default is %s)" % (levelName, defaultLogLevelName))
     addOptionFn("--logLevel", dest="logLevel", default=defaultLogLevelName,
                 help=("Log at given level (may be either OFF (or CRITICAL), ERROR, WARN (or WARNING), INFO or DEBUG). "
@@ -132,11 +136,6 @@ def setLoggingFromOptions(options):
     rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:
         setLogLevel(options.logLevel)
-    for level in supportedLogLevels:
-        levelName = logging.getLevelName(level)
-        levelNameCapitalized = levelName.capitalize()
-        if getattr( options, 'log' + levelNameCapitalized ):
-            setLogLevel( levelName )
     logger.info("Logging set at level: %s" % getLogLevelString())
     if options.logFile is not None:
         addLoggingFileHandler(options.logFile, options.logRotating)
