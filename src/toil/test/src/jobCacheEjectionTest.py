@@ -66,9 +66,9 @@ def fileTestCache(job, file_a, file_b, file_c, logfile):
     Test job exercises Job.FileStore functions
     """
     with open(logfile, 'w') as lf:
-        print(file_a not in job.fileStore.jobStoreFileIDToCacheLocation.items(), file=lf)
-        print(file_b not in job.fileStore.jobStoreFileIDToCacheLocation.items(), file=lf)
-        print(file_c not in job.fileStore.jobStoreFileIDToCacheLocation.items(), file=lf)
+        print(file_a not in job.fileStore._jobStoreFileIDToCacheLocation.items(), file=lf)
+        print(file_b not in job.fileStore._jobStoreFileIDToCacheLocation.items(), file=lf)
+        print(file_c not in job.fileStore._jobStoreFileIDToCacheLocation.items(), file=lf)
 
 def fileTestJob(job, file_size):
     """

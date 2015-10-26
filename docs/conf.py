@@ -118,6 +118,8 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
+# Include doc string for __init__ method in the documentation
+autoclass_content = 'both'
 
 # -- Options for HTML output ----------------------------------------------
 
