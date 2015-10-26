@@ -41,6 +41,7 @@ from toil.lib.bioio import (setLoggingFromOptions,
                                getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from toil.common import setupToil, addOptions
 from toil.leader import mainLoop
+from toil.realtimeLogger import RealtimeLogger
 
 class Job(object):
     """
@@ -418,6 +419,9 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
+            # Set up real-time log message reception, and put the details in the
+            # environment to be sent out to workers.
+            RealtimeLogger.start_master()
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 if options.restart:
                     jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
@@ -435,6 +439,9 @@ class Job(object):
                     #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
+                
+            # Stop reporting real-time log messages.
+            RealtimeLogger.stop_master()
 
     class FileStore( object ):
         """
