@@ -517,6 +517,7 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobSto
 
 
 @needs_aws
+@needs_encryption
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
 

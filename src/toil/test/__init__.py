@@ -132,8 +132,8 @@ def needs_aws(test_item):
         # noinspection PyUnresolvedReferences
         import boto
     except ImportError:
-        return unittest.skip("Skipping test. "
-                             "Install and configure Boto to include this test.")(test_item)
+        return unittest.skip("Skipping test. Install toil with the 'aws' extra to include this "
+                             "test.")(test_item)
     except:
         raise
     else:
@@ -144,8 +144,7 @@ def needs_aws(test_item):
                         and open(hv_uuid_path).read().startswith('ec2'):
             return test_item
         else:
-            return unittest.skip("Skipping test. "
-                                 "Create ~/.boto to include this test.")(test_item)
+            return unittest.skip("Skipping test. Create ~/.boto to include this test.")(test_item)
 
 
 def needs_azure(test_item):
@@ -157,8 +156,8 @@ def needs_azure(test_item):
         # noinspection PyUnresolvedReferences
         import azure.storage
     except ImportError:
-        return unittest.skip("Skipping test. Install and configure the Azure Storage Python SDK to "
-                             "include this test.")(test_item)
+        return unittest.skip("Skipping test. Install toil with the 'azure' extra) to include this "
+                             "test.")(test_item)
     except:
         raise
     else:
@@ -196,7 +195,8 @@ def needs_mesos(test_item):
         # noinspection PyUnresolvedReferences
         import mesos.native
     except ImportError:
-        return unittest.skip("Skipping test. Install Mesos to include this test.")(test_item)
+        return unittest.skip("Skipping test. Install toil with the 'mesos' extra to include this "
+                             "test.")(test_item)
     except:
         raise
     else:
@@ -229,7 +229,8 @@ def needs_encryption(test_item):
         # noinspection PyUnresolvedReferences
         import nacl
     except ImportError:
-        return unittest.skip("Skipping test. Install PyNaCl to include this test.")(test_item)
+        return unittest.skip("Skipping test. Install toil with the 'encryption' extra to include "
+                             "this test.")(test_item)
     except:
         raise
     else:
@@ -246,7 +247,8 @@ def needs_cwl(test_item):
         # noinspection PyUnresolvedReferences
         import cwltool
     except ImportError:
-        return unittest.skip("Skipping test. Install cwltool to include this test.")(test_item)
+        return unittest.skip("Skipping test. Install toil with the 'cwl' extra to include this "
+                             "test.")(test_item)
     except:
         raise
     else:

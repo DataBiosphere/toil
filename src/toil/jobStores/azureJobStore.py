@@ -30,6 +30,7 @@ from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
                            BlobSharedAccessPermissions)
+from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
 
@@ -37,7 +38,7 @@ from toil.jobWrapper import JobWrapper
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.lib.encryption import encrypt, decrypt, encryptionOverhead
+import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
 
@@ -175,8 +176,7 @@ class AzureJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as read_fd:
-            with self._uploadStream(jobStoreFileID, self.files,
-                                    encrypted=self.keyPath is not None) as write_fd:
+            with self._uploadStream(jobStoreFileID, self.files) as write_fd:
                 while True:
                     buf = read_fd.read(self._maxAzureBlockBytes)
                     write_fd.write(buf)
@@ -185,8 +185,7 @@ class AzureJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         try:
-            with self._downloadStream(jobStoreFileID, self.files,
-                                      encrypted=self.keyPath is not None) as read_fd:
+            with self._downloadStream(jobStoreFileID, self.files) as read_fd:
                 with open(localFilePath, 'w') as write_fd:
                     write_fd.write(read_fd.read(self._maxAzureBlockBytes))
         except WindowsAzureMissingResourceError:
@@ -215,15 +214,13 @@ class AzureJobStore(AbstractJobStore):
         # Append Blob type, but that is not currently supported by the
         # Azure Python API.
         jobStoreFileID = self._newFileID()
-        with self._uploadStream(jobStoreFileID, self.files,
-                                encrypted=self.keyPath is not None) as fd:
+        with self._uploadStream(jobStoreFileID, self.files) as fd:
             yield fd, jobStoreFileID
         self._associateFileWithJob(jobStoreFileID, jobStoreID)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        with self._uploadStream(jobStoreFileID, self.files, checkForModification=True,
-                                encrypted=self.keyPath is not None) as fd:
+        with self._uploadStream(jobStoreFileID, self.files, checkForModification=True) as fd:
             yield fd
 
     def getEmptyFileStoreID(self, jobStoreID=None):
@@ -237,39 +234,40 @@ class AzureJobStore(AbstractJobStore):
     def readFileStream(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
-        with self._downloadStream(jobStoreFileID, self.files,
-                                  encrypted=self.keyPath is not None) as fd:
+        with self._downloadStream(jobStoreFileID, self.files) as fd:
             yield fd
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=True):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None):
         sharedFileID = self._newFileID(sharedFileName)
-        with self._uploadStream(sharedFileID, self.files,
-                                encrypted=isProtected and self.keyPath is not None) as fd:
+        with self._uploadStream(sharedFileID, self.files, encrypted=isProtected) as fd:
             yield fd
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, isProtected=True):
+    def readSharedFileStream(self, sharedFileName):
         sharedFileID = self._newFileID(sharedFileName)
         if not self.fileExists(sharedFileID):
             raise NoSuchFileException(sharedFileID)
-        with self._downloadStream(sharedFileID, self.files,
-                                  encrypted=isProtected and self.keyPath is not None) as fd:
+        with self._downloadStream(sharedFileID, self.files) as fd:
             yield fd
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # TODO: would be a great use case for the append blobs, once
-        # they are implemented in the python api.
+        # TODO: would be a great use case for the append blobs, once implemented in the Azure SDK
         jobStoreFileID = self._newFileID()
+        encrypted = self.keyPath is not None
+        if encrypted:
+            statsAndLoggingString = encryption.encrypt(statsAndLoggingString, self.keyPath)
         self.statsFiles.put_block_blob_from_text(blob_name=jobStoreFileID,
-                                                 text=statsAndLoggingString)
+                                                 text=statsAndLoggingString,
+                                                 x_ms_meta_name_values=dict(
+                                                     encrypted=str(encrypted)))
         self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID})
 
     def readStatsAndLogging(self, statsAndLoggingCallbackFn):
         numStatsFiles = 0
         for entity in self.statsFileIDs.query_entities():
             jobStoreFileID = entity.RowKey
-            with self._downloadStream(jobStoreFileID, self.statsFiles, encrypted=False) as fd:
+            with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
                 statsAndLoggingCallbackFn(fd)
             self.statsFiles.delete_blob(blob_name=jobStoreFileID)
             self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
@@ -349,23 +347,27 @@ class AzureJobStore(AbstractJobStore):
     _maxAzureBlockBytes = 4194000
 
     @contextmanager
-    def _uploadStream(self, jobStoreFileID, container, checkForModification=False, encrypted=False):
-        # This is a straightforward transliteration into Azure of the
-        # _uploadStream method of AWSJobStore.
+    def _uploadStream(self, jobStoreFileID, container, checkForModification=False, encrypted=None):
+        """
+        :param encrypted: True to enforce encryption (will raise exception unless key is set),
+        False to prevent encryption or None to encrypt if key is set.
+        """
         if checkForModification:
             try:
                 expectedVersion = container.get_blob_properties(blob_name=jobStoreFileID)['etag']
             except WindowsAzureMissingResourceError:
                 expectedVersion = None
 
-        if encrypted and self.keyPath is None:
-            encrypted = False
-            log.warning("Encryption requested but no key available, not encrypting")
+        if encrypted is None:
+            encrypted = self.keyPath is not None
+        elif encrypted:
+            if self.keyPath is None:
+                raise RuntimeError('Encryption requested but no key was provided')
 
         maxBlockSize = self._maxAzureBlockBytes
         if encrypted:
             # There is a small overhead for encrypted data.
-            maxBlockSize -= encryptionOverhead
+            maxBlockSize -= encryption.overhead
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
@@ -379,9 +381,10 @@ class AzureJobStore(AbstractJobStore):
                                 # putting an empty block list creates an empty blob.
                                 break
                             if encrypted:
-                                buf = encrypt(buf, self.keyPath)
+                                buf = encryption.encrypt(buf, self.keyPath)
                             blockID = self._newFileID()
-                            container.put_block(blob_name=jobStoreFileID, block=buf,
+                            container.put_block(blob_name=jobStoreFileID,
+                                                block=buf,
                                                 blockid=blockID)
                             blockIDs.append(blockID)
                     except:
@@ -393,8 +396,7 @@ class AzureJobStore(AbstractJobStore):
                     if checkForModification and expectedVersion is not None:
                         # Acquire a (60-second) write lock,
                         leaseID = container.lease_blob(blob_name=jobStoreFileID,
-                                                       x_ms_lease_action='acquire'
-                                                       )['x-ms-lease-id']
+                                                       x_ms_lease_action='acquire')['x-ms-lease-id']
                         # check for modification,
                         blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
                         if blobProperties['etag'] != expectedVersion:
@@ -403,15 +405,22 @@ class AzureJobStore(AbstractJobStore):
                                                  x_ms_lease_id=leaseID)
                             raise ConcurrentFileModificationException(jobStoreFileID)
                         # commit the file,
-                        container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs,
-                                                 x_ms_lease_id=leaseID)
+                        container.put_block_list(blob_name=jobStoreFileID,
+                                                 block_list=blockIDs,
+                                                 x_ms_lease_id=leaseID,
+                                                 x_ms_meta_name_values=dict(
+                                                     encrypted=str(encrypted)))
                         # then release the lock.
                         container.lease_blob(blob_name=jobStoreFileID,
-                                             x_ms_lease_action='release', x_ms_lease_id=leaseID)
+                                             x_ms_lease_action='release',
+                                             x_ms_lease_id=leaseID)
                     else:
                         # No need to check for modification, just blindly write over whatever
                         # was there.
-                        container.put_block_list(blob_name=jobStoreFileID, block_list=blockIDs)
+                        container.put_block_list(blob_name=jobStoreFileID,
+                                                 block_list=blockIDs,
+                                                 x_ms_meta_name_values=dict(
+                                                     encrypted=str(encrypted)))
 
                 thread = ExceptionalThread(target=reader)
                 thread.start()
@@ -421,13 +430,14 @@ class AzureJobStore(AbstractJobStore):
             thread.join()
 
     @contextmanager
-    def _downloadStream(self, jobStoreFileID, container, encrypted=False):
-        # Transliteration of _downloadStream method in AWSJobStore.
-        if encrypted and self.keyPath is None:
-            encrypted = False
-            log.warning("Encryption requested but no key available, not decrypting")
+    def _downloadStream(self, jobStoreFileID, container):
         # The reason this is not in the writer is so we catch non-existant blobs early
         blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
+
+        encrypted = strict_bool(blobProps['x-ms-meta-encrypted'])
+        if encrypted and self.keyPath is None:
+            raise AssertionError('Content is encrypted but no key was provided.')
+
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
@@ -441,7 +451,7 @@ class AzureJobStore(AbstractJobStore):
                                                      x_ms_range="bytes=%d-%d" % (chunkStartPos,
                                                                                  chunkEndPos))
                             if encrypted:
-                                buf = decrypt(buf, self.keyPath)
+                                buf = encryption.decrypt(buf, self.keyPath)
                             writable.write(buf)
                             chunkStartPos = chunkEndPos + 1
                     finally:
