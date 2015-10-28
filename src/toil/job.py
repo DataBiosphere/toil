@@ -371,6 +371,20 @@ class Job(object):
         Used to setup and run Toil workflow.
         """
         @staticmethod
+        def getDefaultArgumentParser(jobStore):
+            """
+            Get argument parser with added toil workflow options.
+            
+            :param string jobStore: A string describing the jobStore \
+            for the workflow.
+            :returns: The argument parser used by a toil workflow with added Toil options.
+            :rtype: :class:`argparse.ArgumentParser` 
+            """
+            parser = ArgumentParser()
+            Job.Runner.addToilOptions(parser)
+            return parser
+        
+        @staticmethod
         def getDefaultOptions(jobStore):
             """
             Get default options for a toil workflow.
@@ -380,11 +394,9 @@ class Job(object):
             :returns: The options used by a toil workflow.
             :rtype: argparse.ArgumentParser values object
             """
-            parser = ArgumentParser()
-            Job.Runner.addToilOptions(parser)
-            options = parser.parse_args(args=[jobStore])
-            return options
-
+            parser = Job.Runner.getDefaultArgumentParser(jobStore)
+            return parser.parse_args(args=[jobStore])
+        
         @staticmethod
         def addToilOptions(parser):
             """
