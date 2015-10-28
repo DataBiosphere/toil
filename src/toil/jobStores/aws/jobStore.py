@@ -25,7 +25,7 @@ import hashlib
 import itertools
 import repr as reprlib
 
-from bd2k.util import memoize, strict_bool
+from bd2k.util import strict_bool
 from bd2k.util.objects import InnerClass
 from bd2k.util.threading import ExceptionalThread
 from boto.sdb.domain import Domain
@@ -43,7 +43,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
 from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
                                          monkeyPatchSdbConnection)
 from toil.jobWrapper import JobWrapper
-from toil.lib.encryption import encryptionOverhead, encrypt, decrypt
+import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
 
@@ -106,15 +106,6 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).__init__(config=config)
 
         self.sseKeyPath = self.config.sseKey
-
-    @property
-    @memoize
-    def sseKey(self):
-        if self.sseKeyPath is None:
-            return None
-        else:
-            with open(self.sseKeyPath) as f:
-                return f.read()
 
     def create(self, command, memory, cores, disk, predecessorNumber=0):
         jobStoreID = self._newJobID()
@@ -221,7 +212,7 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Wrote %r.", info)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=True):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None):
         assert self._validateSharedFileName(sharedFileName)
         info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
                                           ownerID=str(self.sharedFileOwnerID),
@@ -261,7 +252,7 @@ class AWSJobStore(AbstractJobStore):
             yield readable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, isProtected=True):
+    def readSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
         info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
@@ -490,7 +481,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def create(cls, ownerID):
-            return cls(str(uuid.uuid4()), ownerID, encrypted=True)
+            return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
 
         @classmethod
         def load(cls, jobStoreFileID):
@@ -504,12 +495,13 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def loadOrCreate(cls, jobStoreFileID, ownerID, encrypted):
             self = cls.load(jobStoreFileID)
+            if encrypted is None:
+                encrypted = cls.outer.sseKeyPath is not None
             if self is None:
-                self = cls(jobStoreFileID, ownerID, encrypted)
+                self = cls(jobStoreFileID, ownerID, encrypted=encrypted)
             else:
                 assert self.fileID == jobStoreFileID
                 assert self.ownerID == ownerID
-                # Honor encryption request. We might still fall back to unencrypted on save.
                 self.encrypted = encrypted
             return self
 
@@ -547,10 +539,12 @@ class AWSJobStore(AbstractJobStore):
                 version = strOrNone(item['version'])
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
-                if encrypted and content is not None:
+                if encrypted:
                     sseKeyPath = cls.outer.sseKeyPath
-                    assert sseKeyPath is not None
-                    content = decrypt(content, sseKeyPath)
+                    if sseKeyPath is None:
+                        raise AssertionError('Content is encrypted but no key was provided.')
+                    if content is not None:
+                        content = encryption.decrypt(content, sseKeyPath)
                 self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
                            content=content, numContentChunks=numContentChunks)
                 return self
@@ -572,11 +566,8 @@ class AWSJobStore(AbstractJobStore):
                 if self.encrypted:
                     sseKeyPath = self.outer.sseKeyPath
                     if sseKeyPath is None:
-                        self.encrypted = False
-                        log.warning("No encryption key set, falling back to plain text for "
-                                    "inlined content of %r.", self)
-                    else:
-                        content = encrypt(content, sseKeyPath)
+                        raise AssertionError('Encryption requested but no key was provided.')
+                    content = encryption.encrypt(content, sseKeyPath)
                 attributes = self.binaryToAttributes(content)
                 numChunks = len(attributes)
             attributes.update(dict(ownerID=self.ownerID,
@@ -590,7 +581,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def maxInlinedSize(cls, encrypted):
-            return cls.maxBinarySize() - (encryptionOverhead if encrypted else 0)
+            return cls.maxBinarySize() - (encryption.encryptionOverhead if encrypted else 0)
 
         def _maxInlinedSize(self):
             return self.maxInlinedSize(self.encrypted)
@@ -636,7 +627,6 @@ class AWSJobStore(AbstractJobStore):
                     key.name = self.fileID
                     key.set_contents_from_filename(localFilePath, headers=headers)
                     self.version = key.version_id
-                    self.encrypted = bool(headers)
                 else:
                     with open(localFilePath, 'rb') as f:
                         upload = self.outer.filesBucket.initiate_multipart_upload(
@@ -659,7 +649,6 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             self.version = upload.complete_upload().version_id
-                            self.encrypted = bool(headers)
                 key = self.outer.filesBucket.get_key(self.fileID,
                                                      headers=headers,
                                                      version_id=self.version)
@@ -697,7 +686,6 @@ class AWSJobStore(AbstractJobStore):
                                 raise
                             else:
                                 self.version = upload.complete_upload().version_id
-                                self.encrypted = bool(headers)
 
                     def reader():
                         buf = readable.read()
@@ -771,16 +759,21 @@ class AWSJobStore(AbstractJobStore):
                 store.filesBucket.delete_key(key_name=self.fileID, version_id=self.previousVersion)
 
         def _s3EncryptionHeaders(self):
-            sseKey = self.outer.sseKey
-            if not self.encrypted or sseKey is None:
-                return {}
+            sseKeyPath = self.outer.sseKeyPath
+            if self.encrypted:
+                if sseKeyPath is None:
+                    raise AssertionError( 'Content is encrypted but no key was provided.')
+                else:
+                    with open(sseKeyPath) as f:
+                        sseKey = f.read()
+                    assert len(sseKey) == 32
+                    encodedSseKey = base64.b64encode(sseKey)
+                    encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
+                    return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
+                            'x-amz-server-side-encryption-customer-key': encodedSseKey,
+                            'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
             else:
-                assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey)
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
-                return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
-                        'x-amz-server-side-encryption-customer-key': encodedSseKey,
-                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
+                return {}
 
         def _fileSizeAndTime(self, localFilePath):
             file_stat = os.stat(localFilePath)

@@ -18,9 +18,15 @@ encryptionOverhead = 0
 
 # noinspection PyUnusedLocal
 def encrypt(message, keyPath):
-    return message
+    _bail()
 
 
 # noinspection PyUnusedLocal
 def decrypt(ciphertext, keyPath):
-    return ciphertext
+    _bail()
+
+
+def _bail():
+    raise NotImplementedError("Encryption support is not installed. Consider re-installing toil "
+                              "with the 'encryption' extra along with any other extras you might "
+                              "want, e.g. 'pip install toil[encryption,...]'.")
