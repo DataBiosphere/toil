@@ -28,9 +28,9 @@ Toil is a workflow engine written in 100% Python. It features:
     *  Robustness 
         - Toil workflows support arbitrary worker and leader failure, with strong check-pointing that always allows resumption.
     *  Complete file management 
-        - Temporary and persistent file management that abstracts over the details of the underlying file system, providing a uniform interface regardless of environment.
+        - Temporary and persistent file management that abstracts over the details of the underlying file system, providing a uniform interface regardless of environment. Supports both atomic file transfer and streaming interfaces, and provides encryption of user data.
     *  Declarative and dynamic workflow creation
-        - Workflows can be declared statically, but new jobs can be added dynamically during execution within any existing job, allowing arbitrarily complex workflow graphs with, ultimately, millions of jobs within them.
+        - Workflows can be declared statically, but new jobs can be added dynamically during execution within any existing job, allowing arbitrarily complex workflow graphs with millions of jobs within them.
     *  Support for databases and services. 
         - For example, Apache Spark clusters can be created in seconds and easily integrated within a toil workflow as a service, with precisely defined time start and end times that fits with the flow of other jobs in the workflow.
 
