@@ -581,7 +581,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def maxInlinedSize(cls, encrypted):
-            return cls.maxBinarySize() - (encryption.encryptionOverhead if encrypted else 0)
+            return cls.maxBinarySize() - (encryption.overhead if encrypted else 0)
 
         def _maxInlinedSize(self):
             return self.maxInlinedSize(self.encrypted)

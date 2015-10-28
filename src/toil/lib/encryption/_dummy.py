@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-encryptionOverhead = 0
+overhead = 0
 
 
 # noinspection PyUnusedLocal

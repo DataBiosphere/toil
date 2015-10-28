@@ -367,7 +367,7 @@ class AzureJobStore(AbstractJobStore):
         maxBlockSize = self._maxAzureBlockBytes
         if encrypted:
             # There is a small overhead for encrypted data.
-            maxBlockSize -= encryption.encryptionOverhead
+            maxBlockSize -= encryption.overhead
         readable_fh, writable_fh = os.pipe()
         with os.fdopen(readable_fh, 'r') as readable:
             with os.fdopen(writable_fh, 'w') as writable:
