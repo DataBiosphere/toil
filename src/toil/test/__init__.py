@@ -23,7 +23,7 @@ import subprocess
 
 from bd2k.util.files import mkdir_p
 
-from toil.common import toilPackageDirPath
+from toil import toilPackageDirPath
 
 log = logging.getLogger(__name__)
 

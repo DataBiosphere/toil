@@ -28,16 +28,6 @@ from toil.batchSystems.lsf import LSFBatchSystem
 
 logger = logging.getLogger( __name__ )
 
-def toilPackageDirPath():
-    """
-    Returns the absolute path of the directory that corresponds to the top-level toil package. The return value is
-    guaranteed to end in '/toil'.
-    """
-    import toil.jobWrapper
-
-    result = os.path.dirname(absSymPath(toil.jobWrapper.__file__))
-    assert result.endswith('/toil')
-    return result
 
 class Config(object):
     """

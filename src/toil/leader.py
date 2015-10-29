@@ -23,10 +23,11 @@ import sys
 import os.path
 import time
 import xml.etree.cElementTree as ET
+from multiprocessing import Process
+from multiprocessing import JoinableQueue as Queue
 
-from toil import Process, Queue
+from toil import toilPackageDirPath
 from toil.lib.bioio import getTotalCpuTime, logStream
-from toil.common import toilPackageDirPath
 
 logger = logging.getLogger( __name__ )
 

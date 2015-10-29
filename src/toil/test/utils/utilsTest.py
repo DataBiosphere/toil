@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 import unittest
 import os
@@ -18,7 +19,7 @@ from subprocess import CalledProcessError
 
 from toil.lib.bioio import system
 from toil.lib.bioio import getTempFile
-from toil.common import toilPackageDirPath
+from toil import toilPackageDirPath
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
 

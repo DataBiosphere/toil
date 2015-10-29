@@ -11,13 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-use_multiprocessing = True
-if use_multiprocessing:
-    from multiprocessing import Process
-    from multiprocessing import JoinableQueue as Queue
-else:
-    from threading import Thread as Process
-    from Queue import Queue
 
-# TODO: Do the same for pickle and cPickle
+from __future__ import absolute_import
+
+import os
+
+
+def toilPackageDirPath():
+    """
+    Returns the absolute path of the directory that corresponds to the top-level toil package.
+    The return value is guaranteed to end in '/toil'.
+    """
+    result = os.path.dirname(os.path.realpath(__file__))
+    assert result.endswith('/toil')
+    return result
