@@ -31,7 +31,6 @@ kwargs = dict(
     test_suite='toil',
     extras_require={
         'mesos': [
-            'mesos.interface==0.22.0',
             'psutil==3.0.1'],
         'aws': [
             'boto==2.38.0'],
