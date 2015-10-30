@@ -18,7 +18,7 @@ For example::
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world, I have a message: %s" % self.message)
+            fileStore.logToMaster("Hello, world!, I have a message: %s" % self.message)
             
 In the example a class, HelloWorld, is defined. 
 The constructor requests 2 gigabytes of memory, 2 cores and 3 gigabytes of local disk
@@ -26,7 +26,7 @@ to complete the work.
 
 The :func:`toil.job.Job.run` method is the function the user overrides to get work done.
 Here it just logs a message using :func:`toil.job.Job.FileStore.logToMaster`, which
-will appear in the log output of the leader process of the workflow.
+will be registered in the log output of the leader process of the workflow.
 
 Job.Runner: Invoking a workflow
 -------------------------------
@@ -39,10 +39,20 @@ We can add to the previous example to turn into a complete workflow by adding th
 to create an instance of HelloWorld and to run this as a workflow containing a single job.
 This uses the :class:`toil.job.Job.Runner` class, which is used to start and resume Toil workflows. 
 For example::
-
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    options.logLevel = "INFO"
-    Job.Runner.startToil(HelloWorld("woot"), options)
+    from toil.job import Job
+    
+    class HelloWorld(Job):
+        def __init__(self, message):
+            Job.__init__(self,  memory="2G", cores=2, disk="3G")
+            self.message = message
+    
+        def run(self, fileStore):
+            fileStore.logToMaster("Hello, world!, I have a message: %s" % self.message)
+    
+    if __name__=="__main__":   
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
+        Job.Runner.startToil(HelloWorld("woot"), options)
     
 The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of default
 options for the workflow. The only argument is a description of how to store the workflow's
@@ -66,18 +76,21 @@ Functions and job functions
 Defining jobs by creating class definitions generally involves the boiler plate of creating
 a constructor. To avoid this the classes :class:`toil.job.FunctionWrappingJob` and 
 :class:`toil.job.JobFunctionWrappingTarget` allow functions to be directly converted to 
-jobs. For example::
+jobs. 
+For example::
     from toil.job import Job
- 
+     
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-        job.fileStore.logToMaster("Hello world, I have a message: %s" 
-                                    % message)
-    
+        job.fileStore.logToMaster("Hello world, " 
+        "I have a message: %s" % message) # This uses a logging function 
+        # of the Job.FileStore class
+        
     j = Job.wrapJobFn(helloWorld, "woot")
     
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    options.logLevel = "INFO"
-    Job.Runner.startToil(j, options)
+    if __name__=="__main__":    
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
+        Job.Runner.startToil(j, options)
 
 Is equivalent to the complete previous example. Here *helloWorld* is an example of a 
 *job function*, a function whose first argument is a reference to the wrapping job. 
@@ -95,19 +108,15 @@ The keyword arguments *memory*, *cores* and *disk* allow resource requirements t
 if they are not included as keyword arguments within a function header 
 they can be passed to as arguments when wrapping a function as a job and will be used to specify resource requirements.
 
-
-Non-job functions can also be wrapped, 
-for example::
+Non-job functions can also be wrapped, for example::
     from toil.job import Job
- 
+     
     def helloWorld2(message):
-        print "Hello world, I have a message: %s" % message 
-        # The above message will be in the log of the of the worker, 
-        # but not in the leader log.
-    
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    options.logLevel = "INFO"
-    Job.Runner.startToil(Job.wrapFn(helloWorld2, "woot"), options)
+        return "Hello world, I have a message: %s" % message 
+        
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        print Job.Runner.startToil(Job.wrapFn(helloWorld2, "woot"), options)
     
 Here the only major difference to note is the 
 line::
@@ -133,18 +142,25 @@ The follow-on jobs of a job are run after it's child jobs and their successors
 have completed. They are also run in parallel. Follow-ons allow the easy specification of 
 cleanup tasks that happen after a set of parallel child tasks. The following shows 
 a simple example that uses the earlier helloWorld job function::
-
+    from toil.job import Job
+    
+    def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
+        job.fileStore.logToMaster("Hello world, " 
+        "I have a message: %s" % message) # This uses a logging function 
+        # of the Job.FileStore class
+        
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = Job.wrapJobFn(helloWorld, "second or third")
     j3 = Job.wrapJobFn(helloWorld, "second or third")
     j4 = Job.wrapJobFn(helloWorld, "last")
-    j1.addChild(j1)
     j1.addChild(j2)
-    j1.addFollowOn(j3)
-
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    options.logLevel = "INFO"
-    Job.Runner.startToil(j1, options)
+    j1.addChild(j3)
+    j1.addFollowOn(j4)
+    
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
+        Job.Runner.startToil(j1, options)
 
 In the example four jobs are created, first j1 is run, 
 then j2 and j3 are run in parallel as children of j1,
@@ -179,14 +195,14 @@ Dynamic Job Creation
 The previous examples show a workflow being defined outside of a job. 
 However, toil also allows jobs to be created dynamically within jobs. 
 For example::
-    def binaryStringFn(job, message, depth=10):
+    def binaryStringFn(job, message, depth=5):
         if depth > 0:
             job.addChildJobFn(binaryStringFn, message + "0", depth-1)
             job.addChildJobFn(binaryStringFn, message + "1", depth-1)
         else:
             job.fileStore.logToMaster("Binary string: %s" % message)
 
-The binaryStringFn logs all possible binary strings of length 10, creating a total of 2^12 - 1
+The binaryStringFn logs all possible binary strings of length 10, creating a total of 2^7 - 1
 jobs dynamically and recursively. Static and dynamic creation of jobs can be mixed
 in a toil workflow, with jobs defined within a job or job function being created
 at run-time.
@@ -226,20 +242,20 @@ Promises can be quite useful. For example, we can combine dynamic job creation
 with promises to achieve a job creation process that mimics the functional patterns 
 possible in many programming 
 languages::
-    def binaryStrings(job, message="", depth=10):
+    def binaryStrings(job, message="", depth=5):
         if depth > 0:
             s = [ job.addChildJobFn(binaryStrings, message + "0", 
                                     depth-1).rv(),  
                   job.addChildJobFn(binaryStrings, message + "1", 
                                     depth-1).rv() ]
-            return job.addFollowOnJobFn(merge, s).rv()
+            return job.addFollowOnFn(merge, s).rv()
         return [message]
         
     def merge(strings):
         return strings[0] + strings[1]
         
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    l = Job.Runner.startToil(Job.wrapFn(binaryStrings), options)
+    l = Job.Runner.startToil(Job.wrapJobFn(binaryStrings), options)
     
 The return value *l* of the workflow is a list of all binary strings of length 10, 
 computed recursively. Although a toy example, it demonstrates how closely toil workflows
@@ -334,7 +350,6 @@ Also worth noting is that there is no file system hierarchy for files in the glo
 store. These limitations allow us to fairly easily support different object stores and to 
 use caching to limit the amount of network file transfer between jobs.
         
-
 Services
 --------
 

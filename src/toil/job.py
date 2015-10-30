@@ -28,6 +28,7 @@ import cPickle
 import logging
 import shutil
 import stat
+import inspect
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
 from bd2k.util.humanize import human2bytes
@@ -371,12 +372,10 @@ class Job(object):
         Used to setup and run Toil workflow.
         """
         @staticmethod
-        def getDefaultArgumentParser(jobStore):
+        def getDefaultArgumentParser():
             """
             Get argument parser with added toil workflow options.
             
-            :param string jobStore: A string describing the jobStore \
-            for the workflow.
             :returns: The argument parser used by a toil workflow with added Toil options.
             :rtype: :class:`argparse.ArgumentParser` 
             """
@@ -394,7 +393,7 @@ class Job(object):
             :returns: The options used by a toil workflow.
             :rtype: argparse.ArgumentParser values object
             """
-            parser = Job.Runner.getDefaultArgumentParser(jobStore)
+            parser = Job.Runner.getDefaultArgumentParser()
             return parser.parse_args(args=[jobStore])
         
         @staticmethod
@@ -414,9 +413,10 @@ class Job(object):
             Runs the toil workflow using the given options \
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) \
             starting with this job. 
-            
+            :param toil.job.Job job: root job of the workflow
             :raises: toil.leader.FailedJobsException if at the end of function \
             their remain failed jobs.
+            :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
@@ -424,6 +424,15 @@ class Job(object):
                     jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
                     rootJob = job._loadRootJob(jobStore)
                 else:
+                    #Make a file to store the root jobs return value in
+                    jobStoreFileID = jobStore.getEmptyFileStoreID()
+                    #Add the root job return value as a promise
+                    if None not in job._rvs:
+                        job._rvs[None] = [] 
+                    job._rvs[None].append(jobStoreFileID)
+                    #Write the name of the promise file in a shared file
+                    with jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
+                        fH.write(jobStoreFileID)
                     #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
                 return mainLoop(config, batchSystem, jobStore, rootJob)
@@ -1315,14 +1324,19 @@ class FunctionWrappingJob(Job):
         
         The keywords "memory", "cores", "disk", "cache" are reserved keyword arguments \
         that if specified will be used to determine the resources for the job, \
-        as :func:`toil.job.Job.__init__`.
+        as :func:`toil.job.Job.__init__`. If they are keyword arguments to the function 
+        they will be extracted from the function definition, but may be overridden by 
+        the user (as you would expect).
         """
-        # FIXME: I'd rather not duplicate the defaults here, unless absolutely necessary
-        cores = kwargs.pop("cores") if "cores" in kwargs else None
-        disk = kwargs.pop("disk") if "disk" in kwargs else None
-        memory = kwargs.pop("memory") if "memory" in kwargs else None
-        cache = kwargs.pop("cache") if "cache" in kwargs else None
-        Job.__init__(self, memory=memory, cores=cores, disk=disk, cache=cache)
+        # Use the user specified resource argument, if specified, else 
+        # grab the default argument from the function, if specified, else default to None
+        argSpec = inspect.getargspec(userFunction)
+        argDict = dict(zip(argSpec.args[-len(argSpec.defaults):],argSpec.defaults)) \
+                        if argSpec.defaults != None else {}
+        argFn = lambda x : kwargs.pop(x) if x in kwargs else \
+                            (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
+        Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"), 
+                     disk=argFn("disk"), cache=argFn("cache"))
         #If dill is installed pickle the user function directly
         #TODO: Add dill support
         #else use indirect method
