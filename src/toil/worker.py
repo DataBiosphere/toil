@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,12 +17,6 @@ import os
 import sys
 import copy
 import random
-
-if __name__ == "__main__":
-    # FIXME: Until we use setuptools entry points, this is the only way to avoid a conflict between our own resource.py
-    # and Python's
-    toilSrcDir = os.path.dirname(os.path.realpath(__file__))
-    sys.path = [directory for directory in sys.path if not os.path.realpath(directory) == toilSrcDir]
 
 import tempfile
 import traceback
@@ -74,7 +66,9 @@ class AsyncJobStoreWrite:
         pass
     
 def main():
-    ########################################## 
+    logging.basicConfig()
+
+    ##########################################
     #Import necessary modules 
     ##########################################
     
@@ -477,7 +471,3 @@ def main():
     if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0:
         #We can now safely get rid of the jobWrapper
         jobStore.delete(jobWrapper.jobStoreID)
-        
-if __name__ == '__main__':
-    logging.basicConfig()
-    main()

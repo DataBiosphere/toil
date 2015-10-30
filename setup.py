@@ -45,9 +45,10 @@ kwargs = dict(
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',
+            '_toil_worker = toil.worker:main',
             'cwltoil = toil.cwl.cwltoil:main [cwl]',
             'cwl-runner = toil.cwl.cwltoil:main [cwl]',
-            'toil-mesos-executor = toil.batchSystems.mesos.executor:main [mesos]']})
+            '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 from setuptools.command.test import test as TestCommand
 

@@ -19,7 +19,7 @@ from subprocess import CalledProcessError
 
 from toil.lib.bioio import system
 from toil.lib.bioio import getTempFile
-from toil import toilPackageDirPath
+from toil import toilPackageDirPath, resolveEntryPoint
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
 
@@ -52,7 +52,7 @@ class UtilsTest(ToilTest):
 
     @property
     def toilMain(self):
-        return self._getUtilScriptPath('toilMain')
+        return resolveEntryPoint('toil')
 
     @property
     def sort(self):

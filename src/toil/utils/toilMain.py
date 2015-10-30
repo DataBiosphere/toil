@@ -1,5 +1,3 @@
-#!/usr/bin/env python2.7
-
 from __future__ import absolute_import, print_function
 import os
 import sys
@@ -41,7 +39,3 @@ def printHelp(modules):
         name=os.path.basename(sys.argv[0]),
         commands='|'.join(modules.iterkeys()),
         descriptions='\n'.join("%s - %s" % (n, m.__doc__.strip()) for n, m in modules.iteritems())))
-
-
-if __name__ == '__main__':
-    main()

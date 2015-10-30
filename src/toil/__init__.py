@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 
 import os
+import sys
 
 
 def toilPackageDirPath():
@@ -25,3 +26,7 @@ def toilPackageDirPath():
     result = os.path.dirname(os.path.realpath(__file__))
     assert result.endswith('/toil')
     return result
+
+def resolveEntryPoint(entryPoint):
+    return os.path.join(os.path.dirname(sys.executable),entryPoint)
+

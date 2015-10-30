@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -288,14 +286,3 @@ def getTempFile(suffix="", rootDir=None):
         open(tmpFile, 'w').close()
         os.chmod(tmpFile, 0777) #Ensure everyone has access to the file.
         return tmpFile
-
-def main():
-    pass
-
-def _test():
-    import doctest
-    return doctest.testmod()
-
-if __name__ == '__main__':
-    _test()
-    main()
