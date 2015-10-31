@@ -11,18 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 import logging
 import tempfile
 import shutil
 import os
-import subprocess
 import threading
+import sys
 
-from toil.lib.bioio import getLogLevelString
+from toil.lib.bioio import getLogLevelString, system
 from toil.test.mesos.stress import main as stressMain
 from toil.test import ToilTest, needs_mesos
 from toil.batchSystems.mesos.test import MesosTestSupport
+from toil.test.mesos import helloWorld
 
 lock = threading.Lock()
 numCores = 2
@@ -56,12 +58,11 @@ class MesosTest(ToilTest, MesosTestSupport):
         super(MesosTest, self).tearDown()
 
     def test_hello_world(self):
-        dirPath = os.path.dirname(os.path.abspath(__file__))
-        subprocess.check_call("python {dirPath}/helloWorld.py ./toilTest "
-                              "--batchSystem=mesos "
-                              "--logLevel={logLevel}".format(dirPath=dirPath,
-                                                             logLevel=getLogLevelString()),
-                              shell=True)
+        system([sys.executable,
+                '-m', helloWorld.__name__,
+                './toilTest',
+                '--batchSystem=mesos',
+                '--logLevel', getLogLevelString()])
 
     def test_stress_good(self):
         stressMain(numJobs=2)
