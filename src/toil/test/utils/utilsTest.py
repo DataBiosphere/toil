@@ -13,15 +13,19 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-import unittest
+
 import os
+import sys
+import unittest
 from subprocess import CalledProcessError
+import toil
 
 from toil.lib.bioio import system
 from toil.lib.bioio import getTempFile
 from toil import toilPackageDirPath, resolveEntryPoint
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
+import toil.test.sort.sort
 
 
 class UtilsTest(ToilTest):
@@ -55,8 +59,16 @@ class UtilsTest(ToilTest):
         return resolveEntryPoint('toil')
 
     @property
-    def sort(self):
-        return os.path.join(toilPackageDirPath(), "test", "sort", "sort.py")
+    def cleanCommand(self):
+        return [self.toilMain, 'clean', self.toilDir]
+
+    @property
+    def statsCommand(self):
+        return [self.toilMain, 'stats', self.toilDir, '--pretty']
+
+    @property
+    def statusCommand(self):
+        return [self.toilMain, 'status', self.toilDir, '--failIfNotComplete']
 
     def testUtilsSort(self):
         """
@@ -64,59 +76,54 @@ class UtilsTest(ToilTest):
         sort example.
         """
         # Get the sort command to run
-        toilCommandString = ("{self.sort} "
-                             "{self.toilDir} "
-                             "--logLevel=DEBUG "
-                             "--fileToSort={self.tempFile} "
-                             "--N {self.N} --stats "
-                             "--retryCount 2 --badWorker=0.5 "
-                             "--badWorkerFailInterval=0.05 ".format(**locals()))
-
+        toilCommand = [sys.executable,
+                       '-m', toil.test.sort.sort.__name__,
+                       self.toilDir,
+                       '--logLevel=DEBUG',
+                       '--fileToSort', self.tempFile,
+                       '--N', str(self.N),
+                       '--stats',
+                       '--retryCount=2',
+                       '--badWorker=0.5',
+                       '--badWorkerFailInterval=0.05']
         # Try restarting it to check that a JobStoreException is thrown
-        self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
+        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
         # Check that trying to run it in restart mode does not create the jobStore
         self.assertFalse(os.path.exists(self.toilDir))
 
         # Status command
-        toilStatusCommandString = ("{self.toilMain} status "
-                                   "{self.toilDir} "
-                                   "--failIfNotComplete".format(**locals()))
-
         # Run the script for the first time
         try:
-            system(toilCommandString)
+            system(toilCommand)
             finished = True
         except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
-            self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+            self.assertRaises(CalledProcessError, system, self.statusCommand)
             finished = False
         self.assertTrue(os.path.exists(self.toilDir))
 
         # Try running it without restart and check an exception is thrown
-        self.assertRaises(CalledProcessError, system, toilCommandString)
+        self.assertRaises(CalledProcessError, system, toilCommand)
 
         # Now restart it until done
         totalTrys = 1
         while not finished:
             try:
-                system(toilCommandString + " --restart")
+                system(toilCommand + ['--restart'])
                 finished = True
             except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
-                self.assertRaises(CalledProcessError, system, toilStatusCommandString)
+                self.assertRaises(CalledProcessError, system, self.statusCommand)
                 if totalTrys > 16:
-                    self.fail() #Exceeded a reasonable number of restarts    
-                totalTrys += 1   
+                    self.fail()  # Exceeded a reasonable number of restarts
+                totalTrys += 1
 
-        # Check the toil status command does not issue an exception
-        system(toilStatusCommandString)
+                # Check the toil status command does not issue an exception
+        system(self.statusCommand)
 
         # Check if we try to launch after its finished that we get a JobException
-        self.assertRaises(CalledProcessError, system, toilCommandString + " --restart")
+        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
 
         # Check we can run 'toil stats'
-        toilStatsString = ("{self.toilMain} stats "
-                           "{self.toilDir} "
-                           "--pretty".format(**locals()))
-        system(toilStatsString)
+        system(self.statsCommand)
 
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
@@ -124,39 +131,32 @@ class UtilsTest(ToilTest):
             self.assertEquals(self.correctSort, l2)
 
         # Check we can run 'toil clean'
-        toilCleanString = ("{self.toilMain} clean "
-                           "{self.toilDir}".format(**locals()))
-        system(toilCleanString)
-            
+        system(self.cleanCommand)
+
     def testUtilsStatsSort(self):
         """
         Tests the stats commands on a complete run of the stats test.
         """
         # Get the sort command to run
-        toilCommandString = ("{self.sort} "
-                             "{self.toilDir} "
-                             "--logLevel=DEBUG "
-                             "--fileToSort={self.tempFile} "
-                             "--N {self.N} --stats "
-                             "--retryCount 99 "
-                             "--badWorker=0.5 "
-                             "--badWorkerFailInterval=0.01 ".format(**locals()))
+        toilCommand = [sys.executable,
+                       '-m', toil.test.sort.sort.__name__,
+                       self.toilDir,
+                       '--logLevel=DEBUG',
+                       '--fileToSort', self.tempFile,
+                       '--N', str(self.N),
+                       '--stats',
+                       '--retryCount=99',
+                       '--badWorker=0.5',
+                       '--badWorkerFailInterval=0.01']
 
         # Run the script for the first time
-        system(toilCommandString)
+        system(toilCommand)
         self.assertTrue(os.path.exists(self.toilDir))
 
         # Check we can run 'toil stats'
-        rootPath = os.path.join(toilPackageDirPath(), "utils")
-        toilStatsString = ("{self.toilMain} stats "
-                           "{self.toilDir} --pretty".format(**locals()))
-        system(toilStatsString)
+        system(self.statsCommand)
 
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-            self.assertEquals(self.correctSort, l2)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        self.assertEquals(self.correctSort, l2)
