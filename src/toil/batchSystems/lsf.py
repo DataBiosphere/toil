@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #Copyright (C) 2013 by Thomas Keane (tk2@sanger.ac.uk)
 #
 #Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -300,14 +298,3 @@ class LSFBatchSystem(AbstractBatchSystem):
         if self.maxCPU is 0 or self.maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.info("Got the maxCPU: %s" % (self.maxMEM))
-
-def main():
-    pass
-
-def _test():
-    import doctest      
-    return doctest.testmod()
-
-if __name__ == '__main__':
-    _test()
-    main()

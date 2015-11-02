@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
 
 from collections import defaultdict
@@ -19,12 +20,12 @@ import time
 import pickle
 from Queue import Queue, Empty
 import logging
-import sys
 
 import mesos.interface
 import mesos.native
-
 from mesos.interface import mesos_pb2
+import pwd
+from toil import resolveEntryPoint
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
@@ -212,19 +213,12 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         Creates and returns an ExecutorInfo instance representing our executor implementation.
         """
-
-        def scriptPath(executorClass):
-            path = sys.modules[executorClass.__module__].__file__
-            if path.endswith('.pyc'):
-                path = path[:-1]
-            return path
-
-        executorInfo = mesos_pb2.ExecutorInfo()
         # The executor program is installed as a setuptools entry point by setup.py
-        executorInfo.command.value = "toil-mesos-executor"
-        executorInfo.executor_id.value = "toilExecutor"
-        executorInfo.name = "Test Executor (Python)"
-        executorInfo.source = "python_test"
+        executorInfo = mesos_pb2.ExecutorInfo()
+        executorInfo.name = "toil"
+        executorInfo.command.value = resolveEntryPoint('_toil_mesos_executor')
+        executorInfo.executor_id.value = "toil-%i" % os.getpid()
+        executorInfo.source = pwd.getpwuid(os.getuid()).pw_name
         return executorInfo
 
     def getImplicit(self):

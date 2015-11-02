@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +17,13 @@ The leader script (of the leader/worker pair) for running jobs.
 """
 from __future__ import absolute_import
 import logging
-import sys
-import os.path
 import time
 import xml.etree.cElementTree as ET
+from multiprocessing import Process
+from multiprocessing import JoinableQueue as Queue
 
-from toil import Process, Queue
+from toil import resolveEntryPoint
 from toil.lib.bioio import getTotalCpuTime, logStream
-from toil.common import toilPackageDirPath
 
 logger = logging.getLogger( __name__ )
 
@@ -46,7 +43,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
     #Start off the stats file
     with jobStore.writeSharedFileStream("statsAndLogging.xml") as fileHandle:
         fileHandle.write('<?xml version="1.0" ?><stats>')
-       
+
         #Call back function
         def statsAndLoggingCallBackFn(fileHandle2):
             node = ET.parse(fileHandle2).getroot()
@@ -58,7 +55,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
                 logger.info("%s:     %s" %
                                     tuple(log.text.split("!",1)))# the jobID is separated from log by "!"
             ET.ElementTree(node).write(fileHandle)
-        
+
         #The main loop
         timeSinceOutFileLastFlushed = time.time()
         while True:
@@ -72,7 +69,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
                 #results file every minute
                 fileHandle.flush()
                 timeSinceOutFileLastFlushed = time.time()
-        
+
         #Finish the stats file
         fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
                          (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
@@ -93,7 +90,6 @@ class JobBatcher:
         self.jobBatchSystemIDToJobStoreIDHash = {}
         self.batchSystem = batchSystem
         self.jobsIssued = 0
-        self.workerPath = os.path.join(toilPackageDirPath(), "worker.py")
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
     def issueJob(self, jobStoreID, memory, cores, disk):
@@ -101,7 +97,7 @@ class JobBatcher:
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        jobCommand = "%s -E %s %s %s" % (sys.executable, self.workerPath, self.jobStoreString, jobStoreID)
+        jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreString, jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
@@ -150,7 +146,7 @@ class JobBatcher:
         self.jobsIssued -= 1
         jobStoreID = self.jobBatchSystemIDToJobStoreIDHash.pop(jobBatchSystemID)
         return jobStoreID
-    
+
     def killJobs(self, jobsToKill):
         """
         Kills the given set of jobs and then sends them for processing
@@ -159,7 +155,7 @@ class JobBatcher:
             self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 self.processFinishedJob(jobBatchSystemID, 1)
-    
+
     #Following functions handle error cases for when jobs have gone awry with the batch system.
 
     def reissueOverLongJobs(self):
@@ -182,7 +178,7 @@ class JobBatcher:
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
             self.killJobs(jobsToKill)
-    
+
     def reissueMissingJobs(self, killAfterNTimesMissing=3):
         """
         Check all the current job ids are in the list of currently running batch system jobs.
@@ -220,7 +216,7 @@ class JobBatcher:
     def processFinishedJob(self, jobBatchSystemID, resultStatus):
         """
         Function reads a processed jobWrapper file and updates it state.
-        """    
+        """
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
             jobWrapper = self.jobStore.load(jobStoreID)
@@ -240,7 +236,7 @@ class JobBatcher:
                 logger.warn("Despite the batch system claiming failure the "
                             "jobWrapper %s seems to have finished and been removed", jobStoreID)
             self._updatePredecessorStatus(jobStoreID)
-            
+
     def _updatePredecessorStatus(self, jobStoreID):
         """
         Update status of a predecessor for finished successor job.
@@ -267,7 +263,7 @@ class JobBatcher:
 #representation from the toil, in the process cleaning up
 #the state of the jobs in the jobtree.
 ##########################################    
-  
+
 class ToilState( object ):
     """
     Represents a snapshot of the jobs in the jobStore.
@@ -303,7 +299,7 @@ class ToilState( object ):
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
                     self._buildToilState(jobStore.load(successorJobStoreID), jobStore)
                 else:
-                    #We have already looked at the successor, so we don't recurse, 
+                    #We have already looked at the successor, so we don't recurse,
                     #but we add back a predecessor link
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
@@ -312,7 +308,7 @@ class FailedJobsException( Exception ):
         super( FailedJobsException, self ).__init__( "The job store '%s' contains %i failed jobs" % (jobStoreString, numberOfFailedJobs))
         self.jobStoreString = jobStoreString
         self.numberOfFailedJobs = numberOfFailedJobs
-        
+
 def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     """
     This is the main loop from which jobs are issued and processed.
@@ -346,7 +342,7 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     stopStatsAndLoggingAggregatorProcess = Queue() #When this is s
     worker = Process(target=statsAndLoggingAggregatorProcess,
                      args=(jobStore, stopStatsAndLoggingAggregatorProcess))
-    worker.start() 
+    worker.start()
 
     ##########################################
     #The main loop in which jobs are scheduled/processed
@@ -368,11 +364,11 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
 
             for jobWrapper, resultStatus in toilState.updatedJobs:
                 #If the jobWrapper has a command it must be run before any successors
-                #Similarly, if the job previously failed we rerun it, even if it doesn't have a command to 
-                #run, to eliminate any parts of the stack now completed. 
+                #Similarly, if the job previously failed we rerun it, even if it doesn't have a command to
+                #run, to eliminate any parts of the stack now completed.
                 if jobWrapper.command != None or resultStatus != 0:
                     if jobWrapper.remainingRetryCount > 0:
-                        jobBatcher.issueJob(jobWrapper.jobStoreID, jobWrapper.memory, 
+                        jobBatcher.issueJob(jobWrapper.jobStoreID, jobWrapper.memory,
                                             jobWrapper.cores, jobWrapper.disk)
                     else:
                         totalFailedJobs += 1
@@ -498,12 +494,12 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     worker.join()
     logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
     # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
-    
+
     if totalFailedJobs > 0:
         if config.clean == "onError" or config.clean == "always" :
             jobStore.deleteJobStore()
         raise FailedJobsException( config.jobStore, totalFailedJobs )
-    
+
     if config.clean == "onSuccess" or config.clean == "always":
         jobStore.deleteJobStore()
 

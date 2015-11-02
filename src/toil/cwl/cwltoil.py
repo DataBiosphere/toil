@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # Implement support for Common Workflow Language (CWL) for Toil.
 #
 # Copyright (C) 2015 Curoverse, Inc
@@ -459,7 +457,3 @@ def main(args=None):
         sys.stdout.write(f.read())
 
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

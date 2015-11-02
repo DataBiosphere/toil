@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -312,14 +310,3 @@ class ParasolBatchSystem(AbstractBatchSystem):
         for results in self.resultsFiles.values():
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
-
-def main():
-    pass
-
-def _test():
-    import doctest
-    return doctest.testmod()
-
-if __name__ == '__main__':
-    _test()
-    main()
