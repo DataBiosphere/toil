@@ -136,7 +136,7 @@ path of child/followOn edges from a job A in the job graph is a *successor* of A
 similarly A is a *predecessor* of B.
 
 A parent job's child jobs are run directly after the parent job has completed, and in parallel. 
-The follow-on jobs of a job are run after it's child jobs and their successors 
+The follow-on jobs of a job are run after its child jobs and their successors 
 have completed. They are also run in parallel. Follow-ons allow the easy specification of 
 cleanup tasks that happen after a set of parallel child tasks. The following shows 
 a simple example that uses the earlier helloWorld job function::
@@ -382,7 +382,7 @@ For example::
         
         # It is unnecessary to delete the file keyed by fileID2 
         # because we used the cleanup flag, which removes the file after this 
-        # job and all it's successors have run (if the file still exists)
+        # job and all its successors have run (if the file still exists)
         
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
@@ -444,7 +444,7 @@ specified. The return value from :func:`toil.job.Job.addService` is a promise to
 value of the service's start method. When the promised is fulfilled it will represent how
 to connect to the database. The promise is passed to a child job of j, which
 uses it to make a database connection. The services of a job are started before any of 
-it's successors have been run and stopped after all the successors of the job have completed
+its successors have been run and stopped after all the successors of the job have completed
 successfully. 
 
 Encapsulation
@@ -461,7 +461,7 @@ and then make B a follow-on of Ap. e.g.::
     A.addChild(Job())
     A.addFollowOn(Job())
     
-    # B is a job which needs to run after A and it's successors
+    # B is a job which needs to run after A and its successors
     B = Job()
     
     # The way to do this without encapsulation is to make a 
@@ -486,7 +486,7 @@ write::
     #Encapsulate A
     A = A.encapsulate()
     
-    # B is a job which needs to run after A and it's successors
+    # B is a job which needs to run after A and its successors
     B = Job()
     
     # With encapsulation A and its successor subgraph appear 
