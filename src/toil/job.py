@@ -1380,11 +1380,11 @@ class EncapsulatedJob(Job):
     A convenience Job class used to make a job subgraph appear to be a single job. 
     
     Let A be the root job of a job subgraph and B be another job we'd like to run after A
-    and all it's successors have completed, for this use encapsulate::
+    and all its successors have completed, for this use encapsulate::
         A, B = A(), B() #Job A and subgraph, Job B
         A' = A.encapsulate()
-        A'.addChild(B) #B will run after A and all it's successors have 
-        # completed, A and it's subgraph of successors in effect appear 
+        A'.addChild(B) #B will run after A and all its successors have 
+        # completed, A and its subgraph of successors in effect appear 
         # to be just one job.
     
     The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function) \
