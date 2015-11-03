@@ -65,6 +65,11 @@ Here's what each extra provides:
 Building & Testing
 ==================
 
+After cloning the source and ``cd``-ing into the project root, create a virtualenv and activate it::
+
+    virtualenv venv
+    . venv/bin/activate
+
 Simply running
 
 ::
@@ -118,3 +123,16 @@ category. So in order to skip tests involving both the Parasol feature and the
 Azure extra, the following can be used::
 
    make test tests="-m 'not azure and not parasol' src"
+
+Running Mesos Tests
+-------------------
+
+Install Mesos according to the official instructions. On OS X with Homebrew,
+``brew install mesos`` should be sufficient.
+
+Create the virtualenv with ``--system-site-packages`` to ensure that the Mesos
+Python packages are included. Verify by activating the virtualenv and running
+.. ``pip list | grep mesos``. On OS X, this may come up empty. To fix it, run the
+following::
+
+for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done

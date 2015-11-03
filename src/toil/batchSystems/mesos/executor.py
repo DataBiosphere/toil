@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +43,6 @@ class MesosExecutor(mesos.interface.Executor):
         self.runningTasks = {}
         Resource.prepareSystem()
         # FIXME: clean up resource root dir
-
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
@@ -156,7 +153,3 @@ def main(executorClass=MesosExecutor):
     exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
-
-
-if __name__ == "__main__":
-    main()
