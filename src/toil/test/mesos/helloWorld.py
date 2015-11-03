@@ -17,7 +17,6 @@ A simple user script for Toil
 
 from __future__ import absolute_import
 import argparse
-import os
 from toil.job import Job
 
 def hello_world(job):
@@ -45,7 +44,8 @@ def hello_world_child(job, hw):
 
     # Assign FileStoreID to a given file
     # can also use:  job.updateGlobalFile() given the FileStoreID instantiation.
-    bar_bam = job.fileStore.writeGlobalFile('bar_bam.txt')
+    job.fileStore.writeGlobalFile('bar_bam.txt')
+
 
 def main():
     # Boilerplate -- startToil requires options
@@ -59,7 +59,7 @@ def main():
     print args.jobStore
     # Launch first toil Job
     i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk="3G")
-    j = Job.Runner.startToil(i, args)
+    Job.Runner.startToil(i, args)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -145,11 +143,15 @@ def setLoggingFromOptions(options):
         logger.info("Logging to file: %s" % options.logFile)
 
 def system(command):
-    logger.debug("Running the command: %s" % command)
-    sts = subprocess.call(command, shell=True, bufsize=-1) #, stdout=sys.stdout, stderr=sys.stderr)
-    if sts != 0:
-        raise subprocess.CalledProcessError(sts, command)
-    return sts
+    """
+    A convenience wrapper around subprocess.check_call that logs the command before passing it
+    on. The command can be either a string or a sequence of strings. If it is a string shell=True
+    will be passed to subprocess.check_call.
+
+    :type command: str | sequence[string]
+    """
+    logger.debug('Running: %r', command)
+    subprocess.check_call(command, shell=isinstance(command,basestring), bufsize=-1)
 
 def getTotalCpuTimeAndMemoryUsage():
     """Gives the total cpu time and memory usage of itself and its children.
@@ -288,14 +290,3 @@ def getTempFile(suffix="", rootDir=None):
         open(tmpFile, 'w').close()
         os.chmod(tmpFile, 0777) #Ensure everyone has access to the file.
         return tmpFile
-
-def main():
-    pass
-
-def _test():
-    import doctest
-    return doctest.testmod()
-
-if __name__ == '__main__':
-    _test()
-    main()

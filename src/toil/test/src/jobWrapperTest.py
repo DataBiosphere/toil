@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-import unittest
 import os
-from toil.lib.bioio import system
 from argparse import ArgumentParser
 from toil.common import setupToil
 from toil.job import Job
@@ -75,10 +71,7 @@ class JobWrapperTest(ToilTest):
                         remainingRetryCount, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
-        j.predecessorsFinished = set(("1", "2"))
+        j.predecessorsFinished = {"1", "2"}
         self.assertNotEquals(j, j2)
         
         ###TODO test other functionality
-
-if __name__ == '__main__':
-    unittest.main()

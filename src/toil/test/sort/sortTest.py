@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +19,7 @@ import random
 from uuid import uuid4
 import logging
 import subprocess
+from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.job import Job, JobException
@@ -142,7 +141,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     l2 = fileHandle.readlines()
                     self.assertEquals(l, l2)
             finally:
-                subprocess.check_call([self._getUtilScriptPath('toilMain'), 'clean', jobStore])
+                subprocess.check_call([resolveEntryPoint('toil'), 'clean', jobStore])
 
     @needs_aws
     def testAwsSingle(self):
@@ -278,7 +277,3 @@ def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
         for _ in xrange(lines):
             line = "".join(random.choice('actgACTGNXYZ') for _ in xrange(lineLen - 1)) + '\n'
             fileHandle.write(line)
-
-
-if __name__ == '__main__':
-    unittest.main()
