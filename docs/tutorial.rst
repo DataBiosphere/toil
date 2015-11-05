@@ -1,3 +1,5 @@
+.. _tutorial-ref:
+
 User Tutorial
 =============
 

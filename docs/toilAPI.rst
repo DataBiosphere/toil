@@ -31,7 +31,8 @@ The Service class allows databases and servers to be spawned within a Toil workf
    
 FunctionWrappingJob
 -------------------
-The subclass of Job for wrapping user functions.
+The subclass of Job for wrapping user functions. 
+
 
 .. autoclass:: toil.job::FunctionWrappingJob
    :members:
