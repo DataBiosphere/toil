@@ -193,4 +193,4 @@ Python packages are included. Verify by activating the virtualenv and running
 .. ``pip list | grep mesos``. On OS X, this may come up empty. To fix it, run the
 following::
 
-for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
+    for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done

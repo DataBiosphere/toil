@@ -19,7 +19,8 @@ For example::
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s" % self.message)
+            fileStore.logToMaster("Hello, world!, I have a message: %s" % 
+                                  self.message)
             
 In the example a class, HelloWorld, is defined. 
 The constructor requests 2 gigabytes of memory, 2 cores and 3 gigabytes of local disk
@@ -31,10 +32,6 @@ will be registered in the log output of the leader process of the workflow.
 
 Job.Runner: Invoking a workflow
 -------------------------------
-
-TODO: Cover both implementing as a script and within a python program
-TODO: Cover resumption
-TODO: Cover the concept of leader and worker
 
 We can add to the previous example to turn into a complete workflow by adding the necessary function calls 
 to create an instance of HelloWorld and to run this as a workflow containing a single job.
@@ -48,7 +45,8 @@ For example::
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s" % self.message)
+            fileStore.logToMaster("Hello, world!, I have a message: %s" 
+                                  % self.message)
     
     if __name__=="__main__":   
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
@@ -58,8 +56,7 @@ The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of defau
 options for the workflow. The only argument is a description of how to store the workflow's
 state. Here we store it in a directory within the current working directory
 called "toilWorkflowRun". Alternatively this string can encode an S3 bucket or Azure
-object store location. See XXXX for details. If this argument is omitted it defaults to
-creating the toil state in a directory "toil" within the current working directory. 
+object store location.  
 
 On the second line we specify a single option, the log level for the workflow, to ensure the message 
 from the job is reported in the leader's log. 
@@ -73,7 +70,7 @@ MORE TO WRITE HERE ABOUT STARTUP, RESUMPTION AND CLEANING UP A WORKFLOW
 Functions and job functions
 ---------------------------
 
-Defining jobs by creating class definitions generally involves the boiler plate of creating
+Defining jobs by creating class definitions generally involves the boilerplate of creating
 a constructor. To avoid this the classes :class:`toil.job.FunctionWrappingJob` and 
 :class:`toil.job.JobFunctionWrappingTarget` allow functions to be directly converted to 
 jobs. 
@@ -93,7 +90,7 @@ For example::
 
 Is equivalent to the complete previous example. Here *helloWorld* is an example of a 
 *job function*, a function whose first argument is a reference to the wrapping job. 
-Just like a *self* argument in a class, this allows it to access the methods of the wrapping
+Just like a *self* argument in a class, this allows access to the methods of the wrapping
 job, see :class:`toil.job.JobFunctionWrappingTarget`. 
 
 The function 
@@ -134,7 +131,7 @@ and :func:`toil.job.Job.addFollowOn`.
 
 Considering a set of jobs the nodes in a job graph and the child and follow-on 
 relationships the directed edges of the graph, we say that a job B that is on a directed 
-path of child/followOn edges from a job A in the job graph is a *successor* of A, 
+path of child/follow-on edges from a job A in the job graph is a *successor* of A, 
 similarly A is a *predecessor* of B.
 
 A parent job's child jobs are run directly after the parent job has completed, and in parallel. 
@@ -218,7 +215,7 @@ However, toil also allows jobs to be created dynamically within jobs.
 For example::
     from toil.job import Job
     
-    def binaryStringFn(job, message="", depth=5):
+    def binaryStringFn(job, message="", depth):
         if depth > 0:
             job.addChildJobFn(binaryStringFn, message + "0", depth-1)
             job.addChildJobFn(binaryStringFn, message + "1", depth-1)
@@ -227,9 +224,9 @@ For example::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        Job.Runner.startToil(Job.wrapJobFn(binaryStringFn), options)
+        Job.Runner.startToil(Job.wrapJobFn(binaryStringFn, depth=5), options)
 
-The binaryStringFn logs all possible binary strings of length 10, creating a total of 2^7 - 1
+The binaryStringFn logs all possible binary strings of length n (here n=5), creating a total of 2^(n+2) - 1
 jobs dynamically and recursively. Static and dynamic creation of jobs can be mixed
 in a toil workflow, with jobs defined within a job or job function being created
 at run-time.
@@ -277,7 +274,7 @@ possible in many programming
 languages::
     from toil.job import Job
     
-    def binaryStrings(job, message="", depth=5):
+    def binaryStrings(job, message="", depth):
         if depth > 0:
             s = [ job.addChildJobFn(binaryStrings, message + "0", 
                                     depth-1).rv(),  
@@ -291,7 +288,7 @@ languages::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        l = Job.Runner.startToil(Job.wrapJobFn(binaryStrings), options)
+        l = Job.Runner.startToil(Job.wrapJobFn(binaryStrings, depth=5), options)
         print l #Prints a list of all binary strings of length 5
     
 The return value *l* of the workflow is a list of all binary strings of length 10, 
@@ -308,7 +305,7 @@ files in a manner that guarantees cleanup and resumption on failure.
 The :func:`toil.job.Job.run` method has a file store instance as an argument. The following example
 shows how this can be used to create temporary files that persist for the length of the job,
 be placed in a specified local disk of the node and that 
-and will be cleaned up, regardless of failure, when the job 
+will be cleaned up, regardless of failure, when the job 
 finishes::
     from toil.job import Job
     
@@ -415,8 +412,8 @@ services work::
     
         def start(self):
             # Start up a database/service here
-            return "loginCredentials" # Return a value that enables another process to connect
-            # to the database
+            return "loginCredentials" # Return a value that enables another 
+            # process to connect to the database
     
         def stop(self):
             # Cleanup the database here
@@ -427,8 +424,8 @@ services work::
     loginCredentialsPromise = j.addService(s)
     
     def dbFn(loginCredentials):
-        # Use the login credentials returned from the service's start method to connect
-        # to the service
+        # Use the login credentials returned from the service's start method 
+        # to connect to the service
         pass
     
     j.addChildFn(dbFn, loginCredentialsPromise)
