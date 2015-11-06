@@ -297,7 +297,7 @@ def main():
                 #been scheduled after a failure to cleanup
                 break
             
-            if Job.FileStore.terminateEvent.isSet():
+            if Job.FileStore._terminateEvent.isSet():
                 raise RuntimeError("The termination flag is set")
             
             ##########################################
@@ -402,7 +402,7 @@ def main():
     except: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
-        Job.FileStore.terminateEvent.set()
+        Job.FileStore._terminateEvent.set()
     
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
@@ -415,7 +415,7 @@ def main():
     #so safe to test if they completed okay
     ########################################## 
     
-    if Job.FileStore.terminateEvent.isSet():
+    if Job.FileStore._terminateEvent.isSet():
         jobWrapper = jobStore.load(jobStoreID)
         jobWrapper.setupJobAfterFailure(config)
         workerFailed = True

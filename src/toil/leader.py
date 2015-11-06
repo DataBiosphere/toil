@@ -21,6 +21,7 @@ import time
 import xml.etree.cElementTree as ET
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
+import cPickle
 
 from toil import resolveEntryPoint
 from toil.lib.bioio import getTotalCpuTime, logStream
@@ -315,6 +316,8 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     
     :raises: toil.leader.FailedJobsException if at the end of function their remain
     failed jobs
+    
+    :return: The return value of the root job's run function.
     """
 
     ##########################################
@@ -495,6 +498,12 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
     # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
+    #Parse out the return value from the root job
+    with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
+        jobStoreFileID = fH.read()
+    with jobStore.readFileStream(jobStoreFileID) as fH:
+        rootJobReturnValue = cPickle.load(fH)
+    
     if totalFailedJobs > 0:
         if config.clean == "onError" or config.clean == "always" :
             jobStore.deleteJobStore()
@@ -502,4 +511,6 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
 
     if config.clean == "onSuccess" or config.clean == "always":
         jobStore.deleteJobStore()
+
+    return rootJobReturnValue
 

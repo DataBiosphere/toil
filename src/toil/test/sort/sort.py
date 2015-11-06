@@ -33,9 +33,9 @@ def setup(job, inputFile, N):
     #Write the input file to the file store
     inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
     job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
-                        inputFileStoreID, N).rv(), inputFile, memory=sortMemory)
+                        inputFileStoreID, N).rv(), inputFile)
 
-def down(job, inputFileStoreID, N):
+def down(job, inputFileStoreID, N, memory=sortMemory):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
@@ -69,7 +69,7 @@ def down(job, inputFileStoreID, N):
         sort(inputFile)
         return job.fileStore.writeGlobalFile(inputFile)
 
-def up(job, inputFileID1, inputFileID2):
+def up(job, inputFileID1, inputFileID2, memory=sortMemory):
     """Merges the two files and places them in the output.
     """
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
@@ -83,7 +83,7 @@ def up(job, inputFileID1, inputFileID2):
         job.fileStore.deleteGlobalFile(inputFileID2)
         return outputFileStoreID
 
-def cleanup(job, tempOutputFileStoreID, outputFile):
+def cleanup(job, tempOutputFileStoreID, outputFile, cores=1, memory=sortMemory, disk="3G"):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
     job.fileStore.readGlobalFile(tempOutputFileStoreID, userPath=outputFile)
