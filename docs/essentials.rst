@@ -28,7 +28,7 @@ Toil is a workflow engine written in 100% Python. It features:
     *  Robustness 
         - Toil workflows support arbitrary worker and leader failure, with strong check-pointing that always allows resumption.
     *  Efficiency
-        - Caching and fine grained resource requirement specification and support for AWS spot market mean workflows can be executed with little waste. 
+        - Caching, fine grained, per task, resource requirement specifications, and support for the AWS spot market mean workflows can be executed with little waste. 
     *  Declarative and dynamic workflow creation
         - Workflows can be declared statically, but new jobs can be added dynamically during execution within any existing job, allowing arbitrarily complex workflow graphs with millions of jobs within them.
     *  Support for databases and services. 

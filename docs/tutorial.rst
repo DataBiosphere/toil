@@ -30,10 +30,13 @@ The :func:`toil.job.Job.run` method is the function the user overrides to get wo
 Here it just logs a message using :func:`toil.job.Job.FileStore.logToMaster`, which
 will be registered in the log output of the leader process of the workflow.
 
-Job.Runner: Invoking a workflow
--------------------------------
+Job.Runner
+----------
 
-We can add to the previous example to turn into a complete workflow by adding the necessary function calls 
+Invoking a workflow
+~~~~~~~~~~~~~~~~~~~
+
+We can add to the previous example to turn it into a complete workflow by adding the necessary function calls 
 to create an instance of HelloWorld and to run this as a workflow containing a single job.
 This uses the :class:`toil.job.Job.Runner` class, which is used to start and resume Toil workflows. 
 For example::
@@ -50,22 +53,70 @@ For example::
     
     if __name__=="__main__":   
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(HelloWorld("woot"), options)
     
 The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of default
 options for the workflow. The only argument is a description of how to store the workflow's
-state. Here we store it in a directory within the current working directory
+state in what we call a *job store*. Here the job store is contained in a directory within the current working directory
 called "toilWorkflowRun". Alternatively this string can encode an S3 bucket or Azure
-object store location.  
+object store location. By default the job store is deleted if the workflow completes
+successfully. 
 
-On the second line we specify a single option, the log level for the workflow, to ensure the message 
-from the job is reported in the leader's log. 
+On the next line we specify a single option, the log level for the workflow, to ensure the message 
+from the job is reported in the leader's log, which by default will be printed to standard error. 
 
-The workflow is executed in the third line, which creates an instance of HelloWorld and
-runs it as workflow. Note toil workflows also start from a single starting job, referred to as
+The workflow is executed in the final line, which creates an instance of HelloWorld and
+runs it as a workflow. Note all Toil workflows start from a single starting job, referred to as
 the *root* job.
 
-MORE TO WRITE HERE ABOUT STARTUP, RESUMPTION AND CLEANING UP A WORKFLOW
+Specifying arguments via the command line
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To allow command line control of the options we can use the :func:`toil.job.Job.Runner.getDefaultArgumentParser` 
+method to create a :class:`argparse.ArgumentParser` object which can be used to 
+parse command line options for a Toil script. For example::
+
+    from toil.job import Job
+    
+    class HelloWorld(Job):
+        def __init__(self, message):
+            Job.__init__(self,  memory="2G", cores=2, disk="3G")
+            self.message = message
+    
+        def run(self, fileStore):
+            fileStore.logToMaster("Hello, world!, I have a message: %s" 
+                                  % self.message)
+    
+    if __name__=="__main__":   
+        parser = Job.Runner.getDefaultArgumentParser()
+        options = parser.parse_args()
+        options.logLevel = "INFO"
+        Job.Runner.startToil(HelloWorld("woot"), options)
+
+Creates a fully fledged script with all the options Toil exposed as command line
+arguments. Running this script with "--help" will print the full list of options.
+
+Alternatively an existing :class:`argparse.ArgumentParser` or 
+:class:`optparse.OptionParser` object can have Toil script command line options 
+added to it with the :func:`toil.job.Job.Runner.addToilOptions` method.
+
+Resuming a workflow
+~~~~~~~~~~~~~~~~~~~
+
+In the event that a workflow fails, either because of programmatic error within
+the jobs being run, or because of node failure, the workflow can be resumed. Workflows
+can only not be reliably resumed if the job store itself becomes corrupt. To 
+resume a workflow specify the "restart" option in the options object passed to
+:func:`toil.job.Job.Runner.startToil`. If node failures are expected it can also be useful
+to use the integer "retryCount" option, which will attempt to rerun a job retryCount
+number of times before marking it fully failed. 
+
+In the common scenario that a small subset of jobs fail (including retry attempts) 
+within a workflow Toil will continue to run other jobs until it can do no more, at
+which point :func:`toil.job.Job.Runner.startToil` will raise a :class:`toil.job.leader.FailedJobsException`
+exception. Typically at this point the user can decide to fix the script and resume the workflow
+or delete the job-store manually and rerun the complete workflow. 
 
 Functions and job functions
 ---------------------------
@@ -211,7 +262,7 @@ Dynamic Job Creation
 --------------------
 
 The previous examples show a workflow being defined outside of a job. 
-However, toil also allows jobs to be created dynamically within jobs. 
+However, Toil also allows jobs to be created dynamically within jobs. 
 For example::
     from toil.job import Job
     
@@ -228,7 +279,7 @@ For example::
 
 The binaryStringFn logs all possible binary strings of length n (here n=5), creating a total of 2^(n+2) - 1
 jobs dynamically and recursively. Static and dynamic creation of jobs can be mixed
-in a toil workflow, with jobs defined within a job or job function being created
+in a Toil workflow, with jobs defined within a job or job function being created
 at run-time.
 
 Promises
@@ -238,7 +289,7 @@ The previous example of dynamic job creation shows variables from a parent job
 being passed to a child job. Such forward variable passing is naturally specified
 by recursive invocation of successor jobs within parent jobs. However, it is often 
 desirable to return variables from jobs in a non-recursive or dynamic context. 
-In toil this is achieved with promises, as illustrated in the following 
+In Toil this is achieved with promises, as illustrated in the following 
 example::
     from toil.job import Job
     
@@ -292,7 +343,7 @@ languages::
         print l #Prints a list of all binary strings of length 5
     
 The return value *l* of the workflow is a list of all binary strings of length 10, 
-computed recursively. Although a toy example, it demonstrates how closely toil workflows
+computed recursively. Although a toy example, it demonstrates how closely Toil workflows
 can mimic typical programming patterns. 
 
 Job.FileStore: Managing files within a workflow
@@ -402,7 +453,7 @@ Services
 
 It is sometimes desirable to run *services*, such as a database or server, concurrently
 with a workflow. The :class:`toil.job.Job.Service` class provides a simple mechanism
-for spawning such a service within a toil workflow, allowing precise specification
+for spawning such a service within a Toil workflow, allowing precise specification
 of the start and end time of the service, and providing start and end methods to use
 for initialization and cleanup. The following simple, conceptual example illustrates how 
 services work::
