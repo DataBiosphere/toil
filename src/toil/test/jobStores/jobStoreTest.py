@@ -28,7 +28,6 @@ import shutil
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption
 
@@ -465,6 +464,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         return AWSJobStore(self.testRegion, self.namePrefix, config=config)
 
     def testInlinedFiles(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
         master = self.master
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
@@ -498,10 +498,12 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         self.assertEqual(hashIn.digest(),hashOut.digest())
 
     def _largeLogEntrySize(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
         return AWSJobStore.FileInfo.maxBinarySize() * 2
 
     def _batchDeletionSize(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
         return AWSJobStore.itemsPerBatchDelete
 
 
