@@ -24,4 +24,4 @@ except ImportError:
 try:
     import boto
 except ImportError:
-    collect_ignore.append("awsJobStore.py")
+    collect_ignore.append("aws")
