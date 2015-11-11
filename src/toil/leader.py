@@ -338,6 +338,11 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     logger.info("Found %s jobs to start and %i jobs with successors to run",
                 len(toilState.updatedJobs), len(toilState.successorCounts))
 
+    #Set proper environment variables
+    envVars = jobStore.getEnv()
+    for k,v in envVars.iteritems():
+        batchSystem.setEnv(k,v)
+
     ##########################################
     #Start the stats/logging aggregation process
     ##########################################

@@ -117,6 +117,25 @@ class hidden:
             #Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
 
+            # Kill job3
+            self.batchSystem.killBatchJobs([job3])
+
+            self.batchSystem.setEnv("TESTVAR", "testval")
+
+            #Testing environment variable for correct value
+            job4 = self.batchSystem.issueBatchJob("if [ -z ${TESTVAR+x} ]; then exit 1; else exit 0; fi",
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+            updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+
+            self.assertEqual(exitStatus, 0)
+            self.batchSystem.killBatchJobs([job4])
+
+            #Environment Variable negative test
+            job5 = self.batchSystem.issueBatchJob("if [ -z ${TESTVAR2+x} ]; then exit 1; else exit 0; fi",
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+            updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(exitStatus, 1)
+
         def testCheckResourceRequest(self):
             self.assertRaises(InsufficientSystemResources,
                               self.batchSystem.checkResourceRequest,
@@ -239,7 +258,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         # We'll use fractions to avoid rounding errors. Remember that only certain, discrete
         # fractions can be represented as a floating point number.
         F = Fraction
-        # This test isn't general enought to cover every possible value of minCores in
+        # This test isn't general enough to cover every possible value of minCores in
         # SingleMachineBatchSystem. Instead we hard-code a value and assert it.
         minCores = F(1, 10)
         self.assertEquals(float(minCores), SingleMachineBatchSystem.minCores)
