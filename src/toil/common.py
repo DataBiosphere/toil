@@ -136,7 +136,7 @@ class Config(object):
 
         setOption("environment", parseSetEnv)
 
-        # Resource requirements
+        #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", h2b, iC(1))
         setOption("defaultDisk", h2b, iC(1))
@@ -387,8 +387,7 @@ def loadJobStore( jobStoreString, config=None ):
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
         from toil.jobStores.aws.jobStore import AWSJobStore
-        region, namePrefix = jobStoreArgs.split( ':', 1 )
-        return AWSJobStore( region, namePrefix, config=config )
+        return AWSJobStore.createJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'azure':
         from toil.jobStores.azureJobStore import AzureJobStore
         account, namePrefix = jobStoreArgs.split( ':', 1 )

@@ -57,6 +57,37 @@ class AWSJobStore(AbstractJobStore):
     item representing the job. UUIDs are used to identify jobs and files.
     """
 
+    @classmethod
+    def createJobStore(cls, jobStoreString, config=None):
+        region, namePrefix = jobStoreString.split(':')
+        if not cls.bucketNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > cls.maxBucketNameLen - cls.maxNameLen - len(cls.nameSeparator):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                             "characters." % namePrefix)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+        return cls(region, namePrefix, config=config)
+
+    # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
+    # URLs where the may interfere with the certificate common name. We use a double
+    # underscore as a separator instead.
+    #
+    bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
+
+    # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
+    #
+    minBucketNameLen = 3
+    maxBucketNameLen = 63
+    maxNameLen = 10
+    nameSeparator = '--'
+
+    # Do not invoke the constructor, use the factory method above.
+
     def __init__(self, region, namePrefix, config=None):
         """
         Create a new job store in AWS or load an existing one from there.
@@ -91,6 +122,7 @@ class AWSJobStore(AbstractJobStore):
                 self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
 
         def qualify(name):
+            assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
 
         self.jobsDomain = self._getOrCreateDomain(qualify('jobs'))
@@ -303,32 +335,6 @@ class AWSJobStore(AbstractJobStore):
         assert self._validateSharedFileName(sharedFileName)
         return self.getPublicUrl(self._sharedFileID(sharedFileName))
 
-    # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
-    # URLs where the may interfere with the certificate common name. We use a double
-    # underscore as a separator instead.
-    bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
-
-    nameSeparator = '--'
-
-    @classmethod
-    def _parseArgs(cls, jobStoreString):
-        region, namePrefix = jobStoreString.split(':')
-        # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html,
-        # reserve 10 characters for separator and suffixes
-        if not cls.bucketNameRe.match(namePrefix):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a "
-                             "hyphen." % namePrefix)
-        # reserve 13 for separator and suffix
-        if len(namePrefix) > 50:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
-                             "characters." % namePrefix)
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, cls.nameSeparator))
-
-        return region, namePrefix
-
     def _connectSimpleDB(self):
         """
         :rtype: SDBConnection
@@ -355,8 +361,8 @@ class AWSJobStore(AbstractJobStore):
         """
         :rtype: Bucket
         """
+        assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        assert 3 <= len(bucket_name) <= 63
         try:
             bucket = self.s3.get_bucket(bucket_name, validate=True)
             assert versioning is self.__getBucketVersioning(bucket)
