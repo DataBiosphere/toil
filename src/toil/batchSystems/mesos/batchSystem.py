@@ -28,13 +28,14 @@ from mesos.interface import mesos_pb2
 import pwd
 from toil import resolveEntryPoint
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
 
 log = logging.getLogger(__name__)
 
 
-class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
+#TODO: Implement the additional AbstractScalableBatchSystem methods
+class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
     """
     A toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos tasks
     over a cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This
@@ -51,7 +52,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        AbstractScalableBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         # The hot-deployed resources representing the user script and the toil distribution
         # respectively. Will be passed along in every Mesos task. See
         # toil.common.HotDeployedResource for details.

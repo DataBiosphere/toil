@@ -43,9 +43,11 @@ log = logging.getLogger(__name__)
 #
 numCores = 2
 
-defaultRequirements = dict(memory=100e6, cores=1, disk=1000)
+defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=True)
 
 
+
+preemptable = True
 
 class hidden:
     """
@@ -106,7 +108,7 @@ class hidden:
             self.assertFalse(os.path.exists(testPath))
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
-            updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs
             # queue should be job 3. If the first two jobs were (incorrectly) added
@@ -134,13 +136,13 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
                 self.assertEqual(updatedID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
                 self.assertEqual(updatedID, job5)
 
@@ -167,6 +169,10 @@ class hidden:
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
+
+        def testScalableBatchSystem(self):
+            #If instance of scalable batch system
+            pass
 
         def _waitForJobsToIssue(self, numJobs):
             issuedIDs = []
@@ -305,12 +311,13 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                 jobIds.add(bs.issueBatchJob(command=self.scriptCommand(),
                                                             cores=float(coresPerJob),
                                                             memory=1,
-                                                            disk=1))
+                                                            disk=1,
+                                                            preemptable=preemptable))
                             self.assertEquals(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
                                 self.assertIsNotNone(job)
-                                jobId, status = job
+                                jobId, status, userTime = job
                                 self.assertEquals(status, 0)
                                 # would raise KeyError on absence
                                 jobIds.remove(jobId)
@@ -411,8 +418,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
     def testBatchResourceLimits(self):
         # self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000)
+        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
+        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000, preemptable=preemptable)
 
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -421,7 +428,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
+        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
 

@@ -45,23 +45,25 @@ class Job(object):
     """
     Class represents a unit of work in toil. 
     """
-    def __init__(self, memory=None, cores=None, disk=None, cache=None, checkpoint=False):
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, cache=None, checkpoint=False):
         """
-        This method must be called by any overiding constructor.
+        This method must be called by any overriding constructor.
         
         :param memory: the maximum number of bytes of memory the job will \
         require to run.  
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, \
         expressed in bytes.
+        :param preemptable: if the job can be run on a preemptable node.
         :param cache: the amount of disk (so that cache <= disk), expressed in bytes, \
         for storing files from previous jobs so that they can be accessed from a local copy. 
-        :param checkpoint: if any of this job's successor jobs completely fails, 
+        :param checkpoint: if any of this job's successor jobs completely fails,
         exhausting all their retries, remove any successor jobs and rerun this job to restart the subtree. \
         Job must be a leaf vertex in the job graph when initially defined, \
         see :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type preemptable: boolean
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
@@ -71,6 +73,7 @@ class Job(object):
         self.disk = parse(disk)
         self.cache = parse(cache)
         self.checkpoint = checkpoint
+        self.preemptable = preemptable
         #Private class variables
 
         #See Job.addChild
@@ -151,7 +154,7 @@ class Job(object):
         Services allow things like databases and servers to be started and accessed \
         by jobs in a workflow.
         
-        :raises toil.job.JobException: If service has already been made the child of a job or another service. 
+        :raises toil.job.JobException: If service has already been made the child of a job or another service.
         :param toil.job.Job.Service service: Service to add.
         :param toil.job.Job.Service parentService: Service that will be started before 'service' is started.\
         Allows trees of services to be established. parentService must be a service of this job.
@@ -303,7 +306,7 @@ class Job(object):
     ####################################################
     #Cycle/connectivity checking
     ####################################################
-    
+
     def checkJobGraphForDeadlocks(self):
         """
         :raises toil.job.JobGraphDeadlockException: if the job graph \
@@ -382,27 +385,27 @@ class Job(object):
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
-    
+
     def checkNewCheckpointsAreLeafVertices(self):
         """
         A checkpoint job is a job that is restarted if either it fails, or if any of \
         its successors completely fails, exhausting their retries.
-        
+
         A job is a leaf it is has no successors.
-        
+
         A checkpoint job must be a leaf when initially added to the job graph. When its \
         run method is invoked it can then create direct successors. This restriction is made
         to simplify implementation.
-        
+
         :raises toil.job.JobGraphDeadlockException: if there exists a job being added to the graph for which \
         checkpoint=True and which is not a leaf.
         """
         roots = self.getRootJobs() # Roots jobs of component, these are preexisting jobs in the graph
-        
+
         # All jobs in the component of the job graph containing self
         jobs = set()
         map(lambda x : x._dfs(jobs), roots)
-        
+
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in filter(lambda x : x.checkpoint, jobs):
             if y not in roots: # The roots are the prexisting jobs
@@ -889,7 +892,7 @@ class Job(object):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=None, cores=None, disk=None):
+        def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -899,6 +902,7 @@ class Job(object):
             self.disk = disk
             self._childServices = []
             self._hasParent = False
+            self.preemptable = preemptable
 
         @abstractmethod
         def start(self, fileStore):
@@ -906,7 +910,7 @@ class Job(object):
             Start the service.
             
             :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
-            
+
             :returns: An object describing how to access the service. The object must be pickleable \
             and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
             """
@@ -918,31 +922,31 @@ class Job(object):
             Stops the service. 
             
             :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
-            Function can block until complete. 
+            Function can block until complete.
             """
             pass
-        
+
         def check(self):
             """
             Checks the service is still running.
-            
+
             :raise RuntimeError: If the service failed, this will cause the service job to be labeled failed.
             :returns: True if the service is still running, else False. If False then the service job will be terminated,
             and considered a success.
             """
             pass
-        
+
         def _addChild(self, service):
             """
             Add a child service to start up after this service has started.
             This should not be called by the user, instead use :func:`toil.job.Job.Service.addService`
             with the "parentService" option.
-            
+
             :raises toil.job.JobException: If service has already been made the child of a job or another service. 
             :param toil.job.Job.Service service: Service to add as a "child" of this service
             :return: a promise that will be replaced with the return value from \
             :func:`toil.job.Job.Service.start` of service after the service has started.
-            :rtype: toil.job.PromisedJobReturnValue 
+            :rtype: toil.job.PromisedJobReturnValue
             """
             if service._hasParent:
                 raise JobException("The service already has a parent service")
@@ -1131,7 +1135,8 @@ class Job(object):
         requirements = Expando(
             memory=float(config.defaultMemory) if self.memory is None else self.memory,
             cores=float(config.defaultCores) if self.cores is None else self.cores,
-            disk=float(config.defaultDisk) if self.disk is None else self.disk)
+            disk=float(config.defaultDisk) if self.disk is None else self.disk,
+            preemptable=float(config.defaultPreemptable) if self.preemptable is None else self.preemptable)
         if self.cache is None:
             requirements.cache = min(requirements.disk, float(config.defaultCache))
         else:
@@ -1169,7 +1174,8 @@ class Job(object):
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
+        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores,
+                jobWrapper.disk, jobWrapper.preemptable,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
 
     def getTopologicalOrderingOfJobs(self):
@@ -1218,7 +1224,7 @@ class Job(object):
         jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + userScript)
         #Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
-        
+
     def _serialiseServices(self, jobStore, jobWrapper, rootJobWrapper):
         """
         Serialises the services for a job.
@@ -1227,14 +1233,14 @@ class Job(object):
             # Extend the depth of the services if necessary
             if depth == len(jobWrapper.services):
                 jobWrapper.services.append([])
-                
+
             # Recursively call to process child services
             for childService, childServiceJob in service._childServices:
                 processService(childService, childServiceJob, depth+1)
-            
-            # Make a job wrapper 
+
+            # Make a job wrapper
             serviceJobWrapper = serviceJob._createEmptyJobWrapperForJob(jobStore, predecessorNumber=1)
-            
+
             # Create the start and terminate flags
             serviceJobWrapper.startJobStoreID = jobStore.getEmptyFileStoreID()
             serviceJobWrapper.terminateJobStoreID = jobStore.getEmptyFileStoreID()
@@ -1242,30 +1248,30 @@ class Job(object):
             assert jobStore.fileExists(serviceJobWrapper.startJobStoreID)
             assert jobStore.fileExists(serviceJobWrapper.terminateJobStoreID)
             assert jobStore.fileExists(serviceJobWrapper.errorJobStoreID)
-            
+
             # Create the service job tuple
-            j = (serviceJobWrapper.jobStoreID, serviceJobWrapper.memory, 
-                 serviceJobWrapper.cores, serviceJobWrapper.disk, 
+            j = (serviceJobWrapper.jobStoreID, serviceJobWrapper.memory,
+                 serviceJobWrapper.cores, serviceJobWrapper.disk,
                  serviceJobWrapper.startJobStoreID, serviceJobWrapper.terminateJobStoreID,
                  serviceJobWrapper.errorJobStoreID)
-            
+
             # Add the service job tuple to the list of services to run
             jobWrapper.services[depth].append(j)
-            
+
             # Break the links between the services to stop them being serialised together
             childServices = service._childServices
             service._childServices = None
             assert serviceJob._services == []
-            
+
             # Serialise the service job and job wrapper
             serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobWrapper }, rootJobWrapper)
-            
+
             # Restore values
             service._childServices = childServices
-                
+
         for service, serviceJob in self._services:
             processService(service, serviceJob, 0)
-        
+
         self._services = []
 
     def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):
@@ -1277,14 +1283,14 @@ class Job(object):
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
-     
+
         #Create the jobWrappers for followOns/children
         jobsToJobWrappers = self._makeJobWrappers(jobWrapper, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobWrappers)
-        
+
         # Temporarily set the jobStore strings for the promise call back functions
         for job in ordering:
             job._promiseJobStore = jobStore
@@ -1294,7 +1300,7 @@ class Job(object):
                     setForServices(childService, childJobService)
             for service, serviceJob in self._services:
                 setForServices(service, serviceJob)
-    
+
         ordering.reverse()
         assert self == ordering[-1]
         if firstJob:
@@ -1334,7 +1340,7 @@ class Job(object):
             f.write(jobWrapper.jobStoreID)
         #Return the first job wrapper
         return jobWrapper
-    
+
     def _serialiseExistingJob(self, jobWrapper, jobStore, returnValues):
         """
         Serialise an existing job.
@@ -1344,7 +1350,7 @@ class Job(object):
         jobWrapper.command = None
         #Merge any children (follow-ons) created in the initial serialisation
         #with children (follow-ons) created in the subsequent scale-up.
-        assert len(jobWrapper.stack) >= 4 
+        assert len(jobWrapper.stack) >= 4
         combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
         combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
         jobWrapper.stack = jobWrapper.stack[:-4]
@@ -1374,14 +1380,14 @@ class Job(object):
         returnValues = self._run(jobWrapper, fileStore)
         #Serialize the new jobs defined by the run method to the jobStore
         self._serialiseExistingJob(jobWrapper, jobStore, returnValues)
-        # If the job is not a checkpoint job, add the promise files to delete 
+        # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete
         if not self.checkpoint:
             for jobStoreFileID in promiseFilesToDelete:
                 fileStore.deleteGlobalFile(jobStoreFileID)
         else:
             # Else copy them to the job wrapper to delete later
-            jobWrapper.checkpointFilesToDelete = list(promiseFilesToDelete) 
+            jobWrapper.checkpointFilesToDelete = list(promiseFilesToDelete)
         promiseFilesToDelete.clear()
         #Now indicate the asynchronous update of the job can happen
         fileStore._updateJobWhenDone()
@@ -1444,7 +1450,8 @@ class FunctionWrappingJob(Job):
         argFn = lambda x : kwargs.pop(x) if x in kwargs else \
                             (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
         Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"),
-                     disk=argFn("disk"), cache=argFn("cache"), 
+                     disk=argFn("disk"), cache=argFn("cache"),
+                     preemptable=argFn("preemptable"),
                      checkpoint=kwargs.pop("checkpoint") if "checkpoint" in kwargs else False)
         #If dill is installed pickle the user function directly
         #TODO: Add dill support
@@ -1535,10 +1542,11 @@ class ServiceJob(Job):
         :param service: The service to wrap in a job.
         :type service: toil.job.Job.Service
         """
-        Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk)
+        Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk,
+                     preemptable=service.preemptable)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
-        
+
         #The service to run, pickled
         childServices = service._childServices
         service._childServices = [] #Ensure we don't pickle the children
@@ -1562,25 +1570,25 @@ class ServiceJob(Job):
             self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
             self._rvs = {}  # Set this to avoid the return values being updated after the
             #run method has completed!
-            
+
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
             assert self.jobWrapper.startJobStoreID != None
             if fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID):
                 fileStore.jobStore.deleteFile(self.jobWrapper.startJobStoreID)
             assert not fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID)
-            
+
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
             assert self.jobWrapper.terminateJobStoreID != None
             while True:
-                # Check for the terminate signal 
+                # Check for the terminate signal
                 if not fileStore.jobStore.fileExists(self.jobWrapper.terminateJobStoreID):
                     logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
                     if not fileStore.jobStore.fileExists(self.jobWrapper.errorJobStoreID):
                         raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
                     break
-                
+
                 # Check the service's status and exit if failed or complete
                 try:
                     if not service.check():
@@ -1589,20 +1597,20 @@ class ServiceJob(Job):
                 except RuntimeError:
                     logger.debug("Detected termination of the service")
                     raise
-                
+
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
-            
+
             #Now kill the service
             #service.stop(fileStore)
-            
+
             # Remove link to the jobWrapper
             self.jobWrapper = None
-        
+
             logger.debug("Service is done")
         finally:
             # The stop function is always called
             service.stop(fileStore)
-    
+
     def _run(self, jobWrapper, fileStore):
         # Set the jobWrapper for the job
         self.jobWrapper = jobWrapper
@@ -1615,7 +1623,7 @@ class ServiceJob(Job):
         # Set the stack to mimic what would be expected for a non-service job (this is a hack)
         jobWrapper.stack = [ [], [] ]
         return returnValues
-   
+
     def getUserScript(self):
         return self.serviceModule
 

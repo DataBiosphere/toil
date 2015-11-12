@@ -521,7 +521,7 @@ class AbstractJobStore(object):
     ##########################################  
 
     @abstractmethod
-    def create(self, command, memory, cores, disk,
+    def create(self, command, memory, cores, disk, preemptable,
                predecessorNumber=0):
         """
         Creates a jobWrapper with specified resources and command, adds it to the job store,

@@ -74,7 +74,7 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ########################################## 
 
-    def create(self, command, memory, cores, disk,
+    def create(self, command, memory, cores, disk, preemptable,
                predecessorNumber=0):
         # The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
@@ -82,6 +82,7 @@ class FileJobStore(AbstractJobStore):
         os.mkdir(os.path.join(absJobDir, "g"))
         # Make the job
         job = JobWrapper(command=command, memory=memory, cores=cores, disk=disk,
+                         preemptable=preemptable,
                          jobStoreID=self._getRelativePath(absJobDir),
                          remainingRetryCount=self._defaultTryCount( ),
                          predecessorNumber=predecessorNumber)
@@ -146,7 +147,7 @@ class FileJobStore(AbstractJobStore):
                         yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
-                        pass  
+                        pass
 
     ##########################################
     # Functions that deal with temporary files associated with jobs

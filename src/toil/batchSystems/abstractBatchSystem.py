@@ -100,7 +100,7 @@ class AbstractBatchSystem:
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
@@ -111,6 +111,8 @@ class AbstractBatchSystem:
         :param float cores: the number of cores needed for the job
 
         :param int disk: int giving the number of bytes of disk space the job needs to run
+
+        :param booleam preemptable: True if the job can be run on a preemptable node
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: str
@@ -153,11 +155,11 @@ class AbstractBatchSystem:
         """
         Gets a job that has updated its status, according to the batch system.
 
-        :param int maxWait: gives the number of seconds to block
-          waiting to find an updated job.
+        :param float maxWait: gives the number of seconds to block
+                              waiting to find an updated job.
 
         :return: If a result is available returns tuple of form (jobID, exitValue)
-          else it returns None. Does not return jobs that were killed.
+                 else it returns None. Does not return jobs that were killed.
         :rtype: (str, int)|None
         """
         raise NotImplementedError('Abstract method: getUpdatedBatchJob')
@@ -246,6 +248,28 @@ class AbstractBatchSystem:
             or info.cleanWorkDir in ('onSuccess', 'onError') and os.listdir(workflowDir) == []):
             shutil.rmtree(workflowDir)
 
+
+class AbstractScalableBatchSystemInterface(object):
+    """
+    A set of methods used by :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale
+    the number of worker nodes in the cluster.
+    """
+    def getNumberOfEmptyNodes(self, preemptable=False):
+        """
+        A node is empty if it is not running any worker jobs.
+
+        :param boolean preemptable: If true returns number of empty preemptable nodes, else
+        returns the number of non-preemptable nodes.
+        :return: Number of nodes in cluster that are empty.
+        :rtype: int
+        """
+        raise NotImplementedError('Abstract method: getNumberOfEmptyNodes')
+
+class AbstractScalableBatchSystem(AbstractScalableBatchSystemInterface, AbstractBatchSystem):
+    """
+    A batch system with the added methods of the AbstractScalableBatchSystemInterface class
+    """
+    pass
 
 class InsufficientSystemResources(Exception):
     """

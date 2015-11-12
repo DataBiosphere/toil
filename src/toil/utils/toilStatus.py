@@ -74,9 +74,9 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = loadJobStore(options.jobStore)
     try:
-        rootJob = jobStore.loadRootJob()
+        rootJob = Job._loadRootJob(jobStore)
     except JobException:
         print "The root job of the jobStore is not present, the toil workflow has probably completed okay"
         sys.exit(0)
