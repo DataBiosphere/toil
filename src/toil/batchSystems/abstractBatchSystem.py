@@ -69,8 +69,6 @@ class AbstractBatchSystem:
         """Kills the given job IDs.
         """
         raise NotImplementedError('Abstract method: killBatchJobs')
-    
-    
 
     # FIXME: Return value should be a set (then also fix the tests)
 
@@ -80,6 +78,16 @@ class AbstractBatchSystem:
         be depended upon.
         """
         raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
+    
+    def getIssuedQueueSize(self, preemptable=False):
+        """
+        Gets the approximate number of jobs issued but not yet running. 
+        
+        :param boolean preemptable: If true returns number of preemptable jobs queued, else
+        returns the number of non-preemptable jobs.
+        :return: Number of jobs issued but not yet running. This may be an approximation.
+        """
+        raise NotImplementedError('Abstract method: queueSize')
     
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting)
