@@ -30,8 +30,8 @@ import stat
 import inspect
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
-from bd2k.util.humanize import human2bytes
-from io import BytesIO
+from bd2k.util.humanize import human2bytes 
+from io import BytesIO 
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
 

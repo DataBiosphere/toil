@@ -69,6 +69,8 @@ class AbstractBatchSystem:
         """Kills the given job IDs.
         """
         raise NotImplementedError('Abstract method: killBatchJobs')
+    
+    
 
     # FIXME: Return value should be a set (then also fix the tests)
 
