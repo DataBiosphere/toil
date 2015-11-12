@@ -99,6 +99,14 @@ class AbstractBatchSystem:
         """
         raise NotImplementedError('Abstract Method: shutdown')
 
+    def setEnv(self, name, value=None):
+        """
+        Sets environment variables for the process of a given job so that an arbitrary
+        environment variable can be passed to a worker node running a job. If no value
+        is provided it will be looked up from the current environment.
+        """
+        pass
+
     @classmethod
     def getRescueBatchJobFrequency(cls):
         """Gets the period of time to wait (floating point, in seconds) between checking for 

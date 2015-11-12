@@ -114,6 +114,13 @@ class AbstractJobStore(object):
         """
         raise NotImplementedError()
 
+    def getEnv(self):
+        """
+        Returns a dictionary of relevant environment variables such as authentication credentials
+        for job stores.
+        """
+        return {}
+
     ##Cleanup functions
 
     def clean(self, rootJobWrapper):

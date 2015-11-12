@@ -85,6 +85,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.coreFractions = ResourcePool(self.numWorkers)
         # A lock to work around the lack of thread-safety in Python's subprocess module
         self.popenLock = Lock()
+        # A dictionary of environment variables to be passed to the job subprocess
+        self.environment = {}
         # A pool representing available memory in bytes
         self.memory = ResourcePool(self.maxMemory)
         log.info('Setting up the thread pool with %i workers, '
@@ -114,7 +116,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     with self.coreFractions.acquisitionOf(coreFractions):
                         log.info("Executing command: '%s'.", jobCommand)
                         with self.popenLock:
-                            popen = subprocess.Popen(jobCommand, shell=True)
+                            envDict= dict(os.environ, **self.environment)
+                            popen = subprocess.Popen(jobCommand, shell=True, env=envDict)
+
                         info = Info(time.time(), popen, killIntended=False)
                         self.runningJobs[jobID] = info
                         try:
@@ -192,6 +196,14 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
         for thread in self.workerThreads:
             thread.join()
+
+    def setEnv(self, name, value=None):
+        if value is None:
+            try:
+                value = os.environ[name]
+            except KeyError:
+                raise RuntimeError("%s does not exist in current environment", name)
+        self.environment[name] = value
 
     def getUpdatedBatchJob(self, maxWait):
         """

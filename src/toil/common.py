@@ -53,6 +53,7 @@ class Config(object):
         self.masterIP = '127.0.0.1:5050'
         self.parasolCommand = "parasol"
         self.maxParasolBatches = 10000
+        self.environment = {}
         
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -132,6 +133,21 @@ class Config(object):
         setOption("masterIP") 
         setOption("parasolCommand")
         setOption("maxParasolBatches", int, iC(1))
+
+        def splitEnvVarsToDict(envVars):
+            """
+            Parses string of environment variables and values into a dictionary
+            """
+            d = dict()
+            for item in envVars:
+                try:
+                    name,val = item.split('=')
+                    d[name] = val
+                except ValueError:
+                    d[item] = None
+            return d
+
+        setOption("environment", splitEnvVarsToDict)
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -213,6 +229,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
                 help="Maximum number of batches Parasol is allowed to create - a batch \
                 is created for each job that has a unique set of resource requirements. Default=%i" % config.maxParasolBatches)
+
+
+    addOptionFn("--setEnv", dest="environment", default=[], action="append",
+                help="Set of arbitrary environment variables for workers. Default=%s" % config.environment)
 
     #
     #Resource requirements
@@ -427,6 +447,9 @@ def setupToil(options, userScript=None):
         # TODO: toil distribution
 
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
+    #Set environment variables from config
+    for k, v in config.environment.iteritems():
+        batchSystem.setEnv(k, v)
     try:
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, jobStore)

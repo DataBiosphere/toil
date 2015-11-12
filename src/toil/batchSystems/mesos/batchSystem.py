@@ -77,10 +77,13 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and slaveID.
         self.runningJobMap = {}
 
+        # Dictionary of environment variables
+        self.environment = {}
+
         # Queue of jobs whose status has been updated, according to mesos. Req'd by toil
         self.updatedJobsQueue = Queue()
 
-        # Wether to use implicit/explicit acknowledgments
+        # Whether to use implicit/explicit acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
 
         # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
@@ -262,6 +265,14 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if driver_result != mesos_pb2.DRIVER_STOPPED:
             raise RuntimeError("Mesos driver failed with %i", driver_result)
 
+    def setEnv(self, name, value=None):
+        if value is None:
+            try:
+                value = os.environ[name]
+            except KeyError:
+                raise RuntimeError("%s does not exist in current environment", name)
+        self.environment[name] = value
+
     def registered(self, driver, frameworkId, masterInfo):
         """
         Invoked when the scheduler successfully registers with a Mesos master
@@ -296,6 +307,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def _prepareToRun(self, job_type, offer, index):
         jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
+        jt_job.environment = self.environment
         task = self._createTask(jt_job, offer)
         return task
 

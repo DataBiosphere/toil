@@ -124,7 +124,7 @@ class MesosExecutor(mesos.interface.Executor):
                 job.userScript.register()
             log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
-                return subprocess.Popen(job.command, shell=True)
+                return subprocess.Popen(job.command, shell=True, env=dict(os.environ, **job.environment))
 
         def sendUpdate(taskState, message=''):
             log.debug("Sending status update ...")
