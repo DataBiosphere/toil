@@ -202,7 +202,6 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
                       help=("The type of batch system to run the job(s) with, currently can be one "
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
-    #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
