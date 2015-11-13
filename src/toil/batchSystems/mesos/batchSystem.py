@@ -16,6 +16,7 @@ from __future__ import absolute_import
 
 from collections import defaultdict
 import os
+import socket
 import time
 import pickle
 from Queue import Queue, Empty
@@ -47,7 +48,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk, masterIP,
+    def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         # The hot-deployed resources representing the user script and the toil distribution
@@ -63,8 +64,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # defined by resource usage
         self.jobQueueList = defaultdict(list)
 
-        # IP of mesos master. specified in MesosBatchSystem, currently loopback
-        self.masterIP = masterIP
+        # Address of Mesos master in the form host:port where host can be an IP or a hostname
+        self.masterAddress = masterAddress
 
         # queue of jobs to kill, by jobID.
         self.killSet = set()
@@ -240,7 +241,6 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         framework.user = ""  # Have Mesos fill in the current user.
         framework.name = "toil"
 
-
         if os.getenv("MESOS_CHECKPOINT"):
             log.debug("Enabling checkpoint for the framework")
             framework.checkpoint = True
@@ -249,9 +249,31 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             raise NotImplementedError("Authentication is currently not supported")
         else:
             framework.principal = framework.name
-            self.driver = mesos.native.MesosSchedulerDriver(self, framework, self.masterIP,
+            self.driver = mesos.native.MesosSchedulerDriver(self, framework,
+                                                            self.resolveAddress(self.masterAddress),
                                                             self.implicitAcknowledgements)
         assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
+
+    @staticmethod
+    def resolveAddress(address):
+        """
+        Resolves the host in the given string. The input is of the form host[:port]. This method
+        is idempotent, i.e. the host may already be a dotted IP address.
+
+        >>> f=MesosBatchSystem.resolveAddress
+        >>> f('localhost')
+        '127.0.0.1'
+        >>> f('127.0.0.1')
+        '127.0.0.1'
+        >>> f('localhost:123')
+        '127.0.0.1:123'
+        >>> f('127.0.0.1:123')
+        '127.0.0.1:123'
+        """
+        address = address.split(':')
+        assert len(address) in (1,2)
+        address[0] = socket.gethostbyname(address[0])
+        return ':'.join(address)
 
     def shutdown(self):
         log.info("Stopping Mesos driver")

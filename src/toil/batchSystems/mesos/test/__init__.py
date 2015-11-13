@@ -58,12 +58,13 @@ class MesosTestSupport(object):
             return ['mesos-master',
                     '--registry=in_memory',
                     '--ip=127.0.0.1',
+                    '--port=5050',
                     '--allocation_interval=500ms']
 
     class MesosSlaveThread(MesosThread):
         def mesosCommand(self):
-            # NB: The --resources parameter forces this test to use a predictable number of cores, independent of how
-            # many cores the system running the test actually has.
+            # NB: The --resources parameter forces this test to use a predictable number of
+            # cores, independent of how many cores the system running the test actually has.
             return ['mesos-slave',
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',

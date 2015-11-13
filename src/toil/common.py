@@ -50,7 +50,7 @@ class Config(object):
         #Batch system options
         self.batchSystem = "singleMachine"
         self.scale = 1
-        self.masterIP = '127.0.0.1:5050'
+        self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
         self.maxParasolBatches = 10000
         
@@ -129,7 +129,7 @@ class Config(object):
         #Batch system options
         setOption("batchSystem")
         setOption("scale", float) 
-        setOption("masterIP") 
+        setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("maxParasolBatches", int, iC(1))
         
@@ -206,8 +206,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
-    addOptionFn("--masterIP", dest="masterIP", default=None,
-                help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
+                help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The command to run the parasol program default=%s" % config.parasolCommand)
     addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
@@ -333,7 +333,7 @@ def loadBatchSystemClass(config):
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"] = config.masterIP
+        kwargs['masterAddress'] = config.mesosMasterAddress
         logger.info('Using the mesos batch system')
     else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)

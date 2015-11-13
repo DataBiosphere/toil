@@ -164,7 +164,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
         return MesosBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9, maxDisk=1001,
-                                masterIP='127.0.0.1:5050')
+                                masterAddress='127.0.0.1:5050')
 
     def tearDown(self):
         self._stopMesos()
