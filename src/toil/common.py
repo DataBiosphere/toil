@@ -50,9 +50,9 @@ class Config(object):
         #Batch system options
         self.batchSystem = "singleMachine"
         self.scale = 1
-        self.masterIP = '127.0.0.1:5050'
+        self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
-        self.maxParasolBatches = 10000
+        self.parasolMaxBatches = 10000
         
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -129,9 +129,9 @@ class Config(object):
         #Batch system options
         setOption("batchSystem")
         setOption("scale", float) 
-        setOption("masterIP") 
+        setOption("mesosMasterAddress")
         setOption("parasolCommand")
-        setOption("maxParasolBatches", int, iC(1))
+        setOption("parasolMaxBatches", int, iC(1))
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -202,17 +202,17 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
                       help=("The type of batch system to run the job(s) with, currently can be one "
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
-    #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
-    addOptionFn("--masterIP", dest="masterIP", default=None,
-                help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
+                help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
-                      help="The command to run the parasol program default=%s" % config.parasolCommand)
-    addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
-                help="Maximum number of batches Parasol is allowed to create - a batch \
-                is created for each job that has a unique set of resource requirements. Default=%i" % config.maxParasolBatches)
+                      help="The path to the parasol program. default=%s" % config.parasolCommand)
+    addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
+                help="Maximum number of job batches the Parasol batch is allowed to create. One "
+                     "batch is created for jobs with a a unique set of resource requirements. "
+                     "default=%i" % config.parasolMaxBatches)
 
     #
     #Resource requirements
@@ -333,7 +333,7 @@ def loadBatchSystemClass(config):
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"] = config.masterIP
+        kwargs['masterAddress'] = config.mesosMasterAddress
         logger.info('Using the mesos batch system')
     else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)

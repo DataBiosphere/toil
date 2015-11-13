@@ -80,7 +80,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #is created whenever a job has a new unique combination of cpu and memory
         #requirements.
         self.resultsFiles = dict()
-        self.maxBatches = config.maxParasolBatches
+        self.maxBatches = config.parasolMaxBatches
 
         #Allows the worker process to send back the IDs of
         #jobs that have finished, so the batch system can
