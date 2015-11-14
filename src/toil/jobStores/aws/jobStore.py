@@ -424,17 +424,16 @@ class AWSJobStore(AbstractJobStore):
             :param encrypted: whether the file is stored in encrypted form
 
             :type version: str|None
-            :param version: the most recent version of the S3 object storing this file's content
-                            or None if no S3 object exists for this file, i.e. if the file is
-                            new and empty or inlined.
+            :param version: a non-empty string containing the most recent version of the S3
+            object storing this file's content, None if the file is new, or empty string if the
+            file is inlined.
 
             :type content: str|None
             :param content: this file's inlined content
 
             :type numContentChunks: int
             :param numContentChunks: the number of SDB domain attributes occupied by this files
-                                     inlined content. Note that an inlined empty string still
-                                     occupies one chunk.
+            inlined content. Note that an inlined empty string still occupies one chunk.
             """
             super(AWSJobStore.FileInfo, self).__init__()
             self._fileID = fileID
@@ -462,7 +461,7 @@ class AWSJobStore(AbstractJobStore):
             # Version should only change once
             assert self._previousVersion == self._version
             self._version = version
-            if version is not None:
+            if version:
                 self.content = None
 
         @property
@@ -477,7 +476,7 @@ class AWSJobStore(AbstractJobStore):
         def content(self, content):
             self._content = content
             if content is not None:
-                self.version = None
+                self.version = ''
 
         @classmethod
         def create(cls, ownerID):
@@ -508,6 +507,7 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def loadOrFail(cls, jobStoreFileID, customName=None):
             """
+            :rtype: FileInfo
             :return: an instance of this class representing the file with the given ID
             :raises NoSuchFileException: if given file does not exist
             """
@@ -704,7 +704,7 @@ class AWSJobStore(AbstractJobStore):
                 # The writable is now closed. This will send EOF to the readable and cause that
                 # thread to finish.
                 thread.join()
-                assert (self.version is None) != (self.content is None)
+                assert bool(self.version) == (self.content is None)
 
         def download(self, localFilePath):
             if self.content is not None:
@@ -756,13 +756,15 @@ class AWSJobStore(AbstractJobStore):
                         store.filesDomain.delete_attributes(
                             self.fileID,
                             expected_values=['version', self.previousVersion])
-                store.filesBucket.delete_key(key_name=self.fileID, version_id=self.previousVersion)
+                if self.previousVersion:
+                    store.filesBucket.delete_key(key_name=self.fileID,
+                                                 version_id=self.previousVersion)
 
         def _s3EncryptionHeaders(self):
             sseKeyPath = self.outer.sseKeyPath
             if self.encrypted:
                 if sseKeyPath is None:
-                    raise AssertionError( 'Content is encrypted but no key was provided.')
+                    raise AssertionError('Content is encrypted but no key was provided.')
                 else:
                     with open(sseKeyPath) as f:
                         sseKey = f.read()
