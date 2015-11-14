@@ -104,7 +104,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             if args is None:
                 log.debug('Received queue sentinel.')
                 break
-            jobCommand, jobID, jobCores, jobMemory, jobDisk = args
+            jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
             try:
                 coreFractions = int(jobCores / self.minCores)
                 log.debug('Acquiring %i bytes of memory from a pool of %s.', jobMemory, self.memory)
@@ -114,7 +114,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     with self.coreFractions.acquisitionOf(coreFractions):
                         log.info("Executing command: '%s'.", jobCommand)
                         with self.popenLock:
-                            popen = subprocess.Popen(jobCommand, shell=True)
+                            popen = subprocess.Popen(jobCommand,
+                                                     shell=True,
+                                                     env=dict(os.environ, **environment))
                         statusCode = None
                         info = Info(time.time(), popen, killIntended=False)
                         try:
@@ -155,7 +157,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = command
-        self.inputQueue.put((command, jobID, cores, memory, disk))
+        self.inputQueue.put((command, jobID, cores, memory, disk, self.environment.copy()))
         return jobID
 
     def killBatchJobs(self, jobIDs):

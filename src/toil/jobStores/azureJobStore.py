@@ -77,15 +77,15 @@ class AzureJobStore(AbstractJobStore):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
 
-        account_key = _fetchAzureAccountKey(accountName)
+        self.account_key = _fetchAzureAccountKey(accountName)
 
         # Table names have strict requirements in Azure
         self.namePrefix = self._sanitizeTableName(namePrefix)
         log.debug("Creating job store with name prefix '%s'" % self.namePrefix)
 
         # These are the main API entrypoints.
-        self.tableService = TableService(account_key=account_key, account_name=accountName)
-        self.blobService = BlobService(account_key=account_key, account_name=accountName)
+        self.tableService = TableService(account_key=self.account_key, account_name=accountName)
+        self.blobService = BlobService(account_key=self.account_key, account_name=accountName)
 
         # Register our job-store in the global table for this storage account
         self.registryTable = self._getOrCreateTable('toilRegistry')
@@ -167,6 +167,9 @@ class AzureJobStore(AbstractJobStore):
         self.files.delete_container()
         self.statsFiles.delete_container()
         self.statsFileIDs.delete_table()
+
+    def getEnv(self):
+        return dict(AZURE_ACCOUNT_KEY=self.account_key)
 
     def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()

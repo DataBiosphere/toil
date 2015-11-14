@@ -113,6 +113,22 @@ class hidden:
             #Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
 
+        def testSetEnv(self):
+            # https://github.com/BD2KGenomics/toil/issues/547
+            if isinstance(self, (MesosBatchSystemTest, SingleMachineBatchSystemTest)):
+                # First, ensure that the test fails if the variable is *not* set
+                command = 'test "$FOO" = bar'
+                job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
+                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                self.assertNotEqual(exitStatus, 0)
+                self.assertEqual(updatedID, job4)
+                # Now set the variable and ensure that it is present
+                self.batchSystem.setEnv('FOO', 'bar')
+                job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
+                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                self.assertEqual(exitStatus, 0)
+                self.assertEqual(updatedID, job5)
+
         def testCheckResourceRequest(self):
             self.assertRaises(InsufficientSystemResources,
                               self.batchSystem.checkResourceRequest,
