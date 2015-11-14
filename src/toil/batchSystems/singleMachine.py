@@ -115,22 +115,24 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                         log.info("Executing command: '%s'.", jobCommand)
                         with self.popenLock:
                             popen = subprocess.Popen(jobCommand, shell=True)
+                        statusCode = None
                         info = Info(time.time(), popen, killIntended=False)
-                        self.runningJobs[jobID] = info
                         try:
-                            statusCode = popen.wait()
-                            if 0 != statusCode:
-                                if statusCode != -9 or not info.killIntended:
-                                    log.error(
-                                        "Got exit code %i (indicating failure) from command '%s'.",
-                                        statusCode, jobCommand)
+                            self.runningJobs[jobID] = info
+                            try:
+                                statusCode = popen.wait()
+                                if 0 != statusCode:
+                                    if statusCode != -9 or not info.killIntended:
+                                        log.error( "Got exit code %i (indicating failure) from "
+                                                   "command '%s'.", statusCode, jobCommand)
+                            finally:
+                                self.runningJobs.pop(jobID)
                         finally:
-                            self.runningJobs.pop(jobID)
+                            if statusCode is not None and not info.killIntended:
+                                self.outputQueue.put((jobID, statusCode))
             finally:
                 log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
                           self.coreFractions.value, self.memory.value)
-                if not info.killIntended:
-                    self.outputQueue.put((jobID, statusCode))
         log.debug('Exiting worker thread normally.')
 
     def issueBatchJob(self, command, memory, cores, disk):
@@ -216,7 +218,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
 
 class Info(object):
-    # Can't use namedtuple here since kill_intended needs to be mutable
+    # Can't use namedtuple here since killIntended needs to be mutable
     def __init__(self, startTime, popen, killIntended):
         self.time = startTime
         self.popen = popen
