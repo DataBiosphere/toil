@@ -82,10 +82,12 @@ def main():
         sys.exit(0)
     
     toilState = ToilState(jobStore, rootJob )
-    
-    failedJobs = [ job for job in toilState.updatedJobs | \
-                  set(toilState.successorCounts.keys()) \
-                  if job.remainingRetryCount == 0 ]
+
+    # The first element of the toilState.updatedJobs tuple is the jobWrapper we want to inspect
+    totalJobs = set(toilState.successorCounts.keys()) | \
+                {jobTuple[0] for jobTuple in toilState.updatedJobs}
+
+    failedJobs = [ job for job in totalJobs if job.remainingRetryCount == 0 ]
     
     print "There are %i active jobs, %i parent jobs with children, and \
     %i totally failed jobs currently in toil workflow: %s" % \
