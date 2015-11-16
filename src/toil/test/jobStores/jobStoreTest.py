@@ -461,7 +461,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
         AWSJobStore.FileInfo.s3PartSize = partSize
-        return AWSJobStore(self.testRegion, self.namePrefix, config=config)
+        return AWSJobStore.createJobStore(self.testRegion + ':' + self.namePrefix, config=config)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -495,7 +495,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
                 buf = f.read(self._partSize())
                 if not buf: break
                 hashOut.update(buf)
-        self.assertEqual(hashIn.digest(),hashOut.digest())
+        self.assertEqual(hashIn.digest(), hashOut.digest())
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -505,6 +505,21 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     def _batchDeletionSize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         return AWSJobStore.itemsPerBatchDelete
+
+
+@needs_aws
+class InvalidAWSJobStoreTest(ToilTest):
+    def testInvalidJobStoreName(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:a--b')
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:' + ('a' * 100))
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:a_b')
 
 
 @needs_azure
