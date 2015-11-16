@@ -1,0 +1,5 @@
+{
+    "test.greeter.name": "World",
+    "test.adder.numbers": [10, 20, 100]
+}
+

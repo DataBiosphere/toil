@@ -7,7 +7,7 @@
 virtualenv --system-site-packages venv
 . venv/bin/activate
 pip2.7 install sphinx
-make develop extras=[aws,mesos,azure,encryption,cwl]
+make develop extras=[aws,mesos,azure,encryption,wdl,cwl]
 export LIBPROCESS_IP=127.0.0.1
 export PYTEST_ADDOPTS="--junitxml=test-report.xml"
 make $make_targets
