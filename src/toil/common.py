@@ -43,17 +43,18 @@ class Config(object):
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        
+
         #Restarting the workflow options
         self.restart = False
-        
+
         #Batch system options
         self.batchSystem = "singleMachine"
         self.scale = 1
         self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
         self.parasolMaxBatches = 10000
-        
+        self.environment = {}
+
         #Resource requirements
         self.defaultMemory = 2147483648
         self.defaultCores = 1
@@ -62,27 +63,27 @@ class Config(object):
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
-        
+
         #Retrying/rescuing jobs
         self.retryCount = 0
         self.maxJobDuration = sys.maxint
         self.rescueJobsFrequency = 3600
-        
+
         #Misc
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
-        
+
         #Debug options
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
-        
+
     def setOptions(self, options):
         """
         Creates a config object from the options object.
         """
         from bd2k.util.humanize import human2bytes #This import is used to convert
-        #from human readable quantites to integers 
+        #from human readable quantites to integers
         def setOption(varName, parsingFn=None, checkFn=None):
             #If options object has the option "varName" specified
             #then set the "varName" attrib to this value in the config object
@@ -94,20 +95,20 @@ class Config(object):
                     try:
                         checkFn(x)
                     except AssertionError:
-                        raise RuntimeError("The %s option has an invalid value: %s" 
+                        raise RuntimeError("The %s option has an invalid value: %s"
                                            % (varName, x))
                 setattr(self, varName, x)
-            
+
         h2b = lambda x : human2bytes(str(x)) #Function to parse integer from string expressed in different formats
-        
+
         def iC(minValue, maxValue=sys.maxint):
             #Returns function to check the a parameter is in a valid range
             def f(x):
                 assert x >= minValue and x < maxValue
             return f
-        
+
         #Core options
-        setOption("jobStore", parsingFn=lambda x : os.path.abspath(x) 
+        setOption("jobStore", parsingFn=lambda x : os.path.abspath(x)
                   if options.jobStore.startswith('.') else x)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
@@ -117,23 +118,25 @@ class Config(object):
             if self.clean != "never" and self.clean is not None:
                 raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
                                    "despite the stats flag requiring "
-                                   "the jobStore to be intact at the end of the run. " 
+                                   "the jobStore to be intact at the end of the run. "
                                    "Set clean to \'never\'" % self.clean)
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        
+
         #Restarting the workflow options
-        setOption("restart") 
-        
+        setOption("restart")
+
         #Batch system options
         setOption("batchSystem")
-        setOption("scale", float) 
+        setOption("scale", float)
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
-        
-        #Resource requirements
+
+        setOption("environment", parseSetEnv)
+
+        # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", h2b, iC(1))
         setOption("defaultDisk", h2b, iC(1))
@@ -141,12 +144,12 @@ class Config(object):
         setOption("maxCores", h2b, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
-        
+
         #Retrying/rescuing jobs
         setOption("retryCount", int, iC(0))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
-        
+
         #Misc
         setOption("maxLogFileSize", h2b, iC(1))
         def checkSse(sseKey):
@@ -154,7 +157,7 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
-        
+
         #Debug options
         setOption("badWorker", float, iC(0, 1))
         setOption("badWorkerFailInterval", float, iC(0))
@@ -191,9 +194,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for restarting an existing workflow",
                              "Allows the restart of an existing workflow")
     addOptionFn("--restart", dest="restart", default=None, action="store_true",
-                help="If --restart is specified then will attempt to restart existing workflow " 
+                help="If --restart is specified then will attempt to restart existing workflow "
                 "at the location pointed to by the --jobStore option. Will raise an exception if the workflow does not exist")
-    
+
     #
     #Batch system options
     #
@@ -256,7 +259,7 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. default=%s" % config.rescueJobsFrequency))
-    
+
     #
     #Misc options
     #
@@ -265,14 +268,21 @@ def _addOptions(addGroupFn, config):
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % config.maxLogFileSize))
-    
+
     addOptionFn("--sseKey", dest="sseKey", default=None,
             help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
                  "not be used if this flag is not passed.")
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
-    
+    addOptionFn("--setEnv", '-e', metavar='NAME=VALUE or NAME',
+                dest="environment", default=[], action="append",
+                help="Set an environment variable early on in the worker. If VALUE is omitted, "
+                     "it will be looked up in the current environment. Independently of this "
+                     "option, the worker will try to emulate the leader's environment before "
+                     "running a job. Using this option, a variable can be injected into the "
+                     "worker process itself before it is started.")
+
     #
     #Debug options
     #
@@ -428,8 +438,58 @@ def setupToil(options, userScript=None):
 
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     try:
+        # Set environment variables required by job store
+        for k, v in jobStore.getEnv().iteritems():
+            batchSystem.setEnv(k, v)
+        # Set environment variables passed on command line
+        for k, v in config.environment.iteritems():
+            batchSystem.setEnv(k, v)
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, jobStore)
     finally:
         logger.debug('Shutting down batch system')
         batchSystem.shutdown()
+
+# Nested functions can't have doctests so we have to make this global
+
+def parseSetEnv(l):
+    """
+    Parses a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary. Strings
+    of the latter from will result in dictionary entries whose value is None.
+
+    :type l: list[str]
+    :rtype: dict[str,str]
+
+    >>> parseSetEnv([])
+    {}
+    >>> parseSetEnv(['a'])
+    {'a': None}
+    >>> parseSetEnv(['a='])
+    {'a': ''}
+    >>> parseSetEnv(['a=b'])
+    {'a': 'b'}
+    >>> parseSetEnv(['a=a', 'a=b'])
+    {'a': 'b'}
+    >>> parseSetEnv(['a=b', 'c=d'])
+    {'a': 'b', 'c': 'd'}
+    >>> parseSetEnv(['a=b=c'])
+    {'a': 'b=c'}
+    >>> parseSetEnv([''])
+    Traceback (most recent call last):
+    ...
+    ValueError: Empty name
+    >>> parseSetEnv(['=1'])
+    Traceback (most recent call last):
+    ...
+    ValueError: Empty name
+    """
+    d = dict()
+    for i in l:
+        try:
+            k, v = i.split('=', 1)
+        except ValueError:
+            k, v = i, None
+        if not k:
+            raise ValueError('Empty name')
+        d[k] = v
+    return d

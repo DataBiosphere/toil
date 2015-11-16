@@ -38,9 +38,8 @@ log = logging.getLogger(__name__)
 #
 numCores = 2
 
-memoryForJobs = 100e6
+defaultRequirements = dict(memory=100e6, cores=1, disk=1000)
 
-diskForJobs = 1000
 
 class hidden:
     """
@@ -81,10 +80,8 @@ class hidden:
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
 
-            job1 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
-            job2 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+            job1 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
+            job2 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -101,8 +98,7 @@ class hidden:
             # Issue a job and then allow it to finish by itself, causing
             # it to be added to the updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
-            job3 = self.batchSystem.issueBatchJob("touch %s" % testPath,
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+            job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
             updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
@@ -116,6 +112,22 @@ class hidden:
 
             #Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
+
+        def testSetEnv(self):
+            # https://github.com/BD2KGenomics/toil/issues/547
+            if isinstance(self, (MesosBatchSystemTest, SingleMachineBatchSystemTest)):
+                # First, ensure that the test fails if the variable is *not* set
+                command = 'test "$FOO" = bar'
+                job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
+                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                self.assertNotEqual(exitStatus, 0)
+                self.assertEqual(updatedID, job4)
+                # Now set the variable and ensure that it is present
+                self.batchSystem.setEnv('FOO', 'bar')
+                job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
+                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                self.assertEqual(exitStatus, 0)
+                self.assertEqual(updatedID, job5)
 
         def testCheckResourceRequest(self):
             self.assertRaises(InsufficientSystemResources,
@@ -154,6 +166,7 @@ class hidden:
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
             return runningIDs
 
+
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -163,7 +176,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
-        return MesosBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9, maxDisk=1001,
+        return MesosBatchSystem(config=self.config,
+                                maxCores=numCores, maxMemory=1e9, maxDisk=1001,
                                 masterAddress='127.0.0.1:5050')
 
     def tearDown(self):
@@ -173,8 +187,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
-        return SingleMachineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1e9,
-                                        maxDisk=1001)
+        return SingleMachineBatchSystem(config=self.config,
+                                        maxCores=numCores, maxMemory=1e9, maxDisk=1001)
+
 
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
@@ -239,7 +254,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         # We'll use fractions to avoid rounding errors. Remember that only certain, discrete
         # fractions can be represented as a floating point number.
         F = Fraction
-        # This test isn't general enought to cover every possible value of minCores in
+        # This test isn't general enough to cover every possible value of minCores in
         # SingleMachineBatchSystem. Instead we hard-code a value and assert it.
         minCores = F(1, 10)
         self.assertEquals(float(minCores), SingleMachineBatchSystem.minCores)
@@ -288,6 +303,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             f.seek(0)
                             f.truncate(0)
                             f.write('0,0')
+
 
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
@@ -346,6 +362,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         from toil.batchSystems.parasol import popenParasolCommand
         exitStatus, batchLines = popenParasolCommand("parasol list batches")
         return [self._parseBatchString(line) for line in batchLines[1:] if not line == ""]
+
 
 @needs_gridengine
 class GridEngineTest(hidden.AbstractBatchSystemTest):

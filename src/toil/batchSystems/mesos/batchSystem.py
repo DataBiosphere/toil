@@ -81,7 +81,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Queue of jobs whose status has been updated, according to mesos. Req'd by toil
         self.updatedJobsQueue = Queue()
 
-        # Wether to use implicit/explicit acknowledgments
+        # Whether to use implicit/explicit acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
 
         # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
@@ -111,10 +111,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         self.nextJobID += 1
 
         job = ToilJob(jobID=jobID,
-                         resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
-                         command=command,
-                         userScript=self.userScript,
-                         toilDistribution=self.toilDistribution)
+                      resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
+                      command=command,
+                      userScript=self.userScript,
+                      toilDistribution=self.toilDistribution,
+                      environment=self.environment.copy())
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
