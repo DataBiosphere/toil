@@ -211,7 +211,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
                 help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
-                      help="The path to the parasol program. default=%s" % config.parasolCommand)
+                      help="The name or path of the parasol program. Will be looked up on PATH "
+                           "unless it starts with a slashdefault=%s" % config.parasolCommand)
     addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "

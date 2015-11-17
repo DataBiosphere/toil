@@ -14,7 +14,9 @@
 
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
+from contextlib import contextmanager
 from fractions import Fraction
+from inspect import getsource
 import logging
 import os
 import tempfile
@@ -110,17 +112,26 @@ class hidden:
             self.assertTrue(os.path.exists(testPath))
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
-            #Make sure killBatchJobs can handle jobs that don't exist
+            # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
 
         def testSetEnv(self):
-            # https://github.com/BD2KGenomics/toil/issues/547
-            if isinstance(self, (MesosBatchSystemTest, SingleMachineBatchSystemTest)):
+            # Parasol disobeys shell rules and stupidly splits the command at the space character
+            # before exec'ing it, whether the space is quoted, escaped or not. This means that we
+            # can't have escaped or quotes spaces in the command line. So we can't use bash -c
+            #  '...' or python -c '...'. The safest thing to do here is to script the test and
+            # invoke that script rather than inline the test via -c.
+            def assertEnv():
+                import os, sys
+                sys.exit(0 if os.getenv('FOO') == 'bar' else 42)
+
+            script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
+            with tempFileContaining(script_body) as script_path:
                 # First, ensure that the test fails if the variable is *not* set
-                command = 'test "$FOO" = bar'
+                command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
                 updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertNotEqual(exitStatus, 0)
+                self.assertEqual(exitStatus, 42)
                 self.assertEqual(updatedID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
@@ -359,19 +370,19 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return batchInfo
 
     def _getBatchList(self):
-        from toil.batchSystems.parasol import popenParasolCommand
-        exitStatus, batchLines = popenParasolCommand("parasol list batches")
+        exitStatus, batchLines = self.batchSystem.runParasol(['list', 'batches'])
+        self.assertEqual(exitStatus, 0)
         return [self._parseBatchString(line) for line in batchLines[1:] if not line == ""]
 
 
 @needs_gridengine
-class GridEngineTest(hidden.AbstractBatchSystemTest):
+class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the GridEngine batch system
     """
 
     def _createDummyConfig(self):
-        config = super(GridEngineTest, self)._createDummyConfig()
+        config = super(GridEngineBatchSystemTest, self)._createDummyConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir('jobStore')
         return config
@@ -383,5 +394,20 @@ class GridEngineTest(hidden.AbstractBatchSystemTest):
 
     @classmethod
     def setUpClass(cls):
-        super(GridEngineTest, cls).setUpClass()
+        super(GridEngineBatchSystemTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
+
+
+@contextmanager
+def tempFileContaining(content):
+    fd, path = tempfile.mkstemp(suffix='.py')
+    try:
+        os.write(fd, content)
+    except:
+        os.close(fd)
+        raise
+    else:
+        os.close(fd)
+        yield path
+    finally:
+        os.unlink(path)

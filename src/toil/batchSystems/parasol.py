@@ -25,38 +25,18 @@ import time
 from Queue import Empty
 from Queue import Queue
 from threading import Thread
+from bd2k.util.iterables import concat
+from bd2k.util.processes import which
 
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.lib.bioio import getTempFile
 
 logger = logging.getLogger( __name__ )
 
-def popenParasolCommand(command, runUntilSuccessful=True):
-    """Issues a parasol command using popen to capture the output.
-    If the command fails then it will try pinging parasol until it gets a response.
-    When it gets a response it will recursively call the issue parasol command, repeating this pattern 
-    for a maximum of N times. 
-    The final exit value will reflect this.
-    """
-    while True:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
-        output, nothing = process.communicate() #process.stdout.read().strip()
-        exitValue = process.wait()
-        if exitValue == 0:
-            return 0, output.split("\n")
-        message = "The following parasol command failed (exit value %s): %s" % (exitValue, command)
-        if not runUntilSuccessful:
-            logger.error(message)
-            return exitValue, None
-        else:
-            logger.warn(message)
-        time.sleep(10)
-        logger.warn("Waited for a few seconds, will try again")
-
-
 
 class ParasolBatchSystem(AbstractBatchSystem):
-    """The interface for Parasol.
+    """
+    The interface for Parasol.
     """
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk) #Call the parent constructor
@@ -64,7 +44,14 @@ class ParasolBatchSystem(AbstractBatchSystem):
             logger.warn("A max memory has been specified for the parasol batch system class of %i, but currently "
                         "this batchsystem interface does not support such limiting" % maxMemory)
         #Keep the name of the results file for the pstat2 command..
-        self.parasolCommand = config.parasolCommand
+        command = config.parasolCommand
+        if os.path.sep not in command:
+            try:
+                command = next(which(command))
+            except StopIteration:
+                raise RuntimeError("Can't find %s on PATH." % command)
+        logger.info('Using Parasol at %s', command)
+        self.parasolCommand = command
         self.parasolResultsDir = tempfile.mkdtemp(dir=config.jobStore)
 
         self.queuePattern = re.compile("q\s+([0-9]+)")
@@ -105,6 +92,38 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #that are killed are removed in killBatchJobs.
         self.runningJobs = set()
 
+    def runParasol(self,command,runUntilSuccessful=True):
+        """
+        Issues a parasol command using popen to capture the output. If the command fails then it
+        will try pinging parasol until it gets a response. When it gets a response it will
+        recursively call the issue parasol command, repeating this pattern for a maximum of N
+        times. The final exit value will reflect this.
+        """
+        while True:
+            command = list( concat(self.parasolCommand, command) )
+            logger.debug('Running %r',command)
+            process = subprocess.Popen(command,
+                                       stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE,
+                                       bufsize=-1)
+            stdout, stderr = process.communicate()
+            status = process.wait()
+            for line in stderr.split('\n'):
+                if line: logger.warn(line)
+            if status == 0:
+                return 0, stdout.split('\n')
+            message = 'Command %r failed with exit status %i' % (command,status)
+            if not runUntilSuccessful:
+                logger.error(message)
+                return status, None
+            else:
+                logger.warn(message)
+            # FIXME: This is, of course, insane
+            time.sleep(10)
+            logger.warn("Waited for a few seconds, will try again")
+
+    parasolOutputPattern = re.compile("your job ([0-9]+).*")
+
     def issueBatchJob(self, command, memory, cores, disk):
         """Issues parasol with job commands.
         """
@@ -124,8 +143,11 @@ class ParasolBatchSystem(AbstractBatchSystem):
         if len(self.resultsFiles.values()) > self.maxBatches:
             raise RuntimeError("Number of parasol batches exceeded the limit of %i" % self.maxBatches)
 
-        pattern = re.compile("your job ([0-9]+).*")
-        parasolCommand = "%s -verbose -ram=%i -cpu=%i -results=%s add job '%s'" % (self.parasolCommand, memory, cores, results, command)
+        # Prefix the command with environment overrides, optionally looking them up from the
+        # current environment if the value is None
+        command = ' '.join(concat('env', self.__environment(), command))
+        parasolCommand = ['-verbose', '-ram=%i' % memory, '-cpu=%i' % cores,
+                          '-results=' + results, 'add', 'job', command]
         #Deal with the cpus
         self.usedCpus += cores
         while True: #Process finished results with no wait
@@ -146,9 +168,9 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #Now keep going
         while True:
             #time.sleep(0.1) #Sleep to let parasol catch up #Apparently unnecessary
-            line = popenParasolCommand(parasolCommand)[1][0]
-            match = pattern.match(line)
-            if match != None: #This is because parasol add job will return success, even if the job was not properly issued!
+            line = self.runParasol(parasolCommand)[1][0]
+            match = self.parasolOutputPattern.match(line)
+            if match is not None: #This is because parasol add job will return success, even if the job was not properly issued!
                 break
             else:
                 logger.info("We failed to properly add the job, we will try again after a sleep")
@@ -157,8 +179,15 @@ class ParasolBatchSystem(AbstractBatchSystem):
         self.jobIDsToCpu[jobID] = cores
         self.runningJobs.add(jobID)
         logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
-        logger.debug("Issued the job command: %s with (parasol) job id: %i " % (parasolCommand, jobID))
         return jobID
+
+    def setEnv(self, name, value=None):
+        if value and ' ' in value:
+            raise ValueError('Parasol does not support spaces in environment variable values.')
+        return AbstractBatchSystem.setEnv(self, name, value)
+
+    def __environment(self):
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -168,7 +197,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
             for jobID in jobIDs:
                 if jobID in self.runningJobs:
                     self.runningJobs.remove(jobID)
-                exitValue = popenParasolCommand("%s remove job %i" % (self.parasolCommand, jobID), runUntilSuccessful=False)[0]
+                exitValue = self.runParasol(['remove', 'job', str(jobID)],
+                                            runUntilSuccessful=False)[0]
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
@@ -185,7 +215,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         """Get all queued and running jobs for a results file.
         """
         jobIDs = []
-        for line in popenParasolCommand("%s -results=%s pstat2" % (self.parasolCommand, resultsFile))[1]:
+        for line in self.runParasol(['-results=' + resultsFile,'pstat2'])[1]:
             runningJobMatch = self.runningPattern.match(line)
             queuedJobMatch = self.queuePattern.match(line)
             jobID = None
@@ -216,10 +246,10 @@ class ParasolBatchSystem(AbstractBatchSystem):
         #r 5410324 benedictpaten worker 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedBatchJobIDs()
-        for line in popenParasolCommand("%s pstat2 " % self.parasolCommand)[1]:
+        for line in self.runParasol(['pstat2'])[1]:
             if line != '':
                 match = self.runningPattern.match(line)
-                if match != None:
+                if match is not None:
                     jobID = int(match.group(1))
                     startTime = int(match.group(2))
                     if jobID in issuedJobs: #It's one of our jobs
@@ -239,7 +269,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
             return self.getUpdatedJob(maxWait)
         else:
             self.runningJobs.remove(jobID)
-        return (jobID, exitValue)
+        return jobID, exitValue
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
@@ -247,6 +277,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         making it expensive. 
         """
         return 5400 #Once every 90 minutes
+
     def updatedJobWorker(self):
         """We use the parasol results to update the status of jobs, adding them
         to the list of updated jobs.
@@ -284,6 +315,10 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         assert line[-1] == '\n'
                         results = line.split()
                         result = int(results[0])
+                        # I don't know what Parasol puts in the low-order byte but the hight
+                        # order byte appears to be the status code.
+                        if result > 0xFF:
+                            result >>= 8
                         jobID = int(results[2])
                         self.cpuUsageQueue.put(jobID)
                         self.updatedJobsQueue.put((jobID, result))
@@ -299,14 +334,16 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs()) #cleanup jobs
         for results in self.resultsFiles.values():
-            exitValue = popenParasolCommand("%s -results=%s clear sick" % (self.parasolCommand, results), False)[0]
+            exitValue = self.runParasol(['-results='+results, 'clear', 'sick'], runUntilSuccessful=False)[0]
             if exitValue is not None:
                 logger.warn("Could not clear sick status of the parasol batch %s" % results)
-            exitValue = popenParasolCommand("%s -results=%s flushResults" % (self.parasolCommand, results), False)[0]
+            exitValue = self.runParasol(['-results='+results, 'flushResults'], runUntilSuccessful=False)[0]
             if exitValue is not None:
                 logger.warn("Could not flush the parasol batch %s" % results)
         self.running = False
+        logger.debug('Joining worker thread...')
         self.worker.join()
+        logger.debug('... joined worker thread.')
         for results in self.resultsFiles.values():
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
