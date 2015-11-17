@@ -24,7 +24,7 @@ kwargs = dict(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib==1.9.dev1'],
+        'bd2k-python-lib==1.10.dev5'],
     tests_require=[
         'mock==1.0.1',
         'pytest==2.7.2'],
