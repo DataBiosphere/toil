@@ -1,13 +1,11 @@
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 import logging
-import shutil
 import threading
 import time
 import subprocess
 import multiprocessing
 import os
-from toil.lib.bioio import getTempFile
 
 log = logging.getLogger(__name__)
 
