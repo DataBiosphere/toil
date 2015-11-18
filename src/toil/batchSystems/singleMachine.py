@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 from contextlib import contextmanager
-from fractions import Fraction
 import logging
 import multiprocessing
 import os
@@ -143,12 +142,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         # Round cores to minCores and apply scale
         cores = math.ceil(cores * self.scale / self.minCores) * self.minCores
-        assert cores <= self.maxCores, \
-            'job is requesting {} cores, which is greater than {} available on the machine. Scale currently set ' \
-            'to {} consider adjusting job or scale.'.format(cores, self.maxCores, self.scale)
+        assert cores <= self.maxCores, ('The job is requesting {} cores, more than the maximum of '
+                                        '{} cores this batch system was configured with. Scale is '
+                                        'set to {}.'.format(cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert memory <= self.maxMemory, 'job requests {} mem, only {} total available.'.format(
-            memory, self.maxMemory)
+        assert memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+                                          'the maximum of {} this batch system was configured '
+                                          'with.'.format( memory, self.maxMemory))
 
         self.checkResourceRequest(memory, cores, disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
