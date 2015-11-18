@@ -99,17 +99,26 @@ class Config(object):
                                            % (varName, x))
                 setattr(self, varName, x)
 
-        h2b = lambda x : human2bytes(str(x)) #Function to parse integer from string expressed in different formats
+        # Function to parse integer from string expressed in different formats
+        h2b = lambda x : human2bytes(str(x))
 
         def iC(minValue, maxValue=sys.maxint):
-            #Returns function to check the a parameter is in a valid range
-            def f(x):
-                assert x >= minValue and x < maxValue
-            return f
+            # Returns function that checks if a given int is in the given half-open interval
+            assert isinstance(minValue, int) and isinstance(maxValue, int)
+            return lambda x: minValue <= x < maxValue
+
+        def fC(minValue, maxValue=None):
+            # Returns function that checks if a given float is in the given half-open interval
+            assert isinstance(minValue, float)
+            if maxValue is None:
+                return lambda x: minValue <= x
+            else:
+                assert isinstance(maxValue, float)
+                return lambda x: minValue <= x < maxValue
 
         #Core options
-        setOption("jobStore", parsingFn=lambda x : os.path.abspath(x)
-                  if options.jobStore.startswith('.') else x)
+        setOption("jobStore",
+                  parsingFn=lambda x: os.path.abspath(x) if options.jobStore.startswith('.') else x)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         setOption("stats")
@@ -129,7 +138,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
-        setOption("scale", float)
+        setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
@@ -138,10 +147,10 @@ class Config(object):
 
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCores", h2b, iC(1))
+        setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
         setOption("defaultCache", h2b, iC(0))
-        setOption("maxCores", h2b, iC(1))
+        setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
 
@@ -159,8 +168,8 @@ class Config(object):
         setOption("cseKey", checkFn=checkSse)
 
         #Debug options
-        setOption("badWorker", float, iC(0, 1))
-        setOption("badWorkerFailInterval", float, iC(0))
+        setOption("badWorker", float, fC(0.0, 1.0))
+        setOption("badWorkerFailInterval", float, fC(0.0))
 
 def _addOptions(addGroupFn, config):
     #
