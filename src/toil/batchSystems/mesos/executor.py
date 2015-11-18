@@ -107,7 +107,7 @@ class MesosExecutor(mesos.interface.Executor):
                 elif -9 == exitStatus:
                     sendUpdate(mesos_pb2.TASK_KILLED)
                 else:
-                    sendUpdate(mesos_pb2.TASK_FAILED)
+                    sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
             except:
                 exc_type, exc_value, exc_trace = sys.exc_info()
                 sendUpdate(mesos_pb2.TASK_FAILED, message=str(traceback.format_exception_only(exc_type, exc_value)))

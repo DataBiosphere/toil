@@ -83,7 +83,7 @@ clean_pypi:
 docs: check_venv
 	cd docs && make html
 clean_docs: check_venv
-	cd docs && make clean
+	- cd docs && make clean
 
 
 clean: clean_develop clean_sdist clean_pypi clean_docs
