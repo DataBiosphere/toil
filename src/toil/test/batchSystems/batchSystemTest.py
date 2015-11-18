@@ -24,6 +24,8 @@ from textwrap import dedent
 import time
 import multiprocessing
 import sys
+import subprocess
+from unittest import skipIf
 
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -31,6 +33,7 @@ from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from toil.job import Job
 from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine
 
 log = logging.getLogger(__name__)
@@ -41,6 +44,7 @@ log = logging.getLogger(__name__)
 numCores = 2
 
 defaultRequirements = dict(memory=100e6, cores=1, disk=1000)
+
 
 
 class hidden:
@@ -204,7 +208,8 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
 
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
-    This test ensures that single machine batch system doesn't exceed more than maxCores.
+    This test ensures that single machine batch system doesn't exceed the configured number of
+    cores
     """
 
     @classmethod
@@ -231,10 +236,13 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         # is the number of currently executing tasks and n the maximum observed value of i
         self.counterPath = writeTempFile('0,0')
 
-        # Write test script that increments i, adjusts n, sleeps 1s and then decrements i again
-        self.scriptPath = writeTempFile(dedent("""
+        def script():
             import os, sys, fcntl, time
             def count(delta):
+                """
+                Adjust the first integer value in a file by the given amount. If the result
+                exceeds the second integer value, set the second one to the first.
+                """
                 fd = os.open(sys.argv[1], os.O_RDWR)
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX)
@@ -243,27 +251,37 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         value, maxValue = map(int, s.split(','))
                         value += delta
                         if value > maxValue: maxValue = value
-                        os.lseek(fd,0,0)
+                        os.lseek(fd, 0, 0)
                         os.ftruncate(fd, 0)
                         os.write(fd, ','.join(map(str, (value, maxValue))))
                     finally:
                         fcntl.flock(fd, fcntl.LOCK_UN)
                 finally:
                     os.close(fd)
-            count(1)
-            try:
-                time.sleep(1)
-            finally:
-                count(-1)
-        """))
+
+            # Without the second argument, increment counter, sleep one second and decrement.
+            # Othwerise, adjust the counter by the given delta, which can be useful for services.
+            if len(sys.argv) < 3:
+                count(1)
+                try:
+                    time.sleep(1)
+                finally:
+                    count(-1)
+            else:
+                count(int(sys.argv[2]))
+
+        self.scriptPath = writeTempFile(dedent('\n'.join(getsource(script).split('\n')[1:])))
 
     def tearDown(self):
         os.unlink(self.scriptPath)
         os.unlink(self.counterPath)
 
+    def scriptCommand(self):
+        return ' '.join([sys.executable, self.scriptPath, self.counterPath])
+
     def test(self):
-        # We'll use fractions to avoid rounding errors. Remember that only certain, discrete
-        # fractions can be represented as a floating point number.
+        # We'll use fractions to avoid rounding errors. Remember that not every fraction can be
+        # represented as a floating point number.
         F = Fraction
         # This test isn't general enough to cover every possible value of minCores in
         # SingleMachineBatchSystem. Instead we hard-code a value and assert it.
@@ -284,8 +302,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                cmd = ' '.join([sys.executable, self.scriptPath, self.counterPath])
-                                jobIds.add(bs.issueBatchJob(command=cmd,
+                                jobIds.add(bs.issueBatchJob(command=self.scriptCommand(),
                                                             cores=float(coresPerJob),
                                                             memory=1,
                                                             disk=1))
@@ -299,21 +316,72 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                 jobIds.remove(jobId)
                         finally:
                             bs.shutdown()
-                        with open(self.counterPath, 'r+') as f:
-                            s = f.read()
-                            log.info('Counter is %s', s)
-                            concurrentTasks, maxConcurrentTasks = map(int, s.split(','))
-                            self.assertEquals(concurrentTasks, 0)
-                            log.info("maxCores: {maxCores}, "
-                                     "coresPerJob: {coresPerJob}, "
-                                     "load: {load}".format(**locals()))
-                            # This is the key assertion
-                            expectedMaxConcurrentTasks = min(maxCores / coresPerJob, jobs)
-                            self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
-                            # Reset the counter
-                            f.seek(0)
-                            f.truncate(0)
-                            f.write('0,0')
+                        concurrentTasks, maxConcurrentTasks = self.getCounters()
+                        self.assertEquals(concurrentTasks, 0)
+                        log.info('maxCores: {maxCores}, '
+                                 'coresPerJob: {coresPerJob}, '
+                                 'load: {load}'.format(**locals()))
+                        # This is the key assertion:
+                        expectedMaxConcurrentTasks = min(maxCores / coresPerJob, jobs)
+                        self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
+                        self.resetCounters()
+
+    def getCounters(self):
+        with open(self.counterPath, 'r+') as f:
+            s = f.read()
+            log.info('Counter is %s', s)
+            concurrentTasks, maxConcurrentTasks = map(int, s.split(','))
+        return concurrentTasks, maxConcurrentTasks
+
+    def resetCounters(self):
+        with open(self.counterPath, 'w') as f:
+            f.write('0,0')
+
+    @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
+    def testServices(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logDebug = True
+        options.maxCores = 3
+        self.assertTrue(options.maxCores <= SingleMachineBatchSystem.numCores)
+        Job.Runner.startToil(Job.wrapJobFn(initialize, self.scriptCommand()), options)
+        with open(self.counterPath, 'r+') as f:
+            s = f.read()
+        log.info('Counter is %s', s)
+        self.assertEqual(self.getCounters(), (0, 3))
+
+
+# Toil can use only top-level functions so we have to add them here:
+
+def initialize(job, cmd):
+    job.addChildJobFn(job1, cmd)
+
+
+def job1(job, cmd):
+    job.addService(Service(cmd))
+    job.addChildJobFn(job2, cmd)
+    subprocess.check_call(cmd, shell=True)
+
+
+def job2(job, cmd):
+    job.addService(Service(cmd))
+    job.addChildFn(hello_world, cmd)
+    subprocess.check_call(cmd, shell=True)
+
+
+def hello_world(cmd):
+    subprocess.check_call(cmd, shell=True)
+
+
+class Service(Job.Service):
+    def __init__(self, cmd):
+        super(Service, self).__init__()
+        self.cmd = cmd
+
+    def start(self):
+        subprocess.check_call(self.cmd + ' 1', shell=True)
+
+    def stop(self):
+        subprocess.check_call(self.cmd + ' -1', shell=True)
 
 
 @needs_parasol
@@ -338,18 +406,18 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        #self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
+        # self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
         job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
         job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000)
 
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
-        #It would be better to directly check that the batches
-        #have the correct memory and cpu values, but parasol seems
-        #to slightly change the values sometimes.
+        # It would be better to directly check that the batches
+        # have the correct memory and cpu values, but parasol seems
+        # to slightly change the values sometimes.
         self.assertTrue(batches[0]["ram"] != batches[1]["ram"])
 
-        #need to kill one of the jobs because there are only two cores available
+        # need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
         job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
         batches = self._getBatchList()
@@ -365,7 +433,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         memMatch = memPattern.match(items[8])
         ramValue = float(memMatch.group(1))
         ramUnits = memMatch.group(2)
-        ramConversion = {'b':1e0, 'k':1e3, 'm':1e6, 'g':1e9, 't':1e12}
+        ramConversion = {'b': 1e0, 'k': 1e3, 'm': 1e6, 'g': 1e9, 't': 1e12}
         batchInfo["ram"] = ramValue * ramConversion[ramUnits]
         return batchInfo
 
