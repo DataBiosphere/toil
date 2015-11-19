@@ -30,6 +30,7 @@ import stat
 import inspect
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
+from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 from io import BytesIO
 from toil.resource import ModuleDescriptor
@@ -64,7 +65,7 @@ class Job(object):
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
         self.cores = cores
-        parse = lambda x : human2bytes(str(x)) if x is not None else x
+        parse = lambda x : x if x is None else human2bytes(str(x))
         self.memory = parse(memory)
         self.disk = parse(disk)
         self.cache = parse(cache)
@@ -1085,28 +1086,35 @@ class Job(object):
             t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
             self._services = [] #Defensive
 
-    def _createEmptyJobForJob(self, jobStore, command=None,
-                                 predecessorNumber=0):
+    def _createEmptyJobForJob(self, jobStore, command=None, predecessorNumber=0):
         """
         Create an empty job for the job.
         """
-        memory=(self.memory if self.memory is not None
-               else float(jobStore.config.defaultMemory))
-        cores=(self.cores if self.cores is not None
-               else float(jobStore.config.defaultCores))
-        disk=(self.disk if self.disk is not None
-              else float(jobStore.config.defaultDisk))
-        cache=(self.cache if self.cache is not None
-              else float(jobStore.config.defaultCache))
-        
-        if cache > disk:
-            raise RuntimeError("Trying to allocate a cache (cache: %s) larger"
-                               " than the disk requirement for the job! (disk: %s)" % (cache, disk))
+        requirements = self.effectiveRequirements(jobStore.config)
+        del requirements.cache
+        return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
 
-        return jobStore.create(command=command,
-                               memory=memory, cores=cores, disk=disk,
-                               predecessorNumber=predecessorNumber)
-        
+    def effectiveRequirements(self, config):
+        """
+        Determine and validate the effective requirements for this job, substituting a missing
+        explict requirement with a default from the configuration.
+
+        :rtype: Expando
+        :return: a dictionary/object hybrid with one entry/attribute for each requirement
+        """
+        requirements = Expando(
+            memory=float(config.defaultMemory) if self.memory is None else self.memory,
+            cores=float(config.defaultCores) if self.cores is None else self.cores,
+            disk=float(config.defaultDisk) if self.disk is None else self.disk)
+        if self.cache is None:
+            requirements.cache = min(requirements.disk, float(config.defaultCache))
+        else:
+            requirements.cache = self.cache
+        if requirements.cache > requirements.disk:
+            raise RuntimeError("Trying to allocate a cache ({cache}) larger than the disk "
+                               "requirement for the job ({disk})".format(**requirements))
+        return requirements
+
     def _makeJobWrappers(self, jobWrapper, jobStore):
         """
         Creates a job for each job in the job graph, recursively.

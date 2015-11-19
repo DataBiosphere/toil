@@ -19,6 +19,7 @@ import os
 import sys
 import cPickle
 from argparse import ArgumentParser
+from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -59,7 +60,7 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.defaultCache = 2147483648 #Cache is 2GB
+        self.defaultCache = self.defaultDisk
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -88,10 +89,10 @@ class Config(object):
             #If options object has the option "varName" specified
             #then set the "varName" attrib to this value in the config object
             x = getattr(options, varName, None)
-            if x != None:
-                if parsingFn != None:
+            if x is not None:
+                if parsingFn is not None:
                     x = parsingFn(x)
-                if checkFn != None:
+                if checkFn is not None:
                     try:
                         checkFn(x)
                     except AssertionError:
@@ -231,27 +232,41 @@ def _addOptions(addGroupFn, config):
     #Resource requirements
     #
     addOptionFn = addGroupFn("toil options for cores/memory requirements",
-                             "The options to specify default cores/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cores requested from the batch system.")
-    addOptionFn("--defaultMemory", dest="defaultMemory", default=None,
-                      help=("The default amount of memory to request for a job (in bytes), "
-                            "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
-    addOptionFn("--defaultCores", dest="defaultCores", default=None,
-                      help="The default number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
-    addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
-                      help="The default amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
-    addOptionFn("--defaultCache", dest="defaultCache", default=None,
-                help=("The default amount of disk space to use in caching "
-                      "files shared between jobs. This must be less than the disk requirement "
-                      "for the job default=%s" % config.defaultCache))
-    addOptionFn("--maxCores", dest="maxCores", default=None,
-                      help=("The maximum number of cpu cores to request from the batch system at any "
-                            "one time. default=%s" % config.maxCores))
-    addOptionFn("--maxMemory", dest="maxMemory", default=None,
-                      help=("The maximum amount of memory to request from the batch \
-                      system at any one time. default=%s" % config.maxMemory))
-    addOptionFn("--maxDisk", dest="maxDisk", default=None,
-                      help=("The maximum amount of disk space to request from the batch \
-                      system at any one time. default=%s" % config.maxDisk))
+                             "The options to specify default cores/memory requirements (if not "
+                             "specified by the jobs themselves), and to limit the total amount of "
+                             "memory/cores requested from the batch system.")
+    addOptionFn('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
+                help='The default amount of memory to request for a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Standard '
+                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
+                     bytes2human( config.defaultMemory, symbols='iec' ))
+    addOptionFn('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
+                help='The default number of CPU cores to dedicate a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Fractions of a '
+                     'core (for example 0.1) are supported on some batch systems, namely Mesos '
+                     'and singleMachine. Default is %.1f ' % config.defaultCores)
+    addOptionFn('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
+                help='The default amount of disk space to dedicate a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Standard '
+                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
+                     bytes2human( config.defaultDisk, symbols='iec' ))
+    addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
+                help='The default amount of disk space to use for caching files shared between '
+                     'jobs. Only applicable to jobs that do not specify an explicit value for '
+                     'this requirement. Standard suffixes like K, Ki, M, Mi, G or Gi are '
+                     'supported. Default is %s' % bytes2human( config.defaultCache, symbols='iec' ))
+    addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
+                help='The maximum number of CPU cores to request from the batch system at any one '
+                     'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
+                     'is %s' % bytes2human(config.maxCores, symbols='iec'))
+    addOptionFn('--maxMemory', dest='maxMemory', default=None, metavar='INT',
+                help="The maximum amount of memory to request from the batch system at any one "
+                     "time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default "
+                     "is %s" % bytes2human( config.maxMemory, symbols='iec'))
+    addOptionFn('--maxDisk', dest='maxDisk', default=None, metavar='INT',
+                help='The maximum amount of disk space to request from the batch system at any '
+                     'one time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. '
+                     'Default is %s' % bytes2human(config.maxDisk, symbols='iec'))
 
     #
     #Retrying/rescuing jobs
