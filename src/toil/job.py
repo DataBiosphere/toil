@@ -418,9 +418,11 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
+            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, 
+                                                                        provisioner, jobStore):
                 if options.restart:
-                    jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
+                    jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half 
+                    # written jobs after a restart
                     rootJob = job._loadRootJob(jobStore)
                 else:
                     #Make a file to store the root jobs return value in
@@ -434,7 +436,7 @@ class Job(object):
                         fH.write(jobStoreFileID)
                     #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
-                return mainLoop(config, batchSystem, jobStore, rootJob)
+                return mainLoop(config, batchSystem, provisioner, jobStore, rootJob)
 
     class FileStore( object ):
         """

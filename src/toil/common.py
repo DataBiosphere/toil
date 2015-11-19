@@ -54,6 +54,16 @@ class Config(object):
         self.parasolCommand = "parasol"
         self.maxParasolBatches = 10000
         
+        #Autoscaling options
+        self.minPreemptableNodes = 0
+        self.maxPreemptableNodes = 0
+        self.minPreemptableTimeToRun = 0.0
+        self.maxPreemptableTimeToRun = 0.0
+        self.minNonPreemptableNodes = 0
+        self.maxNonPreemptableNodes = 0
+        self.minNonPreemptableTimeToRun = 0.0
+        self.maxNonPreemptableTimeToRun = 0.0
+        
         #Resource requirements
         self.defaultMemory = 2147483648
         self.defaultCores = 1
@@ -132,6 +142,16 @@ class Config(object):
         setOption("masterIP") 
         setOption("parasolCommand")
         setOption("maxParasolBatches", int, iC(1))
+        
+        #Autoscaling options
+        setOption("minPreemptableNodes")
+        setOption("maxPreemptableNodes")
+        setOption("minPreemptableTimeToRun", float)
+        setOption("maxPreemptableTimeToRun", float)
+        setOption("minNonPreemptableNodes")
+        setOption("maxNonPreemptableNodes")
+        setOption("minNonPreemptableTimeToRun", float)
+        setOption("maxNonPreemptableTimeToRun", float)
         
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -213,6 +233,42 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
                 help="Maximum number of batches Parasol is allowed to create - a batch \
                 is created for each job that has a unique set of resource requirements. Default=%i" % config.maxParasolBatches)
+    
+    #
+    #Auto scaling options
+    #
+    addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None, 
+                help=("Minimum number of preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.minPreemptableNodes))
+    addOptionFn("--maxPreemptableNodes", dest="maxPreemptableNodes", default=None, 
+                help=("Maximum number of preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.maxPreemptableNodes))
+    addOptionFn("--minPreemptableTimeToRun", dest="minPreemptableTimeToRun", default=None, 
+                help=("Preferred minimum amount of time a preemptable job should"
+                      " wait in the issued queue before starting execution. Increase"
+                      " the minimum to prevent cluster over-provisioning. default=%s" 
+                      % config.minPreemptableTimeToRun))
+    addOptionFn("--maxPreemptableTimeToRun", dest="maxPreemptableTimeToRun", default=None, 
+                help=("Preferred maximum amount of time a preemptable job should"
+                      " wait in the issued queue before starting execution. Decrease"
+                      " the maximum to increase cluster size. default=%s" 
+                      % config.maxPreemptableTimeToRun))
+    addOptionFn("--minNonPreemptableNodes", dest="minNonPreemptableNodes", default=None, 
+                help=("Minimum number of non-preemptable nodes in cluster, if "
+                      "using auto-scaling. default=%s" % config.minNonPreemptableNodes))
+    addOptionFn("--maxNonPreemptableNodes", dest="maxNonPreemptableNodes", default=None, 
+                help=("Maximum number of non-preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.maxNonPreemptableNodes))
+    addOptionFn("--minNonPreemptableTimeToRun", dest="minNonPreemptableTimeToRun", default=None, 
+                help=("Preferred minimum amount of time a non-preemptable job should"
+                      " wait in the issued queue before starting execution. Increase"
+                      " the minimum to prevent cluster over-provisioning. default=%s" 
+                      % config.minNonPreemptableTimeToRun))
+    addOptionFn("--maxNonPreemptableTimeToRun", dest="maxNonPreemptableTimeToRun", default=None, 
+                help=("Preferred maximum amount of time a non-preemptable job should"
+                      " wait in the issued queue before starting execution. Decrease"
+                      " the maximum to increase cluster size. default=%s" 
+                      % config.maxNonPreemptableTimeToRun))
 
     #
     #Resource requirements
@@ -398,7 +454,7 @@ def serialiseEnvironment(jobStore):
 @contextmanager
 def setupToil(options, userScript=None):
     """
-    Creates the data-structures needed for running a toil.
+    Creates the data-structures needed for running a toil workflow.
 
     :type userScript: toil.resource.ModuleDescriptor
     """
@@ -425,11 +481,13 @@ def setupToil(options, userScript=None):
         and batchSystemClass.supportsHotDeployment()):
         kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
         # TODO: toil distribution
-
+    # Create the batch system instance
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
+    # Create the provisioner
+    provisioner = None
     try:
         serialiseEnvironment(jobStore)
-        yield (config, batchSystem, jobStore)
+        yield (config, batchSystem, provisioner, jobStore)
     finally:
         logger.debug('Shutting down batch system')
         batchSystem.shutdown()

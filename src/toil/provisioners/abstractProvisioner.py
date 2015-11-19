@@ -26,7 +26,8 @@ class AbstractProvisioner(object):
     
     def addNodes(self, nodes=1, preemptable=False):
         """
-        Adds worker node to the set of worker nodes.
+        Adds worker node to the set of worker nodes. The function should block
+        while the node is being provisioned. 
         
         :param int nodes: Number of nodes to added.
         
