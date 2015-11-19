@@ -1,4 +1,6 @@
 from __future__ import absolute_import, print_function
+from toil.version import version
+import pkg_resources
 import os
 import sys
 
@@ -11,6 +13,11 @@ def main():
     else:
         if command == '--help':
             printHelp(modules)
+        elif command == '--version':
+            try:
+                print(pkg_resources.get_distribution('toil').version)
+            except:
+                print("Version gathered from toil.version: "+version)
         else:
             try:
                 module = modules[command]
