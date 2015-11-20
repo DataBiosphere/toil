@@ -320,7 +320,7 @@ def main():
             
             #We check the requirements of the jobWrapper to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorPredecessorID = jobs[0]
+            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorsPreemptable, successorPredecessorID = jobs[0]
             if successorMemory > jobWrapper.memory:
                 logger.debug("We need more memory for the next jobWrapper, so finishing")
                 break

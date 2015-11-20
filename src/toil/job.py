@@ -46,28 +46,31 @@ class Job(object):
     """
     Class represents a unit of work in toil. 
     """
-    def __init__(self, memory=None, cores=None, disk=None, cache=None):
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, cache=None):
         """
-        This method must be called by any overiding constructor.
+        This method must be called by any overriding constructor.
         
         :param memory: the maximum number of bytes of memory the job will \
         require to run.  
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, \
         expressed in bytes.
+        :param preemptable: if the job can be run on a preemptable node.
         :param cache: the amount of disk (so that cache <= disk), expressed in bytes, \
         for storing files from previous jobs so that they can be accessed from a local copy. 
         
-        :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type memory: int or string convertible by bd2k.util.humanize.human2bytes to an int
+        :type cores: int or string convertible by bd2k.util.humanize.human2bytes to an int
+        :type disk: int or string convertible by bd2k.util.humanize.human2bytes to an int
+        :type preemptable: boolean
+        :type cache: int or string convertible by bd2k.util.humanize.human2bytes to an int
         """
         self.cores = cores
         parse = lambda x : human2bytes(str(x)) if x is not None else x
         self.memory = parse(memory)
         self.disk = parse(disk)
         self.cache = parse(cache)
+        self.preemptable = preemptable
         #Private class variables
 
         #See Job.addChild
@@ -843,7 +846,7 @@ class Job(object):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=None, cores=None, disk=None):
+        def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -851,6 +854,7 @@ class Job(object):
             self.memory = memory
             self.cores = cores
             self.disk = disk
+            self.preemptable = preemptable
 
         @abstractmethod
         def start(self):
@@ -1088,7 +1092,7 @@ class Job(object):
             self._services = [] #Defensive
 
     def _createEmptyJobForJob(self, jobStore, command=None,
-                                 predecessorNumber=0):
+                              predecessorNumber=0):
         """
         Create an empty job for the job.
         """
@@ -1100,6 +1104,8 @@ class Job(object):
               else float(jobStore.config.defaultDisk))
         cache=(self.cache if self.cache is not None
               else float(jobStore.config.defaultCache))
+        preemptable=(self.preemptable if self.preemptable is not None 
+                     else jobStore.config.defaultPreemptable)
         
         if cache > disk:
             raise RuntimeError("Trying to allocate a cache (cache: %s) larger"
@@ -1107,6 +1113,7 @@ class Job(object):
 
         return jobStore.create(command=command,
                                memory=memory, cores=cores, disk=disk,
+                               preemptable=preemptable,
                                predecessorNumber=predecessorNumber)
         
     def _makeJobWrappers(self, jobWrapper, jobStore):
@@ -1137,7 +1144,8 @@ class Job(object):
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
+        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, 
+                jobWrapper.disk, jobWrapper.preemptable,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
         
     def getTopologicalOrderingOfJobs(self):
@@ -1337,7 +1345,8 @@ class FunctionWrappingJob(Job):
         argFn = lambda x : kwargs.pop(x) if x in kwargs else \
                             (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
         Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"), 
-                     disk=argFn("disk"), cache=argFn("cache"))
+                     disk=argFn("disk"), cache=argFn("cache"), 
+                     preemptable=argFn("preemptable"))
         #If dill is installed pickle the user function directly
         #TODO: Add dill support
         #else use indirect method
@@ -1426,7 +1435,8 @@ class ServiceJob(Job):
         :param service: The service to wrap in a job.
         :type service: toil.job.Job.Service
         """
-        Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk)
+        Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk,
+                     preemptable=service.preemptable)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
         #The service to run, pickled

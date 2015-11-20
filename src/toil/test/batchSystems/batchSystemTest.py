@@ -42,6 +42,8 @@ memoryForJobs = 100e6
 
 diskForJobs = 1000
 
+preemptable = True
+
 class hidden:
     """
     Hide abstract base class from unittest's test case loader
@@ -82,9 +84,9 @@ class hidden:
             testPath = os.path.join(self.tempDir, "test.txt")
 
             job1 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs, preemptable=preemptable)
             job2 = self.batchSystem.issueBatchJob("sleep 1000",
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs, preemptable=preemptable)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -102,7 +104,7 @@ class hidden:
             # it to be added to the updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath,
-                                                  memory=memoryForJobs, cores=1, disk=diskForJobs)
+                                                  memory=memoryForJobs, cores=1, disk=diskForJobs, preemptable=preemptable)
 
             updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
@@ -262,7 +264,8 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                 jobIds.add(bs.issueBatchJob(command=cmd,
                                                             cores=float(coresPerJob),
                                                             memory=1,
-                                                            disk=1))
+                                                            disk=1,
+                                                            preemptable=preemptable))
                             self.assertEquals(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
@@ -312,8 +315,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
     def testBatchResourceLimits(self):
         #self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000)
+        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
+        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000, preemptable=preemptable)
 
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -324,7 +327,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
         #need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
+        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
 

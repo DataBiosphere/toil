@@ -209,13 +209,13 @@ class JobBatcher:
         self.jobsIssued = 0
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
 
-    def issueJob(self, jobStoreID, memory, cores, disk):
+    def issueJob(self, jobStoreID, memory, cores, disk, preemptable):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
         jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreString, jobStoreID))
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk, preemptable)
         self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cores: %i, disk: %i, and memory: %i",
@@ -226,8 +226,8 @@ class JobBatcher:
         Add a list of jobs, each represented as a tuple of
         (jobStoreID, memory, cores, disk).
         """
-        for jobStoreID, memory, cores, disk in jobs:
-            self.issueJob(jobStoreID, memory, cores, disk)
+        for jobStoreID, memory, cores, disk, preemptable in jobs:
+            self.issueJob(jobStoreID, memory, cores, disk, preemptable)
 
     def getNumberOfJobsIssued(self):
         """
@@ -495,7 +495,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
                 if jobWrapper.command != None or resultStatus != 0:
                     if jobWrapper.remainingRetryCount > 0:
                         jobBatcher.issueJob(jobWrapper.jobStoreID, jobWrapper.memory,
-                                            jobWrapper.cores, jobWrapper.disk)
+                                            jobWrapper.cores, jobWrapper.disk, jobWrapper.preemptable)
                     else:
                         totalFailedJobs += 1
                         logger.warn("Job: %s is completely failed", jobWrapper.jobStoreID)
@@ -512,7 +512,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
                     #List of successors to schedule
                     successors = []
                     #For each successor schedule if all predecessors have been completed
-                    for successorJobStoreID, memory, cores, disk, predecessorID in jobWrapper.stack.pop():
+                    for successorJobStoreID, memory, cores, disk, preemptable, predecessorID in jobWrapper.stack.pop():
                         #Build map from successor to predecessors.
                         if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
@@ -531,7 +531,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
                             assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                             if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                 continue
-                        successors.append((successorJobStoreID, memory, cores, disk))
+                        successors.append((successorJobStoreID, memory, cores, disk, preemptable))
                     jobBatcher.issueJobs(successors)
 
                 #There are no remaining tasks to schedule within the jobWrapper, but
@@ -546,7 +546,8 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
                         jobBatcher.issueJob(jobWrapper.jobStoreID,
                                             config.defaultMemory,
                                             config.defaultCores,
-                                            config.defaultDisk)
+                                            config.defaultDisk, 
+                                            True) #We allow this cleanup to potentially occur on a preemptable instance
                         logger.debug("Job: %s is empty, we are scheduling to clean it up", jobWrapper.jobStoreID)
                     else:
                         totalFailedJobs += 1

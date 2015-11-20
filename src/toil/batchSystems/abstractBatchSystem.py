@@ -57,11 +57,14 @@ class AbstractBatchSystem:
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
         
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cores is the number of cpu cores needed for
         the job and error-file is the path of the file to place any std-err/std-out in.
+        
+        :param booleam preemptable: If True the job can be run on a preemptable node, otherwise
+        not. 
         """
         raise NotImplementedError('Abstract method: issueBatchJob')
 

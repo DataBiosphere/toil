@@ -133,7 +133,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                     self.outputQueue.put((jobID, statusCode))
         log.debug('Exiting worker thread normally.')
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Adds the command and resources to a queue to be run.
         """

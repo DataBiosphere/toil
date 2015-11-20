@@ -55,6 +55,7 @@ class Config(object):
         self.maxParasolBatches = 10000
         
         #Autoscaling options
+        self.defaultPreemptable = False
         self.minPreemptableNodes = 0
         self.maxPreemptableNodes = 0
         self.minPreemptableTimeToRun = 0.0
@@ -144,6 +145,7 @@ class Config(object):
         setOption("maxParasolBatches", int, iC(1))
         
         #Autoscaling options
+        setOption("defaultPreemptable")
         setOption("minPreemptableNodes")
         setOption("maxPreemptableNodes")
         setOption("minPreemptableTimeToRun", float)
@@ -184,7 +186,7 @@ def _addOptions(addGroupFn, config):
     #Core options
     #
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
-    location of the toil and turn on stats collation about the performance of jobs.")
+    location of the toil workflow and turn on stats collation about the performance of jobs.")
     #TODO - specify how this works when path is AWS
     addOptionFn('jobStore', type=str,
                       help=("Store in which to place job management files \
@@ -237,6 +239,9 @@ def _addOptions(addGroupFn, config):
     #
     #Auto scaling options
     #
+    addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes", 
+                             "Allows the specification of the minimum and maximum number of nodes"
+                             " in an autoscaled cluster, as well as parameters to control the level of provisioning.")
     addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None, 
                 help=("Minimum number of preemptable nodes in cluster, if using"
                       " auto-scaling. default=%s" % config.minPreemptableNodes))
@@ -282,6 +287,8 @@ def _addOptions(addGroupFn, config):
                       help="The default number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
     addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
                       help="The default amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
+    addOptionFn("--defaultPreemptable", dest="defaultPreemptable", default=None,
+                help="The default setting for if a job can be run on a preemptable node (if not specified)")
     addOptionFn("--defaultCache", dest="defaultCache", default=None,
                 help=("The default amount of disk space to use in caching "
                       "files shared between jobs. This must be less than the disk requirement "
