@@ -36,6 +36,8 @@ ACCOUNTKEY=$9
 set -x
 AZUREUSER=${10}
 SSHKEY=${11}
+GITHUB_SOURCE=${12}
+GITHUB_BRANCH=${13}
 HOMEDIR="/home/$AZUREUSER"
 VMNAME=`hostname`
 VMNUMBER=`echo $VMNAME | sed 's/.*[^0-9]\([0-9]\+\)*$/\1/'`
@@ -192,7 +194,12 @@ sudo apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF
 DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
 CODENAME=$(lsb_release -cs)
 echo "deb http://repos.mesosphere.io/${DISTRO} ${CODENAME} main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
+# Mesos needs Marathon which asks for Oracle Java 8; we trick it with OpenJDK
+time sudo add-apt-repository -y ppa:openjdk-r/ppa
 time sudo apt-get -y update
+
+# Actually install that Java
+time sudo apt-get -y install openjdk-8-jre-headless
 
 # Fix Mesos version to one that actually works with Toil
 # We need to know the -ubuntuWhatever on the end of the package version we want.
@@ -383,15 +390,19 @@ if [ "$TOILENABLED" == "true" ] ; then
   # Install Toil dependencies
   time sudo apt-get -y --force-yes install python2.7 python2.7-dev python-pip build-essential git gcc-4.9
   
-  # Install Toil from Git
-  time sudo pip install  "git+https://github.com/BD2KGenomics/toil@master#egg=toil[mesos,azure]"
+  # Install Toil from Git, retrieving the correct version. If you want a release
+  # you might be able to use a tag here instead.
+  echo "Installing branch ${GITHUB_BRANCH} of ${GITHUB_SOURCE} for Toil."
+  time sudo pip install  "git+https://github.com/${GITHUB_SOURCE}@${GITHUB_BRANCH}#egg=toil[mesos,azure]"
   
-  # Install Mesos bindings over the ones that tried to install from Pip, which are broken
-  sudo pip uninstall -y mesos.interface
-  # Install the right one for the Mesos we installed
+  # Toil no longer attempts to actually install Mesos's Python bindings itself,
+  # so we have to do it. First we need the Mesos dependencies.
+  sudo pip install protobuf==2.6.1
+  
+  # Install the right bindings for the Mesos we installed
   UBUNTU_VERSION=`lsb_release -rs`
   sudo easy_install https://pypi.python.org/packages/source/m/mesos.interface/mesos.interface-${BINDINGS_MESOS_VERSION}.tar.gz
-  sudo easy_install http://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
+  sudo easy_install https://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
   
 fi
 
