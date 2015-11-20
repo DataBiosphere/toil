@@ -186,6 +186,20 @@
       "metadata": {
         "description": "Configure all linux machines with the SSH rsa public key string.  Use 'disabled' to not configure access with SSH rsa public key."
       }
+    },
+    "githubSource": {
+      "type": "string",
+      "defaultValue": "BD2KGenomics/toil",
+      "metadata": {
+        "description": "User and repo name on Github to pull cluster setup scripts and Toil from."
+      }
+    },
+    "githubBranch": {
+      "type": "string",
+      "defaultValue": "master",
+      "metadata": {
+        "description": "Branch on Github to pull cluster setup scripts and Toil from."
+      }
     }
   },
   "variables": {
@@ -208,7 +222,7 @@
     "nsgName": "node-nsg",
     "nsgID": "[resourceId('Microsoft.Network/networkSecurityGroups',variables('nsgName'))]",
     "storageAccountType": "Standard_GRS",
-    "customScriptLocation": "https://raw.githubusercontent.com/BD2KGenomics/toil/master/contrib/azure/",
+    "customScriptLocation": "[concat('https://raw.githubusercontent.com/', parameters('githubSource'), '/', parameters('githubBranch'), '/contrib/azure/')]",
     "agentFiles": [
       "agent-0.json",
       "agent-gt0.json"
@@ -370,6 +384,12 @@
           "sshRSAPublicKey": {
             "value": "[parameters('sshRSAPublicKey')]"
           },
+          "githubSource": {
+            "value": "[parameters('githubSource')]"
+          },
+          "githubBranch": {
+            "value": "[parameters('githubBranch')]"
+          },
           "omsStorageAccount": {
             "value": "[variables('omsStorageAccount')]"
           },
@@ -456,6 +476,12 @@
           "sshRSAPublicKey": {
             "value": "[parameters('sshRSAPublicKey')]"
           },
+          "githubSource": {
+            "value": "[parameters('githubSource')]"
+          },
+          "githubBranch": {
+            "value": "[parameters('githubBranch')]"
+          },
           "omsStorageAccount": {
             "value": "[variables('omsStorageAccount')]"
           },
@@ -515,6 +541,12 @@
           },
           "sshRSAPublicKey": {
             "value": "[parameters('sshRSAPublicKey')]"
+          },
+          "githubSource": {
+            "value": "[parameters('githubSource')]"
+          },
+          "githubBranch": {
+            "value": "[parameters('githubBranch')]"
           }
         }
       }

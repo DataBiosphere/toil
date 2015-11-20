@@ -73,6 +73,18 @@
       "metadata": {
         "description": "Configure all linux machines with the SSH rsa public key string.  Use 'disabled' to not configure the machines"
       }
+    },
+    "githubSource": {
+      "type": "string",
+      "metadata": {
+        "description": "User and repo name on Github to pull cluster setup scripts and Toil from."
+      }
+    },
+    "githubBranch": {
+      "type": "string",
+      "metadata": {
+        "description": "Branch on Github to pull cluster setup scripts and Toil from."
+      }
     }
   },
   "variables": {},
