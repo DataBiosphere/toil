@@ -402,8 +402,10 @@ if [ "$TOILENABLED" == "true" ] ; then
   # Install the right bindings for the Mesos we installed
   UBUNTU_VERSION=`lsb_release -rs`
   sudo easy_install https://pypi.python.org/packages/source/m/mesos.interface/mesos.interface-${BINDINGS_MESOS_VERSION}.tar.gz
-  sudo easy_install https://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
-  
+  # Easy-install doesn't like this server's ssl for some reason.
+  sudo wget https://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
+  sudo easy_install mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
+  sudo rm mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
 fi
 
 date
