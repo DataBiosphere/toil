@@ -911,7 +911,11 @@ class Job(object):
             userModule = userModule.localize()
         if userModule.dirPath not in sys.path:
             sys.path.append(userModule.dirPath)
-        return importlib.import_module(userModule.name)
+        try:
+            return importlib.import_module(userModule.name)
+        except ImportError:
+            logger.error('Failed to import user module %r from sys.path=%r', userModule, sys.path)
+            raise
 
     @classmethod
     def _loadJob(cls, command, jobStore):
