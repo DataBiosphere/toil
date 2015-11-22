@@ -24,9 +24,10 @@ from pydoc import locate
 from tempfile import mkdtemp
 from urllib2 import urlopen
 import errno
-from zipfile import ZipFile
+from zipfile import ZipFile, PyZipFile
 import sys
 import shutil
+from bd2k.util.iterables import concat
 
 log = logging.getLogger(__name__)
 
@@ -252,16 +253,14 @@ class DirectoryResource(Resource):
 
     @classmethod
     def _load(cls, leaderPath):
+        """
+        :type leaderPath: str
+        """
         bytesIO = BytesIO()
-        with ZipFile(file=bytesIO, mode='w') as zipFile:
-            for dirPath, fileNames, dirNames in os.walk(leaderPath):
-                assert dirPath.startswith(leaderPath)
-                for fileName in fileNames:
-                    filePath = os.path.join(dirPath, fileName)
-                    assert filePath.encode('ascii') == filePath
-                    relativeFilePath = os.path.relpath(filePath, leaderPath)
-                    assert not relativeFilePath.startswith(os.path.sep)
-                    zipFile.write(filePath, relativeFilePath)
+        # PyZipFile compiles .py files on the fly, filters out any non-Python files and
+        # distinguishes between packages and simple directories.
+        with PyZipFile(file=bytesIO, mode='w') as zipFile:
+            zipFile.writepy(leaderPath)
         bytesIO.seek(0)
         return bytesIO
 
@@ -277,7 +276,7 @@ class DirectoryResource(Resource):
         return self.localDirPath
 
 
-class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'extension'))):
+class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
     """
     A path to a Python module decomposed into a namedtuple of three elements, namely
 
@@ -287,14 +286,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     - moduleName, the fully qualified name of the module with leading package names separated by
       dot and
 
-    - extension, the file extension of the file containing the module, including the leading period.
-
     >>> import toil.resource
     >>> ModuleDescriptor.forModule('toil.resource') # doctest: +ELLIPSIS
-    ModuleDescriptor(dirPath='/.../src', name='toil.resource', extension='.py')
-
-    Note that the above test only succeeds on py.test. To run with doctest or an IDE you may have
-    to change the assertion to .pyc.
+    ModuleDescriptor(dirPath='/.../src', name='toil.resource')
 
     >>> import subprocess, tempfile, os
     >>> dirPath = tempfile.mkdtemp()
@@ -302,10 +296,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     >>> with open(path,'w') as f:
     ...     f.write('from toil.resource import ModuleDescriptor\\n'
     ...             'print ModuleDescriptor.forModule(__name__)')
-    >>> expected = [ str( ModuleDescriptor(dirPath=dirPath, name='foo', extension=extension) )
-    ...     for extension in ('.py', '.pyc') ]
-    >>> subprocess.check_output([ sys.executable, path ]).strip() in expected
-    True
+    >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS
+    "ModuleDescriptor(dirPath='...', name='foo')\\n"
 
     Now test a collision. As funny as it sounds, the robotparser module is included in the Python
     standard library.
@@ -338,16 +330,28 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
         filePath[-1], extension = os.path.splitext(filePath[-1])
         assert extension in ('.py', '.pyc')
         if name == '__main__':
-            name = filePath.pop()
-            dirPath = os.path.sep.join(filePath)
-            cls._check_conflict(dirPath, name)
+            if module.__package__:
+                # invoked via python -m foo.bar
+                name = [filePath.pop()]
+                for package in reversed(module.__package__.split('.')):
+                    dirPathTail = filePath.pop()
+                    assert dirPathTail == package
+                    name.append(dirPathTail)
+                name = '.'.join(reversed(name))
+                dirPath = os.path.sep.join(filePath)
+            else:
+                # invoked via python foo/bar.py
+                name = filePath.pop()
+                dirPath = os.path.sep.join(filePath)
+                cls._check_conflict(dirPath, name)
         else:
+            # imported as a module
             for package in reversed(name.split('.')):
                 dirPathTail = filePath.pop()
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
 
-        return cls(dirPath=dirPath, name=name, extension=extension)
+        return cls(dirPath=dirPath, name=name)
 
     @classmethod
     def _check_conflict(cls, dirPath, name):
@@ -359,14 +363,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
         """
         old_sys_path = sys.path
         try:
-            sys.path = [dir for dir in old_sys_path
-                        if os.path.realpath(dir) != os.path.realpath(dirPath)]
+            sys.path = [d for d in old_sys_path if os.path.realpath(d) != os.path.realpath(dirPath)]
             try:
                 colliding_module = importlib.import_module(name)
             except ImportError:
                 pass
             else:
-                raise RuntimeError(
+                raise ResourceException(
                     "The user module '%s' collides with module '%s from '%s'." % (
                         name, colliding_module.__name__, colliding_module.__file__))
         finally:
@@ -378,13 +381,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
         True if this module is part of the Toil distribution
         """
         return self.name.startswith('toil.')
-
-    @property
-    def filePath(self):
-        """
-        The full path to the file containing this module
-        """
-        return os.path.join(self.dirPath, *self.name.split('.')) + self.extension
 
     def saveAsResourceTo(self, jobStore):
         """
@@ -400,10 +396,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     def localize(self):
         """
         Check if this module was saved as a resource. If it was, return a new module descriptor
-        that points to a local copy of that resource. Should only be called on a worker node.
+        that points to a local copy of that resource. Should only be called on a worker node. On
+        the leader, this method returns this resource, i.e. self.
 
         :rtype: toil.resource.Resource
         """
+        if self._runningOnWorker():
+            log.warn('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
             log.warn("Can't localize module %r", self)
@@ -415,16 +414,28 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
                     f.write(json.dumps(self))
 
             resource.download(callback=stash)
-            return self.__class__(dirPath=resource.localDirPath, name=self.name,
-                                  extension=self.extension)
+            return self.__class__(dirPath=resource.localDirPath, name=self.name)
+
+    def _runningOnWorker(self):
+        mainModule = sys.modules.get('__main__')
+        if mainModule:
+            mainModuleFile = mainModule.__file__
+            for extension in self.moduleExtensions:
+                if mainModuleFile.endswith('worker' + extension):
+                    return True
+        return False
 
     def globalize(self):
+        """
+        Reverse the effect of localize().
+        """
         try:
             with open(os.path.join(self.dirPath, '.original')) as f:
                 return self.__class__(*json.loads(f.read()))
         except IOError as e:
             if e.errno == errno.ENOENT:
-                log.warn("Can't globalize module %r.", self)
+                if self._runningOnWorker():
+                    log.warn("Can't globalize module %r.", self)
                 return self
             else:
                 raise
@@ -432,7 +443,39 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'exten
     @property
     def _resourcePath(self):
         """
-        The path to the file or package directory that should be used when shipping this module
+        The path to the directory that should be used when shipping this module and its siblings
         around as a resource.
         """
-        return self.dirPath if '.' in self.name else self.filePath
+        if '.' in self.name:
+            return os.path.join(self.dirPath, self._rootPackage())
+        else:
+            initName = self._initModuleName(self.dirPath)
+            if initName:
+                raise ResourceException(
+                    "Toil does not support loading a user script from a package directory. You "
+                    "may want to remove %s from %s or invoke the user script as a module via "
+                    "'PYTHONPATH=\"%s\" python -m %s.%s'." %
+                    tuple(concat(initName, self.dirPath, os.path.split(self.dirPath), self.name)))
+            return self.dirPath
+
+    moduleExtensions = ('.py', '.pyc', '.pyo')
+
+    @classmethod
+    def _initModuleName(cls, dirPath):
+        for extension in cls.moduleExtensions:
+            name = '__init__' + extension
+            if os.path.exists(os.path.join(dirPath, name)):
+                return name
+        return None
+
+    def _rootPackage(self):
+        try:
+            head, tail = self.name.split('.', 1)
+        except ValueError:
+            raise ValueError('%r is stand-alone module.' % self)
+        else:
+            return head
+
+
+class ResourceException(Exception):
+    pass

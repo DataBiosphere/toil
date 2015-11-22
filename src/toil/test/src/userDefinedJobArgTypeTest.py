@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 import sys
 from subprocess import check_call
-
 from toil.job import Job
 from toil.test import ToilTest
 
@@ -54,7 +53,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
     def _testFromMain(self):
         testMethodName = self.id().split('.')[-1]
         self.assertTrue(testMethodName.endswith('FromMain'))
-        check_call([sys.executable, __file__, testMethodName[:-8]])
+        check_call([sys.executable, '-m', self.__module__, testMethodName[:-8]])
 
 
 class JobClass(Job):
@@ -90,7 +89,3 @@ def main():
     test.setUpClass()
     test.debug()
     test.tearDownClass()
-
-
-if __name__ == '__main__':
-    main()
