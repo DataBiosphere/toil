@@ -39,7 +39,7 @@ kwargs = dict(
         'encryption': [
             'pynacl==0.3.0'],
         'cwl': [
-            'cwltool>=1.0.20150918080732']},
+            'cwltool==1.0.20151112194920']},
     package_dir={'': 'src'},
     packages=find_packages('src', exclude=['*.test']),
     entry_points={
