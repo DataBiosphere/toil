@@ -209,8 +209,8 @@ def needs_parasol(test_item):
     """
     test_item = _mark_test('parasol', test_item)
     try:
-        with open('/dev/null', 'a') as dev_null:
-            subprocess.Popen('parasol', stdout=dev_null, stderr=dev_null)
+        with open(os.devnull, 'r+') as devnull:
+            subprocess.Popen('parasol', stdout=devnull, stderr=devnull, stdin=devnull)
     except OSError:
         return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
     except:
