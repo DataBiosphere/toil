@@ -190,7 +190,13 @@ class AzureJobStore(AbstractJobStore):
         try:
             with self._downloadStream(jobStoreFileID, self.files) as read_fd:
                 with open(localFilePath, 'w') as write_fd:
-                    write_fd.write(read_fd.read(self._maxAzureBlockBytes))
+                    while True:
+                        # Download data from Azure until Azure stops giving us
+                        # data
+                        buf = read_fd.read(self._maxAzureBlockBytes)
+                        write_fd.write(buf)
+                        if len(buf) == 0:
+                            break
         except WindowsAzureMissingResourceError:
             raise NoSuchFileException(jobStoreFileID)
 
@@ -442,8 +448,8 @@ class AzureJobStore(AbstractJobStore):
             raise AssertionError('Content is encrypted but no key was provided.')
 
         readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
+        with os.fdopen(writable_fh, 'w') as writable:
+            with os.fdopen(readable_fh, 'r') as readable:
                 def writer():
                     try:
                         chunkStartPos = 0
@@ -468,7 +474,10 @@ class AzureJobStore(AbstractJobStore):
                 thread = ExceptionalThread(target=writer)
                 thread.start()
                 yield readable
-                thread.join()
+
+            # The readable is now closed. The writer will eventually catch on
+            # that its pipe is closed and terminate.
+            thread.join()
 
 
 class AzureTable(object):
