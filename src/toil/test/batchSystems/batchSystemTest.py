@@ -397,8 +397,11 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return config
 
     def createBatchSystem(self):
-        self._startParasol(numCores)
-        return ParasolBatchSystem(config=self.config, maxCores=numCores, maxMemory=3e9,
+        memory = int(3e9)
+        self._startParasol(numCores=numCores, memory=memory)
+        return ParasolBatchSystem(config=self.config,
+                                  maxCores=numCores,
+                                  maxMemory=memory,
                                   maxDisk=1001)
 
     def tearDown(self):
@@ -412,12 +415,10 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
-        # It would be better to directly check that the batches
-        # have the correct memory and cpu values, but parasol seems
-        # to slightly change the values sometimes.
-        self.assertTrue(batches[0]["ram"] != batches[1]["ram"])
-
-        # need to kill one of the jobs because there are only two cores available
+        # It would be better to directly check that the batches have the correct memory and cpu
+        # values, but Parasol seems to slightly change the values sometimes.
+        self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
+        # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
         job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
         batches = self._getBatchList()
@@ -440,7 +441,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def _getBatchList(self):
         exitStatus, batchLines = self.batchSystem.runParasol(['list', 'batches'])
         self.assertEqual(exitStatus, 0)
-        return [self._parseBatchString(line) for line in batchLines[1:] if not line == ""]
+        return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
 @needs_gridengine
