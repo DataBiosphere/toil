@@ -190,7 +190,10 @@ class AzureJobStore(AbstractJobStore):
         try:
             with self._downloadStream(jobStoreFileID, self.files) as read_fd:
                 with open(localFilePath, 'w') as write_fd:
-                    write_fd.write(read_fd.read(self._maxAzureBlockBytes))
+                    while True:
+                        buf = read_fd.read(self._maxAzureBlockBytes)
+                        write_fd.write(buf)
+                        if not buf: break
         except WindowsAzureMissingResourceError:
             raise NoSuchFileException(jobStoreFileID)
 
