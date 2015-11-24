@@ -344,6 +344,7 @@ class CWLWorkflow(Job):
 
 supportedProcessRequirements = ["DockerRequirement",
                                 "ExpressionEngineRequirement",
+                                "InlineJavascriptRequirement",
                                 "SchemaDefRequirement",
                                 "EnvVarRequirement",
                                 "CreateFileRequirement",
