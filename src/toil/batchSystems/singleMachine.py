@@ -23,7 +23,6 @@ import math
 from threading import Thread
 from threading import Lock, Condition
 from Queue import Queue, Empty
-
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 log = logging.getLogger(__name__)
@@ -45,13 +44,19 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     concurrently.
     """
 
+    physicalMemory = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         if maxCores > self.numCores:
             log.warn('Limiting maxCores to CPU count of system (%i).', self.numCores)
             maxCores = self.numCores
+        if maxMemory > self.physicalMemory:
+            log.warn('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
+            maxMemory = self.physicalMemory
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
+
         # The scale allows the user to apply a factor to each task's cores requirement, thereby
         # squeezing more tasks onto each core (scale < 1) or stretching tasks over more cores
         # (scale > 1).
@@ -124,8 +129,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                                 statusCode = popen.wait()
                                 if 0 != statusCode:
                                     if statusCode != -9 or not info.killIntended:
-                                        log.error( "Got exit code %i (indicating failure) from "
-                                                   "command '%s'.", statusCode, jobCommand)
+                                        log.error("Got exit code %i (indicating failure) from "
+                                                  "command '%s'.", statusCode, jobCommand)
                             finally:
                                 self.runningJobs.pop(jobID)
                         finally:
@@ -148,7 +153,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         assert cores >= self.minCores
         assert memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format( memory, self.maxMemory))
+                                          'with.'.format(memory, self.maxMemory))
 
         self.checkResourceRequest(memory, cores, disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
