@@ -20,7 +20,7 @@ The following image is an example of a cluster with 1 jumpbox, 3 masters, and 3 
 
 You can see the following parts:
 
-1. **Mesos on port 5050** - Mesos is the distributed systems kernel that abstracts cpu, memory and other resources, and offers these to services named "frameworks" for scheduling of workloads. **Note that Mesos masters only listen on the 10.0.0.0/18 subnet**. In particular, **note that Mesos does not listen on localhost**. If you run a Toil job on the master, you will want to pass `--batchSystem mesos --masterAddress 10.0.0.5:5050`.
+1. **Mesos on port 5050** - Mesos is the distributed systems kernel that abstracts cpu, memory and other resources, and offers these to services named "frameworks" for scheduling of workloads. **Note that Mesos masters only listen on the 10.0.0.0/18 subnet**. In particular, **note that Mesos does not listen on localhost**. If you run a Toil job on the master, you will want to pass `--batchSystem mesos --mesosMaster 10.0.0.5:5050`.
 2. **Docker on port 2375** - The Docker engine runs containerized workloads and each Master and Agent run the Docker engine. Mesos runs Docker workloads, and examples on how to do this are provided in the Marathon and Chronos walkthrough sections of this readme.
 3. **(Optional) Marathon on port 8080** - Marathon is a scheduler for Mesos that is equivalent to init on a single linux machine: it schedules long running tasks for the whole cluster. The Swarm framework is disabled by default.
 4. **(Optional) Chronos on port 4400** - Chronos is a scheduler for Mesos that is equivalent to cron on a single linux machine: it schedules periodic tasks for the whole cluster. The Swarm framework is disabled by default.

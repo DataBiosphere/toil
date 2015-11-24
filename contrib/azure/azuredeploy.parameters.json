@@ -52,5 +52,11 @@
   },
   "sshRSAPublicKey": {
     "value": "disabled"
+  },
+  "githubSource": {
+    "value": "BD2KGenomics/toil"
+  },
+  "githubBranch": {
+    "value": "master"
   }
 }
