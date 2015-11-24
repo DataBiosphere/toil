@@ -57,13 +57,13 @@ class Config(object):
         #Autoscaling options
         self.defaultPreemptable = False
         self.minPreemptableNodes = 0
-        self.maxPreemptableNodes = 0
-        self.minPreemptableTimeToRun = 0.0
-        self.maxPreemptableTimeToRun = 0.0
+        self.maxPreemptableNodes = 10
+        self.minPreemptableTimeToRun = 10.0
+        self.maxPreemptableTimeToRun = 100.0
         self.minNonPreemptableNodes = 0
-        self.maxNonPreemptableNodes = 0
-        self.minNonPreemptableTimeToRun = 0.0
-        self.maxNonPreemptableTimeToRun = 0.0
+        self.maxNonPreemptableNodes = 10
+        self.minNonPreemptableTimeToRun = 10.0
+        self.maxNonPreemptableTimeToRun = 100.0
         
         #Resource requirements
         self.defaultMemory = 2147483648

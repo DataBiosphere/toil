@@ -162,7 +162,65 @@ class AbstractBatchSystem:
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
+    
+class AbstractScalableBatchSystemInterface(object):
+    """
+    A set of methods used by :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale
+    the number of worker nodes in the cluster.
+    """
+    def getIssuedQueueSize(self, preemptable=False):
+        """
+        Gets the approximate number of jobs issued but not yet running. 
+        
+        :param boolean preemptable: If true returns number of preemptable jobs queued, else
+        returns the number of non-preemptable jobs.
+        :return: Number of jobs issued but not yet running. This may be an approximation.
+        """
+        raise NotImplementedError('Abstract method: queueSize')
+    
+    def numberOfRecentJobsStartedPerSecond(self, preemptable=False):
+        """
+        Gets the avg. number of jobs started per second, averaging over the last N
+        jobs submitted and ignoring intervals when 
+        the input queue was empty.
+        
+        N is suggested to be 100.
+        
+        A job is started the moment its execution begins on a worker node.
+        
+        For example, if 50 jobs
+        are issued and after 10 seconds 5 jobs have been started a call at 10 seconds 
+        would return 5/10 = 0.5, after 20 seconds if no more jobs have been started it would return 
+        5/10 = 0.25. If after 100 seconds all of them have been started it would return 0.5.
+        If some time later another 50 jobs are added and it takes 50 seconds to start them 
+        all then the method would return (50+50)/(100+50) = 0.66666* after that point.
+        
+        When fewer than N jobs are run the average should be over the jobs started so far.
+        When no jobs have been issued the return value is 0.
+        
+        :param boolean preemptable: If true returns rate for preemptable jobs, else
+        returns the rate for non-preemptable jobs.
+        :return: Number of jobs issued per second, avg over the last N jobs. This may be an approximation.
+        :rtype: float
+        """
+        raise NotImplementedError('Abstract method: queueSize')
+    
+    def getNumberOfEmptyNodes(self, preemptable=False):
+        """
+        A node is empty if it is not running any worker jobs.
+        
+        :param boolean preemptable: If true returns number of empty preemptable nodes, else
+        returns the number of non-preemptable nodes.
+        :return: Number of nodes in cluster that are empty. 
+        :rtype: int
+        """
+        raise NotImplementedError('Abstract method: getNumberOfEmptyNodes')
 
+class AbstractScalableBatchSystem(AbstractScalableBatchSystemInterface, AbstractBatchSystem):
+    """
+    A batch system with the added methods of the AbstractScalableBatchSystemInterface class
+    """
+    pass
 
 class InsufficientSystemResources(Exception):
     def __init__(self, cores_or_mem, requested, available):
