@@ -383,21 +383,24 @@ echo "Finished installing and configuring docker and swarm"
 ###############################################
 
 if [ "$TOILENABLED" == "true" ] ; then
-  # Upgrade Python to 2.7.9
+  # Upgrade Python to 2.7.latest
   sudo apt-add-repository -y ppa:fkrull/deadsnakes-python2.7
   sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   time sudo apt-get -y update
-  # Install Toil dependencies
-  time sudo apt-get -y --force-yes install python2.7 python2.7-dev python-pip build-essential git gcc-4.9
+  # Install Toil dependencies (and setuptools for easy_install)
+  time sudo apt-get -y --force-yes install python2.7 python2.7-dev python2.7-dbg python-setuptools build-essential git gcc-4.9
+  
+  # Get a reasonably new pip
+  time sudo easy_install pip
   
   # Install Toil from Git, retrieving the correct version. If you want a release
   # you might be able to use a tag here instead.
   echo "Installing branch ${GITHUB_BRANCH} of ${GITHUB_SOURCE} for Toil."
-  time sudo pip install  "git+https://github.com/${GITHUB_SOURCE}@${GITHUB_BRANCH}#egg=toil[mesos,azure]"
+  time sudo pip install --pre "git+https://github.com/${GITHUB_SOURCE}@${GITHUB_BRANCH}#egg=toil[mesos,azure]"
   
   # Toil no longer attempts to actually install Mesos's Python bindings itself,
   # so we have to do it. First we need the Mesos dependencies.
-  sudo pip install protobuf==2.6.1
+  time sudo pip install protobuf==2.6.1
   
   # Install the right bindings for the Mesos we installed
   UBUNTU_VERSION=`lsb_release -rs`
