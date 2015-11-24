@@ -350,7 +350,8 @@ class AzureJobStore(AbstractJobStore):
         return 'a' + filter(lambda x: x.isalnum(), tableName)
 
     # Maximum bytes that can be in any block of an Azure block blob
-    _maxAzureBlockBytes = 4194000
+    # https://github.com/Azure/azure-storage-python/blob/4c7666e05a9556c10154508335738ee44d7cb104/azure/storage/blob/blobservice.py#L106
+    _maxAzureBlockBytes = 4 * 1024 * 1024
 
     @contextmanager
     def _uploadStream(self, jobStoreFileID, container, checkForModification=False, encrypted=None):
