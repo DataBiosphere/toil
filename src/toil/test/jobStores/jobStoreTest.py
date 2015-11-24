@@ -394,6 +394,27 @@ class hidden:
                 self.assertEquals(f.read(), "")
             self.master.delete(job.jobStoreID)
 
+        def testLargeFile(self):
+            dirPath = self._createTempDir()
+            filePath = os.path.join(dirPath, 'large')
+            hashIn = hashlib.md5()
+            with open(filePath, 'w') as f:
+                for i in xrange(0, 10):
+                    buf = os.urandom(self._partSize())
+                    f.write(buf)
+                    hashIn.update(buf)
+            job = self.master.create('1', 2, 3, 4, 0)
+            jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
+            os.unlink(filePath)
+            self.master.readFile(jobStoreFileID, filePath)
+            hashOut = hashlib.md5()
+            with open(filePath, 'r') as f:
+                while True:
+                    buf = f.read(self._partSize())
+                    if not buf: break
+                    hashOut.update(buf)
+            self.assertEqual(hashIn.digest(), hashOut.digest())
+
         def assertUrl(self, url):
             prefix, path = url.split(':', 1)
             if prefix == 'file':
@@ -476,27 +497,6 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
 
-    def testLargeFile(self):
-        dirPath = self._createTempDir()
-        filePath = os.path.join(dirPath, 'large')
-        hashIn = hashlib.md5()
-        with open(filePath, 'w') as f:
-            for i in xrange(0, 10):
-                buf = os.urandom(self._partSize())
-                f.write(buf)
-                hashIn.update(buf)
-        job = self.master.create('1', 2, 3, 4, 0)
-        jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
-        os.unlink(filePath)
-        self.master.readFile(jobStoreFileID, filePath)
-        hashOut = hashlib.md5()
-        with open(filePath, 'r') as f:
-            while True:
-                buf = f.read(self._partSize())
-                if not buf: break
-                hashOut.update(buf)
-        self.assertEqual(hashIn.digest(), hashOut.digest())
-
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
@@ -527,6 +527,10 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
         return AzureJobStore('toiltest', self.namePrefix, config=config, jobChunkSize=128)
+
+    def _partSize(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        return AzureJobStore._maxAzureBlockBytes
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
