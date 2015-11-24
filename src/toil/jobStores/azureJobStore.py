@@ -73,7 +73,7 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
-    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
+    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=32000):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
 
@@ -581,8 +581,9 @@ class AzureJob(JobWrapper):
             wholeJobString = ''.join(item[1] for item in chunkedJob)
         return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
 
-    # Max size of a string value in Azure is 64K
-    def toItem(self, chunkSize=65535):
+    # Max size of a string value in Azure is 32Kchars, because it is UTF-16
+    # encoded. To be safe we make it 32,000
+    def toItem(self, chunkSize=32000):
         """
         :rtype: dict
         """
