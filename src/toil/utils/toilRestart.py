@@ -57,8 +57,13 @@ def main():
     setLoggingFromOptions(options)
     options.restart = True
     with setupToil(options) as (config, batchSystem, jobStore):
-        jobStore.clean(Job._loadRootJob(jobStore))
-        mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore))
+        # Load the whole jobstore into memory in a batch
+        logger.info("Downloading entire JobStore")
+        jobCache = {jobWrapper.jobStoreID: jobWrapper
+            for jobWrapper in jobStore.jobs()}
+        logger.info("{} jobs downloaded.".format(len(jobCache)))
+        jobStore.clean(Job._loadRootJob(jobStore), jobCache=jobCache)
+        mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore), jobCache=jobCache)
     
 def _test():
     import doctest      

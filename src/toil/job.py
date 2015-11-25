@@ -419,8 +419,13 @@ class Job(object):
             """
             setLoggingFromOptions(options)
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
+                logger.info("Downloading entire JobStore")
+                jobCache = {jobWrapper.jobStoreID: jobWrapper
+                    for jobWrapper in jobStore.jobs()}
+                logger.info("{} jobs downloaded.".format(len(jobCache)))
                 if options.restart:
-                    jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
+                    #This cleans up any half written jobs after a restart
+                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache) 
                     rootJob = job._loadRootJob(jobStore)
                 else:
                     #Make a file to store the root jobs return value in
@@ -434,7 +439,9 @@ class Job(object):
                         fH.write(jobStoreFileID)
                     #Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
-                return mainLoop(config, batchSystem, jobStore, rootJob)
+                    #Make sure it's cached
+                    jobCache[rootJob.jobStoreID] = rootJob
+                return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
 
     class FileStore( object ):
         """

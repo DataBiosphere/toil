@@ -266,7 +266,8 @@ class ToilState( object ):
     """
     Represents a snapshot of the jobs in the jobStore.
     """
-    def __init__( self, jobStore, rootJob ):
+    def __init__( self, jobStore, rootJob, jobCache=None):
+        
         # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
         self.successorJobStoreIDToPredecessorJobs = { }
         # Hash of jobs to counts of numbers of successors issued.
@@ -276,13 +277,25 @@ class ToilState( object ):
         # Jobs that are ready to be processed
         self.updatedJobs = set( )
         ##Algorithm to build this information
-        self._buildToilState(rootJob, jobStore)
+        logger.info("(Re)building internal scheduler state")
+        self._buildToilState(rootJob, jobStore, jobCache)
 
-    def _buildToilState(self, jobWrapper, jobStore):
+    def _buildToilState(self, jobWrapper, jobStore, jobCache=None):
         """
         Traverses tree of jobs from the root jobWrapper (rootJob) building the
         ToilState class.
+        
+        If jobCache is passed, it must be a dict from job ID to JobWrapper
+        object. Jobs will be loaded from the cache (which can be downloaded from
+        the jobStore in a batch) instead of piecemeal when recursed into.
         """
+        
+        def getJob(jobId):
+            if jobCache is not None:
+                return jobCache[jobId]
+            else:
+                return jobStore.load(jobId)
+                
         if jobWrapper.command != None or len(jobWrapper.stack) == 0: #If the jobWrapper has a command
             #or is ready to be deleted it is ready to be processed
             self.updatedJobs.add((jobWrapper, 0))
@@ -295,7 +308,7 @@ class ToilState( object ):
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
-                    self._buildToilState(jobStore.load(successorJobStoreID), jobStore)
+                    self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
                 else:
                     #We have already looked at the successor, so we don't recurse,
                     #but we add back a predecessor link
@@ -307,9 +320,13 @@ class FailedJobsException( Exception ):
         self.jobStoreString = jobStoreString
         self.numberOfFailedJobs = numberOfFailedJobs
 
-def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
+def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
     """
     This is the main loop from which jobs are issued and processed.
+    
+    If jobCache is passed, it must be a dict from job ID to pre-existing
+    JobWrapper objects. Jobs will be loaded from the cache (which can be
+    downloaded from the jobStore in a batch).
     
     :raises: toil.leader.FailedJobsException if at the end of function their remain
     failed jobs
@@ -321,7 +338,7 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     #Get a snap shot of the current state of the jobs in the jobStore
     ##########################################
 
-    toilState = ToilState(jobStore, rootJobWrapper)
+    toilState = ToilState(jobStore, rootJobWrapper, jobCache=jobCache)
 
     ##########################################
     #Load the jobBatcher class - used to track jobs submitted to the batch-system
