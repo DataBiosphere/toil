@@ -19,7 +19,6 @@ from contextlib import contextmanager
 import inspect
 import bz2
 import cPickle
-import base64
 import socket
 import httplib
 from datetime import datetime, timedelta
@@ -29,7 +28,7 @@ from ConfigParser import RawConfigParser, NoOptionError
 from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
-                           BlobSharedAccessPermissions)
+                           BlobSharedAccessPermissions, EntityProperty)
 from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
@@ -68,12 +67,14 @@ def _fetchAzureAccountKey(accountName):
                            credential_file_path % accountName)
 
 
+maxAzureTablePropertySize = 64 * 1024
+
 class AzureJobStore(AbstractJobStore):
     """
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
-    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
+    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
 
@@ -576,22 +577,24 @@ class AzureJob(JobWrapper):
         chunkedJob.sort()
         if len(chunkedJob) == 1:
             # First element of list = tuple, second element of tuple = serialized job
-            wholeJobString = chunkedJob[0][1]
+            wholeJobString = chunkedJob[0][1].value
         else:
-            wholeJobString = ''.join(item[1] for item in chunkedJob)
-        return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
+            wholeJobString = ''.join(item[1].value for item in chunkedJob)
+        return cPickle.loads(bz2.decompress(wholeJobString))
 
-    # Max size of a string value in Azure is 64K
-    def toItem(self, chunkSize=65535):
+    def toItem(self, chunkSize=maxAzureTablePropertySize):
         """
+        :param chunkSize: the size of a chunk for splitting up the serialized job into chunks
+        that each fit into a property value of the an Azure table entity
         :rtype: dict
         """
+        assert chunkSize <= maxAzureTablePropertySize
         item = {}
-        serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
+        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self))
         jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
                      for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):
-            item['_' + str(attributeOrder).zfill(3)] = chunk
+            item['_' + str(attributeOrder).zfill(3)] = EntityProperty('Edm.Binary', chunk)
         return item
 
 

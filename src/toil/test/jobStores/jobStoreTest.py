@@ -24,7 +24,6 @@ from threading import Thread
 import tempfile
 import uuid
 import shutil
-
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
@@ -526,11 +525,20 @@ class InvalidAWSJobStoreTest(ToilTest):
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore('toiltest', self.namePrefix, config=config, jobChunkSize=128)
+        return AzureJobStore('toiltest', self.namePrefix, config=config)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
         return AzureJobStore._maxAzureBlockBytes
+
+    def testLargeJob(self):
+        from toil.jobStores.azureJobStore import maxAzureTablePropertySize
+        command = os.urandom(maxAzureTablePropertySize * 2)
+        job1 = self.master.create(command=command, memory=0, cores=0, disk=0)
+        self.assertEqual(job1.command, command)
+        job2 = self.master.load(job1.jobStoreID)
+        self.assertIsNot(job1, job2)
+        self.assertEqual(job2.command, command)
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
