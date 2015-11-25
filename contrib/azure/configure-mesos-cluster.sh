@@ -388,7 +388,7 @@ if [ "$TOILENABLED" == "true" ] ; then
   sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   time sudo apt-get -y update
   # Install Toil dependencies (and setuptools for easy_install)
-  time sudo apt-get -y --force-yes install python2.7 python2.7-dev python2.7-dbg python-setuptools build-essential git gcc-4.9
+  time sudo apt-get -y --force-yes install python2.7 python2.7-dev python2.7-dbg python-setuptools build-essential git gcc-4.9 gdb
   
   # Get a reasonably new pip
   time sudo easy_install pip
