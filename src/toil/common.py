@@ -19,6 +19,7 @@ import os
 import sys
 import cPickle
 from argparse import ArgumentParser
+from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -43,17 +44,18 @@ class Config(object):
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        
+
         #Restarting the workflow options
         self.restart = False
-        
+
         #Batch system options
         self.batchSystem = "singleMachine"
         self.scale = 1
-        self.masterIP = '127.0.0.1:5050'
+        self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
-        self.maxParasolBatches = 10000
-        
+        self.parasolMaxBatches = 10000
+        self.environment = {}
+
         #Autoscaling options
         self.provisioner = None
         self.minPreemptableNodes = 0
@@ -69,58 +71,67 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.defaultCache = 2147483648 #Cache is 2GB
+        self.defaultCache = self.defaultDisk
         self.defaultPreemptable = False
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
-        
+
         #Retrying/rescuing jobs
         self.retryCount = 0
         self.maxJobDuration = sys.maxint
         self.rescueJobsFrequency = 3600
-        
+
         #Misc
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
-        
+
         #Debug options
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
-        
+
     def setOptions(self, options):
         """
         Creates a config object from the options object.
         """
         from bd2k.util.humanize import human2bytes #This import is used to convert
-        #from human readable quantites to integers 
+        #from human readable quantites to integers
         def setOption(varName, parsingFn=None, checkFn=None):
             #If options object has the option "varName" specified
             #then set the "varName" attrib to this value in the config object
             x = getattr(options, varName, None)
-            if x != None:
-                if parsingFn != None:
+            if x is not None:
+                if parsingFn is not None:
                     x = parsingFn(x)
-                if checkFn != None:
+                if checkFn is not None:
                     try:
                         checkFn(x)
                     except AssertionError:
-                        raise RuntimeError("The %s option has an invalid value: %s" 
+                        raise RuntimeError("The %s option has an invalid value: %s"
                                            % (varName, x))
                 setattr(self, varName, x)
-            
-        h2b = lambda x : human2bytes(str(x)) #Function to parse integer from string expressed in different formats
-        
+
+        # Function to parse integer from string expressed in different formats
+        h2b = lambda x : human2bytes(str(x))
+
         def iC(minValue, maxValue=sys.maxint):
-            #Returns function to check the a parameter is in a valid range
-            def f(x):
-                assert x >= minValue and x < maxValue
-            return f
-        
+            # Returns function that checks if a given int is in the given half-open interval
+            assert isinstance(minValue, int) and isinstance(maxValue, int)
+            return lambda x: minValue <= x < maxValue
+
+        def fC(minValue, maxValue=None):
+            # Returns function that checks if a given float is in the given half-open interval
+            assert isinstance(minValue, float)
+            if maxValue is None:
+                return lambda x: minValue <= x
+            else:
+                assert isinstance(maxValue, float)
+                return lambda x: minValue <= x < maxValue
+
         #Core options
-        setOption("jobStore", parsingFn=lambda x : os.path.abspath(x) 
-                  if options.jobStore.startswith('.') else x)
+        setOption("jobStore",
+                  parsingFn=lambda x: os.path.abspath(x) if options.jobStore.startswith('.') else x)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         setOption("stats")
@@ -129,21 +140,23 @@ class Config(object):
             if self.clean != "never" and self.clean is not None:
                 raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
                                    "despite the stats flag requiring "
-                                   "the jobStore to be intact at the end of the run. " 
+                                   "the jobStore to be intact at the end of the run. "
                                    "Set clean to \'never\'" % self.clean)
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        
+
         #Restarting the workflow options
-        setOption("restart") 
-        
+        setOption("restart")
+
         #Batch system options
         setOption("batchSystem")
-        setOption("scale", float) 
-        setOption("masterIP") 
+        setOption("scale", float, fC(0.0))
+        setOption("mesosMasterAddress")
         setOption("parasolCommand")
-        setOption("maxParasolBatches", int, iC(1))
+        setOption("parasolMaxBatches", int, iC(1))
+
+        setOption("environment", parseSetEnv)
         
         #Autoscaling options
         setOption("provisioner")
@@ -155,22 +168,22 @@ class Config(object):
         setOption("maxNonPreemptableNodes")
         setOption("minNonPreemptableTimeToRun", float)
         setOption("maxNonPreemptableTimeToRun", float)
-        
+
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCores", h2b, iC(1))
+        setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
         setOption("defaultCache", h2b, iC(0))
-        setOption("maxCores", h2b, iC(1))
+        setOption("defaultPreemptable")
+        setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
-        setOption("defaultPreemptable")
-        
+
         #Retrying/rescuing jobs
         setOption("retryCount", int, iC(0))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
-        
+
         #Misc
         setOption("maxLogFileSize", h2b, iC(1))
         def checkSse(sseKey):
@@ -178,10 +191,10 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
-        
+
         #Debug options
-        setOption("badWorker", float, iC(0, 1))
-        setOption("badWorkerFailInterval", float, iC(0))
+        setOption("badWorker", float, fC(0.0, 1.0))
+        setOption("badWorkerFailInterval", float, fC(0.0))
 
 def _addOptions(addGroupFn, config):
     #
@@ -215,9 +228,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for restarting an existing workflow",
                              "Allows the restart of an existing workflow")
     addOptionFn("--restart", dest="restart", default=None, action="store_true",
-                help="If --restart is specified then will attempt to restart existing workflow " 
+                help="If --restart is specified then will attempt to restart existing workflow "
                 "at the location pointed to by the --jobStore option. Will raise an exception if the workflow does not exist")
-    
+
     #
     #Batch system options
     #
@@ -226,18 +239,19 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
                       help=("The type of batch system to run the job(s) with, currently can be one "
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
-    #TODO - what is this?
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
-    addOptionFn("--masterIP", dest="masterIP", default=None,
-                help=("The master node's ip and port number. Used in mesos batch system. default=%s" % config.masterIP))
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
+                help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
-                      help="The command to run the parasol program default=%s" % config.parasolCommand)
-    addOptionFn("--maxParasolBatches", dest="maxParasolBatches", default=None,
-                help="Maximum number of batches Parasol is allowed to create - a batch \
-                is created for each job that has a unique set of resource requirements. Default=%i" % config.maxParasolBatches)
-    
+                help="The name or path of the parasol program. Will be looked up on PATH "
+                           "unless it starts with a slashdefault=%s" % config.parasolCommand)
+    addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
+                help="Maximum number of job batches the Parasol batch is allowed to create. One "
+                     "batch is created for jobs with a a unique set of resource requirements. "
+                     "default=%i" % config.parasolMaxBatches)
+
     #
     #Auto scaling options
     #
@@ -284,29 +298,43 @@ def _addOptions(addGroupFn, config):
     #Resource requirements
     #
     addOptionFn = addGroupFn("toil options for cores/memory requirements",
-                             "The options to specify default cores/memory requirements (if not specified by the jobs themselves), and to limit the total amount of memory/cores requested from the batch system.")
-    addOptionFn("--defaultMemory", dest="defaultMemory", default=None,
-                      help=("The default amount of memory to request for a job (in bytes), "
-                            "by default is 2^31 = 2 gigabytes, default=%s" % config.defaultMemory))
-    addOptionFn("--defaultCores", dest="defaultCores", default=None,
-                      help="The default number of cpu cores to dedicate a job. default=%s" % config.defaultCores)
-    addOptionFn("--defaultDisk", dest="defaultDisk", default=None,
-                      help="The default amount of disk space to dedicate a job (in bytes). default=%s" % config.defaultDisk)
+                             "The options to specify default cores/memory requirements (if not "
+                             "specified by the jobs themselves), and to limit the total amount of "
+                             "memory/cores requested from the batch system.")
+    addOptionFn('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
+                help='The default amount of memory to request for a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Standard '
+                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
+                     bytes2human( config.defaultMemory, symbols='iec' ))
+    addOptionFn('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
+                help='The default number of CPU cores to dedicate a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Fractions of a '
+                     'core (for example 0.1) are supported on some batch systems, namely Mesos '
+                     'and singleMachine. Default is %.1f ' % config.defaultCores)
+    addOptionFn('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
+                help='The default amount of disk space to dedicate a job. Only applicable to jobs '
+                     'that do not specify an explicit value for this requirement. Standard '
+                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
+                     bytes2human( config.defaultDisk, symbols='iec' ))
     addOptionFn("--defaultPreemptable", dest="defaultPreemptable", default=None,
                 help="The default setting for if a job can be run on a preemptable node (if not specified)")
-    addOptionFn("--defaultCache", dest="defaultCache", default=None,
-                help=("The default amount of disk space to use in caching "
-                      "files shared between jobs. This must be less than the disk requirement "
-                      "for the job default=%s" % config.defaultCache))
-    addOptionFn("--maxCores", dest="maxCores", default=None,
-                      help=("The maximum number of cpu cores to request from the batch system at any "
-                            "one time. default=%s" % config.maxCores))
-    addOptionFn("--maxMemory", dest="maxMemory", default=None,
-                      help=("The maximum amount of memory to request from the batch \
-                      system at any one time. default=%s" % config.maxMemory))
-    addOptionFn("--maxDisk", dest="maxDisk", default=None,
-                      help=("The maximum amount of disk space to request from the batch \
-                      system at any one time. default=%s" % config.maxDisk))
+    addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
+                help='The default amount of disk space to use for caching files shared between '
+                     'jobs. Only applicable to jobs that do not specify an explicit value for '
+                     'this requirement. Standard suffixes like K, Ki, M, Mi, G or Gi are '
+                     'supported. Default is %s' % bytes2human( config.defaultCache, symbols='iec' ))
+    addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
+                help='The maximum number of CPU cores to request from the batch system at any one '
+                     'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
+                     'is %s' % bytes2human(config.maxCores, symbols='iec'))
+    addOptionFn('--maxMemory', dest='maxMemory', default=None, metavar='INT',
+                help="The maximum amount of memory to request from the batch system at any one "
+                     "time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default "
+                     "is %s" % bytes2human( config.maxMemory, symbols='iec'))
+    addOptionFn('--maxDisk', dest='maxDisk', default=None, metavar='INT',
+                help='The maximum amount of disk space to request from the batch system at any '
+                     'one time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. '
+                     'Default is %s' % bytes2human(config.maxDisk, symbols='iec'))
 
     #
     #Retrying/rescuing jobs
@@ -324,7 +352,7 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. default=%s" % config.rescueJobsFrequency))
-    
+
     #
     #Misc options
     #
@@ -333,14 +361,21 @@ def _addOptions(addGroupFn, config):
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % config.maxLogFileSize))
-    
+
     addOptionFn("--sseKey", dest="sseKey", default=None,
             help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
                  "not be used if this flag is not passed.")
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
-    
+    addOptionFn("--setEnv", '-e', metavar='NAME=VALUE or NAME',
+                dest="environment", default=[], action="append",
+                help="Set an environment variable early on in the worker. If VALUE is omitted, "
+                     "it will be looked up in the current environment. Independently of this "
+                     "option, the worker will try to emulate the leader's environment before "
+                     "running a job. Using this option, a variable can be injected into the "
+                     "worker process itself before it is started.")
+
     #
     #Debug options
     #
@@ -401,7 +436,7 @@ def loadBatchSystemClass(config):
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
-        kwargs["masterIP"] = config.masterIP
+        kwargs['masterAddress'] = config.mesosMasterAddress
         logger.info('Using the mesos batch system')
     else:
         raise RuntimeError('Unrecognised batch system: %s' % batchSystemName)
@@ -445,8 +480,7 @@ def loadJobStore( jobStoreString, config=None ):
         return FileJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'aws':
         from toil.jobStores.aws.jobStore import AWSJobStore
-        region, namePrefix = jobStoreArgs.split( ':', 1 )
-        return AWSJobStore( region, namePrefix, config=config )
+        return AWSJobStore.createJobStore( jobStoreArgs, config=config )
     elif jobStoreName == 'azure':
         from toil.jobStores.azureJobStore import AzureJobStore
         account, namePrefix = jobStoreArgs.split( ':', 1 )
@@ -501,8 +535,58 @@ def setupToil(options, userScript=None):
     else:
         provisioner = None
     try:
+        # Set environment variables required by job store
+        for k, v in jobStore.getEnv().iteritems():
+            batchSystem.setEnv(k, v)
+        # Set environment variables passed on command line
+        for k, v in config.environment.iteritems():
+            batchSystem.setEnv(k, v)
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, provisioner, jobStore)
     finally:
         logger.debug('Shutting down batch system')
         batchSystem.shutdown()
+
+# Nested functions can't have doctests so we have to make this global
+
+def parseSetEnv(l):
+    """
+    Parses a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary. Strings
+    of the latter from will result in dictionary entries whose value is None.
+
+    :type l: list[str]
+    :rtype: dict[str,str]
+
+    >>> parseSetEnv([])
+    {}
+    >>> parseSetEnv(['a'])
+    {'a': None}
+    >>> parseSetEnv(['a='])
+    {'a': ''}
+    >>> parseSetEnv(['a=b'])
+    {'a': 'b'}
+    >>> parseSetEnv(['a=a', 'a=b'])
+    {'a': 'b'}
+    >>> parseSetEnv(['a=b', 'c=d'])
+    {'a': 'b', 'c': 'd'}
+    >>> parseSetEnv(['a=b=c'])
+    {'a': 'b=c'}
+    >>> parseSetEnv([''])
+    Traceback (most recent call last):
+    ...
+    ValueError: Empty name
+    >>> parseSetEnv(['=1'])
+    Traceback (most recent call last):
+    ...
+    ValueError: Empty name
+    """
+    d = dict()
+    for i in l:
+        try:
+            k, v = i.split('=', 1)
+        except ValueError:
+            k, v = i, None
+        if not k:
+            raise ValueError('Empty name')
+        d[k] = v
+    return d

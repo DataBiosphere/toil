@@ -19,7 +19,6 @@ from contextlib import contextmanager
 import inspect
 import bz2
 import cPickle
-import base64
 import socket
 import httplib
 from datetime import datetime, timedelta
@@ -29,7 +28,7 @@ from ConfigParser import RawConfigParser, NoOptionError
 from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
-                           BlobSharedAccessPermissions)
+                           BlobSharedAccessPermissions, EntityProperty)
 from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
@@ -68,24 +67,26 @@ def _fetchAzureAccountKey(accountName):
                            credential_file_path % accountName)
 
 
+maxAzureTablePropertySize = 64 * 1024
+
 class AzureJobStore(AbstractJobStore):
     """
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
-    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=65535):
+    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
 
-        account_key = _fetchAzureAccountKey(accountName)
+        self.account_key = _fetchAzureAccountKey(accountName)
 
         # Table names have strict requirements in Azure
         self.namePrefix = self._sanitizeTableName(namePrefix)
         log.debug("Creating job store with name prefix '%s'" % self.namePrefix)
 
         # These are the main API entrypoints.
-        self.tableService = TableService(account_key=account_key, account_name=accountName)
-        self.blobService = BlobService(account_key=account_key, account_name=accountName)
+        self.tableService = TableService(account_key=self.account_key, account_name=accountName)
+        self.blobService = BlobService(account_key=self.account_key, account_name=accountName)
 
         # Register our job-store in the global table for this storage account
         self.registryTable = self._getOrCreateTable('toilRegistry')
@@ -168,6 +169,9 @@ class AzureJobStore(AbstractJobStore):
         self.statsFiles.delete_container()
         self.statsFileIDs.delete_table()
 
+    def getEnv(self):
+        return dict(AZURE_ACCOUNT_KEY=self.account_key)
+
     def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
         self.updateFile(jobStoreFileID, localFilePath)
@@ -187,7 +191,10 @@ class AzureJobStore(AbstractJobStore):
         try:
             with self._downloadStream(jobStoreFileID, self.files) as read_fd:
                 with open(localFilePath, 'w') as write_fd:
-                    write_fd.write(read_fd.read(self._maxAzureBlockBytes))
+                    while True:
+                        buf = read_fd.read(self._maxAzureBlockBytes)
+                        write_fd.write(buf)
+                        if not buf: break
         except WindowsAzureMissingResourceError:
             raise NoSuchFileException(jobStoreFileID)
 
@@ -344,7 +351,8 @@ class AzureJobStore(AbstractJobStore):
         return 'a' + filter(lambda x: x.isalnum(), tableName)
 
     # Maximum bytes that can be in any block of an Azure block blob
-    _maxAzureBlockBytes = 4194000
+    # https://github.com/Azure/azure-storage-python/blob/4c7666e05a9556c10154508335738ee44d7cb104/azure/storage/blob/blobservice.py#L106
+    _maxAzureBlockBytes = 4 * 1024 * 1024
 
     @contextmanager
     def _uploadStream(self, jobStoreFileID, container, checkForModification=False, encrypted=None):
@@ -569,22 +577,24 @@ class AzureJob(JobWrapper):
         chunkedJob.sort()
         if len(chunkedJob) == 1:
             # First element of list = tuple, second element of tuple = serialized job
-            wholeJobString = chunkedJob[0][1]
+            wholeJobString = chunkedJob[0][1].value
         else:
-            wholeJobString = ''.join(item[1] for item in chunkedJob)
-        return cPickle.loads(bz2.decompress(base64.b64decode(wholeJobString)))
+            wholeJobString = ''.join(item[1].value for item in chunkedJob)
+        return cPickle.loads(bz2.decompress(wholeJobString))
 
-    # Max size of a string value in Azure is 64K
-    def toItem(self, chunkSize=65535):
+    def toItem(self, chunkSize=maxAzureTablePropertySize):
         """
+        :param chunkSize: the size of a chunk for splitting up the serialized job into chunks
+        that each fit into a property value of the an Azure table entity
         :rtype: dict
         """
+        assert chunkSize <= maxAzureTablePropertySize
         item = {}
-        serializedAndEncodedJob = base64.b64encode(bz2.compress(cPickle.dumps(self)))
+        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self))
         jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
                      for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):
-            item['_' + str(attributeOrder).zfill(3)] = chunk
+            item['_' + str(attributeOrder).zfill(3)] = EntityProperty('Edm.Binary', chunk)
         return item
 
 

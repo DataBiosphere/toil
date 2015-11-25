@@ -266,7 +266,7 @@ def main():
                     job = Job._loadJob(jobWrapper.command, jobStore)
                     
                     #Cleanup the cache from the previous job
-                    cleanCacheFn(job.cache if job.cache != None else config.defaultCache)
+                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 

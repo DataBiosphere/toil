@@ -24,7 +24,6 @@ from threading import Thread
 import tempfile
 import uuid
 import shutil
-
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
@@ -394,6 +393,27 @@ class hidden:
                 self.assertEquals(f.read(), "")
             self.master.delete(job.jobStoreID)
 
+        def testLargeFile(self):
+            dirPath = self._createTempDir()
+            filePath = os.path.join(dirPath, 'large')
+            hashIn = hashlib.md5()
+            with open(filePath, 'w') as f:
+                for i in xrange(0, 10):
+                    buf = os.urandom(self._partSize())
+                    f.write(buf)
+                    hashIn.update(buf)
+            job = self.master.create('1', 2, 3, 4, 0)
+            jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
+            os.unlink(filePath)
+            self.master.readFile(jobStoreFileID, filePath)
+            hashOut = hashlib.md5()
+            with open(filePath, 'r') as f:
+                while True:
+                    buf = f.read(self._partSize())
+                    if not buf: break
+                    hashOut.update(buf)
+            self.assertEqual(hashIn.digest(), hashOut.digest())
+
         def assertUrl(self, url):
             prefix, path = url.split(':', 1)
             if prefix == 'file':
@@ -461,7 +481,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
         AWSJobStore.FileInfo.s3PartSize = partSize
-        return AWSJobStore(self.testRegion, self.namePrefix, config=config)
+        return AWSJobStore.createJobStore(self.testRegion + ':' + self.namePrefix, config=config)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -476,27 +496,6 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
 
-    def testLargeFile(self):
-        dirPath = self._createTempDir()
-        filePath = os.path.join(dirPath, 'large')
-        hashIn = hashlib.md5()
-        with open(filePath, 'w') as f:
-            for i in xrange(0, 10):
-                buf = os.urandom(self._partSize())
-                f.write(buf)
-                hashIn.update(buf)
-        job = self.master.create('1', 2, 3, 4, 0, True)
-        jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
-        os.unlink(filePath)
-        self.master.readFile(jobStoreFileID, filePath)
-        hashOut = hashlib.md5()
-        with open(filePath, 'r') as f:
-            while True:
-                buf = f.read(self._partSize())
-                if not buf: break
-                hashOut.update(buf)
-        self.assertEqual(hashIn.digest(),hashOut.digest())
-
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
@@ -507,11 +506,39 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         return AWSJobStore.itemsPerBatchDelete
 
 
+@needs_aws
+class InvalidAWSJobStoreTest(ToilTest):
+    def testInvalidJobStoreName(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:a--b')
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:' + ('a' * 100))
+        self.assertRaises(ValueError,
+                          AWSJobStore.createJobStore,
+                          'us-west-2:a_b')
+
+
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore('toiltest', self.namePrefix, config=config, jobChunkSize=128)
+        return AzureJobStore('toiltest', self.namePrefix, config=config)
+
+    def _partSize(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        return AzureJobStore._maxAzureBlockBytes
+
+    def testLargeJob(self):
+        from toil.jobStores.azureJobStore import maxAzureTablePropertySize
+        command = os.urandom(maxAzureTablePropertySize * 2)
+        job1 = self.master.create(command=command, memory=0, cores=0, disk=0)
+        self.assertEqual(job1.command, command)
+        job2 = self.master.load(job1.jobStoreID)
+        self.assertIsNot(job1, job2)
+        self.assertEqual(job2.command, command)
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):

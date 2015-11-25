@@ -16,6 +16,7 @@ from __future__ import absolute_import
 
 from collections import defaultdict
 import os
+import socket
 import time
 import pickle
 from Queue import Queue, Empty
@@ -48,7 +49,7 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
     def supportsHotDeployment():
         return True
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk, masterIP,
+    def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
         AbstractScalableBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
         # The hot-deployed resources representing the user script and the toil distribution
@@ -64,8 +65,8 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         # defined by resource usage
         self.jobQueueList = defaultdict(list)
 
-        # IP of mesos master. specified in MesosBatchSystem, currently loopback
-        self.masterIP = masterIP
+        # Address of Mesos master in the form host:port where host can be an IP or a hostname
+        self.masterAddress = masterAddress
 
         # queue of jobs to kill, by jobID.
         self.killSet = set()
@@ -81,7 +82,7 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         # Queue of jobs whose status has been updated, according to mesos. Req'd by toil
         self.updatedJobsQueue = Queue()
 
-        # Wether to use implicit/explicit acknowledgments
+        # Whether to use implicit/explicit acknowledgments
         self.implicitAcknowledgements = self.getImplicit()
 
         # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
@@ -111,10 +112,11 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         self.nextJobID += 1
 
         job = ToilJob(jobID=jobID,
-                         resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
-                         command=command,
-                         userScript=self.userScript,
-                         toilDistribution=self.toilDistribution)
+                      resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
+                      command=command,
+                      userScript=self.userScript,
+                      toilDistribution=self.toilDistribution,
+                      environment=self.environment.copy())
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
@@ -241,7 +243,6 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         framework.user = ""  # Have Mesos fill in the current user.
         framework.name = "toil"
 
-
         if os.getenv("MESOS_CHECKPOINT"):
             log.debug("Enabling checkpoint for the framework")
             framework.checkpoint = True
@@ -250,9 +251,31 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
             raise NotImplementedError("Authentication is currently not supported")
         else:
             framework.principal = framework.name
-            self.driver = mesos.native.MesosSchedulerDriver(self, framework, self.masterIP,
+            self.driver = mesos.native.MesosSchedulerDriver(self, framework,
+                                                            self.resolveAddress(self.masterAddress),
                                                             self.implicitAcknowledgements)
         assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
+
+    @staticmethod
+    def resolveAddress(address):
+        """
+        Resolves the host in the given string. The input is of the form host[:port]. This method
+        is idempotent, i.e. the host may already be a dotted IP address.
+
+        >>> f=MesosBatchSystem.resolveAddress
+        >>> f('localhost')
+        '127.0.0.1'
+        >>> f('127.0.0.1')
+        '127.0.0.1'
+        >>> f('localhost:123')
+        '127.0.0.1:123'
+        >>> f('127.0.0.1:123')
+        '127.0.0.1:123'
+        """
+        address = address.split(':')
+        assert len(address) in (1,2)
+        address[0] = socket.gethostbyname(address[0])
+        return ':'.join(address)
 
     def shutdown(self):
         log.info("Stopping Mesos driver")
@@ -412,35 +435,34 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
 
     def statusUpdate(self, driver, update):
         """
-        Invoked when the status of a task has changed (e.g., a slave is lost and so the task is lost, a task finishes
-        and an executor sends a status update saying so, etc). Note that returning from this callback _acknowledges_
-        receipt of this status update! If for whatever reason the scheduler aborts during this callback (or the
-        process exits) another status update will be delivered (note, however, that this is currently not true if the
+        Invoked when the status of a task has changed (e.g., a slave is lost and so the task is
+        lost, a task finishes and an executor sends a status update saying so, etc). Note that
+        returning from this callback _acknowledges_ receipt of this status update! If for
+        whatever reason the scheduler aborts during this callback (or the process exits) another
+        status update will be delivered (note, however, that this is currently not true if the
         slave sending the status update is lost/fails during that time).
         """
-        log.debug("Task %s is in a state %s" % \
-                  (update.task_id.value, mesos_pb2.TaskState.Name(update.state)))
-
-        intID = int(update.task_id.value)  # toil keeps jobIds as ints
-        stringID = update.task_id.value  # Mesos keeps jobIds as strings
+        taskID = int(update.task_id.value)
+        stateName = mesos_pb2.TaskState.Name(update.state)
+        log.debug('Task %i is in state %s', taskID, stateName)
 
         try:
-            self.killSet.remove(intID)
+            self.killSet.remove(taskID)
         except KeyError:
             pass
         else:
-            self.killedSet.add(intID)
+            self.killedSet.add(taskID)
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.__updateState(intID, 0)
-
-        if update.state == mesos_pb2.TASK_LOST or \
-                        update.state == mesos_pb2.TASK_FAILED or \
-                        update.state == mesos_pb2.TASK_KILLED or \
-                        update.state == mesos_pb2.TASK_ERROR:
-            log.warning("Task %s is in unexpected state %s with message '%s'" \
-                        % (stringID, mesos_pb2.TaskState.Name(update.state), update.message))
-            self.__updateState(intID, 1)
+            self.__updateState(taskID, 0)
+        elif update.state == mesos_pb2.TASK_FAILED:
+            exitStatus = int(update.message)
+            log.warning('Task %i failed with exit status %i', taskID, exitStatus)
+            self.__updateState(taskID, exitStatus)
+        elif update.state in (mesos_pb2.TASK_LOST, mesos_pb2.TASK_KILLED, mesos_pb2.TASK_ERROR):
+            log.warning("Task %i is in unexpected state %s with message '%s'",
+                        taskID, stateName, update.message)
+            self.__updateState(taskID, 255)
 
         # Explicitly acknowledge the update if implicit acknowledgements are not being used.
         if not self.implicitAcknowledgements:

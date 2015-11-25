@@ -114,6 +114,15 @@ class AbstractJobStore(object):
         """
         raise NotImplementedError()
 
+    def getEnv(self):
+        """
+        Returns a dictionary of environment variables that this job store requires to be set in
+        order to function properly on a worker.
+
+        :rtype: dict[str,str]
+        """
+        return {}
+
     ##Cleanup functions
 
     def clean(self, rootJobWrapper):

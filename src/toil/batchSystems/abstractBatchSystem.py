@@ -43,7 +43,11 @@ class AbstractBatchSystem:
         self.maxCores = maxCores
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
-        
+        self.environment = {}
+        """
+        :type dict[str,str]
+        """
+
     def checkResourceRequest(self, memory, cores, disk):
         """Check resource request is not greater than that available.
         """
@@ -56,7 +60,7 @@ class AbstractBatchSystem:
             raise InsufficientSystemResources('memory', memory, self.maxMemory)
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
-        
+      
     def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """Issues the following command returning a unique jobID. Command
         is the string to run, memory is an int giving
@@ -81,13 +85,13 @@ class AbstractBatchSystem:
         be depended upon.
         """
         raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
-    
+
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting)
         and a how long they have been running for (in seconds).
         """
         raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
-    
+
     def getUpdatedBatchJob(self, maxWait):
         """Gets a job that has updated its status,
         according to the job manager. 
@@ -106,6 +110,29 @@ class AbstractBatchSystem:
         Should cleanly terminate all worker threads.
         """
         raise NotImplementedError('Abstract Method: shutdown')
+
+    def setEnv(self, name, value=None):
+        """
+        Set an environment variable for the worker process before it is launched. The worker
+        process will typically inherit the environment of the machine it is running on but this
+        method makes it possible to override specific variables in that inherited environment
+        before the worker is launched. Note that this mechanism is different to the one used by
+        the worker internally to set up the environment of a job. A call to this method affects
+        all jobs issued after this method returns. Note to implementors: This means that you
+        would typically need to copy the variables before enqueuing a job.
+
+        If no value is provided it will be looked up from the current environment.
+
+        NB: Only the Mesos and single-machine batch systems support passing environment
+        variables. On other batch systems, this method has no effect. See
+        https://github.com/BD2KGenomics/toil/issues/547.
+        """
+        if value is None:
+            try:
+                value = os.environ[name]
+            except KeyError:
+                raise RuntimeError("%s does not exist in current environment", name)
+        self.environment[name] = value
 
     @classmethod
     def getRescueBatchJobFrequency(cls):

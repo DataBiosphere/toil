@@ -40,4 +40,6 @@ ToilJob = namedtuple('ToilJob', (
     # The resource object representing the user script
     'userScript',
     # The resource object representing the toil source tarball
-    'toilDistribution'))
+    'toilDistribution',
+    # A dictionary with additional environment variables to be set on the worker process
+    'environment'))

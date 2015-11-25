@@ -107,7 +107,7 @@ class MesosExecutor(mesos.interface.Executor):
                 elif -9 == exitStatus:
                     sendUpdate(mesos_pb2.TASK_KILLED)
                 else:
-                    sendUpdate(mesos_pb2.TASK_FAILED)
+                    sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
             except:
                 exc_type, exc_value, exc_trace = sys.exc_info()
                 sendUpdate(mesos_pb2.TASK_FAILED, message=str(traceback.format_exception_only(exc_type, exc_value)))
@@ -124,7 +124,8 @@ class MesosExecutor(mesos.interface.Executor):
                 job.userScript.register()
             log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
-                return subprocess.Popen(job.command, shell=True)
+                return subprocess.Popen(job.command,
+                                        shell=True, env=dict(os.environ, **job.environment))
 
         def sendUpdate(taskState, message=''):
             log.debug("Sending status update ...")
