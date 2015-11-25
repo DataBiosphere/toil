@@ -123,45 +123,21 @@ class AzureJobStore(AbstractJobStore):
         return self.namePrefix + self.nameSeparator + name
 
     def jobs(self):
-        # We need to page through the results, since we only get some of them at
-        # a time. Just like in the BlobService. See the only documentation
-        # available: the API bindings source code, at:
-        # https://github.com/Azure/azure-storage-python/blob/09e9f186740407672777d6cb6646c33a2273e1a8/azure/storage/table/tableservice.py#L385
         
-        # These two together constitute the primary key for an item.
-        next_partition_key = None
-        next_row_key = None
-    
         # How many jobs have we done?
         total_processed = 0
-    
-        while True:
-            # Get a page (up to 1000 items)
-            page = self.jobItems.query_entities(
-                next_partition_key=next_partition_key,
-                next_row_key=next_row_key)
             
-            for jobEntity in page:
-                # Process the items in the page
-                yield AzureJob.fromEntity(jobEntity)
-                total_processed += 1
-                
-            if hasattr(page, 'x_ms_continuation'):
-                # Next time ask for the next page. If you use .get() you need
-                # the lower-case evrsions, but this is some kind of fancy case-
-                # insensitive dictionary.
-                next_partition_key = page.x_ms_continuation['NextPartitionKey']
-                next_row_key = page.x_ms_continuation['NextRowKey']
-            else:
-                # No continuation to check
-                next_partition_key = None
-                next_row_key = None
+        for jobEntity in self.jobItems.query_entities_auto():
+            # Process the items in the page
+            yield AzureJob.fromEntity(jobEntity)
+            total_processed += 1
             
-            if not next_partition_key and not next_row_key:
-                # If we run out of pages, stop
-                break
-                
-            logger.info("Processed %d total jobs" % total_processed)
+            if total_processed % 1000 == 0:
+                # Produce some feedback for the user, because this can take
+                # a long time on, for example, Azure
+                logger.info("Processed %d total jobs" % total_processed)
+            
+        logger.info("Processed %d total jobs" % total_processed)
 
     def create(self, command, memory, cores, disk,
                predecessorNumber=0):
@@ -569,7 +545,47 @@ class AzureTable(object):
             return self.__getattr__('get_entity')(**kwargs)
         except WindowsAzureMissingResourceError:
             return None
-
+    
+    def query_entities_auto(self, **kwargs):
+        """
+        An automatically-paged version of query_entities. The iterator just
+        yields all entities matching the query, occasionally going back to Azure
+        for the next page.
+        """
+        
+        # We need to page through the results, since we only get some of them at
+        # a time. Just like in the BlobService. See the only documentation
+        # available: the API bindings source code, at:
+        # https://github.com/Azure/azure-storage-python/blob/09e9f186740407672777d6cb6646c33a2273e1a8/azure/storage/table/tableservice.py#L385
+        
+        # These two together constitute the primary key for an item. 
+        next_partition_key = None
+        next_row_key = None
+    
+        while True:
+            # Get a page (up to 1000 items)
+            kwargs['next_partition_key'] = next_partition_key
+            kwargs['next_row_key'] = next_row_key
+            page = self.query_entities(**kwargs)
+            
+            for result in page:
+                # Yield each item one at a time
+                yield result
+                
+            if hasattr(page, 'x_ms_continuation'):
+                # Next time ask for the next page. If you use .get() you need
+                # the lower-case versions, but this is some kind of fancy case-
+                # insensitive dictionary.
+                next_partition_key = page.x_ms_continuation['NextPartitionKey']
+                next_row_key = page.x_ms_continuation['NextRowKey']
+            else:
+                # No continuation to check
+                next_partition_key = None
+                next_row_key = None
+            
+            if not next_partition_key and not next_row_key:
+                # If we run out of pages, stop
+                break
 
 class AzureBlobContainer(object):
     """
