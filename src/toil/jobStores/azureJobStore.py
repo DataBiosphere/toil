@@ -63,8 +63,8 @@ def _fetchAzureAccountKey(accountName):
     try:
         return configParser.get('AzureStorageCredentials', accountName)
     except NoOptionError:
-        raise RuntimeError("No account key found for %s, please provide it in " +
-                           credential_file_path % accountName)
+        raise RuntimeError("No account key found for %s, please provide it in %s" %
+                           (accountName, credential_file_path))
 
 
 maxAzureTablePropertySize = 64 * 1024
