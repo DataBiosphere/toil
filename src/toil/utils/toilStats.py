@@ -593,107 +593,6 @@ def reportData(tree, options):
     # Now dump onto the screen
     print out_str
 
-"""
-def getNullFile():
-    # Guaranteed to return a valid path to a file that does not exist.
-    charSet = string.ascii_lowercase + "0123456789"
-    prefix = os.getcwd()
-    nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
-    while os.path.exists(os.path.join(prefix, nullFile)):
-        nullFile = "null_%s" % "".join(choice(charSet) for x in xrange(6))
-    return os.path.join(os.getcwd(), nullFile)
-
-def getPreferredStatsCacheFileName(options):
-    # Determine if the toil or the os.getcwd() version should be used.
-    #If no good option exists, return a nonexistent file path.
-    #Note you MUST check to see if the return value exists before using.
-    
-    null_file = getNullFile()
-    location_jt = getStatsCacheFileName(options.jobStore)
-    location_local = os.path.abspath(os.path.join(os.getcwd(),
-                                                  ".stats_cache.pickle"))
-    # start by looking for the current directory cache.
-    if os.path.exists(location_local):
-        loc_file = open(location_local, "r")
-        data, loc = cPickle.load(loc_file)
-        if getStatsFileName(options.jobStore) != loc:
-            # the local cache is from looking up a *different* toil
-            location_local = null_file
-    if os.path.exists(location_jt) and not os.path.exists(location_local):
-        # use the toil directory version
-        return location_jt
-    elif not os.path.exists(location_jt) and os.path.exists(location_local):
-        # use the os.getcwd() version
-        return location_local
-    elif os.path.exists(location_jt) and os.path.exists(location_local):
-        # check file modify times and use the most recent version
-        mtime_jt = os.path.getmtime(location_jt)
-        mtime_local = os.path.getmtime(location_local)
-        if mtime_jt > mtime_local:
-            return location_jt
-        else:
-            return location_local
-    else:
-        return null_file
-
-def unpackData(options):
-    #unpackData() opens up the pickle of the last run and pulls out
-    #all the relevant data.
-    
-    cache_file = getPreferredStatsCacheFileName(options)
-    if not os.path.exists(cache_file):
-        return None
-    if os.path.exists(cache_file):
-        f = open(cache_file, "r")
-        try:
-            data, location = cPickle.load(f)
-        except EOFError:
-            # bad cache.
-            return None
-        finally:
-            f.close()
-        if location == getStatsFileName(options.jobStore):
-            return data
-    return None
-
-def packData(data, options):
-    # packData stores all of the data in the appropriate pickle cache file.
-    stats_file = getStatsFileName(options.jobStore)
-    cache_file = getStatsCacheFileName(options.jobStore)
-    try:
-        # try to write to the toil directory
-        payload = (data, stats_file)
-        f = open(cache_file, "wb")
-        cPickle.dump(payload, f, 2)  # 2 is binary format
-        f.close()
-    except IOError:
-        if not options.cache:
-            return
-        # try to write to the current working directory only if --cache
-        cache_file = os.path.abspath(os.path.join(os.getcwd(),
-                                                  ".stats_cache.pickle"))
-        payload = (data, stats_file)
-        f = open(cache_file, "wb")
-        cPickle.dump(payload, f, 2)  # 2 is binary format
-        f.close()
-
-def cacheAvailable(options):
-    # Check to see if a cache is available, return it.
-    if not os.path.exists(getStatsFileName(options.jobStore)):
-        return None
-    cache_file = getPreferredStatsCacheFileName(options)
-    if not os.path.exists(cache_file):
-        return None
-    # check the modify times on the files, see if the cache should be recomputed
-    mtime_stats = os.path.getmtime(getStatsFileName(options.jobStore))
-    mtime_cache = os.path.getmtime(cache_file)
-    if mtime_stats > mtime_cache:
-        # recompute cache
-        return None
-    # cache is fresh, return the cache
-    return unpackData(options)
-"""
-
 def main():
     """ Reports stats on the workflow, use with --stats option to toil.
     """
@@ -702,12 +601,9 @@ def main():
     options = parseBasicOptions(parser)
     checkOptions(options, parser)
     jobStore = loadJobStore(options.jobStore)
-    #collatedStatsTag = cacheAvailable(options)
-    #if collatedStatsTag is None:
     stats = getStats(options)
     collatedStatsTag = processData(jobStore.config, stats, options)
     reportData(collatedStatsTag, options)
-    #packData(collatedStatsTag, options)
 
 def _test():
     import doctest
