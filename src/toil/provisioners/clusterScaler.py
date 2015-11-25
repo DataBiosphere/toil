@@ -154,3 +154,9 @@ class ClusterScaler(object):
         except:
             error.set() #Set the error event
             raise
+    
+    def addCompletedJob(self, cores, memory, disk, wallClockTime):
+        """
+        
+        """
+        pass

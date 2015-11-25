@@ -23,7 +23,7 @@ from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
-from toil.leader import ToilState
+from toil.toilState import ToilState
 from toil.job import Job, JobException
 from toil.version import version
 
