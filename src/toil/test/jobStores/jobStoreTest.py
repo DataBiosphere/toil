@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import print_function
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
@@ -24,6 +25,8 @@ from threading import Thread
 import tempfile
 import uuid
 import shutil
+import time
+from unittest import skip
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
@@ -423,6 +426,62 @@ class hidden:
                     urllib2.urlopen(urllib2.Request(url))
                 except:
                     self.fail()
+                    
+        def testCleanCache(self):
+            # Make a bunch of jobs
+            master = self.master
+
+            # Create parent job
+            rootJob = master.create('rootjob', 12, 34, 35)
+            
+            # Create a bunch of child jobs
+            for i in range(100):
+                child = master.create("child%s" % i, 23, 45, 46, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+            master.update(rootJob)
+            
+            # See how long it takes to clean with no cache
+            noCacheStart = time.time()
+            master.clean(rootJob)
+            noCacheEnd = time.time()
+            
+            noCacheTime = noCacheEnd - noCacheStart
+            
+            # See how long it takes to clean with cache
+            jobCache = {jobWrapper.jobStoreID: jobWrapper
+                        for jobWrapper in master.jobs()}
+            cacheStart = time.time()
+            master.clean(rootJob, jobCache=jobCache)
+            cacheEnd = time.time()
+            
+            cacheTime = cacheEnd - cacheStart
+            
+            print("Without cache: %s With cache: %s" % (str(noCacheTime), str(cacheTime)))
+            
+            # Running with the cache should be faster.
+            self.assertTrue(cacheTime <= noCacheTime)
+            
+        @skip("too slow") # This takes a long time on the remote JobStores
+        def testManyJobs(self):
+            # Make sure we can store large numbers of jobs
+            
+            # Make a bunch of jobs
+            master = self.master
+
+            # Create parent job
+            rootJob = master.create('rootjob', 12, 34, 35)
+            
+            # Create a bunch of child jobs
+            for i in range(3000):
+                child = master.create("child%s" % i, 23, 45, 46, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+            master.update(rootJob)
+            
+            # Pull them all back out again
+            allJobs = list(master.jobs())
+            
+            # Make sure we have the right number of jobs
+            self.assertEquals(len(allJobs), 3001)
 
         # Sub-classes may want to override these in order to maximize test coverage
 
