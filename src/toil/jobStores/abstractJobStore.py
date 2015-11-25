@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
+
+import re
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
-import re
 from datetime import timedelta
 
 try:
@@ -428,14 +429,18 @@ class AbstractJobStore(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def readStatsAndLogging(self, statsAndLoggingCallBackFn):
+    def readStatsAndLogging(self, callback, readAll=False):
         """
-        Reads stats/logging strings accumulated by "writeStatsAndLogging" function. 
-        For each stats/logging file calls the statsAndLoggingCallBackFn with 
-        an open, readable file-handle that can be used to parse the stats.
-        Returns the number of stat/logging strings processed. 
-        Stats/logging files are only read once and are removed from the 
-        file store after being written to the given file handle.
+        Reads stats/logging strings accumulated by the writeStatsAndLogging() method. For each
+        stats/logging string this method calls the given callback function with an open,
+        readable file handle from which the stats string can be read. Returns the number of
+        stats/logging strings processed. Each stats/logging string is only processed once unless
+        the readAll parameter is set, in which case the given callback will be invoked for all
+        existing stats/logging strings, including the ones from a previous invocation of this
+        method.
+
+        :type callback: callable
+        :type readAll: bool
         """
         raise NotImplementedError()
 

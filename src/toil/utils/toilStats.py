@@ -16,46 +16,16 @@
 """ Reports data about the given toil run.
 """
 from __future__ import absolute_import
+from functools import partial
 import logging
-import sys
-import xml.etree.ElementTree as ET  # not cElementTree so as to allow caching
-from xml.dom import minidom  # For making stuff pretty
-import os
+import json
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import loadJobStore
 from toil.version import version
+from bd2k.util.expando import Expando
 
 logger = logging.getLogger( __name__ )
-
-class JTTag(object):
-    """ Convenience object that stores xml attributes as object attributes.
-    """
-    def __init__(self, tree):
-        """ Given an ElementTree tag, build a convenience object.
-        """
-        for name in ["total_time", "median_clock", "total_memory",
-                     "median_wait", "total_number", "average_time",
-                     "median_memory", "min_number_per_worker", "average_wait",
-                     "total_clock", "median_time", "min_time", "min_wait",
-                     "max_clock", "max_wait", "total_wait", "min_clock",
-                     "average_memory", "max_number_per_worker", "max_memory",
-                     "average_memory", "max_number_per_worker", "max_memory",
-                     "median_number_per_worker", "average_number_per_worker",
-                     "max_time", "average_clock", "min_memory", "min_clock",
-                     ]:
-          setattr(self, name, self.__get(tree, name))
-        self.name = tree.tag
-    def __get(self, tag, name):
-      if name in tag.attrib:
-          value = tag.attrib[name]
-      else:
-          return float("nan")
-      try:
-          a = float(value)
-      except ValueError:
-          a = float("nan")
-      return a
 
 class ColumnWidths(object):
     """ Convenience object that stores the width of columns for printing.
@@ -99,7 +69,7 @@ def initializeOptions(parser):
     parser.add_argument("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_argument("--raw", action="store_true", default=False,
-                      help="output the raw xml data.")
+                      help="output the raw json data.")
     parser.add_argument("--pretty", "--human", action="store_true", default=False,
                       help=("if not raw, prettify the numbers to be "
                             "human readable."))
@@ -118,8 +88,6 @@ def initializeOptions(parser):
                       action="store_true",
                       help="reverse sort order.")
     parser.add_argument("--version", action='version', version=version)
-    #parser.add_option("--cache", default=False, action="store_true",
-    #                  help="stores a cache to speed up data display.")
 
 def checkOptions(options, parser):
     """ Check options, throw parser.error() if something goes wrong
@@ -152,12 +120,11 @@ def checkOptions(options, parser):
                          % (options.sortField, str(sortFields)))
     logger.info("Checked arguments")
 
-def prettyXml(elem):
-    """ Return a pretty-printed XML string for the ElementTree Element.
+def printJson(elem):
+    """ Return a JSON formatted string
     """
-    roughString = ET.tostring(elem, "utf-8")
-    reparsed = minidom.parseString(roughString)
-    return reparsed.toprettyxml(indent="  ")
+    prettyString = json.dumps(elem, indent=4, separators=(',',': '))
+    return prettyString
 
 def padStr(s, field=None):
     """ Pad the begining of a string with spaces, if necessary.
@@ -264,12 +231,12 @@ def reportNumber(n, options, field=None):
 def refineData(root, options):
     """ walk down from the root and gather up the important bits.
     """
-    worker = JTTag(root.find("worker"))
-    job = JTTag(root.find("job"))
-    jobTypesTree = root.find("job_types")
+    worker = root.worker
+    job = root.jobs
+    jobTypesTree = root.job_types
     jobTypes = []
-    for child in jobTypesTree:
-        jobTypes.append(JTTag(child))
+    for childName in jobTypesTree:
+        jobTypes.append(jobTypesTree[childName])
     return root, worker, job, jobTypes
 
 def sprintTag(key, tag, options, columnWidths=None):
@@ -340,7 +307,7 @@ def sprintTag(key, tag, options, columnWidths=None):
             (tag.max_memory, columnWidths.getWidth("memory", "max")),
             (tag.total_memory, columnWidths.getWidth("memory", "total")),
             ]:
-            tag_str += reportMemory(t, options, field=width)
+            tag_str += reportMemory(t, options, field=width, isBytes=True)
     out_str += header + "\n"
     out_str += sub_header + "\n"
     out_str += tag_str + "\n"
@@ -383,8 +350,8 @@ def decorateSubHeader(title, columnWidths, options):
 def get(tree, name):
     """ Return a float value attribute NAME from TREE.
     """
-    if name in tree.attrib:
-        value = tree.attrib[name]
+    if name in tree:
+        value = tree[name]
     else:
         return float("nan")
     try:
@@ -423,7 +390,7 @@ def sortJobs(jobTypes, options):
 def reportPrettyData(root, worker, job, job_types, options):
     """ print the important bits out.
     """
-    out_str = "Batch System: %s\n" % root.attrib["batch_system"]
+    out_str = "Batch System: %s\n" % root.batch_system
     out_str += ("Default Cores: %s  Default Memory: %s\n"
                 "Max Cores: %s  Max Threads: %s\n" % (
         reportNumber(get(root, "default_cores"), options),
@@ -473,7 +440,7 @@ def updateColumnWidths(tag, cw, options):
                                    field=cw.getWidth(category, field)).strip()
                 else:
                     s = reportMemory(t, options,
-                                     field=cw.getWidth(category, field)).strip()
+                                     field=cw.getWidth(category, field), isBytes=True).strip()
                 if len(s) >= cw.getWidth(category, field):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
@@ -481,52 +448,61 @@ def updateColumnWidths(tag, cw, options):
 def buildElement(element, items, itemName):
     """ Create an element for output.
     """
-    def __round(i):
+    def assertNonnegative(i,name):
         if i < 0:
-            logger.debug("I got a less than 0 value: %s" % i)
-            return 0.0
-        return i
-    itemTimes = [ __round(float(item.attrib["time"])) for item in items ]
-    itemTimes.sort()
-    itemClocks = [ __round(float(item.attrib["clock"])) for item in items ]
-    itemClocks.sort()
-    itemWaits = [ __round(__round(float(item.attrib["time"])) -
-                          __round(float(item.attrib["clock"])))
-                  for item in items ]
+            raise RuntimeError("Negative value %s reported for %s" %(i,name) )
+        else:
+            return float(i)
+
+    itemTimes = []
+    itemClocks = []
+    itemMemory = []
+    for item in items:
+        itemTimes.append(assertNonnegative(item["time"], "time"))
+        itemClocks.append(assertNonnegative(item["clock"], "clock"))
+        itemMemory.append(assertNonnegative(item["memory"], "memory"))
+    assert len(itemClocks) == len(itemTimes) == len(itemMemory)
+
+    itemWaits=[]
+    for index in range(0,len(itemTimes)):
+        itemWaits.append(itemClocks[index]-itemTimes[index])
+
     itemWaits.sort()
-    itemMemory = [ __round(float(item.attrib["memory"])) for item in items ]
+    itemTimes.sort()
+    itemClocks.sort()
     itemMemory.sort()
-    assert len(itemClocks) == len(itemTimes)
-    assert len(itemClocks) == len(itemWaits)
+
     if len(itemTimes) == 0:
         itemTimes.append(0)
         itemClocks.append(0)
         itemWaits.append(0)
         itemMemory.append(0)
-    return ET.SubElement(
-        element, itemName,
-        {"total_number":str(len(items)),
-         "total_time":str(sum(itemTimes)),
-         "median_time":str(itemTimes[len(itemTimes)/2]),
-         "average_time":str(sum(itemTimes)/len(itemTimes)),
-         "min_time":str(min(itemTimes)),
-         "max_time":str(max(itemTimes)),
-         "total_clock":str(sum(itemClocks)),
-         "median_clock":str(itemClocks[len(itemClocks)/2]),
-         "average_clock":str(sum(itemClocks)/len(itemClocks)),
-         "min_clock":str(min(itemClocks)),
-         "max_clock":str(max(itemClocks)),
-         "total_wait":str(sum(itemWaits)),
-         "median_wait":str(itemWaits[len(itemWaits)/2]),
-         "average_wait":str(sum(itemWaits)/len(itemWaits)),
-         "min_wait":str(min(itemWaits)),
-         "max_wait":str(max(itemWaits)),
-         "total_memory":str(sum(itemMemory)),
-         "median_memory":str(itemMemory[len(itemMemory)/2]),
-         "average_memory":str(sum(itemMemory)/len(itemMemory)),
-         "min_memory":str(min(itemMemory)),
-         "max_memory":str(max(itemMemory))
-         })
+
+    element[itemName]=Expando(
+        total_number=float(len(items)),
+        total_time=float(sum(itemTimes)),
+        median_time=float(itemTimes[len(itemTimes)/2]),
+        average_time=float(sum(itemTimes)/len(itemTimes)),
+        min_time=float(min(itemTimes)),
+        max_time=float(max(itemTimes)),
+        total_clock=float(sum(itemClocks)),
+        median_clock=float(itemClocks[len(itemClocks)/2]),
+        average_clock=float(sum(itemClocks)/len(itemClocks)),
+        min_clock=float(min(itemClocks)),
+        max_clock=float(max(itemClocks)),
+        total_wait=float(sum(itemWaits)),
+        median_wait=float(itemWaits[len(itemWaits)/2]),
+        average_wait=float(sum(itemWaits)/len(itemWaits)),
+        min_wait=float(min(itemWaits)),
+        max_wait=float(max(itemWaits)),
+        total_memory=float(sum(itemMemory)),
+        median_memory=float(itemMemory[len(itemMemory)/2]),
+        average_memory=float(sum(itemMemory)/len(itemMemory)),
+        min_memory=float(min(itemMemory)),
+        max_memory=float(max(itemMemory)),
+        name=itemName
+    )
+    return element[itemName]
 
 def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts = [len(getFn(containingItem)) for
@@ -534,87 +510,83 @@ def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
-    element.attrib["median_number_per_%s" %
-                   containingItemName] = str(itemCounts[len(itemCounts) / 2])
-    element.attrib["average_number_per_%s" %
-                   containingItemName] = str(float(sum(itemCounts)) /
-                                             len(itemCounts))
-    element.attrib["min_number_per_%s" %
-                   containingItemName] = str(min(itemCounts))
-    element.attrib["max_number_per_%s" %
-                   containingItemName] = str(max(itemCounts))
+    element["median_number_per_%s" % containingItemName] = itemCounts[len(itemCounts) / 2]
+    element["average_number_per_%s" % containingItemName] = float(sum(itemCounts)) / len(itemCounts)
+    element["min_number_per_%s" % containingItemName] = min(itemCounts)
+    element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
 def getStats(options):
     """ Collect and return the stats and config data.
     """
-    
+    def aggregateStats(fileHandle,aggregateObject):
+        try:
+            stats = json.load(fileHandle, object_hook=Expando)
+            for key in stats.keys():
+                if key in aggregateObject:
+                    aggregateObject[key].append(stats[key])
+                else:
+                    aggregateObject[key]=[stats[key]]
+        except ValueError:
+            logger.critical("File %s contains corrupted json. Skipping file." % fileHandle)
+            pass  # The file is corrupted.
+
     jobStore = loadJobStore(options.jobStore)
-    try:
-        with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
-            stats = ET.parse(fH).getroot() # Try parsing the whole file.
-    except ET.ParseError: # If it doesn't work then we build the file incrementally
-        sys.stderr.write("The toil stats file is incomplete or corrupt, "
-                         "we'll try instead to parse what's in the file "
-                         "incrementally until we reach an error.\n")
-        with jobStore.readSharedFileStream("statsAndLogging.xml") as fH:
-            stats = ET.Element("stats")
-            try:
-                for event, elem in ET.iterparse(fH):
-                    if elem.tag == 'worker':
-                        stats.append(elem)
-            except ET.ParseError:
-                # TODO: Document why parse errors are to be expected
-                pass # Do nothing at this point
-    return stats
+    aggregateObject = Expando()
+    callBack = partial(aggregateStats, aggregateObject=aggregateObject)
+    jobStore.readStatsAndLogging(callBack, readAll=True)
+    return aggregateObject
 
 def processData(config, stats, options):
     ##########################################
     # Collate the stats and report
     ##########################################
-    if stats.find("total_time") == None:  # Hack to allow unfinished toils.
-        ET.SubElement(stats, "total_time", { "time":"0.0", "clock":"0.0"})
+    if stats.get("total_time", None) is None:  # Hack to allow unfinished toils.
+        stats.total_time = {"total_time": "0.0", "total_clock": "0.0"}
+    else:
+        stats.total_time = sum([float(number) for number in stats.total_time])
+        stats.total_clock = sum([float(number) for number in stats.total_clock])
 
-    collatedStatsTag = ET.Element(
-        "collated_stats",
-        {"total_run_time":stats.find("total_time").attrib["time"],
-         "total_clock":stats.find("total_time").attrib["clock"],
-         "batch_system":config.batchSystem,
-         "default_memory":str(config.defaultMemory),
-         "default_cores":str(config.defaultCores),
-         "max_cores":str(config.maxCores)})
+    collatedStatsTag = Expando(total_run_time=stats.total_time,
+                               total_clock=stats.total_clock,
+                               batch_system=config.batchSystem,
+                               default_memory=str(config.defaultMemory),
+                               default_cores=str(config.defaultCores),
+                               max_cores=str(config.maxCores)
+                               )
 
     # Add worker info
-    workers = stats.findall("worker")
-    buildElement(collatedStatsTag, workers, "worker")
+    worker = filter(None, stats.workers)
+    jobs = filter(None, stats.jobs)
 
-    # Add aggregated job info
-    jobs = []
-    for worker in workers:
-        jobs += worker.findall("job")
     def fn4(job):
-        return list(worker.findall("job"))
-    createSummary(buildElement(collatedStatsTag, jobs, "job"),
-                  workers, "worker", fn4)
+        try:
+            return list(jobs)
+        except TypeError:
+            return []
+
+    buildElement(collatedStatsTag, worker, "worker")
+    createSummary(buildElement(collatedStatsTag, jobs, "jobs"),
+                  stats.workers, "worker", fn4)
     # Get info for each job
     jobNames = set()
     for job in jobs:
-        jobNames.add(job.attrib["class"])
-    jobTypesTag = ET.SubElement(collatedStatsTag, "job_types")
+        jobNames.add(job.class_name)
+    jobTypesTag = Expando()
+    collatedStatsTag.job_types = jobTypesTag
     for jobName in jobNames:
-        jobTypes = [ job for job in jobs
-                        if job.attrib["class"] == jobName ]
-        # FIXME: unused assignment
-        jobTypeTag = buildElement(jobTypesTag, jobTypes, jobName)
+        jobTypes = [ job for job in jobs if job.class_name == jobName ]
+        buildElement(jobTypesTag, jobTypes, jobName)
+    collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
 
-def reportData(xml_tree, options):
+def reportData(tree, options):
     # Now dump it all out to file
     if options.raw:
-        out_str = prettyXml(xml_tree)
+        out_str = printJson(tree)
     else:
-        root, worker, job, job_types = refineData(xml_tree, options)
+        root, worker, job, job_types = refineData(tree, options)
         out_str = reportPrettyData(root, worker, job, job_types, options)
-    if options.outputFile != None:
+    if options.outputFile is not None:
         fileHandle = open(options.outputFile, "w")
         fileHandle.write(out_str)
         fileHandle.close()
@@ -723,9 +695,8 @@ def cacheAvailable(options):
 """
 
 def main():
-    """ Reports stats on the job-tree, use with --stats option to toil.
+    """ Reports stats on the workflow, use with --stats option to toil.
     """
-
     parser = getBasicOptionParser()
     initializeOptions(parser)
     options = parseBasicOptions(parser)

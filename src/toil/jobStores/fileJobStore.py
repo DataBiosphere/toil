@@ -227,17 +227,20 @@ class FileJobStore(AbstractJobStore):
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4]) #This operation is atomic
 
-    def readStatsAndLogging( self, statsAndLoggingCallBackFn):
+    def readStatsAndLogging(self, callback, readAll=False):
         numberOfFilesProcessed = 0
         for tempDir in self._tempDirectories():
             for tempFile in os.listdir(tempDir):
-                if tempFile.startswith( 'stats' ):
+                if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
-                    if not tempFile.endswith( '.new' ):
+                    if readAll or not tempFile.endswith('.new'):
                         with open(absTempFile, 'r') as fH:
-                            statsAndLoggingCallBackFn(fH)
+                            callback(fH)
                         numberOfFilesProcessed += 1
-                        os.remove(absTempFile)
+                        newName = tempFile.rsplit('.', 1)[0] + '.new'
+                        newAbsTempFile = os.path.join(tempDir, newName)
+                        # Mark this item as read
+                        os.rename(absTempFile, newAbsTempFile)
         return numberOfFilesProcessed
 
     ##########################################
