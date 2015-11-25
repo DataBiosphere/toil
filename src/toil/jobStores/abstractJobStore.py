@@ -126,16 +126,41 @@ class AbstractJobStore(object):
 
     ##Cleanup functions
 
-    def clean(self, rootJobWrapper):
+    def clean(self, rootJobWrapper, jobCache=None):
         """
         Function to cleanup the state of a jobStore after a restart.
         Fixes jobs that might have been partially updated.
         Resets the try counts.
-        Removes jobs that are not successors of the rootJobWrapper. 
+        Removes jobs that are not successors of the rootJobWrapper.
+        
+        If jobCache is passed, it must be a dict from job ID to JobWrapper
+        object. Jobs will be loaded from the cache (which can be downloaded from
+        the jobStore in a batch) instead of piecemeal when recursed into.
         """
         # Iterate from the root jobWrapper and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
         reachableFromRoot = set()
+
+        if jobCache is None:
+            logger.warning("Cleaning jobStore recursively. This may be slow.")
+
+        def getJob(jobId):
+            if jobCache is not None:
+                return jobCache[jobId]
+            else:
+                return self.load(jobId)
+                
+        def haveJob(jobId):
+            if jobCache is not None:
+                return jobCache.has_key(jobId)
+            else:
+                return self.exists(jobId)
+                
+        def getJobs():
+            if jobCache is not None:
+                return jobCache.itervalues()
+            else:
+                return self.jobs()
 
         def getConnectedJobs(jobWrapper):
             if jobWrapper.jobStoreID in reachableFromRoot:
@@ -143,14 +168,15 @@ class AbstractJobStore(object):
             reachableFromRoot.add(jobWrapper.jobStoreID)
             for jobs in jobWrapper.stack:
                 for successorJobStoreID in map(lambda x: x[0], jobs):
-                    if successorJobStoreID not in reachableFromRoot and self.exists(
-                            successorJobStoreID):
-                        getConnectedJobs(self.load(successorJobStoreID))
+                    if successorJobStoreID not in reachableFromRoot and haveJob(successorJobStoreID):
+                        getConnectedJobs(getJob(successorJobStoreID))
 
+        logger.info("Checking job graph connectivity...")
         getConnectedJobs(rootJobWrapper)
+        logger.info("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup the state of each jobWrapper
-        for jobWrapper in self.jobs():
+        for jobWrapper in getJobs():
             changed = False  # Flag to indicate if we need to update the jobWrapper
             # on disk
 
@@ -174,7 +200,7 @@ class AbstractJobStore(object):
             # those jobs from the stack (this cleans up the case that the jobWrapper
             # had successors to run, but had not been updated to reflect this)
             while len(jobWrapper.stack) > 0:
-                jobs = [command for command in jobWrapper.stack[-1] if self.exists(command[0])]
+                jobs = [command for command in jobWrapper.stack[-1] if haveJob(command[0])]
                 if len(jobs) < len(jobWrapper.stack[-1]):
                     changed = True
                     if len(jobs) > 0:
@@ -198,10 +224,14 @@ class AbstractJobStore(object):
                 changed = True
 
             if changed:  # Update, but only if a change has occurred
+                logger.critical("Repairing job: %s" % jobWrapper.jobStoreID)
                 self.update(jobWrapper)
 
         # Remove any crufty stats/logging files from the previous run
+        logger.info("Discarding old statistics and logs...")
         self.readStatsAndLogging(lambda x: None)
+        
+        logger.info("Job store is clean")
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
