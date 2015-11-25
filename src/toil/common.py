@@ -55,7 +55,7 @@ class Config(object):
         self.maxParasolBatches = 10000
         
         #Autoscaling options
-        self.defaultPreemptable = False
+        self.provisioner = None
         self.minPreemptableNodes = 0
         self.maxPreemptableNodes = 10
         self.minPreemptableTimeToRun = 10.0
@@ -70,6 +70,7 @@ class Config(object):
         self.defaultCores = 1
         self.defaultDisk = 2147483648
         self.defaultCache = 2147483648 #Cache is 2GB
+        self.defaultPreemptable = False
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -145,7 +146,7 @@ class Config(object):
         setOption("maxParasolBatches", int, iC(1))
         
         #Autoscaling options
-        setOption("defaultPreemptable")
+        setOption("provisioner")
         setOption("minPreemptableNodes")
         setOption("maxPreemptableNodes")
         setOption("minPreemptableTimeToRun", float)
@@ -163,6 +164,7 @@ class Config(object):
         setOption("maxCores", h2b, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
+        setOption("defaultPreemptable")
         
         #Retrying/rescuing jobs
         setOption("retryCount", int, iC(0))
@@ -242,6 +244,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes", 
                              "Allows the specification of the minimum and maximum number of nodes"
                              " in an autoscaled cluster, as well as parameters to control the level of provisioning.")
+    addOptionFn("--provisioner", dest="provisioner", default=None, 
+                help=("The provisioner for cluster scaling, currently can be XXX"
+                      " default=%s" % config.provisioner))
     addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None, 
                 help=("Minimum number of preemptable nodes in cluster, if using"
                       " auto-scaling. default=%s" % config.minPreemptableNodes))
@@ -491,7 +496,10 @@ def setupToil(options, userScript=None):
     # Create the batch system instance
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
     # Create the provisioner
-    provisioner = None
+    if options.provisioner != None:
+        assert 0 #Currently we have no provisioners
+    else:
+        provisioner = None
     try:
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, provisioner, jobStore)

@@ -29,8 +29,8 @@ class ClusterScaler(object):
         """
         Class manages automatically scaling the number of worker nodes. 
         
-        :param toil.batchSystems.abstractBatchSystem.AbstractScalableBatchSystem batchSystem: batch system 
-        class that implements methods for determining cluster scaling
+        :param toil.batchSystems.abstractBatchSystem.AbstractScalableBatchSystemInterface batchSystem: scalable batch system 
+        interface class that implements methods for determining cluster scaling
         :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner: 
         
         """
@@ -105,6 +105,16 @@ class ClusterScaler(object):
                     logger.debug("We tried to create a minimal cluster of %s nodes,"
                                  " but got a provisioning exception: %s" % (minNodes, e))
             while True:
+                # First check if we've got the cleanup signal       
+                if stop.is_set(): #Cleanup logic
+                    try:
+                        provisioner.removeNodes(totalNodes, preemptable=preemptable)
+                    except ProvisioningException as e:
+                        logger.debug("We tried to stop the worker nodes (%s total) but got a provisioning exception: %s" % (totalNodes, e))
+                        raise
+                    logger.debug("Scalar (preemptable=%s) exiting normally" % preemptable)
+                    break
+                
                 queueSize = batchSystem.getIssuedQueueSize(preemptable=preemptable)
                 jobsStartedPerSecond = batchSystem.numberOfRecentJobsStartedPerSecond(preemptable=preemptable)
                 if queueSize == 0:
@@ -138,16 +148,6 @@ class ClusterScaler(object):
                         continue
                     except ProvisioningException as e:
                         logger.debug("We tried to remove a worker node but got a provisioning exception: %s" % e)
-        
-                # Check if we've got the cleanup signal       
-                if stop.is_set(): #Cleanup logic
-                    try:
-                        provisioner.removeNodes(totalNodes, preemptable=preemptable)
-                    except ProvisioningException as e:
-                        logger.debug("We tried to stop the worker nodes (%s total) but got a provisioning exception: %s" % (totalNodes, e))
-                        raise
-                    logger.debug("Scalar (preemptable=%s) exiting normally" % preemptable)
-                    break
                 
                 #Sleep to avoid thrashing
                 time.sleep(1)

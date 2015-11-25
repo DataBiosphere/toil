@@ -142,6 +142,10 @@ class hidden:
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
+            
+        def testScalableBatchSystem(self):
+            #If instance of scalable batch system
+            pass
 
         def _waitForJobsToIssue(self, numJobs):
             issuedIDs = []
