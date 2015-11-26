@@ -17,16 +17,17 @@ import os
 import sys
 import copy
 import random
+import json
 
 import tempfile
 import traceback
 import time
 import socket
 import logging
-import xml.etree.cElementTree as ET
 import cPickle
 import shutil
 from threading import Thread
+from bd2k.util.expando import Expando, MagicExpando
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -158,14 +159,14 @@ def main():
     #When we start, standard input is file descriptor 0, standard output is
     #file descriptor 1, and standard error is file descriptor 2.
 
-    #What file do we want to point FDs 1 and 2 to?    
+    #What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
     
     #Save the original stdout and stderr (by opening new file descriptors to the
     #same files)
     origStdOut = os.dup(1)
     origStdErr = os.dup(2)
-    
+
     #Open the file to send stdout/stderr to.
     logFh = os.open(tempWorkerLogPath, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
 
@@ -183,7 +184,7 @@ def main():
     
     #Close the descriptor we used to open the file
     os.close(logFh)
-    
+
     for handler in list(logger.handlers): #Remove old handlers
         logger.removeHandler(handler)
     
@@ -197,8 +198,7 @@ def main():
     ##########################################
 
     workerFailed = False
-    elementNode = ET.Element("worker")
-    messageNode = ET.SubElement(elementNode, "messages")
+    statsDict = MagicExpando()
     messages = []
     blockFn = lambda : True
     cleanCacheFn = lambda x : True
@@ -274,13 +274,13 @@ def main():
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
-                    
-                    #Run the job
-                    job._execute( jobWrapper=jobWrapper,
-                                  stats=elementNode if config.stats else None, 
-                                  localTempDir=localTempDir, jobStore=jobStore,
-                                  fileStore=fileStore)
-                    
+
+                    job._execute(jobWrapper=jobWrapper,
+                                           stats=statsDict if config.stats else None,
+                                           localTempDir=localTempDir,
+                                           jobStore=jobStore,
+                                           fileStore=fileStore)
+
                     #Set the clean cache function
                     cleanCacheFn = fileStore._cleanLocalTempDir
                     
@@ -299,7 +299,7 @@ def main():
             
             if Job.FileStore._terminateEvent.isSet():
                 raise RuntimeError("The termination flag is set")
-            
+
             ##########################################
             #Establish if we can run another jobWrapper within the worker
             ##########################################
@@ -388,11 +388,10 @@ def main():
         ##########################################
         if config.stats:
             totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            elementNode.attrib["time"] = str(time.time() - startTime)
-            elementNode.attrib["clock"] = str(totalCPUTime - startClock)
-            elementNode.attrib["memory"] = str(totalMemoryUsage)
-        for message, level in messages:
-            ET.SubElement(messageNode, "message", {"level":str(level)}).text = message
+            statsDict.workers.time = str(time.time() - startTime)
+            statsDict.workers.clock = str(totalCPUTime - startClock)
+            statsDict.workers.memory = str(totalMemoryUsage)
+            statsDict.workers.log = messages
         
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
@@ -458,11 +457,10 @@ def main():
         truncateFile(tempWorkerLogPath)
         with open(tempWorkerLogPath, 'r') as logFile:
             logMessages = logFile.read().splitlines()
-        for logMessage in logMessages:
-            ET.SubElement(messageNode, "log").text = jobStoreID+"!"+logMessage
+        statsDict.logs = [Expando(jobStoreID=jobStoreID,text=logMessage) for logMessage in logMessages]
 
     if (debugging or config.stats or messages) and not workerFailed: # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(ET.tostring(elementNode))
+        jobStore.writeStatsAndLogging(json.dumps(statsDict))
 
     #Remove the temp dir
     shutil.rmtree(localWorkerTempDir)

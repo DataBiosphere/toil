@@ -17,7 +17,6 @@ import os
 import sys
 import importlib
 from argparse import ArgumentParser
-import xml.etree.cElementTree as ET
 from abc import ABCMeta, abstractmethod
 import tempfile
 import uuid
@@ -539,7 +538,7 @@ class Job(object):
             handle, tmpFile = tempfile.mkstemp(prefix="tmp",
                                                suffix=".tmp", dir=self.localTempDir)
             os.close(handle)
-            return os.path.abspath(tmpFile) 
+            return os.path.abspath(tmpFile)
 
         def writeGlobalFile(self, localFileName, cleanup=False):
             """
@@ -624,7 +623,7 @@ class Job(object):
                 userPath = os.path.abspath(userPath) #Make an absolute path
                 #Turn off caching if user file is not in localTempDir
                 if cache and not userPath.startswith(self.localTempDir):
-                    cache = False  
+                    cache = False
             #When requesting a new file from the jobStore first check if fileStoreID
             #is a key in _jobStoreFileIDToCacheLocation.
             if fileStoreID in self._jobStoreFileIDToCacheLocation:
@@ -695,7 +694,7 @@ class Job(object):
                 #This will result in the files removal from the cache at the end of the current job
                 self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
-        def logToMaster(self, string, level=logging.INFO):
+        def logToMaster(self, text, level=logging.INFO):
             """
             Send a logging message to the leader. The message will also be \
             logged by the worker at the same level.
@@ -703,11 +702,9 @@ class Job(object):
             :param string: The string to log.
             :param int level: The logging level.
             """
-            logger.log(level=level, msg=("LOG-TO-MASTER: " + string))
-            self.loggingMessages.append((str(string), level))
-            
-        #Private methods 
-        
+            logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
+            self.loggingMessages.append(dict(text=text, level=level))
+
         def _updateJobWhenDone(self):
             """
             Asynchronously update the status of the job on the disk, first waiting \
@@ -1296,12 +1293,11 @@ class Job(object):
             os.chdir(baseDir)
         #Finish up the stats
         if stats != None:
-            stats = ET.SubElement(stats, "job")
-            stats.attrib["time"] = str(time.time() - startTime)
+            stats.jobs.time = str(time.time() - startTime)
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            stats.attrib["clock"] = str(totalCpuTime - startClock)
-            stats.attrib["class"] = self._jobName()
-            stats.attrib["memory"] = str(totalMemoryUsage)
+            stats.jobs.clock = str(totalCpuTime - startClock)
+            stats.jobs.class_name = self._jobName()
+            stats.jobs.memory = str(totalMemoryUsage)
 
     def _jobName(self):
         """

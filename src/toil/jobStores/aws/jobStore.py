@@ -305,23 +305,34 @@ class AWSJobStore(AbstractJobStore):
             writeable.write(statsAndLoggingString)
         info.save()
 
-    def readStatsAndLogging(self, statsCallBackFn):
+    def readStatsAndLogging(self, callback, readAll=False):
         itemsProcessed = 0
+
+        for info in self._readStatsAndLogging(callback, self.statsFileOwnerID):
+            info._ownerID = self.readStatsFileOwnerID
+            info.save()
+            itemsProcessed += 1
+
+        if readAll:
+            for _ in self._readStatsAndLogging(callback, self.readStatsFileOwnerID):
+                itemsProcessed += 1
+
+        return itemsProcessed
+
+    def _readStatsAndLogging(self, callback, ownerId):
         items = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
                     query="select * from `%s` where ownerID='%s'" % (
-                        self.filesDomain.name, str(self.statsFileOwnerID))))
+                        self.filesDomain.name, str(ownerId))))
         assert items is not None
         for item in items:
             info = self.FileInfo.fromItem(item)
             with info.downloadStream() as readable:
-                statsCallBackFn(readable)
-            self.deleteFile(item.name)
-            itemsProcessed += 1
-        return itemsProcessed
+                callback(readable)
+            yield info
 
     def getPublicUrl(self, jobStoreFileID):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
@@ -401,8 +412,11 @@ class AWSJobStore(AbstractJobStore):
     # A dummy job ID under which all shared files are stored
     sharedFileOwnerID = uuid.UUID('891f7db6-e4d9-4221-a58e-ab6cc4395f94')
 
-    # A dummy job ID under which all stats files are stored
+    # A dummy job ID under which all unread stats files are stored
     statsFileOwnerID = uuid.UUID('bfcf5286-4bc7-41ef-a85d-9ab415b69d53')
+
+    # A dummy job ID under which all read stats files are stored
+    readStatsFileOwnerID = uuid.UUID('e77fc3aa-d232-4255-ae04-f64ee8eb0bfa')
 
     def _sharedFileID(self, sharedFileName):
         return str(uuid.uuid5(self.sharedFileOwnerID, str(sharedFileName)))
