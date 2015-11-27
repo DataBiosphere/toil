@@ -26,7 +26,7 @@ import logging
 import xml.etree.cElementTree as ET
 import cPickle
 import shutil
-from threading import Thread
+from threading import Thread, Lock
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -265,12 +265,23 @@ def main():
                     #Load the job
                     job = Job._loadJob(jobWrapper.command, jobStore)
                     
-                    #Cleanup the cache from the previous job
-                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
-                    
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
                                               blockFn)
+                    #  If at this point fileStore knows ALL the cached files, it will work.
+                    #Get the requirements for the new job
+                    jobReqs = job.effectiveRequirements(jobStore.config)
+
+                    #Obtain a lock and write to the shared cache tracking file
+                    with Lock():
+                        with jobStore.readSharedFileStream("availableCachingDisk") as fH:
+                            availableCache = int(fH.read())
+                        #Block off jobReqs.disk amount of space from cache
+                        usableCache = availableCache - jobReqs.disk
+                        #Cleanup up jobReqs.disk amount of cache to run the job
+                        fileStore._cleanLocalTempDir(usableCache)
+                        with jobStore.writeSharedFileStream("availableCachingDisk") as fH:
+                            fH.write(str(usableCache))
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -280,10 +291,16 @@ def main():
                                   stats=elementNode if config.stats else None, 
                                   localTempDir=localTempDir, jobStore=jobStore,
                                   fileStore=fileStore)
-                    
-                    #Set the clean cache function
-                    cleanCacheFn = fileStore._cleanLocalTempDir
-                    
+                    #When the execution completes, give back the disk used by the job
+                    with Lock():
+                        with jobStore.readSharedFileStream("availableCachingDisk") as fH:
+                            availableCache = int(fH.read())
+                        #Return jobReqs.disk amount of space to cache
+                        returnedCache = availableCache + jobReqs.disk
+                        with jobStore.writeSharedFileStream("availableCachingDisk") as fH:
+                            fH.write(str(returnedCache))
+
+
                 else: #Is another command (running outside of jobs may be deprecated)
                     #Cleanup the cache from the previous job
                     cleanCacheFn(0)
