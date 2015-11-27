@@ -26,6 +26,7 @@ import cPickle
 import logging
 import shutil
 import stat
+import subprocess
 import inspect
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
@@ -34,6 +35,7 @@ from bd2k.util.humanize import human2bytes
 from io import BytesIO
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
+
 
 logger = logging.getLogger( __name__ )
 
@@ -426,7 +428,7 @@ class Job(object):
                 logger.info("{} jobs downloaded.".format(len(jobCache)))
                 if options.restart:
                     #This cleans up any half written jobs after a restart
-                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache) 
+                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache)
                     rootJob = job._loadRootJob(jobStore)
                 else:
                     #Make a file to store the root jobs return value in
@@ -807,11 +809,11 @@ class Job(object):
                 os.remove(filePath)
                 totalCachedFileSizes -= fileSize
                 assert totalCachedFileSizes >= 0
-            
+
             #Iterate from the base of localTempDir and remove all 
             #files/empty directories, recursively
             cachedFiles = set(self._jobStoreFileIDToCacheLocation.values())
-            
+
             def clean(dirOrFile, remove=True):
                 canRemove = True 
                 if os.path.isdir(dirOrFile):
@@ -1105,7 +1107,6 @@ class Job(object):
         Create an empty job for the job.
         """
         requirements = self.effectiveRequirements(jobStore.config)
-        del requirements.cache
         return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
 
     def effectiveRequirements(self, config):
@@ -1120,13 +1121,6 @@ class Job(object):
             memory=float(config.defaultMemory) if self.memory is None else self.memory,
             cores=float(config.defaultCores) if self.cores is None else self.cores,
             disk=float(config.defaultDisk) if self.disk is None else self.disk)
-        if self.cache is None:
-            requirements.cache = min(requirements.disk, float(config.defaultCache))
-        else:
-            requirements.cache = self.cache
-        if requirements.cache > requirements.disk:
-            raise RuntimeError("Trying to allocate a cache ({cache}) larger than the disk "
-                               "requirement for the job ({disk})".format(**requirements))
         return requirements
 
     def _makeJobWrappers(self, jobWrapper, jobStore):
