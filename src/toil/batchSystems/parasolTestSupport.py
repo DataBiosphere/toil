@@ -9,6 +9,8 @@ import os
 from bd2k.util.files import rm_f
 from bd2k.util.objects import InnerClass
 
+from toil import physicalMemory
+
 log = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ class ParasolTestSupport(object):
         if numCores is None:
             numCores = multiprocessing.cpu_count()
         if memory is None:
-            memory = self._physicalMemory()
+            memory = physicalMemory()
         self.numCores = numCores
         self.memory = memory
         self.leader = self.ParasolLeaderThread()
@@ -39,10 +41,6 @@ class ParasolTestSupport(object):
         self.leader.join()
         for path in ('para.results', 'parasol.jid'):
             rm_f(path)
-
-    @classmethod
-    def _physicalMemory(cls):
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
 
     class ParasolThread(threading.Thread):
 
