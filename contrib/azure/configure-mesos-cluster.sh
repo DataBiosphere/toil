@@ -143,36 +143,63 @@ zkconfig()
 
 echo "Installing and configuring docker and swarm"
 
-time wget -qO- https://get.docker.com | sh
+for DOCKER_TRY in {1..10}
+do
 
-# Start Docker and listen on :2375 (no auth, but in vnet)
-echo 'DOCKER_OPTS="-H unix:///var/run/docker.sock -H 0.0.0.0:2375"' | sudo tee /etc/default/docker
-# the following insecure registry is for OMS
-echo 'DOCKER_OPTS="$DOCKER_OPTS --insecure-registry 137.135.93.9"' | sudo tee -a /etc/default/docker
-sudo service docker restart
+    # Remove the config file that will mess up package installation (by
+    # prompting for overwrite in a weird subshell)
+    sudo rm -f /etc/default/docker
 
-ensureDocker()
-{
-  # ensure that docker is healthy
-  dockerHealthy=1
-  for i in {1..3}; do
-    sudo docker info
-    if [ $? -eq 0 ]
+    # Try installing docker
+    time wget -qO- https://get.docker.com | sh
+
+    # Start Docker and listen on :2375 (no auth, but in vnet)
+    echo 'DOCKER_OPTS="-H unix:///var/run/docker.sock -H 0.0.0.0:2375"' | sudo tee /etc/default/docker
+    # the following insecure registry is for OMS
+    echo 'DOCKER_OPTS="$DOCKER_OPTS --insecure-registry 137.135.93.9"' | sudo tee -a /etc/default/docker
+    sudo service docker restart
+
+    ensureDocker()
+    {
+      # ensure that docker is healthy
+      dockerHealthy=1
+      for i in {1..3}; do
+        sudo docker info
+        if [ $? -eq 0 ]
+        then
+          # hostname has been found continue
+          dockerHealthy=0
+          echo "Docker is healthy"
+          sudo docker ps -a
+          break
+        fi
+        sleep 10
+      done
+      if [ $dockerHealthy -ne 0 ]
+      then
+        echo "Docker is not healthy"
+      fi
+    }
+    ensureDocker
+    
+    if [ "$dockerHealthy" == "0" ]
     then
-      # hostname has been found continue
-      dockerHealthy=0
-      echo "Docker is healthy"
-      sudo docker ps -a
-      break
+        # Contrary to what you might expect, a 0 here means docker is working
+        # properly. Break out of the loop.
+        echo "Installed docker successfully."
+        break
     fi
-    sleep 10
-  done
-  if [ $dockerHealthy -ne 0 ]
-  then
-    echo "Docker is not healthy"
-  fi
-}
-ensureDocker
+    
+    echo "Retrying docker install after a bit."
+    sleep 120
+    
+done
+
+if [ "$dockerHealthy" == "1" ]
+then
+    echo "WARNING: Docker could not be installed! Continuing anyway!"
+fi
+
 
 ############
 # setup OMS
@@ -237,7 +264,7 @@ fi
 if ismaster ; then
   quorum=`expr $MASTERCOUNT / 2 + 1`
   echo $quorum | sudo tee /etc/mesos-master/quorum
-  hostname -i | sudo tee /etc/mesos-master/ip
+  hostname -I | sed 's/ /\n/' | grep "^10." | sudo tee /etc/mesos-master/ip
   hostname | sudo tee /etc/mesos-master/hostname
   echo 'Mesos Cluster on Microsoft Azure' | sudo tee /etc/mesos-master/cluster
 fi
@@ -304,7 +331,9 @@ if isagent ; then
   else
     echo "ports:[1-21,23-5050,5052-32000]" | sudo tee /etc/mesos-slave/resources
   fi
-  hostname -i | sudo tee /etc/mesos-slave/ip
+  # Our hostname may not resolve yet, so we look at our IPs and find the 10.
+  # address instead
+  hostname -I | sed 's/ /\n/' | grep "^10." | sudo tee /etc/mesos-slave/ip
   hostname | sudo tee /etc/mesos-slave/hostname
   
   # Set up the Mesos salve work directory in the ephemeral /mnt
