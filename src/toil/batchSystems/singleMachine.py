@@ -117,6 +117,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                               'request of %f cores', coreFractions, self.coreFractions, jobCores)
                     with self.coreFractions.acquisitionOf(coreFractions):
                         log.info("Executing command: '%s'.", jobCommand)
+                        startTime = time.time() #Time job is started
                         with self.popenLock:
                             popen = subprocess.Popen(jobCommand,
                                                      shell=True,
@@ -135,7 +136,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                                 self.runningJobs.pop(jobID)
                         finally:
                             if statusCode is not None and not info.killIntended:
-                                self.outputQueue.put((jobID, statusCode))
+                                self.outputQueue.put((jobID, statusCode, time.time() - startTime))
             finally:
                 log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
                           self.coreFractions.value, self.memory.value)
@@ -210,11 +211,11 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             i = self.outputQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, exitValue = i
+        jobID, exitValue, wallTime = i
         self.jobs.pop(jobID)
         log.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
         self.outputQueue.task_done()
-        return jobID, exitValue
+        return jobID, exitValue, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):

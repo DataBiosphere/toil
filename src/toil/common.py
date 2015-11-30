@@ -26,6 +26,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.lsf import LSFBatchSystem
+from toil.provisioners.clusterScaler import Shape
 
 logger = logging.getLogger( __name__ )
 
@@ -58,14 +59,18 @@ class Config(object):
 
         #Autoscaling options
         self.provisioner = None
+        self.preemptableNodeShape = None
+        self.preemptableNodeName = None
+        self.preemptableBidPrice = None
         self.minPreemptableNodes = 0
         self.maxPreemptableNodes = 10
-        self.minPreemptableTimeToRun = 10.0
-        self.maxPreemptableTimeToRun = 100.0
+        self.nonPreemptableNodeShape = None
+        self.nonPreemptableNodeName = None
         self.minNonPreemptableNodes = 0
         self.maxNonPreemptableNodes = 10
-        self.minNonPreemptableTimeToRun = 10.0
-        self.maxNonPreemptableTimeToRun = 100.0
+        self.alphaPacking = 0.8
+        self.betaInertia = 1.2
+        self.scaleInterval = 360
         
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -160,14 +165,21 @@ class Config(object):
         
         #Autoscaling options
         setOption("provisioner")
-        setOption("minPreemptableNodes")
-        setOption("maxPreemptableNodes")
-        setOption("minPreemptableTimeToRun", float)
-        setOption("maxPreemptableTimeToRun", float)
-        setOption("minNonPreemptableNodes")
-        setOption("maxNonPreemptableNodes")
-        setOption("minNonPreemptableTimeToRun", float)
-        setOption("maxNonPreemptableTimeToRun", float)
+        def parseShape(s):
+            memory, cores, disk, wallTime = s.split()
+            return Shape(human2bytes(memory), int(cores), human2bytes(disk), int(wallTime))
+        setOption("preemptableNodeShape", parseShape)
+        setOption("preemptableNodeName")
+        setOption("preemptableBidPrice")
+        setOption("minPreemptableNodes", int)
+        setOption("maxPreemptableNodes", int)
+        setOption("nonPreemptableNodeShape", parseShape)
+        setOption("nonPreemptableNodeName")
+        setOption("minNonPreemptableNodes", int)
+        setOption("maxNonPreemptableNodes", int)
+        setOption("alphaPacking", float)
+        setOption("betaInertia", float)
+        setOption("scaleInterval", float)
 
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -234,6 +246,7 @@ def _addOptions(addGroupFn, config):
     #
     #Batch system options
     #
+    
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
@@ -258,41 +271,57 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes", 
                              "Allows the specification of the minimum and maximum number of nodes"
                              " in an autoscaled cluster, as well as parameters to control the level of provisioning.")
+    
     addOptionFn("--provisioner", dest="provisioner", default=None, 
                 help=("The provisioner for cluster scaling, currently can be XXX"
                       " default=%s" % config.provisioner))
+    addOptionFn("--preemptableNodeShape", dest="preemptableNodeShape", default=None, 
+                help=("The 'shape' of the preemptable node type to provision, specified"
+                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
+                      " where each attribute specifies, respectively, the memory (bytes),"
+                      " cores, local disk (bytes) and the billing interval (seconds)."
+                      " default=%s" 
+                      % config.preemptableNodeShape))
+    addOptionFn("--preemptableNodeName", dest="preemptableNodeName", default=None, 
+                help=("The name of the preemptable node type to provision. default=%s" 
+                      % config.preemptableNodeName))
+    addOptionFn("--preemptableBidPrice", dest="preemptableBidPrice", default=None, 
+                help=("The bid price, where used (e.g. spot market) for the"
+                      " preemptable node type. default=%s" 
+                      % config.preemptableBidPrice))
     addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None, 
                 help=("Minimum number of preemptable nodes in cluster, if using"
                       " auto-scaling. default=%s" % config.minPreemptableNodes))
     addOptionFn("--maxPreemptableNodes", dest="maxPreemptableNodes", default=None, 
                 help=("Maximum number of preemptable nodes in cluster, if using"
                       " auto-scaling. default=%s" % config.maxPreemptableNodes))
-    addOptionFn("--minPreemptableTimeToRun", dest="minPreemptableTimeToRun", default=None, 
-                help=("Preferred minimum amount of time a preemptable job should"
-                      " wait in the issued queue before starting execution. Increase"
-                      " the minimum to prevent cluster over-provisioning. default=%s" 
-                      % config.minPreemptableTimeToRun))
-    addOptionFn("--maxPreemptableTimeToRun", dest="maxPreemptableTimeToRun", default=None, 
-                help=("Preferred maximum amount of time a preemptable job should"
-                      " wait in the issued queue before starting execution. Decrease"
-                      " the maximum to increase cluster size. default=%s" 
-                      % config.maxPreemptableTimeToRun))
+    
+    addOptionFn("--nonPreemptableNodeShape", dest="nonPreemptableNodeShape", default=None, 
+                help=("The 'shape' of the non-preemptable node type to provision, specified"
+                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
+                      " where each attribute specifies, respectively, the memory (bytes),"
+                      " cores, local disk (bytes) and the billing interval (seconds)."
+                      " default=%s" 
+                      % config.nonPreemptableNodeShape))
+    addOptionFn("--nonPreemptableNodeName", dest="nonPreemptableNodeName", default=None, 
+                help=("The name of the preemptable node type to provision. default=%s" 
+                      % config.nonPreemptableNodeName))
     addOptionFn("--minNonPreemptableNodes", dest="minNonPreemptableNodes", default=None, 
                 help=("Minimum number of non-preemptable nodes in cluster, if "
                       "using auto-scaling. default=%s" % config.minNonPreemptableNodes))
     addOptionFn("--maxNonPreemptableNodes", dest="maxNonPreemptableNodes", default=None, 
                 help=("Maximum number of non-preemptable nodes in cluster, if using"
                       " auto-scaling. default=%s" % config.maxNonPreemptableNodes))
-    addOptionFn("--minNonPreemptableTimeToRun", dest="minNonPreemptableTimeToRun", default=None, 
-                help=("Preferred minimum amount of time a non-preemptable job should"
-                      " wait in the issued queue before starting execution. Increase"
-                      " the minimum to prevent cluster over-provisioning. default=%s" 
-                      % config.minNonPreemptableTimeToRun))
-    addOptionFn("--maxNonPreemptableTimeToRun", dest="maxNonPreemptableTimeToRun", default=None, 
-                help=("Preferred maximum amount of time a non-preemptable job should"
-                      " wait in the issued queue before starting execution. Decrease"
-                      " the maximum to increase cluster size. default=%s" 
-                      % config.maxNonPreemptableTimeToRun))
+
+    #TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
+    addOptionFn("--alphaPacking", dest="alphaPacking", default=None, 
+                help=(" default=%s" % config.alphaPacking))
+    addOptionFn("--betaInertia", dest="betaInertia", default=None, 
+                help=(" default=%s" % config.betaInertia))
+    addOptionFn("--scaleInterval", dest="scaleInterval", default=None, 
+                help=("The interval (seconds) between assessing if the scale of"
+                      " the cluster needs to change. default=%s" % config.scaleInterval))
+    
 
     #
     #Resource requirements

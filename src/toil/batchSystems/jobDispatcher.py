@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-The leader script (of the leader/worker pair) for running jobs.
-"""
 from __future__ import absolute_import
 import logging
 from toil import resolveEntryPoint
@@ -38,6 +35,8 @@ class JobDispatcher:
         self.config = config
         self.jobStore = jobStore
         self.batchSystem = batchSystem
+        self.clusterScaler = None # This an optional parameter which may be set
+        # if doing autoscaling
         self.toilState = ToilState(jobStore, rootJobWrapper)
         self.jobBatchSystemIDToIssuedJob = {} # Map of batch system IDs to IsseudJob tuples
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
@@ -187,7 +186,10 @@ class JobDispatcher:
         """
         updatedJob = self.batchSystem.getUpdatedBatchJob(block)
         if updatedJob != None:
-            jobBatchSystemID, result = updatedJob
+            jobBatchSystemID, result, wallTime = updatedJob
+            if self.clusterScaler != None:
+                self.clusterScaler.addCompletedJob(self.jobBatchSystemIDToIssuedJob[jobBatchSystemID],
+                                                   wallTime)
             if self.hasJob(jobBatchSystemID):
                 if result == 0:
                     logger.debug("Batch system is reporting that the jobWrapper with "

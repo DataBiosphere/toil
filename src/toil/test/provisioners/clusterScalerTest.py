@@ -16,7 +16,7 @@ from __future__ import absolute_import
 from toil.test import ToilTest
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystemInterface
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.leader import ClusterScaler
+from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
 from toil.common import Config
 import time
 from threading import Thread, Event
@@ -26,10 +26,15 @@ from Queue import Queue, Empty
 #from multiprocessing import Queue
 #from Queue import Empty
 import logging
+from toil.batchSystems.jobDispatcher import IssuedJob
+from toil.provisioners.clusterScaler import Shape
+import random
 
 logger = logging.getLogger( __name__ )
 
 #Temporary log stuff - needs to be move to test setup
+
+"""
 logger.setLevel(logging.DEBUG)
 import sys
 ch = logging.StreamHandler(sys.stdout)
@@ -37,11 +42,32 @@ ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
+"""
+
 
 class ClusterScalerTest(ToilTest):
+    def testBinPacking(self):
+        """
+        Tests the bin packing method used by the cluster scaler. 
+        """
+        for test in xrange(50):
+            nodeShape = Shape(wallTime=random.choice(range(1, 100)), 
+                              memory=random.choice(range(1, 10)), 
+                              cores=random.choice(range(1, 10)), 
+                              disk=random.choice(range(1, 10)))
+            randomJobShape = lambda x : Shape(wallTime=random.choice(range(1, (3*x.wallTime)+1)), 
+                                              memory=random.choice(range(1, x.memory+1)), 
+                                              cores=random.choice(range(1, x.cores+1)), 
+                                              disk=random.choice(range(1, x.disk+1)))
+            numberOfJobs = random.choice(range(1, 1000))
+            randomJobShapes = map(lambda i : randomJobShape(nodeShape), xrange(numberOfJobs))
+            startTime = time.time()
+            numberOfBins = RunningJobShapes.binPacking(randomJobShapes, nodeShape)
+            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds" % (nodeShape, numberOfJobs, numberOfBins, time.time()-startTime))
+    
     def clusterScalerTests(self, config, preemptableJobs, nonPreemptableJobs):
         """
-        Creates a simple, dummy scalable batch system interface / provisioner class and 
+        Creates a simple, dummy scalable jobDispatcher interface / provisioner class and 
         uses this to test the ClusterScaler class through a series of 
         tests with different patterns of job creation. Tests ascertain that
         autoscaling occurs and that all the 'jobs' are run.
@@ -49,15 +75,15 @@ class ClusterScalerTest(ToilTest):
         
         class Dummy(AbstractScalableBatchSystemInterface, AbstractProvisioner):
             """
-            Class that mimics a scalable batch system / provisioner
+            Class that mimics a job dispatcher / provisioner
             """
             def __init__(self, config, secondsPerJob):
                 # To mimic parallel preemptable and non-preemptable queues
                 # for jobs we create two parallel instances of the following class
                 class DummyScalingBatchSystem():
                     """
-                    This class implements the methods of AbstractScalableBatchSystemInterface
-                    and AbstractProvisioner, but omits the preemptable flag.
+                    This class implements the methods Provisioner/JobDispatcher class
+                    needed for the ClusterScaler class, but omits the preemptable flag.
                     """
                     def __init__(self):
                         self.jobQueue = Queue()
@@ -73,13 +99,10 @@ class ClusterScalerTest(ToilTest):
                         self.totalJobs += 1
                         self.jobQueue.put(None)
                     
-                    # Methods implementing the AbstractScalableBatchSystemInterface class
+                    # Methods implementing the JobDispatcher/AbstractScalableBatchSystemInterface class
             
-                    def getIssuedQueueSize(self):
+                    def getNumberOfJobsIssued(self):
                         return self.jobQueue.qsize()
-                    
-                    def numberOfRecentJobsStartedPerSecond(self):
-                        return (1.0/secondsPerJob) * len(self.workers) #jobs / worker / second = 1.0 / secondsPerJob
                     
                     def getNumberOfEmptyNodes(self):
                         return sum(map(lambda w : 0 if w.busyEvent.is_set() else 1, self.workers))
@@ -139,8 +162,8 @@ class ClusterScalerTest(ToilTest):
             
             #AbstractScalableBatchSystemInterface methods
                     
-            def getIssuedQueueSize(self, preemptable=False):
-                return self._pick(preemptable).getIssuedQueueSize()
+            def getNumberOfJobsIssued(self, preemptable=False):
+                return self._pick(preemptable).getNumberOfJobsIssued()
                     
             def numberOfRecentJobsStartedPerSecond(self, preemptable=False):
                 return self._pick(preemptable).numberOfRecentJobsStartedPerSecond()
@@ -173,16 +196,27 @@ class ClusterScalerTest(ToilTest):
         map(lambda x : dummy.addJob(), range(nonPreemptableJobs))
         map(lambda x : dummy.addJob(preemptable=True), range(preemptableJobs))
         
+        # Add some completed jobs
+        for preemptable in (True, False):
+            if (preemptable and preemptableJobs > 0) or (not preemptable and nonPreemptableJobs > 0):
+                for i in xrange(1000): #Add a 1000 random jobs
+                    x = config.preemptableNodeShape if preemptable else config.nonPreemptableNodeShape 
+                    iJ = IssuedJob(1, memory=random.choice(range(1, x.memory)), 
+                                   cores=random.choice(range(1, x.cores)), 
+                                   disk=random.choice(range(1, x.disk)),
+                                   preemptable=preemptable)
+                    clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
+        
         logger.info("Waiting for jobs to be processed")
         startTime = time.time()
         # Wait while the cluster the process chunks through the jobs
-        while (dummy.getIssuedQueueSize(preemptable=False) > 0 or 
-               dummy.getIssuedQueueSize(preemptable=True) > 0 or
+        while (dummy.getNumberOfJobsIssued(preemptable=False) > 0 or 
+               dummy.getNumberOfJobsIssued(preemptable=True) > 0 or
                dummy.numberOfWorkers() > 0 or dummy.numberOfWorkers(preemptable=True) > 0):
             logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s"
                         ", preemptable queue size: %s, preemptable workers: %s" % 
-                        (dummy.getIssuedQueueSize(preemptable=False), dummy.numberOfWorkers(preemptable=False),
-                         dummy.getIssuedQueueSize(preemptable=True), dummy.numberOfWorkers(preemptable=True)))
+                        (dummy.getNumberOfJobsIssued(preemptable=False), dummy.numberOfWorkers(preemptable=False),
+                         dummy.getNumberOfJobsIssued(preemptable=True), dummy.numberOfWorkers(preemptable=True)))
             time.sleep(0.5)
         logger.info("We waited %s for cluster to finish" % (time.time() - startTime))
         clusterScaler.shutdown()
@@ -202,13 +236,25 @@ class ClusterScalerTest(ToilTest):
         (makes debugging easier).
         """
         config = Config()
-        #Premptable options
-        config.maxPreemptableNodes = 0
-        #Non preemptable options
+        
+        #Make defaults dummy values
+        config.defaultMemory = 1
+        config.defaultCores = 1
+        config.defaultDisk = 1
+        
+        #No preemptable nodes/jobs
+        config.maxPreemptableNodes = 0 #No preemptable nodes
+        
+        #Non-preemptable parameters
+        config.nonPreemptableNodeShape = Shape(20, 10, 10, 10)
         config.minNonPreemptableNodes = 0
-        config.maxNonPreemptableNodes = 100
-        config.minNonPreemptableTimeToRun = 10.0
-        config.maxNonPreemptableTimeToRun = 20.0
+        config.maxNonPreemptableNodes = 10
+        
+        #Algorithm parameters
+        config.alphaPacking = 0.8
+        config.betaInertia = 1.2
+        config.scaleInterval = 3
+        
         self.clusterScalerTests(config, preemptableJobs=0, nonPreemptableJobs=100)
         
     def testClusterScaler_PreemptableAndNonPreemptableJobs(self):
@@ -216,14 +262,25 @@ class ClusterScalerTest(ToilTest):
         Test scaling simultaneously for a batch of preemptable and non-preemptable jobs.
         """
         config = Config()
-        #Premptable options
-        config.minPreemptableNodes = 0
-        config.maxPreemptableNodes = 100
-        config.minPreemptableTimeToRun = 1.0
-        config.maxPreemptableTimeToRun = 5.0
-        #Non preemptable options
+        
+        #Make defaults dummy values
+        config.defaultMemory = 1
+        config.defaultCores = 1
+        config.defaultDisk = 1
+        
+        #Preemptable node parameters
+        config.nonPreemptableNodeShape = Shape(20, 10, 10, 10)
         config.minNonPreemptableNodes = 0
-        config.maxNonPreemptableNodes = 20
-        config.minNonPreemptableTimeToRun = 10.0
-        config.maxNonPreemptableTimeToRun = 20.0
+        config.maxNonPreemptableNodes = 10
+        
+        #Preemptable node parameters
+        config.preemptableNodeShape = Shape(20, 10, 10, 10)
+        config.minPreemptableNodes = 0
+        config.maxPreemptableNodes = 10
+        
+        #Algorithm parameters
+        config.alphaPacking = 0.8
+        config.betaInertia = 1.2
+        config.scaleInterval = 3
+        
         self.clusterScalerTests(config, preemptableJobs=100, nonPreemptableJobs=100)

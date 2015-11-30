@@ -93,33 +93,30 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
     :return: The return value of the root job's run function.
     """
 
-    ##########################################
-    #Start the stats/logging aggregation process
-    ##########################################
-
+    # Start the stats/logging aggregation process
+   
     stopStatsAndLoggingAggregatorProcess = Queue() #When this is s
     worker = Process(target=statsAndLoggingAggregatorProcess,
                      args=(jobStore, stopStatsAndLoggingAggregatorProcess))
     worker.start()
     
-    ##########################################
-    #Create cluster scaling processes if the provisioner is not None
-    ##########################################
+    # Create the job dispatcher
+   
+    jobDispatcher = JobDispatcher(config, batchSystem, jobStore, rootJobWrapper)
+     
+    # Create cluster scaling processes if the provisioner is not None
      
     if provisioner != None:
-        clusterScaler = ClusterScaler(provisioner, batchSystem, config)
+        clusterScaler = ClusterScaler(provisioner, jobDispatcher, config)
+        jobDispatcher.clusterScaler = clusterScaler
     
-    ##########################################
-    #Create a jobDisbatcher and run the batch
-    ##########################################
+    # Run the batch
     
-    totalFailedJobs = JobDispatcher(config, batchSystem, jobStore, rootJobWrapper).dispatch()
+    totalFailedJobs = jobDispatcher.dispatch()
 
     logger.info("Finished the main loop")
     
-    ##########################################
-    #Shutdown worker nodes if using a provisioning instance 
-    ##########################################
+    # Shutdown worker nodes if using a provisioning instance 
     
     if provisioner != None:
         logger.info("Waiting for workers to shutdown")
@@ -127,26 +124,27 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
         clusterScaler.shutdown()
         logger.info("Worker shutdown complete in %s seconds", time.time() - startTime)
 
-    ##########################################
-    #Finish up the stats/logging aggregation process
-    ##########################################
+    # Finish up the stats/logging aggregation process
     
     logger.info("Waiting for stats and logging collator process to finish")
     startTime = time.time()
     stopStatsAndLoggingAggregatorProcess.put(True)
     worker.join()
     logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
-    # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
-    #Parse out the return value from the root job
+    # Parse out the return value from the root job
+    
     with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
         jobStoreFileID = fH.read()
     with jobStore.readFileStream(jobStoreFileID) as fH:
         rootJobReturnValue = cPickle.load(fH)
     
+    # Decide how to exit
+    
     if totalFailedJobs > 0:
         if config.clean == "onError" or config.clean == "always" :
             jobStore.deleteJobStore()
+        # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
         raise FailedJobsException( config.jobStore, totalFailedJobs )
 
     if config.clean == "onSuccess" or config.clean == "always":

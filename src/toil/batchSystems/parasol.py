@@ -254,7 +254,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def getUpdatedBatchJob(self, maxWait):
         while True:
             try:
-                jobID, status = self.updatedJobsQueue.get(timeout=maxWait)
+                jobID, status, wallTime = self.updatedJobsQueue.get(timeout=maxWait)
             except Empty:
                 return None
             try:
@@ -263,7 +263,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 # We tried to kill this job, but it ended by itself instead, so skip it.
                 pass
             else:
-                return jobID, status
+                return jobID, status, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
@@ -319,7 +319,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         else:
                             status = -status
                         self.cpuUsageQueue.put(jobId)
-                        self.updatedJobsQueue.put((jobId, status))
+                        self.updatedJobsQueue.put((jobId, status, float(endTime) - float(startTime)))
                 time.sleep(1)
         except:
             logger.warn("Error occurred while parsing parasol results files.")
