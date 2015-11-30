@@ -105,7 +105,7 @@ class hidden:
 
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
-            updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs
             # queue should be job 3. If the first two jobs were (incorrectly) added
@@ -133,13 +133,13 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
                 self.assertEqual(updatedID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
                 self.assertEqual(updatedID, job5)
 
@@ -314,7 +314,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
                                 self.assertIsNotNone(job)
-                                jobId, status = job
+                                jobId, status, userTime = job
                                 self.assertEquals(status, 0)
                                 # would raise KeyError on absence
                                 jobIds.remove(jobId)
