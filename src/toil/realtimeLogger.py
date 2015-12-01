@@ -32,77 +32,56 @@ import collections
 import logging
 import logging.handlers
 import SocketServer
-import struct
 import socket
 import threading
 
-class LoggingDatagramHandler(SocketServer.DatagramRequestHandler):
+class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
     Receive logging messages from the jobs and display them on the master.
     
-    Uses length-prefixed JSON message encoding.
+    Uses bare JSON message encoding.
     """
     
     def handle(self):
         """
-        Handle messages coming in over self.connection.
+        Handle a single message. SocketServer takes care of splitting out the
+        messages.
         
-        Messages are 4-byte-length-prefixed JSON-encoded logging module records.
+        Messages are JSON-encoded logging module records.
         """
         
-        while True:
-            # Loop until we run out of messages
-        
-            # Parse the length
-            length_data = self.rfile.read(4)
-            if len(length_data) < 4:
-                # The connection was closed, or we didn't get enough data
-                # TODO: complain?
-                break
-                
-            # Actually parse the length
-            length = struct.unpack(">L", length_data)[0]
-            
-            # This is where we'll put the received message
-            message_parts = []
-            length_received = 0
-            while length_received < length:
-                # Keep trying to get enough data
-                part = self.rfile.read(length - length_received)
-                
-                length_received += len(part)
-                message_parts.append(part)
-                
-            # Stitch it all together
-            message = "".join(message_parts)
+        # Unpack the data from the request
+        data, socket = self.request
 
-            try:
+        try:
+            # Parse it as JSON
+            message_attrs = json.loads(data)
             
-                # Parse it as JSON
-                message_attrs = json.loads(message)
-                
-                # Fluff it up into a proper logging record
-                record = logging.makeLogRecord(message_attrs)
-            except:
-                logging.error("Malformed record")
-                
-            # TODO: do log level filtering
-            logging.getLogger("remote").handle(record)
+            # Fluff it up into a proper logging record
+            record = logging.makeLogRecord(message_attrs)
+        except:
+            # Complain someone is sending us bad logging data
+            logging.error("Malformed log message from {}".format(
+                self.client_address[0]))
+            
+        # Log level filtering should have been done on the remote end. The
+        # handle() method skips it on this end.
+        logging.getLogger("remote").handle(record)
             
 class JSONDatagramHandler(logging.handlers.DatagramHandler):
     """
     Send logging records over UDP serialized as JSON.
+    
+    They have to fit in a single UDP datagram, so don't try to log more than
+    64kb at once.
     """
     
     def makePickle(self, record):
         """
-        Actually, encode the record as length-prefixed JSON instead.
+        Actually, encode the record as bare JSON instead.
         """
         
-        json_string = json.dumps(record.__dict__)
-        length = struct.pack(">L", len(json_string))
-        
-        return length + json_string
+        return json.dumps(record.__dict__)
         
 class RealtimeLogger(object):
     """
