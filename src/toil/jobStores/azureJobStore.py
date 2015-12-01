@@ -148,7 +148,13 @@ class AzureJobStore(AbstractJobStore):
                        predecessorNumber=predecessorNumber)
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
-        self.jobItems.insert_entity(entity=entity)
+        try:
+            self.jobItems.insert_entity(entity=entity)
+        except WindowsAzureConflictError as e:
+            # A conflict on insert probably means we retried but already
+            # succeeded. Just ignore it. We made a _newJobID() ourselves, so
+            # unless that's broken we can't be re-using a job ID.
+            logger.warning("Conflict when inserting job %s" % jobStoreId)
         return job
 
     def exists(self, jobStoreID):
