@@ -83,6 +83,23 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
         
         return json.dumps(record.__dict__)
         
+class RealtimeLoggerMetaclass(type):
+    """
+    Metaclass for RealtimeLogger that lets you do things like
+    RealtimeLogger.warning(), RealtimeLogger.info(), etc.
+    
+    """
+    
+    def __getattr__(self, name):
+        """
+        If a real attribute can't be found, try one of the logging methods on
+        the actual logger object.
+        
+        """
+        
+        return getattr(self.get_logger(), name)
+    
+        
 class RealtimeLogger(object):
     """
     All-static class for getting a logger that logs over UDP to the master.
@@ -94,10 +111,12 @@ class RealtimeLogger(object):
     2. From a running job on a worker, do:
     
     from toil.realtimeLogger import RealtimeLogger
-    realtime = RealtimeLogger.get()
-    realtime.info("This is a logging message that goes straight to the master")
+    RealtimeLogger.info("This logging message goes straight to the master")
     
     """
+    
+    # Enable RealtimeLogger.info() syntactic sugar
+    __metaclass__ = RealtimeLoggerMetaclass
     
     # Also the logger
     logger = None
@@ -149,9 +168,9 @@ class RealtimeLogger(object):
         cls.server_thread.join()
   
     @classmethod
-    def get(cls):
+    def get_logger(cls):
         """
-        Get the logger that logs to master.
+        Get the logger that logs to the master.
         
         Note that if the master logs here, you will see the message twice,
         since it still goes to the normal log handlers too.
