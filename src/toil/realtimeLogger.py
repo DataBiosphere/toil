@@ -22,6 +22,8 @@ scripts can use for debugging.
 
 from __future__ import absolute_import
 
+import toil.lib.bioio
+
 import sys
 import os
 import os.path
@@ -126,12 +128,15 @@ class RealtimeLogger(object):
     server_thread = None
   
     @classmethod
-    def start_master(cls):
+    def start_master(cls, level="INFO"):
         """
         Start up the master server and put its details into the options
         namespace.
         
         Python logging should have already been configured.
+        
+        Takes an optional log level, as a string level name, from the set
+        supported by bioio.
         
         """
         
@@ -146,11 +151,12 @@ class RealtimeLogger(object):
         cls.server_thread.daemon = True
         cls.server_thread.start()
         
-        # Set options for logging in the class and the options namespace
-        # Save them in the environment so they get sent out to jobs
+        # Set options for logging in the environment so they get sent out to
+        # jobs
         os.environ["RT_LOGGING_HOST"] = socket.getfqdn()
         os.environ["RT_LOGGING_PORT"] = str(
             cls.logging_server.server_address[1])
+        os.environ["RT_LOGGING_LEVEL"] = level
         
         
     @classmethod
@@ -176,7 +182,11 @@ class RealtimeLogger(object):
             # Only do the setup once, so we don't add a handler every time we
             # log
             cls.logger = logging.getLogger('realtime')
-            cls.logger.setLevel(logging.INFO)
+            
+            if os.environ.has_key("RT_LOGGING_LEVEL"):
+                # Adopt the logging level set on the master.
+                toil.lib.bioio.setLogLevel(os.environ["RT_LOGGING_LEVEL"],
+                    cls.logger)
             
             if (os.environ.has_key("RT_LOGGING_HOST") and
                 os.environ.has_key("RT_LOGGING_PORT")):

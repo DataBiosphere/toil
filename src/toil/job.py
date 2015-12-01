@@ -419,9 +419,12 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
-            # Set up real-time log message reception, and put the details in the
-            # environment to be sent out to workers.
-            RealtimeLogger.start_master()
+            
+            if options.realTimeLogging:
+                # Set up real-time log message reception, and put the details in the
+                # environment to be sent out to workers.
+                RealtimeLogger.start_master(level=options.logLevel)
+                
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 if options.restart:
                     jobStore.clean(job._loadRootJob(jobStore)) #This cleans up any half written jobs after a restart
