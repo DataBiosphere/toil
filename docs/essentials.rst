@@ -4,43 +4,74 @@ Toil
 Features
 --------
 
-Toil is a workflow engine written in 100% Python. It features:
-    *  Easy installation 
-        - e.g. "pip install toil".
-    *  A small API 
-        - Easily mastered, the user API is built upon one core class.
-    *  Cross platform support 
-        - Develop and test on your laptop then deploy on any of the following:
-            - Commercial clouds
-                + `Amazon Web Services`_ (including the `spot market`_)
-                + `Microsoft Azure`_
-            - Private clouds
-                + `OpenStack`_
-            - High Performance Computing Environments
-                + `GridEngine`_
-                + `Mesos`_
-                + `Parasol`_
-            - Individual multi-core machines
-    *  Complete file and stream management 
-        - Temporary and persistent file management that abstracts the details of the underlying file system, providing a uniform interface regardless of environment. Supports both atomic file transfer and streaming interfaces, and provides encryption of user data.
-    *  Scalability 
-        - Toil can easily handle workflows concurrently using hundreds of nodes and thousands of cores. 
-    *  Robustness 
-        - Toil workflows support arbitrary worker and leader failure, with strong check-pointing that always allows resumption.
-    *  Efficiency
-        - Caching, fine grained, per task, resource requirement specifications, and support for the AWS spot market mean workflows can be executed with little waste. 
-    *  Declarative and dynamic workflow creation
-        - Workflows can be declared statically, but new jobs can be added dynamically during execution within any existing job, allowing arbitrarily complex workflow graphs with millions of jobs within them.
-    *  Support for databases and services. 
-        - For example, Apache Spark clusters can be created in seconds and easily integrated within a toil workflow as a service, with precisely defined time start and end times that fits with the flow of other jobs in the workflow.
-    *  Draft Common Workflow Language (CWL) support
-        - Complete support for the draft 2.0 CWL specification, allowing it to execute CWL workflows.
-    *  Open source
-        - An Apache license allows unrestricted use.
-        
+Toil is a workflow engine entirely written in Python. It features:
+
+* Easy installation, e.g. ``pip install toil``.
+
+* A small API 
+  
+  Easily mastered, the user API is built upon one core class.
+
+* Cross platform support 
+  
+  Develop and test on your laptop then deploy on any of the following:
+  
+  - Commercial clouds
+    + `Amazon Web Services`_ (including the `spot market`_)
+    + `Microsoft Azure`_
+  - Private clouds
+    + `OpenStack`_
+  - High Performance Computing Environments
+    + `GridEngine`_
+    + `Apache Mesos`_
+    + `Parasol`_
+    + Individual multi-core machines
+       
+* Complete file and stream management:
+   
+  Temporary and persistent file management that abstracts the details of the
+  underlying file system, providing a uniform interface regardless of
+  environment. Supports both atomic file transfer and streaming interfaces, and
+  provides encryption of user data.
+   
+* Scalability:
+
+  Toil can easily handle workflows concurrently using hundreds of nodes and
+  thousands of cores.
+
+* Robustness:
+
+  Toil workflows support arbitrary worker and leader failure, with strong
+  check-pointing that always allows resumption.
+
+* Efficiency:
+
+  Caching, fine grained, per task, resource requirement specifications, and
+  support for the AWS spot market mean workflows can be executed with little
+  waste.
+
+* Declarative and dynamic workflow creation:
+
+  Workflows can be declared statically, but new jobs can be added dynamically
+  during execution within any existing job, allowing arbitrarily complex
+  workflow graphs with millions of jobs within them.
+
+* Support for databases and services:
+
+  For example, Apache Spark clusters can be created in seconds and easily
+  integrated within a toil workflow as a service, with precisely defined time
+  start and end times that fits with the flow of other jobs in the workflow.
+
+* Draft Common Workflow Language (CWL) support
+  
+  Complete support for the draft 2.0 CWL specification, allowing it to execute
+  CWL workflows.
+
+* Open Source: An Apache license allows unrestricted use.
+
 .. _GridEngine: http://gridscheduler.sourceforge.net/
 .. _Parasol: https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
-.. _Mesos: http://mesos.apache.org/
+.. _Apache Mesos: http://mesos.apache.org/
 .. _spot market: https://aws.amazon.com/ec2/spot/
 .. _Microsoft Azure: https://azure.microsoft.com
 .. _Amazon Web Services: https://aws.amazon.com/
@@ -78,19 +109,71 @@ like support for Mesos or AWS. To install Toil with all bells and whistles use
 Here's what each extra provides:
 
 * The ``aws`` extra provides support for storing workflow state in Amazon AWS.
+  This extra has no native dependencies.
 
-* The ``azure`` extra stores workflow state in Microsoft Azure Storage.
+* The ``azure`` extra stores workflow state in Microsoft Azure Storage. This
+  extra has no native dependencies.
 
 * The ``mesos`` extra provides support for running Toil on an `Apache Mesos`_
   cluster. Note that running Toil on SGE (GridEngine), Parasol or a single
-  machine is enabled by default and does not require an extra.
+  machine does not require an extra. The ``mesos`` extra requires the following
+  native dependencies:
+
+  * :ref:`Apache Mesos <mesos>`
+  * :ref:`Python headers and static libraries <python-dev>`
 
 * The ``encryption`` extra provides client-side encryption for files stored in
-  the Azure and AWS job stores. Note that if you install Toil without the
-  ``encryption`` extra, files in these job stores will **not** be encrypted,
-  even if you provide encryption keys (see issue #407).
+  the Azure and AWS job stores. This extra requires the following native
+  dependencies:
+  
+  * :ref:`Python headers and static libraries <python-dev>`
+  * :ref:`Libffi headers and library <libffi-dev>`
+  
+.. _mesos:
+.. topic:: Apache Mesos
 
-.. _Apache Mesos: http://mesos.apache.org/gettingstarted/
+   Only needed for the ``mesos`` extra. Toil has been tested with version
+   0.25.0. Mesos can be installed on Linux by following the instructions on
+   https://open.mesosphere.com/getting-started/install/. The `Homebrew`_
+   package manager has a formula for Mesos such that running ``brew install
+   mesos`` is probably the easiest way to install Mesos on OS X. This assumes,
+   of course, that you already have `Xcode`_ and `Homebrew`_.
+
+   Please note that even though Toil depends on the Python bindings for Mesos,
+   it does not explicitly declare that dependency and they will **not** be
+   installed automatically when you run ``pip install toil[mesos]``. You need
+   to install the bindings manually. The `Homebrew`_ formula for OS X installs
+   them by default. On Ubuntu you will need to download the appropriate .egg
+   from https://open.mesosphere.com/downloads/mesos/ and install it using
+   ``easy_install -a <path_to_egg>``. Note that on Ubuntu Trusty you may need
+   to upgrade ``protobuf`` via ``pip install --upgrade protobuf`` **before**
+   running the above ``easy_install`` command.
+
+.. _python-dev:
+.. topic:: Python headers and static libraries
+
+   Only needed for the ``mesos`` and ``encryption`` extras. The Python headers
+   and static libraries can be installed on Ubuntu/Debian by running ``sudo
+   apt-get install build-essential python-dev`` and accordingly on other Linux
+   distributions. On Mac OS X, these headers and libraries are installed when
+   you install the `Xcode`_ command line tools by running ``xcode-select
+   --install``, assuming, again, that you have `Xcode`_ installed.
+
+.. _libffi-dev:
+.. topic:: Libffi headers and library
+
+   `Libffi`_ is only needed for the ``encryption`` extra. To install `Libffi`_
+   on Ubuntu, run ``sudo apt-get install libffi-dev``. On Mac OS X, run ``brew
+   install libffi``. This assumes, of course, that you have `Xcode`_ and
+   `Homebrew`_ installed.
+
+.. _Apache Mesos: http://mesos.apache.org/
+
+.. _Libffi: https://sourceware.org/libffi/
+
+.. _Xcode: https://developer.apple.com/xcode/
+
+.. _Homebrew: http://brew.sh/
 
 Scripting Quick Start
 ---------------------
@@ -145,6 +228,7 @@ If cloning from GitHub, running
 
 will install Toil in *editable* mode, also known as `development mode`_. Just
 like with a regular install, you may specify extras to use in development mode
+after installing any native dependencies listed in :ref:`installation-ref`.
 
 ::
 
@@ -185,12 +269,9 @@ Azure extra, the following can be used::
 Running Mesos Tests
 ~~~~~~~~~~~~~~~~~~~
 
-Install Mesos according to the official instructions. On OS X with Homebrew,
-``brew install mesos`` should be sufficient.
-
-Create the virtualenv with ``--system-site-packages`` to ensure that the Mesos
-Python packages are included. Verify by activating the virtualenv and running
-.. ``pip list | grep mesos``. On OS X, this may come up empty. To fix it, run the
-following::
+See :ref:`Apache Mesos <mesos>`. Be sure to create the virtualenv with
+``--system-site-packages`` to include the Mesos Python bindings. Verify by
+activating the virtualenv and running .. ``pip list | grep mesos``. On OS X,
+this may come up empty. To fix it, run the following::
 
     for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
