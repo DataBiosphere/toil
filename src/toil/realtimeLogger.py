@@ -153,10 +153,10 @@ class RealtimeLogger(object):
         
         # Set options for logging in the environment so they get sent out to
         # jobs
-        os.environ["RT_LOGGING_HOST"] = socket.getfqdn()
-        os.environ["RT_LOGGING_PORT"] = str(
+        os.environ["TOIL_RT_LOGGING_HOST"] = socket.getfqdn()
+        os.environ["TOIL_RT_LOGGING_PORT"] = str(
             cls.logging_server.server_address[1])
-        os.environ["RT_LOGGING_LEVEL"] = level
+        os.environ["TOIL_RT_LOGGING_LEVEL"] = level
         
         
     @classmethod
@@ -183,18 +183,18 @@ class RealtimeLogger(object):
             # log
             cls.logger = logging.getLogger('realtime')
             
-            if os.environ.has_key("RT_LOGGING_LEVEL"):
+            if os.environ.has_key("TOIL_RT_LOGGING_LEVEL"):
                 # Adopt the logging level set on the master.
-                toil.lib.bioio.setLogLevel(os.environ["RT_LOGGING_LEVEL"],
+                toil.lib.bioio.setLogLevel(os.environ["TOIL_RT_LOGGING_LEVEL"],
                     cls.logger)
             
-            if (os.environ.has_key("RT_LOGGING_HOST") and
-                os.environ.has_key("RT_LOGGING_PORT")):
+            if (os.environ.has_key("TOIL_RT_LOGGING_HOST") and
+                os.environ.has_key("TOIL_RT_LOGGING_PORT")):
                 # We know where to send messages to, so send them.
             
                 cls.logger.addHandler(JSONDatagramHandler(
-                    os.environ["RT_LOGGING_HOST"],
-                    int(os.environ["RT_LOGGING_PORT"])))
+                    os.environ["TOIL_RT_LOGGING_HOST"],
+                    int(os.environ["TOIL_RT_LOGGING_PORT"])))
         
         return cls.logger
 
