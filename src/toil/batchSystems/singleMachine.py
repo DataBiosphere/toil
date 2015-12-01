@@ -23,6 +23,8 @@ import math
 from threading import Thread
 from threading import Lock, Condition
 from Queue import Queue, Empty
+
+import toil
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 log = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     concurrently.
     """
 
-    physicalMemory = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         if maxCores > self.numCores:
