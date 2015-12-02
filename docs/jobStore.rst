@@ -17,5 +17,5 @@ Toil Abstract Job Store API
 The :class:`toil.jobStores.abstractJobStore.AbstractJobStore` API is implemented to
 support a give file store, e.g. S3.
 
-.. autoclass:: toil.batchSystems.abstractJobStore::AbstractJobStore
+.. autoclass:: toil.jobStores.abstractJobStore::AbstractJobStore
    :members:  
