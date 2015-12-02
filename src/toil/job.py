@@ -163,7 +163,7 @@ class Job(object):
         """
         Adds a function as a child job.
         
-        :param fn: Function to be run as a child job with *args and **kwargs as \
+        :param fn: Function to be run as a child job with ``*args`` and ``**kwargs`` as \
         arguments to this function. See toil.job.FunctionWrappingJob for reserved \
         keyword arguments used to specify resource requirements.
         :return: The new child job that wraps fn.
@@ -175,7 +175,7 @@ class Job(object):
         """
         Adds a function as a follow-on job.
         
-        :param fn: Function to be run as a follow-on job with *args and **kwargs as \
+        :param fn: Function to be run as a follow-on job with ``*args`` and ``**kwargs`` as \
         arguments to this function. See toil.job.FunctionWrappingJob for reserved \
         keyword arguments used to specify resource requirements.
         :return: The new follow-on job that wraps fn.
@@ -188,7 +188,7 @@ class Job(object):
         Adds a job function as a child job. See :class:`toil.job.JobFunctionWrappingJob`
         for a definition of a job function.
         
-        :param fn: Job function to be run as a child job with *args and **kwargs as \
+        :param fn: Job function to be run as a child job with ``*args`` and ``**kwargs`` as \
         arguments to this function. See toil.job.JobFunctionWrappingJob for reserved \
         keyword arguments used to specify resource requirements.
         :return: The new child job that wraps fn.
@@ -201,7 +201,7 @@ class Job(object):
         Add a follow-on job function. See :class:`toil.job.JobFunctionWrappingJob`
         for a definition of a job function.
         
-        :param fn: Job function to be run as a follow-on job with *args and **kwargs as \
+        :param fn: Job function to be run as a follow-on job with ``*args`` and ``**kwargs`` as \
         arguments to this function. See toil.job.JobFunctionWrappingJob for reserved \
         keyword arguments used to specify resource requirements.
         :return: The new follow-on job that wraps fn.
@@ -215,7 +215,7 @@ class Job(object):
         Makes a Job out of a function. \
         Convenience function for constructor of :class:`toil.job.FunctionWrappingJob`.
         
-        :param fn: Function to be run with *args and **kwargs as arguments. \
+        :param fn: Function to be run with ``*args`` and ``**kwargs`` as arguments. \
         See toil.job.JobFunctionWrappingJob for reserved keyword arguments used \
         to specify resource requirements.
         :return: The new function that wraps fn.
@@ -229,7 +229,7 @@ class Job(object):
         Makes a Job out of a job function. \
         Convenience function for constructor of :class:`toil.job.JobFunctionWrappingJob`.
         
-        :param fn: Job function to be run with *args and **kwargs as arguments. \
+        :param fn: Job function to be run with ``*args`` and ``**kwargs`` as arguments. \
         See toil.job.JobFunctionWrappingJob for reserved keyword arguments used \
         to specify resource requirements.
         :return: The new job function that wraps fn.
@@ -299,6 +299,7 @@ class Job(object):
         """
         :return: The roots of the connected component of jobs that contains this job. \
         A root is a job with no predecessors.
+
         :rtype : set of toil.job.Job instances
         """
         roots = set()
@@ -343,7 +344,7 @@ class Job(object):
         an edge an "implied" edge. The augmented job graph is a job graph including \
         all the implied edges.
 
-        For a job graph G = (V, E) the algorithm is O(|V|^2). It is O(|V| + |E|) for \
+        For a job graph G = (V, E) the algorithm is ``O(|V|^2)``. It is ``O(|V| + |E|)`` for \
         a graph with no follow-ons. The former follow-on case could be improved!
         """
         #Get the root jobs
@@ -600,8 +601,8 @@ class Job(object):
             """
             Get a copy of a file in the job store. 
             
-            :param string userPath: a path to the name of file to which the global \ 
-            file will be copied or hard-linked (see below). 
+            :param string userPath: a path to the name of file to which the global \
+            file will be copied or hard-linked (see below).
             
             :param boolean cache: If True will use caching (see below). Caching will \
             attempt to keep copies of files between sequences of jobs run on the same \
@@ -622,7 +623,8 @@ class Job(object):
             this will result in two copies of the file on the system.
             
             :return: an absolute path to a local, temporary copy of the file keyed \
-            by fileStoreID. 
+            by fileStoreID.
+
             :rtype : string
             """
             if fileStoreID in self.filesToDelete:
@@ -1339,7 +1341,7 @@ class FunctionWrappingJob(Job):
     def __init__(self, userFunction, *args, **kwargs):
         """
         :param userFunction: The function to wrap. The userFunction will be called \
-        with the *args and **kwargs as arguments. 
+        with the ``*args`` and ``**kwargs`` as arguments.
         
         The keywords "memory", "cores", "disk", "cache" are reserved keyword arguments \
         that if specified will be used to determine the resources for the job, \
@@ -1401,6 +1403,7 @@ class EncapsulatedJob(Job):
     
     Let A be the root job of a job subgraph and B be another job we'd like to run after A
     and all its successors have completed, for this use encapsulate::
+
         A, B = A(), B() #Job A and subgraph, Job B
         A' = A.encapsulate()
         A'.addChild(B) #B will run after A and all its successors have 
