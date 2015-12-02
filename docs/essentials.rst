@@ -179,7 +179,8 @@ Scripting Quick Start
 ---------------------
 
 Toil's Job class (:class:`toil.job.Job`) contains the Toil API, documented below.
-To begin, consider this short toil script which illustrates defining a workflow:: 
+To begin, consider this short toil script which illustrates defining a workflow::
+
     from toil.job import Job
          
     def helloWorld(message, memory="2G", cores=2, disk="3G"):
