@@ -613,7 +613,9 @@ class AzureJob(JobWrapper):
 
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
-    return isinstance(exception, WindowsAzureError) and timeoutMsg in str(exception)
+    busyMsg = "Service Unavailable"
+    return isinstance(exception, WindowsAzureError) and (timeoutMsg in str(exception)
+        or busyMsg in str(exception))
 
 
 def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
