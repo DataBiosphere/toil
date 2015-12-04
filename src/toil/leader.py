@@ -18,13 +18,14 @@ The leader script (of the leader/worker pair) for running jobs.
 from __future__ import absolute_import
 import logging
 import time
-import xml.etree.cElementTree as ET
+import json
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
 import cPickle
-from toil.lib.bioio import getTotalCpuTime
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.batchSystems.jobDispatcher import JobDispatcher
+from bd2k.util.expando import Expando
+from toil.lib.bioio import getTotalCpuTime
 
 logger = logging.getLogger( __name__ )
 
@@ -39,43 +40,39 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
     Works inside of a separate process, collates as long as the stop flag is 
     not True.
     """
-    #Overall timing
+    #  Overall timing
     startTime = time.time()
     startClock = getTotalCpuTime()
 
-    #Start off the stats file
-    with jobStore.writeSharedFileStream("statsAndLogging.xml") as fileHandle:
-        fileHandle.write('<?xml version="1.0" ?><stats>')
-
-        #Call back function
-        def statsAndLoggingCallBackFn(fileHandle2):
-            node = ET.parse(fileHandle2).getroot()
-            nodesNamed = node.find("messages").findall
-            for message in nodesNamed("message"):
-                logger.log(int(message.attrib["level"]), "Got message from job at time: %s : %s",
+    def callback(fileHandle):
+        stats = json.load(fileHandle, object_hook=Expando)
+        workers = stats.workers
+        try:
+            logs = workers.log
+        except AttributeError:
+            # To be expected if there were no calls to logToMaster()
+            pass
+        else:
+            for message in logs:
+                logger.log(int(message.level),
+                           "Got message from job at time: %s : %s",
                            time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
-            for log in nodesNamed("log"):
-                logger.info("%s:     %s" %
-                                    tuple(log.text.split("!",1)))# the jobID is separated from log by "!"
-            ET.ElementTree(node).write(fileHandle)
 
-        #The main loop
-        timeSinceOutFileLastFlushed = time.time()
-        while True:
-            if not stop.empty(): #This is a indirect way of getting a message to
-                #the process to exit
-                jobStore.readStatsAndLogging(statsAndLoggingCallBackFn)
-                break
-            if jobStore.readStatsAndLogging(statsAndLoggingCallBackFn) == 0:
-                time.sleep(0.5) #Avoid cycling too fast
-            if time.time() - timeSinceOutFileLastFlushed > 60: #Flush the
-                #results file every minute
-                fileHandle.flush()
-                timeSinceOutFileLastFlushed = time.time()
+        for log in stats.logs:
+            logger.info("%s:     %s", log.jobStoreID, log.text)
 
-        #Finish the stats file
-        fileHandle.write("<total_time time='%s' clock='%s'/></stats>" % \
-                         (str(time.time() - startTime), str(getTotalCpuTime() - startClock)))
+    while True:
+        # This is a indirect way of getting a message to the process to exit
+        if not stop.empty():
+            jobStore.readStatsAndLogging(callback)
+            break
+        if jobStore.readStatsAndLogging(callback) == 0:
+            time.sleep(0.5)  # Avoid cycling too fast
+
+    # Finish the stats file
+    text = json.dumps(dict(total_time=str(time.time() - startTime),
+                           total_clock=str(getTotalCpuTime() - startClock)))
+    jobStore.writeStatsAndLogging(text)
 
 class FailedJobsException( Exception ):
     def __init__( self, jobStoreString, numberOfFailedJobs ):

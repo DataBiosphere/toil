@@ -113,8 +113,11 @@ class AzureJobStore(AbstractJobStore):
         if self.config.cseKey is not None:
             self.keyPath = self.config.cseKey
 
-    # tables must be alphanumeric
+    # Table names must be alphanumeric
     nameSeparator = 'xx'
+
+    # Length of a jobID - used to test if a stats file has been read already or not
+    jobIDLength = len(str(uuid.uuid4()))
 
     def qualify(self, name):
         return self.namePrefix + self.nameSeparator + name
@@ -270,15 +273,25 @@ class AzureJobStore(AbstractJobStore):
                                                      encrypted=str(encrypted)))
         self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID})
 
-    def readStatsAndLogging(self, statsAndLoggingCallbackFn):
+    def readStatsAndLogging(self, callback, readAll=False):
+        suffix = '_old'
         numStatsFiles = 0
         for entity in self.statsFileIDs.query_entities():
             jobStoreFileID = entity.RowKey
-            with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
-                statsAndLoggingCallbackFn(fd)
-            self.statsFiles.delete_blob(blob_name=jobStoreFileID)
-            self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
-            numStatsFiles += 1
+            hasBeenRead = len(jobStoreFileID) > self.jobIDLength
+            if not hasBeenRead:
+                with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
+                    callback(fd)
+                # Mark this entity as read by appending the suffix
+                self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID + suffix})
+                self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
+                numStatsFiles += 1
+            elif readAll:
+                # Strip the suffix to get the original ID
+                jobStoreFileID = jobStoreFileID[:-len(suffix)]
+                with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
+                    callback(fd)
+                numStatsFiles += 1
         return numStatsFiles
 
     _azureTimeFormat = "%Y-%m-%dT%H:%M:%SZ"

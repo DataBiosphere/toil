@@ -16,16 +16,16 @@ from __future__ import absolute_import
 
 import os
 import sys
-import unittest
-from subprocess import CalledProcessError
-import toil
+from subprocess import CalledProcessError, check_call
 
-from toil.lib.bioio import system
+import toil
+import toil.test.sort.sort
+from toil import resolveEntryPoint
+from toil.job import Job
 from toil.lib.bioio import getTempFile
-from toil import toilPackageDirPath, resolveEntryPoint
+from toil.lib.bioio import system
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
-import toil.test.sort.sort
 
 
 class UtilsTest(ToilTest):
@@ -159,4 +159,17 @@ class UtilsTest(ToilTest):
         # Check the file is properly sorted
         with open(self.tempFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-        self.assertEquals(self.correctSort, l2)
+            self.assertEquals(self.correctSort, l2)
+
+    def testUnicodeSupport(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.clean = 'always'
+        options.logLevel = 'debug'
+        Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
+
+
+def printUnicodeCharacter():
+    # We want to get a unicode character to stdout but we can't print it directly because of
+    # Python encoding issues. To work around this we print in a separate Python process. See
+    # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
+    check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
