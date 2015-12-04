@@ -488,11 +488,13 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     ##########################################
     #Finish up the stats/logging aggregation process
     ##########################################
-    logger.info("Waiting for stats and logging collator process to finish")
+    logger.info('Waiting for stats and logging collator process to finish ...')
     startTime = time.time()
     stopStatsAndLoggingAggregatorProcess.put(True)
     worker.join()
-    logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
+    if worker.exitcode != 0:
+        raise RuntimeError('Stats/logging collator failed with exit code %d.' % worker.exitcode)
+    logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
     # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
     #Parse out the return value from the root job
