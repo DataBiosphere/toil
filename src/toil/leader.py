@@ -44,20 +44,23 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
 
     def callback(fileHandle):
         stats = json.load(fileHandle, object_hook=Expando)
-        workers = stats.workers
         try:
-            logs = workers.log
+            logs = stats.workers.log
         except AttributeError:
             # To be expected if there were no calls to logToMaster()
             pass
         else:
             for message in logs:
                 logger.log(int(message.level),
-                           "Got message from job at time: %s : %s",
-                           time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
-
-        for log in stats.logs:
-            logger.info("%s:     %s", log.jobStoreID, log.text)
+                           'Got message from job at time %s: %s',
+                           time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+        try:
+            logs = stats.logs
+        except AttributeError:
+            pass
+        else:
+            for log in logs:
+                logger.info("%s:    %s", log.jobStoreID, log.text)
 
     while True:
         # This is a indirect way of getting a message to the process to exit
@@ -488,11 +491,13 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper):
     ##########################################
     #Finish up the stats/logging aggregation process
     ##########################################
-    logger.info("Waiting for stats and logging collator process to finish")
+    logger.info('Waiting for stats and logging collator process to finish ...')
     startTime = time.time()
     stopStatsAndLoggingAggregatorProcess.put(True)
     worker.join()
-    logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
+    if worker.exitcode != 0:
+        raise RuntimeError('Stats/logging collator failed with exit code %d.' % worker.exitcode)
+    logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
     # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
     #Parse out the return value from the root job
