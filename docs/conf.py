@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Toil documentation build configuration file, created by
 # sphinx-quickstart on Tue Aug 25 12:37:16 2015.
@@ -16,13 +15,26 @@ import sys
 import os
 import inspect
 import re
-import shlex
-from toil.version import version as toilVersion
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath('../src/toil/'))
+sys.path.insert(0, os.path.abspath('../src'))
+
+import toil.version
+
+
+def real_dir_name(p, n=1):
+    p = os.path.realpath(p)
+    for i in range(n):
+        p = os.path.dirname(p)
+    print p
+    return p
+
+
+assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
+    "Another Toil installation seems to have precedence over this working directory."
+toilVersion = toil.version.version
 
 # -- General configuration ------------------------------------------------
 

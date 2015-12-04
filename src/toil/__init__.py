@@ -17,6 +17,10 @@ from __future__ import absolute_import
 import os
 import sys
 
+from subprocess import check_output
+
+from bd2k.util import memoize
+
 
 def toilPackageDirPath():
     """
@@ -47,3 +51,18 @@ def resolveEntryPoint(entryPoint):
         # correct version of Toil. This is still better than an absolute path because it gives
         # the user control over Toil's location on both leader and workers.
         return entryPoint
+
+
+@memoize
+def physicalMemory():
+    """
+    >>> n = physicalMemory()
+    >>> n > 0
+    True
+    >>> n == physicalMemory()
+    True
+    """
+    try:
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except ValueError:
+        return int(check_output(['sysctl', '-n', 'hw.memsize']).strip())
