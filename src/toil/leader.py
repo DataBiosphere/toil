@@ -35,9 +35,9 @@ logger = logging.getLogger( __name__ )
 
 def statsAndLoggingAggregatorProcess(jobStore, stop):
     """
-    The following function is used for collating stats/reporting log messages 
+    The following function is used for collating stats/reporting log messages
     from the workers.
-    Works inside of a separate process, collates as long as the stop flag is 
+    Works inside of a separate process, collates as long as the stop flag is
     not True.
     """
     #  Overall timing
@@ -46,20 +46,23 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
 
     def callback(fileHandle):
         stats = json.load(fileHandle, object_hook=Expando)
-        workers = stats.workers
         try:
-            logs = workers.log
+            logs = stats.workers.log
         except AttributeError:
             # To be expected if there were no calls to logToMaster()
             pass
         else:
             for message in logs:
                 logger.log(int(message.level),
-                           "Got message from job at time: %s : %s",
-                           time.strftime("%m-%d-%Y %H:%M:%S"), message.text)
-
-        for log in stats.logs:
-            logger.info("%s:     %s", log.jobStoreID, log.text)
+                           'Got message from job at time %s: %s',
+                           time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+        try:
+            logs = stats.logs
+        except AttributeError:
+            pass
+        else:
+            for log in logs:
+                logger.info("%s:    %s", log.jobStoreID, log.text)
 
     while True:
         # This is a indirect way of getting a message to the process to exit
@@ -91,53 +94,57 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper):
     """
 
     # Start the stats/logging aggregation process
-   
+
     stopStatsAndLoggingAggregatorProcess = Queue() #When this is s
     worker = Process(target=statsAndLoggingAggregatorProcess,
                      args=(jobStore, stopStatsAndLoggingAggregatorProcess))
     worker.start()
-    
+
     # Create the job dispatcher
-   
+
     jobDispatcher = JobDispatcher(config, batchSystem, jobStore, rootJobWrapper)
-     
+
     # Create cluster scaling processes if the provisioner is not None
-     
+
     if provisioner != None:
         clusterScaler = ClusterScaler(provisioner, jobDispatcher, config)
         jobDispatcher.clusterScaler = clusterScaler
-    
+
     # Run the batch
-    
+
     totalFailedJobs = jobDispatcher.dispatch()
 
     logger.info("Finished the main loop")
-    
-    # Shutdown worker nodes if using a provisioning instance 
-    
+
+    # Shutdown worker nodes if using a provisioning instance
+
     if provisioner != None:
         logger.info("Waiting for workers to shutdown")
         startTime = time.time()
         clusterScaler.shutdown()
         logger.info("Worker shutdown complete in %s seconds", time.time() - startTime)
 
-    # Finish up the stats/logging aggregation process
-    
-    logger.info("Waiting for stats and logging collator process to finish")
+    ##########################################
+    #Finish up the stats/logging aggregation process
+    ##########################################
+    logger.info('Waiting for stats and logging collator process to finish ...')
     startTime = time.time()
     stopStatsAndLoggingAggregatorProcess.put(True)
     worker.join()
-    logger.info("Stats/logging finished collating in %s seconds", time.time() - startTime)
+    if worker.exitcode != 0:
+        raise RuntimeError('Stats/logging collator failed with exit code %d.' % worker.exitcode)
+    logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
+    # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
     # Parse out the return value from the root job
-    
+
     with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
         jobStoreFileID = fH.read()
     with jobStore.readFileStream(jobStoreFileID) as fH:
         rootJobReturnValue = cPickle.load(fH)
     
     # Decide how to exit
-    
+
     if totalFailedJobs > 0:
         if config.clean == "onError" or config.clean == "always" :
             jobStore.deleteJobStore()
