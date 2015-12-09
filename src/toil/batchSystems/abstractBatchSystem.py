@@ -16,6 +16,7 @@
 from __future__ import absolute_import
 from collections import namedtuple
 from toil.common import Toil
+from abc import ABCMeta, abstractmethod
 import os
 import shutil
 
@@ -29,11 +30,13 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'cleanWorkDir'))
 
 
-class AbstractBatchSystem:
+class AbstractBatchSystem(object):
     """
-    An abstract (as far as python currently allows) base class
-    to represent the interface the batch system must provide to the toil.
+    An abstract (as far as Python currently allows) base class to represent the interface the batch
+    system must provide to Toil.
     """
+
+    __metaclass__ = ABCMeta
 
     @staticmethod
     def supportsHotDeployment():
@@ -43,10 +46,118 @@ class AbstractBatchSystem:
         and toilDistribution. Both will be instances of toil.common.HotDeployedResource that represent the user
         script and a source tarball (sdist) of toil respectively.
 
-        :return: boolean indicating whether hot deployment is supported by the batch system
         :rtype: bool
         """
         return False
+
+    @abstractmethod
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+        """
+        Issues a job with the specified command to the batch system and returns a unique jobID.
+
+        :param str command: the string to run as a command,
+
+        :param int memory: int giving the number of bytes of memory the job needs to run
+
+        :param float cores: the number of cores needed for the job
+
+        :param int disk: int giving the number of bytes of disk space the job needs to run
+
+        :param booleam preemptable: True if the job can be run on a preemptable node
+
+        :return: a unique jobID that can be used to reference the newly issued job
+        :rtype: str
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def killBatchJobs(self, jobIDs):
+        """
+        Kills the given job IDs.
+
+        :param list[str] jobIDs: list of jobIDs to kill
+        """
+        raise NotImplementedError()
+
+    # FIXME: Return value should be a set (then also fix the tests)
+
+    @abstractmethod
+    def getIssuedBatchJobIDs(self):
+        """
+        Gets all currently issued jobs
+
+        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
+          waiting to be run). Despite the result being a list, the ordering should not
+          be depended upon.
+        :rtype: list[str]
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def getRunningBatchJobIDs(self):
+        """
+        Gets a map of jobs as jobIDs that are currently running (not just waiting)
+        and how long they have been running, in seconds.
+
+        :return: dictionary with currently running jobID keys and how many seconds they have
+          been running as the value
+        :rtype: dict[str,float]
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def getUpdatedBatchJob(self, maxWait):
+        """
+        Gets a job that has updated its status, according to the batch system.
+
+        :param float maxWait: gives the number of seconds to block
+                              waiting to find an updated job.
+
+        :return: If a result is available returns tuple of form (jobID, exitValue)
+                 else it returns None. Does not return jobs that were killed.
+        :rtype: (str, int)|None
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def shutdown(self):
+        """
+        Called at the completion of a toil invocation.
+        Should cleanly terminate all worker threads.
+        """
+        raise NotImplementedError()
+
+    def setEnv(self, name, value=None):
+        """
+        Set an environment variable for the worker process before it is launched. The worker
+        process will typically inherit the environment of the machine it is running on but this
+        method makes it possible to override specific variables in that inherited environment
+        before the worker is launched. Note that this mechanism is different to the one used by
+        the worker internally to set up the environment of a job. A call to this method affects
+        all jobs issued after this method returns. Note to implementors: This means that you
+        would typically need to copy the variables before enqueuing a job.
+
+        If no value is provided it will be looked up from the current environment.
+
+        NB: Only the Mesos and single-machine batch systems support passing environment
+        variables. On other batch systems, this method has no effect. See
+        https://github.com/BD2KGenomics/toil/issues/547.
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def getRescueBatchJobFrequency(cls):
+        """
+        Gets the period of time to wait (floating point, in seconds) between checking for
+        missing/overlong jobs.
+        """
+        raise NotImplementedError()
+
+
+class BatchSystemSupport(AbstractBatchSystem):
+    """
+    Partial implementation of AbstractBatchSystem, support methods.
+    """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         """
@@ -100,76 +211,6 @@ class AbstractBatchSystem:
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
-        """
-        Issues a job with the specified command to the batch system and returns a unique jobID.
-
-        :param str command: the string to run as a command,
-
-        :param int memory: int giving the number of bytes of memory the job needs to run
-
-        :param float cores: the number of cores needed for the job
-
-        :param int disk: int giving the number of bytes of disk space the job needs to run
-
-        :param booleam preemptable: True if the job can be run on a preemptable node
-
-        :return: a unique jobID that can be used to reference the newly issued job
-        :rtype: str
-        """
-        raise NotImplementedError('Abstract method: issueBatchJob')
-
-    def killBatchJobs(self, jobIDs):
-        """
-        Kills the given job IDs.
-
-        :param list[str] jobIDs: list of jobIDs to kill
-        """
-        raise NotImplementedError('Abstract method: killBatchJobs')
-
-    # FIXME: Return value should be a set (then also fix the tests)
-
-    def getIssuedBatchJobIDs(self):
-        """
-        Gets all currently issued jobs
-
-        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
-          waiting to be run). Despite the result being a list, the ordering should not
-          be depended upon.
-        :rtype: list[str]
-        """
-        raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
-
-    def getRunningBatchJobIDs(self):
-        """
-        Gets a map of jobs as jobIDs that are currently running (not just waiting)
-        and how long they have been running, in seconds.
-
-        :return: dictionary with currently running jobID keys and how many seconds they have
-          been running as the value
-        :rtype: dict[str,float]
-        """
-        raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
-
-    def getUpdatedBatchJob(self, maxWait):
-        """
-        Gets a job that has updated its status, according to the batch system.
-
-        :param float maxWait: gives the number of seconds to block
-                              waiting to find an updated job.
-
-        :return: If a result is available returns tuple of form (jobID, exitValue)
-                 else it returns None. Does not return jobs that were killed.
-        :rtype: (str, int)|None
-        """
-        raise NotImplementedError('Abstract method: getUpdatedBatchJob')
-
-    def shutdown(self):
-        """
-        Called at the completion of a toil invocation.
-        Should cleanly terminate all worker threads.
-        """
-        raise NotImplementedError('Abstract Method: shutdown')
 
     def setEnv(self, name, value=None):
         """
@@ -208,9 +249,9 @@ class AbstractBatchSystem:
         missing/overlong jobs.
 
         :return: time in seconds to wait in between checking for lost jobs
-        :rtype: int
+        :rtype: float
         """
-        raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
+        raise NotImplementedError()
 
     def _getResultsFileName(self, toilPath):
         """
@@ -249,27 +290,25 @@ class AbstractBatchSystem:
             shutil.rmtree(workflowDir)
 
 
-class AbstractScalableBatchSystemInterface(object):
+class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
-    A set of methods used by :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale
-    the number of worker nodes in the cluster.
+    A batch system that supports a variable number of worker nodes. Used by
+    :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in
+    the cluster up or down depending on overall load.
     """
+
+    @abstractmethod
     def getNumberOfEmptyNodes(self, preemptable=False):
         """
         A node is empty if it is not running any worker jobs.
 
         :param boolean preemptable: If true returns number of empty preemptable nodes, else
-        returns the number of non-preemptable nodes.
+               returns the number of non-preemptable nodes.
         :return: Number of nodes in cluster that are empty.
         :rtype: int
         """
-        raise NotImplementedError('Abstract method: getNumberOfEmptyNodes')
+        raise NotImplementedError()
 
-class AbstractScalableBatchSystem(AbstractScalableBatchSystemInterface, AbstractBatchSystem):
-    """
-    A batch system with the added methods of the AbstractScalableBatchSystemInterface class
-    """
-    pass
 
 class InsufficientSystemResources(Exception):
     """

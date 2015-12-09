@@ -14,33 +14,32 @@
 
 from __future__ import absolute_import
 import logging
-
 import os
 import re
 import sys
 import subprocess
 import tempfile
 import time
-
 from Queue import Empty
 from Queue import Queue
 from threading import Thread
+
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
 
 logger = logging.getLogger(__name__)
 
 
-class ParasolBatchSystem(AbstractBatchSystem):
+class ParasolBatchSystem(BatchSystemSupport):
     """
     The interface for Parasol.
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         if maxMemory != sys.maxint:
             logger.warn('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
@@ -112,7 +111,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Issues parasol with job commands.
         """
@@ -174,7 +173,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def setEnv(self, name, value=None):
         if value and ' ' in value:
             raise ValueError('Parasol does not support spaces in environment variable values.')
-        return AbstractBatchSystem.setEnv(self, name, value)
+        return super(ParasolBatchSystem, self).setEnv(self, name, value)
 
     def __environment(self):
         return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())

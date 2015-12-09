@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from abc import ABCMeta, abstractmethod
+
+
 class ProvisioningException( Exception ):
     """
     General provisioning exception. 
@@ -20,10 +23,14 @@ class ProvisioningException( Exception ):
         super( ProvisioningException, self ).__init__( message )
 
 class AbstractProvisioner(object):
-    """An abstract base class to represent the interface for provisioning 
+    """
+    An abstract base class to represent the interface for provisioning
     worker nodes to use in a toil cluster.
     """
-    
+
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def addNodes(self, nodes=1, preemptable=False):
         """
         Adds worker node to the set of worker nodes. The function should block
@@ -33,8 +40,9 @@ class AbstractProvisioner(object):
         
         :raise ProvisioningException: If worker nodes can not be added.
         """
-        raise NotImplementedError('Abstract method: addNode')
+        raise NotImplementedError()
     
+    @abstractmethod
     def removeNodes(self, nodes=1, preemptable=False):
         """
         Removes worker nodes from the set of worker nodes.
@@ -42,15 +50,16 @@ class AbstractProvisioner(object):
         :param int nodes: Number of nodes to remove.
         :raise ProvisioningException: If worker nodes can not be removed.
         """
-        raise NotImplementedError('Abstract method: removeNode')
+        raise NotImplementedError()
     
+    @abstractmethod
     def numberOfWorkers(self, preemptable=False):
         """
         The total number of worker nodes in the cluster.
-        :param boolean premptable: If True the return value is the number of 
-        preemptable workers in the cluster, else is number of non-preemptable
-        workers.
-        :return: The number of worker nodes in the cluster.
+
+        :param boolean preemptable: If True the return value is the number of preemptable workers
+               in the cluster, else is number of non-preemptable workers.
+
         :rtype: int
         """
-        raise NotImplementedError('Abstract method: numberOfWorkers')
+        raise NotImplementedError()

@@ -28,23 +28,29 @@ from mesos.interface import mesos_pb2
 import pwd
 from toil import resolveEntryPoint
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, BatchSystemSupport
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
 
 log = logging.getLogger(__name__)
 
 
-#TODO: Implement the additional AbstractScalableBatchSystem methods
-class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
+class MesosBatchSystem(BatchSystemSupport,
+                       AbstractScalableBatchSystem,
+                       mesos.interface.Scheduler):
     """
-    A toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos tasks
-    over a cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This
-    class acts as the scheduler and is typically run on the master node that also runs the Mesos
-    master process with which the scheduler communicates via a driver component. The executor is
-    implemented in a separate class. It is run on each slave node and communicates with the Mesos
-    slave process via another driver object. The scheduler may also be run on a separate node from
-    the master, which we then call somewhat ambiguously the driver node.
+    A Toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos
+    tasks over a cluster of slave nodes. A Mesos framework consists of a scheduler and an
+    executor. This class acts as the scheduler and is typically run on the master node that also
+    runs the Mesos master process with which the scheduler communicates via a driver component.
+    The executor is implemented in a separate class. It is run on each slave node and
+    communicates with the Mesos slave process via another driver object. The scheduler may also
+    be run on a separate node from the master, which we then call somewhat ambiguously the driver
+    node.
     """
+
+    def getNumberOfEmptyNodes(self, preemptable=False):
+        # TODO: Implement the additional AbstractScalableBatchSystem methods
+        pass
 
     @staticmethod
     def supportsHotDeployment():
@@ -52,7 +58,8 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
-        AbstractScalableBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+
         # The hot-deployed resources representing the user script and the toil distribution
         # respectively. Will be passed along in every Mesos task. See
         # toil.common.HotDeployedResource for details.
@@ -72,8 +79,9 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         # queue of jobs to kill, by jobID.
         self.killSet = set()
 
-        # Contains jobs on which killBatchJobs were called, regardless of whether or not they
-        # actually were killed or ended by themselves.
+        # contains jobs on which killBatchJobs were called,
+        # regardless of whether or not they actually were killed or
+        # ended by themselves.
         self.intendedKill = set()
 
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and
@@ -101,7 +109,7 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
@@ -439,7 +447,7 @@ class MesosBatchSystem(AbstractScalableBatchSystem, mesos.interface.Scheduler):
         if toMiB(jt_job.resources.memory) > 1:
             mem.scalar.value = toMiB(jt_job.resources.memory)
         else:
-            log.warning("Job %s uses less memory than mesos requires. Rounding %s up to one MiB",
+            log.warning("Job %s uses less memory than Mesos requires. Rounding %s up to 1 MiB",
                         jt_job.jobID, jt_job.resources.memory)
             mem.scalar.value = 1
         return task
