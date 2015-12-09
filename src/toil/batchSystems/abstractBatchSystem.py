@@ -75,15 +75,15 @@ class AbstractBatchSystem(object):
 
     @abstractmethod
     def getUpdatedBatchJob(self, maxWait):
-        """Gets a job that has updated its status,
-        according to the job manager. 
+        """
+        Returns a job that has updated its status.
         
-        :param float maxWait: Gives the number of seconds to block
-        waiting for a result. 
+        :param float maxWait: the number of seconds to block waiting for a result
         
-        :return: If a result is available returns (jobID, exitValue, userTime)
-        else it returns None. userTime is the number of seconds (float) in wall-clock time the job 
-        ran for. Does not return anything for jobs that were killed.
+        :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
+        Otherwise it returns None. wallTime is the number of seconds (a float) in wall-clock time
+        the job ran for or None if this batch system does not support tracking wall time. Returns
+        None for jobs that were killed.
         """
         raise NotImplementedError()
 

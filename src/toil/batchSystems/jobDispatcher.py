@@ -185,21 +185,21 @@ class JobDispatcher(object):
         seconds while waiting for the job. 
         """
         updatedJob = self.batchSystem.getUpdatedBatchJob(block)
-        if updatedJob != None:
-            jobBatchSystemID, result, wallTime = updatedJob
-            if self.clusterScaler != None:
-                self.clusterScaler.addCompletedJob(self.jobBatchSystemIDToIssuedJob[jobBatchSystemID],
-                                                   wallTime)
+        if updatedJob is not None:
+            jobBatchSystemID, exitValue, wallTime = updatedJob
+            if self.clusterScaler is not None:
+                issuedJob = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
+                self.clusterScaler.addCompletedJob(issuedJob, wallTime)
             if self.hasJob(jobBatchSystemID):
-                if result == 0:
+                if exitValue == 0:
                     logger.debug("Batch system is reporting that the jobWrapper with "
                                  "batch system ID: %s and jobWrapper store ID: %s ended successfully",
                                  jobBatchSystemID, self.getJobStoreID(jobBatchSystemID))
                 else:
                     logger.warn("Batch system is reporting that the jobWrapper with "
                                 "batch system ID: %s and jobWrapper store ID: %s failed with exit value %i",
-                                jobBatchSystemID, self.getJobStoreID(jobBatchSystemID), result)
-                self.processFinishedJob(jobBatchSystemID, result)
+                                jobBatchSystemID, self.getJobStoreID(jobBatchSystemID), exitValue)
+                self.processFinishedJob(jobBatchSystemID, exitValue)
             else:
                 logger.warn("A result seems to already have been processed "
                             "for jobWrapper with batch system ID: %i", jobBatchSystemID)

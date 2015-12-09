@@ -45,6 +45,7 @@ numCores = 2
 preemptable = True
 defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
 
+
 class hidden:
     """
     Hide abstract base class from unittest's test case loader
@@ -64,6 +65,9 @@ class hidden:
             :rtype: AbstractBatchSystem
             """
             raise NotImplementedError
+
+        def supportsWallTime(self):
+            return True
 
         def _createDummyConfig(self):
             return Config()
@@ -105,13 +109,17 @@ class hidden:
 
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
-            updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs
             # queue should be job 3. If the first two jobs were (incorrectly) added
             # to the queue, this will fail with updatedID being equal to job1 or job2.
             self.assertEqual(exitStatus, 0)
             self.assertEqual(updatedID, job3)
+            if self.supportsWallTime():
+                self.assertTrue(wallTime > 0)
+            else:
+                self.assertIsNone(wallTime)
             self.assertTrue(os.path.exists(testPath))
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
@@ -133,13 +141,13 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
                 self.assertEqual(updatedID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, userTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
                 self.assertEqual(updatedID, job5)
 
@@ -166,9 +174,9 @@ class hidden:
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
-            
+
         def testScalableBatchSystem(self):
-            #If instance of scalable batch system
+            # If instance of scalable batch system
             pass
 
         def _waitForJobsToIssue(self, numJobs):
@@ -314,7 +322,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
                                 self.assertIsNotNone(job)
-                                jobId, status, userTime = job
+                                jobId, status, wallTime = job
                                 self.assertEquals(status, 0)
                                 # would raise KeyError on absence
                                 jobIds.remove(jobId)
@@ -400,6 +408,9 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         config.jobStore = self._createTempDir('jobStore')
         return config
 
+    def supportsWallTime(self):
+        return False
+
     def createBatchSystem(self):
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
@@ -413,9 +424,11 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        #self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000, preemptable=preemptable)
+        # self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
+        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000,
+                                              preemptable=preemptable)
+        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000,
+                                              preemptable=preemptable)
 
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -424,7 +437,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000, preemptable=preemptable)
+        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000,
+                                              preemptable=preemptable)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
 
@@ -453,6 +467,9 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the GridEngine batch system
     """
+
+    def supportsWallTime(self):
+        return False
 
     def _createDummyConfig(self):
         config = super(GridEngineBatchSystemTest, self)._createDummyConfig()

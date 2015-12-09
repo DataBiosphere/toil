@@ -299,14 +299,13 @@ class GridengineBatchSystem(BatchSystemSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        logger.debug('UpdatedJobsQueue Item: %s', item)
+        jobID, retcode = item
         self.currentJobs.remove(jobID)
-        return i
+        return jobID, retcode, None
 
     def shutdown(self):
         """

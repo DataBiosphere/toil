@@ -210,13 +210,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         Returns a map of the run jobs and the return value of their processes.
         """
         try:
-            i = self.outputQueue.get(timeout=maxWait)
+            item = self.outputQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, exitValue, wallTime = i
+        jobID, exitValue, wallTime = item
         self.jobs.pop(jobID)
-        log.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
-        self.outputQueue.task_done()
+        log.debug("Ran jobID: %s with exit value: %i", jobID, exitValue)
         return jobID, exitValue, wallTime
 
     @classmethod
