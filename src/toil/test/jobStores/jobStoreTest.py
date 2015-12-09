@@ -79,7 +79,7 @@ class hidden:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create('master1', 12, 34, 35, True)
+            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
             self.assertEquals(jobOnMaster.memory, 12)
@@ -109,8 +109,8 @@ class hidden:
             # Check jobs to delete persisted
             self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
             # Create children    
-            child1 = worker.create('child1', 23, 45, 46, 1, True)
-            child2 = worker.create('child2', 34, 56, 57, 1, False)
+            child1 = worker.create('child1', 23, 45, 46, preemptable=True)
+            child2 = worker.create('child2', 34, 56, 57, preemptable=False)
             # Update parent
             jobOnWorker.stack.append((
                 (child1.jobStoreID, 23, 45, 46, 1),
@@ -195,7 +195,7 @@ class hidden:
             # Test per-job files: Create empty file on master, ...
             #
             # First recreate job
-            jobOnMaster = master.create('master1', 12, 34, 35, 'foo', True)
+            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
             self.assertTrue(worker.fileExists(fileOne))
@@ -291,7 +291,7 @@ class hidden:
             master = self.master
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
-                job = master.create('1', 2, 3, 4, 0, True)
+                job = master.create('1', 2, 3, 4, preemptable=True)
                 fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
@@ -308,7 +308,7 @@ class hidden:
             bufSize = 65536
             partSize = self._partSize()
             self.assertEquals(partSize % bufSize, 0)
-            job = self.master.create('1', 2, 3, 4, 0, False)
+            job = self.master.create('1', 2, 3, 4, preemptable=False)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -383,7 +383,7 @@ class hidden:
             self.master.delete(job.jobStoreID)
 
         def testZeroLengthFiles(self):
-            job = self.master.create('1', 2, 3, 4, 0, True)
+            job = self.master.create('1', 2, 3, 4, preemptable=True)
             nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
             with self.master.readFileStream(nullFile) as f:
                 self.assertEquals(f.read(), "")
@@ -402,7 +402,7 @@ class hidden:
                     buf = os.urandom(self._partSize())
                     f.write(buf)
                     hashIn.update(buf)
-            job = self.master.create('1', 2, 3, 4, 0)
+            job = self.master.create('1', 2, 3, 4, preemptable=False)
             jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
             os.unlink(filePath)
             self.master.readFile(jobStoreFileID, filePath)
@@ -534,7 +534,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def testLargeJob(self):
         from toil.jobStores.azureJobStore import maxAzureTablePropertySize
         command = os.urandom(maxAzureTablePropertySize * 2)
-        job1 = self.master.create(command=command, memory=0, cores=0, disk=0)
+        job1 = self.master.create(command=command, memory=0, cores=0, disk=0, preemptable=False)
         self.assertEqual(job1.command, command)
         job2 = self.master.load(job1.jobStoreID)
         self.assertIsNot(job1, job2)

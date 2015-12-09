@@ -126,11 +126,10 @@ class AzureJobStore(AbstractJobStore):
         for jobEntity in self.jobItems.query_entities():
             yield AzureJob.fromEntity(jobEntity)
 
-    def create(self, command, memory, cores, disk,
-               predecessorNumber=0):
+    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
         jobStoreID = self._newJobID()
-        job = AzureJob(jobStoreID=jobStoreID,
-                       command=command, memory=memory, cores=cores, disk=disk,
+        job = AzureJob(jobStoreID=jobStoreID, command=command,
+                       memory=memory, cores=cores, disk=disk, preemptable=preemptable,
                        remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
                        predecessorNumber=predecessorNumber)
         entity = job.toItem(chunkSize=self.jobChunkSize)
