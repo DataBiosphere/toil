@@ -26,6 +26,7 @@ import socket
 import logging
 import cPickle
 import shutil
+import subprocess
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 import signal
@@ -65,7 +66,7 @@ class AsyncJobStoreWrite:
     
     def blockUntilSync(self):
         pass
-    
+
 def main():
     logging.basicConfig()
 
@@ -145,6 +146,32 @@ def main():
     # where to put the tempDir.
     localWorkerTempDir = tempfile.mkdtemp(dir=tempRootDir)
     os.chmod(localWorkerTempDir, 0755)
+
+    ##########################################
+    #Setup the cache.
+    ##########################################
+
+    #  Dir to put all the cached files in. This will be placed in the same parent as localWorkerTempDir
+    #  localCacheDir could exist from a previous worker using the same filesystem
+    localCacheDir = os.path.join(os.path.split(localWorkerTempDir)[0], 'cache')
+    if not os.path.exists(localCacheDir):
+        try:
+            os.mkdir(localCacheDir, 0755)
+        except OSError:
+            pass
+    #  Create the availableCacheSize file to contain the free space available for caching if necessary
+    if not os.path.exists(os.path.join(localCacheDir, '.availableCachingDisk')):
+        handle, tmpFile = tempfile.mkstemp(dir=self.localCacheDir)
+        os.close(handle)
+        if isinstance(config.defaultcache, float):
+            freeSpace = int(int(subprocess.check_output(['df', config.workDir]).split('\n')[1].split()[3]) * 1024 *
+                            config.defaultcache)
+        else:
+            freeSpace = config.defaultcache
+        with open(tmpFile, 'w') as fileHandle:
+            fileHandle.write(str(freeSpace))
+        os.rename(tmpFile, os.path.join(localCacheDir, '.availableCachingDisk'))
+
 
     ##########################################
     #Setup the logging
