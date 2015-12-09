@@ -412,9 +412,6 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         config.jobStore = self._createTempDir('jobStore')
         return config
 
-    def supportsWallTime(self):
-        return False
-
     def createBatchSystem(self):
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)

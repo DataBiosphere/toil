@@ -363,4 +363,4 @@ class GridengineBatchSystem(BatchSystemSupport):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError("GridEngine does not support commata in environment variable values")
-        return AbstractBatchSystem.setEnv(self, name, value)
+        return super(GridengineBatchSystem,self).setEnv(name, value)
