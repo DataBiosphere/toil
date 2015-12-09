@@ -173,7 +173,7 @@ class ParasolBatchSystem(BatchSystemSupport):
     def setEnv(self, name, value=None):
         if value and ' ' in value:
             raise ValueError('Parasol does not support spaces in environment variable values.')
-        return super(ParasolBatchSystem, self).setEnv(self, name, value)
+        return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
         return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
@@ -309,8 +309,8 @@ class ParasolBatchSystem(BatchSystemSupport):
                         if not line:
                             break
                         assert line[-1] == '\n'
-                        status, host, jobId, exe, usrTicks, sysTicks, submitTime, startTime, \
-                        endTime, user, errFile, command = line[:-1].split(None, 11)
+                        (status, host, jobId, exe, usrTicks, sysTicks, submitTime, startTime,
+                         endTime, user, errFile, command) = line[:-1].split(None, 11)
                         status = int(status)
                         jobId = int(jobId)
                         if os.WIFEXITED(status):
@@ -318,7 +318,9 @@ class ParasolBatchSystem(BatchSystemSupport):
                         else:
                             status = -status
                         self.cpuUsageQueue.put(jobId)
-                        self.updatedJobsQueue.put((jobId, status, float(endTime) - float(startTime)))
+                        endTime = float(endTime)
+                        startTime = float(startTime)
+                        self.updatedJobsQueue.put((jobId, status, endTime - startTime))
                 time.sleep(1)
         except:
             logger.warn("Error occurred while parsing parasol results files.")
