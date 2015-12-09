@@ -318,13 +318,19 @@ class ParasolBatchSystem(BatchSystemSupport):
                         else:
                             status = -status
                         self.cpuUsageQueue.put(jobId)
+                        startTime = int(startTime)
+                        endTime = int(endTime)
                         if endTime == startTime:
-                            # Both times are int so to get sub-second accuracy we use the ticks
-                            # reported by Parasol as an approximation. This isn't documented but
-                            # what Parasol calls "ticks" is actually a hundredth of a second.
-                            # Parasol does the unit conversion early on after a job finished.
-                            # Search paraNode.c for ticksToHundreths.
-                            wallTime = float( usrTicks + sysTicks ) * 0.01
+                            # Both, start and end time is an integer so to get sub-second
+                            # accuracy we use the ticks reported by Parasol as an approximation.
+                            # This isn't documented but what Parasol calls "ticks" is actually a
+                            # hundredth of a second. Parasol does the unit conversion early on
+                            # after a job finished. Search paraNode.c for ticksToHundreths. We
+                            # also cheat a little by always reporting at least one hundredth of a
+                            # second.
+                            usrTicks = int(usrTicks)
+                            sysTicks = int(sysTicks)
+                            wallTime = float( max( 1, usrTicks + sysTicks) ) * 0.01
                         else:
                             wallTime = float(endTime - startTime)
                         self.updatedJobsQueue.put((jobId, status, wallTime))
