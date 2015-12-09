@@ -34,6 +34,8 @@ from bd2k.util.humanize import human2bytes
 from io import BytesIO
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
+from contextlib import contextmanager
+from fcntl import flock, LOCK_EX
 
 logger = logging.getLogger( __name__ )
 
@@ -512,6 +514,24 @@ class Job(object):
             for worker in self.workers:
                 worker.start()
             self.inputBlockFn = inputBlockFn
+
+        @contextmanager
+        def cacheLock(self):
+            '''
+            This is a context manager to acquire a lock on the Lock file that will be used to prevent synchronous cache
+            operations between workers.
+            :yield: File descriptor for cache Lock file in r+ mode
+            '''
+            cacheFile = '/'.join([self.localTempDir, 'cache', '.availableCachingDisk'])
+            assert os.path.exists(cacheFile), cacheFile + ' does not exist.'
+            cacheFile = open(cacheFile, 'r+')
+            try:
+                flock(cacheFile, LOCK_EX)
+                yield cacheFile
+            except IOError:
+                raise RuntimeError('Unable to acquire lock on ' + cacheFile.name)
+            finally:
+                cacheFile.close()
 
         def getLocalTempDir(self):
             """
