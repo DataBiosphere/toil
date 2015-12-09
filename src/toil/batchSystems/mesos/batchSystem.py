@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from collections import defaultdict
 import os
 import socket
+from struct import unpack
 import time
 import pickle
 from Queue import Queue, Empty
@@ -191,21 +192,16 @@ class MesosBatchSystem(BatchSystemSupport,
         return currentTime
 
     def getUpdatedBatchJob(self, maxWait):
-        """
-        Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
-        pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
-        """
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        jobID, exitValue, wallTime = item
         if jobID in self.intendedKill:
             self.intendedKill.remove(jobID)
             return self.getUpdatedBatchJob(maxWait)
-        log.debug("Job updated with code {}".format(retcode))
-        return i
+        log.debug('Job updated with code {}'.format(exitValue))
+        return item
 
     def getWaitDuration(self):
         """
@@ -452,8 +448,8 @@ class MesosBatchSystem(BatchSystemSupport,
             mem.scalar.value = 1
         return task
 
-    def __updateState(self, intID, exitStatus):
-        self.updatedJobsQueue.put((intID, exitStatus))
+    def __updateState(self, intID, exitStatus, wallTime=None):
+        self.updatedJobsQueue.put((intID, exitStatus, wallTime))
         try:
             del self.runningJobMap[intID]
         except KeyError:
@@ -481,7 +477,7 @@ class MesosBatchSystem(BatchSystemSupport,
             self.killedSet.add(taskID)
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.__updateState(taskID, 0)
+            self.__updateState(taskID, 0, unpack('d', update.data))
         elif update.state == mesos_pb2.TASK_FAILED:
             try:
                 exitStatus = int(update.message)

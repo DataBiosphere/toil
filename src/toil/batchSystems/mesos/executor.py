@@ -20,12 +20,13 @@ import pickle
 import logging
 import subprocess
 import traceback
-from time import sleep
+from time import sleep, time
 
 import psutil
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
+from struct import pack
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, WorkerCleanupInfo
 from toil.resource import Resource
 
@@ -69,16 +70,20 @@ class MesosExecutor(mesos.interface.Executor):
         log.critical("Disconnected from slave")
 
     def killTask(self, driver, taskId):
-        if taskId in self.runningTasks:
-            os.kill(self.runningTasks[taskId], 9)
+        try:
+            pid = self.runningTasks[taskId]
+        except KeyError:
+            pass
+        else:
+            os.kill(pid, 9)
 
     def shutdown(self, driver):
-        log.critical("Shutting down executor...")
-        for taskId, pid in self.runningTasks.items():
+        log.critical('Shutting down executor ...')
+        for taskId in self.runningTasks.keys():
             self.killTask(driver, taskId)
         Resource.cleanSystem()
         AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
-        log.critical("Executor shut down")
+        log.critical('... executor shut down.')
 
     def error(self, driver, message):
         """
@@ -110,22 +115,25 @@ class MesosExecutor(mesos.interface.Executor):
                 self.workerCleanupInfo = taskData.workerCleanupInfo
             try:
                 popen = runJob(taskData)
+                startTime = time()
                 self.runningTasks[task.task_id.value] = popen.pid
                 try:
                     exitStatus = popen.wait()
+                    wallTime = time() - startTime
                     if 0 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_FINISHED)
+                        sendUpdate(mesos_pb2.TASK_FINISHED, wallTime)
                     elif -9 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_KILLED)
+                        sendUpdate(mesos_pb2.TASK_KILLED, wallTime)
                     else:
-                        sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
+                        sendUpdate(mesos_pb2.TASK_FAILED, wallTime, message=str(exitStatus))
                 finally:
                     del self.runningTasks[task.task_id.value]
             except:
+                wallTime = time() - startTime
                 exc_info = sys.exc_info()
                 log.error('Exception while running task:', exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(mesos_pb2.TASK_FAILED,
+                sendUpdate(mesos_pb2.TASK_FAILED, wallTime,
                            message=''.join(traceback.format_exception_only(exc_type, exc_value)))
 
         def runJob(job):
@@ -141,14 +149,15 @@ class MesosExecutor(mesos.interface.Executor):
                 return subprocess.Popen(job.command,
                                         shell=True, env=dict(os.environ, **job.environment))
 
-        def sendUpdate(taskState, message=''):
-            log.debug("Sending status update ...")
+        def sendUpdate(taskState, wallTime, message='' ):
+            log.debug('Sending task status update ...')
             status = mesos_pb2.TaskStatus()
             status.task_id.value = task.task_id.value
             status.message = message
             status.state = taskState
+            status.data = pack('d', wallTime)
             driver.sendStatusUpdate(status)
-            log.debug("Sent status update")
+            log.debug('... done sending task status update.')
 
         thread = threading.Thread(target=runTask)
         thread.start()
