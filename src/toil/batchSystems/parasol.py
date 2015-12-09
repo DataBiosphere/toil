@@ -291,7 +291,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         char *user;    /* User who ran job */
         char *errFile;    /* Location of stderr file on host */
 
-        plus you finally have the command name..
+        Plus you finally have the command name.
         """
         resultsFiles = set()
         resultsFileHandles = []
@@ -318,9 +318,16 @@ class ParasolBatchSystem(BatchSystemSupport):
                         else:
                             status = -status
                         self.cpuUsageQueue.put(jobId)
-                        endTime = float(endTime)
-                        startTime = float(startTime)
-                        self.updatedJobsQueue.put((jobId, status, endTime - startTime))
+                        if endTime == startTime:
+                            # Both times are int so to get sub-second accuracy we use the ticks
+                            # reported by Parasol as an approximation. This isn't documented but
+                            # what Parasol calls "ticks" is actually a hundredth of a second.
+                            # Parasol does the unit conversion early on after a job finished.
+                            # Search paraNode.c for ticksToHundreths.
+                            wallTime = float( usrTicks + sysTicks ) * 0.01
+                        else:
+                            wallTime = float(endTime - startTime)
+                        self.updatedJobsQueue.put((jobId, status, wallTime))
                 time.sleep(1)
         except:
             logger.warn("Error occurred while parsing parasol results files.")
