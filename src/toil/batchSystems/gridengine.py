@@ -22,7 +22,7 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
@@ -231,13 +231,13 @@ class Worker(Thread):
         return None
 
 
-class GridengineBatchSystem(AbstractBatchSystem):
+class GridengineBatchSystem(BatchSystemSupport):
     """
     The interface for SGE aka Sun GridEngine.
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(GridengineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -258,7 +258,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         # Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -365,4 +365,3 @@ class GridengineBatchSystem(AbstractBatchSystem):
         if value and ',' in value:
             raise ValueError("GridEngine does not support commata in environment variable values")
         return AbstractBatchSystem.setEnv(self, name, value)
-

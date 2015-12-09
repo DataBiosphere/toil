@@ -25,7 +25,7 @@ logger = logging.getLogger( __name__ )
 # Represents a job and its requirements as issued to the batch system
 IssuedJob = namedtuple("IssuedJob", "jobStoreID memory cores disk preemptable")
 
-class JobDispatcher:
+class JobDispatcher(object):
     """
     Class manages dispatching jobs to the batch system.
     """

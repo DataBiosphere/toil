@@ -14,84 +14,66 @@
 
 
 from __future__ import absolute_import
-from Queue import Empty
+from abc import ABCMeta, abstractmethod
 import os
 
 
-class AbstractBatchSystem:
-    """An abstract (as far as python currently allows) base class
-    to represent the interface the batch system must provide to the toil.
+class AbstractBatchSystem(object):
     """
+    An abstract (as far as python currently allows) base class to represent the interface the
+    batch system must provide to the toil.
+    """
+
+    __metaclass__ = ABCMeta
 
     @staticmethod
     def supportsHotDeployment():
         """
-        Whether this batch system supports hot deployment of the user script and toil itself. If it does,
-        the __init__ method will have to accept two optional parameters in addition to the declared ones: userScript
-        and toilDistribution. Both will be instances of toil.common.HotDeployedResource that represent the user
-        script and a source tarball (sdist) of toil respectively.
+        Whether this batch system supports hot deployment of the user script and toil itself. If
+        it does, the __init__ method will have to accept two optional parameters in addition to
+        the declared ones: userScript and toilDistribution. Both will be instances of
+        toil.common.HotDeployedResource that represent the user script and a source tarball (
+        sdist) of toil respectively.
         """
         return False
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
-        """This method must be called.
-        The config object is setup by the toilSetup script and
-        has configuration parameters for the jobtree. You can add stuff
-        to that script to get parameters for your batch system.
-        """
-        self.config = config
-        self.maxCores = maxCores
-        self.maxMemory = maxMemory
-        self.maxDisk = maxDisk
-        self.environment = {}
-        """
-        :type dict[str,str]
-        """
-
-    def checkResourceRequest(self, memory, cores, disk):
-        """Check resource request is not greater than that available.
-        """
-        assert memory is not None
-        assert disk is not None
-        assert cores is not None
-        if cores > self.maxCores:
-            raise InsufficientSystemResources('cores', cores, self.maxCores)
-        if memory > self.maxMemory:
-            raise InsufficientSystemResources('memory', memory, self.maxMemory)
-        if disk > self.maxDisk:
-            raise InsufficientSystemResources('disk', disk, self.maxDisk)
-      
+    @abstractmethod
     def issueBatchJob(self, command, memory, cores, disk, preemptable):
-        """Issues the following command returning a unique jobID. Command
-        is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cores is the number of cpu cores needed for
-        the job and error-file is the path of the file to place any std-err/std-out in.
+        """
+        Issues the following command returning a unique jobID. Command is the string to run,
+        memory is an int giving the number of bytes the job needs to run in and cores is the
+        number of cpu cores needed for the job and error-file is the path of the file to place
+        any std-err/std-out in.
         
         :param booleam preemptable: If True the job can be run on a preemptable node, otherwise
         not. 
         """
-        raise NotImplementedError('Abstract method: issueBatchJob')
+        raise NotImplementedError()
 
+    @abstractmethod
     def killBatchJobs(self, jobIDs):
         """Kills the given job IDs.
         """
-        raise NotImplementedError('Abstract method: killBatchJobs')
+        raise NotImplementedError()
 
     # FIXME: Return value should be a set (then also fix the tests)
 
+    @abstractmethod
     def getIssuedBatchJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe
         just waiting). Despite the result being a list, the ordering should not
         be depended upon.
         """
-        raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
+        raise NotImplementedError()
 
+    @abstractmethod
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting)
         and a how long they have been running for (in seconds).
         """
-        raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
+        raise NotImplementedError()
 
+    @abstractmethod
     def getUpdatedBatchJob(self, maxWait):
         """Gets a job that has updated its status,
         according to the job manager. 
@@ -103,13 +85,56 @@ class AbstractBatchSystem:
         else it returns None. userTime is the number of seconds (float) in wall-clock time the job 
         ran for. Does not return anything for jobs that were killed.
         """
-        raise NotImplementedError('Abstract method: getUpdatedBatchJob')
+        raise NotImplementedError()
 
+    @abstractmethod
     def shutdown(self):
         """Called at the completion of a toil invocation.
         Should cleanly terminate all worker threads.
         """
-        raise NotImplementedError('Abstract Method: shutdown')
+        raise NotImplementedError()
+
+    def setEnv(self, name, value=None):
+        """
+        Set an environment variable for the worker process before it is launched. The worker
+        process will typically inherit the environment of the machine it is running on but this
+        method makes it possible to override specific variables in that inherited environment
+        before the worker is launched. Note that this mechanism is different to the one used by
+        the worker internally to set up the environment of a job. A call to this method affects
+        all jobs issued after this method returns. Note to implementors: This means that you
+        would typically need to copy the variables before enqueuing a job.
+
+        If no value is provided it will be looked up from the current environment.
+
+        NB: Only the Mesos and single-machine batch systems support passing environment
+        variables. On other batch systems, this method has no effect. See
+        https://github.com/BD2KGenomics/toil/issues/547.
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def getRescueBatchJobFrequency(cls):
+        """
+        Gets the period of time to wait (floating point, in seconds) between checking for
+        missing/overlong jobs.
+        """
+        raise NotImplementedError()
+
+
+class BatchSystemSupport(AbstractBatchSystem):
+    """
+    Partial implementation of AbstractBatchSystem, support methods.
+    """
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super(BatchSystemSupport, self).__init__()
+        self.config = config
+        self.maxCores = maxCores
+        self.maxMemory = maxMemory
+        self.maxDisk = maxDisk
+        self.environment = {}
+        """
+        :type dict[str,str]
+        """
 
     def setEnv(self, name, value=None):
         """
@@ -134,40 +159,45 @@ class AbstractBatchSystem:
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """Gets the period of time to wait (floating point, in seconds) between checking for 
-        missing/overlong jobs.
+    def checkResourceRequest(self, memory, cores, disk):
+        """Check resource request is not greater than that available.
         """
-        raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
+        assert memory is not None
+        assert disk is not None
+        assert cores is not None
+        if cores > self.maxCores:
+            raise InsufficientSystemResources('cores', cores, self.maxCores)
+        if memory > self.maxMemory:
+            raise InsufficientSystemResources('memory', memory, self.maxMemory)
+        if disk > self.maxDisk:
+            raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
     def _getResultsFileName(self, toilPath):
         """Get a path for the batch systems to store results. GridEngine
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
-    
-class AbstractScalableBatchSystemInterface(object):
+
+
+class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
-    A set of methods used by :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale
-    the number of worker nodes in the cluster.
+    A batch system that supports a variable number of worker nodes. Used by
+    :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in
+    the cluster up or down depending on overall load.
     """
+
+    @abstractmethod
     def getNumberOfEmptyNodes(self, preemptable=False):
         """
         A node is empty if it is not running any worker jobs.
         
         :param boolean preemptable: If true returns number of empty preemptable nodes, else
-        returns the number of non-preemptable nodes.
+               returns the number of non-preemptable nodes.
         :return: Number of nodes in cluster that are empty. 
         :rtype: int
         """
-        raise NotImplementedError('Abstract method: getNumberOfEmptyNodes')
+        raise NotImplementedError()
 
-class AbstractScalableBatchSystem(AbstractScalableBatchSystemInterface, AbstractBatchSystem):
-    """
-    A batch system with the added methods of the AbstractScalableBatchSystemInterface class
-    """
-    pass
 
 class InsufficientSystemResources(Exception):
     def __init__(self, cores_or_mem, requested, available):

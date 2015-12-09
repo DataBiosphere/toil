@@ -25,12 +25,12 @@ from threading import Lock, Condition
 from Queue import Queue, Empty
 
 import toil
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 log = logging.getLogger(__name__)
 
 
-class SingleMachineBatchSystem(AbstractBatchSystem):
+class SingleMachineBatchSystem(BatchSystemSupport):
     """
     The interface for running jobs on a single machine, runs all the jobs you give it as they
     come in, but in parallel.
@@ -55,7 +55,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         if maxMemory > self.physicalMemory:
             log.warn('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
             maxMemory = self.physicalMemory
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
 
