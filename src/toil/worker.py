@@ -164,8 +164,8 @@ def main():
         handle, tmpFile = tempfile.mkstemp(dir=self.localCacheDir)
         os.close(handle)
         if isinstance(config.defaultcache, float):
-            freeSpace = int(int(subprocess.check_output(['df', config.workDir]).split('\n')[1].split()[3]) * 1024 *
-                            config.defaultcache)
+            freeSpace = int(subprocess.check_output(['df', config.workDir]).split('\n')[1].split()[3]) * 1024 * \
+                            config.defaultcache
         else:
             freeSpace = config.defaultcache
         with open(tmpFile, 'w') as fileHandle:
@@ -292,12 +292,27 @@ def main():
                     #Load the job
                     job = Job._loadJob(jobWrapper.command, jobStore)
                     
-                    #Cleanup the cache from the previous job
-                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
-                    
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
                                               blockFn)
+
+                    # Cleanup the cache to free up enough space for this job (if needed)
+                    jobReqs = job.effectiveRequirements(jobStore.config)
+                    #  Acquire a lock on the cache lock file so the cache isn't modified by another process at the same
+                    #  time.
+                    with fileStore.cacheLock() as cacheFile:
+                        #  Get the available free space from the cache Lock file.  Remove jobReqs.disk space from it.
+                        availableFreeSpace = float(cacheFile.read())
+                        reducedFreeSpace = freeSpace-jobReqs.disk
+                        #  Cleanup the cache to use at most reducedFreeSpace bytes of disk
+                        fileStore._cleanCache(reducedFreeSpace)
+                        #  Rewind the file, write the new available cache space, then purge the rest of the bytes in the
+                        #  Lock file.  If availableFreeSpace = 10000 and reducedFreeSpace = 9000, if we don't truncate,
+                        #  the Lock file will contain 90000 instead of 9000 after the rewrite.
+                        cacheFile.seek(0)
+                        cacheFile.write(str(reducedFreeSpace))
+                        cacheFile.truncate()
+
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
