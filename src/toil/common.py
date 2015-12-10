@@ -26,7 +26,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.lsf import LSFBatchSystem
-from toil.provisioners.clusterScaler import Shape
+from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger( __name__ )
 

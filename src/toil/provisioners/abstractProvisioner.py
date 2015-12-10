@@ -14,6 +14,17 @@
 
 from abc import ABCMeta, abstractmethod
 
+from collections import namedtuple
+
+
+class Shape(namedtuple("_Shape", "wallTime memory cores disk")):
+    """
+    Represents a job or node's "shape", in terms of the dimensions of memory, cores, disk and
+    wall-time allocation. all attributes should be integers, wallTime is the number of seconds of a
+    node allocation memory and disk are number of bytes required
+    """
+    pass
+
 
 class ProvisioningException(Exception):
     """
