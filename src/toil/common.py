@@ -27,7 +27,7 @@ from toil.leader import mainLoop
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString
 from toil.realtimeLogger import RealtimeLogger
-from toil.provisioners.clusterScaler import Shape
+from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger(__name__)
 

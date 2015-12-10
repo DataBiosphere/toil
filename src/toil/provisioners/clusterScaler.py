@@ -16,20 +16,15 @@ from __future__ import absolute_import
 import logging
 import time
 from threading import Thread, Event, Lock
-from collections import namedtuple
 
 from toil.common import Config
 from toil.batchSystems.jobDispatcher import JobDispatcher
-from toil.provisioners.abstractProvisioner import AbstractProvisioner
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.abstractProvisioner import ProvisioningException
 from toil.batchSystems.jobDispatcher import IssuedJob
 
 logger = logging.getLogger(__name__)
 
-# Represents a job or node's "shape", in terms of the dimensions of memory, cores, disk and
-# wall-time allocation. all attributes should be integers, wallTime is the number of seconds of a
-# node allocation memory and disk are number of bytes required
-Shape = namedtuple("Shape", "wallTime memory cores disk")
 
 
 class RunningJobShapes(object):
