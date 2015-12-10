@@ -187,11 +187,11 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNumberOfEmptyNodes(self, preemptable=False):
+    def getNumberOfIdleNodes(self, preemptable=False):
         """
-        A node is empty if it is not running any worker jobs.
+        A node is idle if it is not running any jobs.
         
-        :param boolean preemptable: If true returns number of empty preemptable nodes, else
+        :param boolean preemptable: If True, returns number of empty preemptable nodes, else
                returns the number of non-preemptable nodes.
         :return: Number of nodes in cluster that are empty. 
         :rtype: int

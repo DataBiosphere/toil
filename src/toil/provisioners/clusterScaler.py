@@ -16,63 +16,68 @@ from __future__ import absolute_import
 import logging
 import time
 from threading import Thread, Event, Lock
-#from multiprocessing import Process as Thread
-#from multiprocessing import Event
-from toil.provisioners.abstractProvisioner import ProvisioningException
 from collections import namedtuple
 
-logger = logging.getLogger( __name__ )
-#logger.setLevel(logging.DEBUG)
+from toil.common import Config
+from toil.batchSystems.jobDispatcher import JobDispatcher
+from toil.provisioners.abstractProvisioner import AbstractProvisioner
+from toil.provisioners.abstractProvisioner import ProvisioningException
+from toil.batchSystems.jobDispatcher import IssuedJob
 
-# Represents a job or node's "shape", in terms of the dimensions of memory, cores, disk and wall-time allocation.
-# all attributes should be integers, wallTime is the number of seconds of a node allocation
-# memory and disk are number of bytes required
+logger = logging.getLogger(__name__)
+
+# Represents a job or node's "shape", in terms of the dimensions of memory, cores, disk and
+# wall-time allocation. all attributes should be integers, wallTime is the number of seconds of a
+# node allocation memory and disk are number of bytes required
 Shape = namedtuple("Shape", "wallTime memory cores disk")
+
 
 class RunningJobShapes(object):
     """
     Used to track the 'shapes' of the last N jobs run (see Shape).
     """
+
     def __init__(self, config, preemptable=False, N=1000):
         # As a prior we start of with 10 jobs each with the default memory, cores,
         # and disk. To estimate the runtime we use the the default wall time of
         # each node allocation, so that one job will fill the time per node.
-        wallTime = (config.preemptableNodeShape.wallTime if preemptable 
+        wallTime = (config.preemptableNodeShape.wallTime if preemptable
                     else config.nonPreemptableNodeShape.wallTime)
-        self.jobShapes = [ Shape(wallTime, config.defaultMemory, config.defaultCores, 
-                                 config.defaultDisk) ] * 10
-        self.jobShapesLock = Lock() # Calls to add and getLastNJobShapes made be concurrent
-        self.N = N # Number of jobs to avg. over
-        
+        self.jobShapes = [Shape(wallTime, config.defaultMemory, config.defaultCores,
+                                config.defaultDisk)] * 10
+        self.jobShapesLock = Lock()  # Calls to add and getLastNJobShapes made be concurrent
+        self.N = N  # Number of jobs to avg. over
+
     def add(self, jobShape):
         """
         Adds a job shape as the last completed job.
         
         :param Shape jobShape: The memory, core and disk requirements of the completed job
-        :param int wallTime: The wall-time taken to complete the job.
         """
         with self.jobShapesLock:
             self.jobShapes.append(jobShape)
-            if len(self.jobShapes) > 10 * self.N: # Remove old jobs from the list,
+            if len(self.jobShapes) > 10 * self.N:  # Remove old jobs from the list,
                 # doing so infrequently to avoid too many list resizes
                 self.jobShapes = self.jobShapes[-self.N:]
-    
+
     def getLastNJobShapes(self):
         """
         Gets the last N job shapes added.
         """
         with self.jobShapesLock:
             self.jobShapes = self.jobShapes[-self.N:]
-            return self.jobShapes[:] 
-    
+            return self.jobShapes[:]
+
     @staticmethod
     def binPacking(jobShapes, nodeShape):
         """
-        Use a first fit decreasing (FFD) bin packing like algorithm to calculate an 
-        approximate minimum number of nodes that will fit the given list of jobs.
+        Use a first fit decreasing (FFD) bin packing like algorithm to calculate an approximate
+        minimum number of nodes that will fit the given list of jobs.
         
-        :param Shape nodeShape: The properties of an atomic node allocation, in terms of wall-time, memory, cores and local disk. 
-        :param List jobShape: A list of Shapes, each Shape representing a job.
+        :param Shape nodeShape: The properties of an atomic node allocation, in terms of
+               wall-time, memory, cores and local disk.
+
+        :param list[Shape] jobShapes: A list of shapes, each representing a job.
         
         Let a *node reservation* be an interval of time that a node is reserved for, it is
         defined by an integer number of node-allocations.
@@ -80,46 +85,53 @@ class RunningJobShapes(object):
         For a node reservation its *jobs* are the set of jobs that will be run within the 
         node reservation.
         
-        A minimal node reservation has time equal to one atomic node allocation, or the minimum number node allocations to run the longest running job in its jobs. 
+        A minimal node reservation has time equal to one atomic node allocation, or the minimum
+        number node allocations to run the longest running job in its jobs.
         
-        :returns: The minimum number of minimal node allocations estimated to be required to run all the jobs in jobShapes. 
         :rtype: int
+        :returns: The minimum number of minimal node allocations estimated to be required to run
+                  all the jobs in jobShapes.
         """
-        jobShapes.sort() # Sort in ascending order. The FFD like-strategy will schedule
-        # the jobs in order from longest to shortest.
-        
-        # Represents a node reservation
-        # To represent the resources available in a reservation a node reservation
-        # is represented as a sequence of Shapes, each giving the resources free within
-        # the given interval of time
-        class NodeReservation():
+        # Sort in ascending order. The FFD like-strategy will schedule the jobs in order from
+        # longest to shortest.
+        jobShapes.sort()
+
+        # Represents a node reservation. To represent the resources available in a reservation a
+        # node reservation is represented as a sequence of Shapes, each giving the resources free
+        # within the given interval of time
+        class NodeReservation(object):
             def __init__(self, shape):
-                self.shape = shape # The wall-time and resource available
-                self.nReservation = None # The next portion of the reservation
-        
-        nodeReservations = [] # The list of node reservations
-                
+                self.shape = shape  # The wall-time and resource available
+                self.nReservation = None  # The next portion of the reservation
+
+        nodeReservations = []  # The list of node reservations
+
         for jS in jobShapes:
             def addToReservation():
-                # Function adds the job, jS, to the first node reservation in which
-                # it will fit (this is the bin-packing aspect)
-                
-                # Used to check if a job shape's resource requirements will fit within
-                # a given node allocation
-                fits = lambda x, y : (y.memory <= x.memory and y.cores <= x.cores 
-                                      and y.disk <= x.disk)
-                
-                # Used to adjust available the resources of a node allocation
-                # as a job is scheduled within it.
-                subtract = lambda x, y : Shape(x.wallTime, x.memory-y.memory, x.cores-y.cores, 
-                                                x.disk-y.disk)
-                
+                # Function adds the job, jS, to the first node reservation in which it will fit
+                # (this is the bin-packing aspect)
+
+                # Used to check if a job shape's resource requirements will fit within a given
+                # node allocation
+                def fits(x, y):
+                    return y.memory <= x.memory and y.cores <= x.cores and y.disk <= x.disk
+
+                # Used to adjust available the resources of a node allocation as a job is
+                # scheduled within it.
+                def subtract(x, y):
+                    return Shape(x.wallTime,
+                                 x.memory - y.memory,
+                                 x.cores - y.cores,
+                                 x.disk - y.disk)
+
                 # Used to partition a node allocation into two
-                split = lambda x, y, t : (Shape(t, x.memory-y.memory, x.cores-y.cores, x.disk-y.disk), 
-                                          NodeReservation(Shape(x.wallTime-t, x.memory, x.cores, x.disk)))
-                
+                def split(x, y, t):
+                    return (
+                        Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk),
+                        NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk)))
+
                 i = 0
-                while True: 
+                while True:
                     # Case a new node reservation is required
                     if i == len(nodeReservations):
                         x = NodeReservation(subtract(nodeShape, jS))
@@ -131,7 +143,7 @@ class RunningJobShapes(object):
                             x.nReservation = y
                             x = y
                         return
-                    
+
                     # Attempt to add the job to node reservation i
                     x = nodeReservations[i]
                     y = x
@@ -149,7 +161,7 @@ class RunningJobShapes(object):
                                 assert x == y
                                 assert jS.wallTime - t <= x.shape.wallTime
                                 if jS.wallTime - t < x.shape.wallTime:
-                                    x.shape, nS = split(x.shape, jS, jS.wallTime - t)    
+                                    x.shape, nS = split(x.shape, jS, jS.wallTime - t)
                                     nS.nReservation = x.nReservation
                                     x.nReservation = nS
                                 else:
@@ -160,84 +172,90 @@ class RunningJobShapes(object):
                             x = y.nReservation
                             t = 0
                         y = y.nReservation
-                        if y == None: # Reached the end of the reservation without
-                            # success so stop trying to add to reservation i
+                        if y is None:
+                            # Reached the end of the reservation without success so stop trying
+                            # to add to reservation i
                             break
                     i += 1
+
             addToReservation()
-            
+
         logger.debug("Ran bin packing algorithm, for node shape: "
-                     "%s needed %s nodes for %s jobs" % (nodeShape, 
-                                    len(nodeReservations), len(jobShapes)))
-            
+                     "%s needed %s nodes for %s jobs" % (nodeShape,
+                                                         len(nodeReservations), len(jobShapes)))
+
         return len(nodeReservations)
+
 
 class ClusterScaler(object):
     def __init__(self, provisioner, jobDispatcher, config):
         """
         Class manages automatically scaling the number of worker nodes. 
-        
-        :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner: The provisioner instance to scale.
-        :param toil.batchSystems.jobDispatcher.JobDispatcher jobDispatcher: The class issuing jobs to the batch system.
-        :param toil.common.Config config: Config object from which to draw parameters. 
+
+        :param AbstractProvisioner provisioner: The provisioner instance to scale.
+
+        :param JobDispatcher jobDispatcher: The class issuing jobs to the batch system.
+
+        :param Config config: Config object from which to draw parameters.
         """
-        self.stop = Event() # Event used to indicate that the scaling processes should shutdown
-        self.error = Event() # Event used by scaling processes to indicate failure
-        
+        self.stop = Event()  # Event used to indicate that the scaling processes should shutdown
+        self.error = Event()  # Event used by scaling processes to indicate failure
+
         if config.maxPreemptableNodes + config.maxNonPreemptableNodes == 0:
             raise RuntimeError("Trying to create a cluster that can have no workers!")
-        
+
         # Create scaling process for preemptable nodes
         if config.maxPreemptableNodes > 0:
             self.preemptableRunningJobShape = RunningJobShapes(config, preemptable=True)
-            args=(provisioner, jobDispatcher, 
-                  config.minPreemptableNodes, config.maxPreemptableNodes,
-                  self.preemptableRunningJobShape, config, config.preemptableNodeShape,
-                  self.stop, self.error, True)
+            args = (provisioner, jobDispatcher,
+                    config.minPreemptableNodes, config.maxPreemptableNodes,
+                    self.preemptableRunningJobShape, config, config.preemptableNodeShape,
+                    self.stop, self.error, True)
             self.preemptableScaler = Thread(target=self.scaler, args=args)
             self.preemptableScaler.start()
         else:
             self.preemptableScaler = None
-        
+
         # Create scaling process for non-preemptable nodes
         if config.maxNonPreemptableNodes > 0:
             self.nonPreemptableRunningJobShape = RunningJobShapes(config, preemptable=False)
-            args=(provisioner, jobDispatcher, 
-                  config.minNonPreemptableNodes, config.maxNonPreemptableNodes,
-                  self.nonPreemptableRunningJobShape, config, config.nonPreemptableNodeShape,
-                  self.stop, self.error, False)
+            args = (provisioner, jobDispatcher,
+                    config.minNonPreemptableNodes, config.maxNonPreemptableNodes,
+                    self.nonPreemptableRunningJobShape, config, config.nonPreemptableNodeShape,
+                    self.stop, self.error, False)
             self.nonPreemptableScaler = Thread(target=self.scaler, args=args)
             self.nonPreemptableScaler.start()
         else:
             self.nonPreemptableScaler = None
-        
+
     def shutdown(self):
         """
         Shutdown the cluster.
         """
         self.stop.set()
-        if self.preemptableScaler != None:
+        if self.preemptableScaler is not None:
             self.preemptableScaler.join()
-        if self.nonPreemptableScaler != None:
+        if self.nonPreemptableScaler is not None:
             self.nonPreemptableScaler.join()
-            
+
     def addCompletedJob(self, issuedJob, wallTime):
         """
-        Adds the shape of a completed job to the queue, allowing the scalar to use the last 
-        N completed jobs in factoring how many nodes are required in the cluster.
+        Adds the shape of a completed job to the queue, allowing the scalar to use the last N
+        completed jobs in factoring how many nodes are required in the cluster.
         
-        :param toil.batchSystems.jobDispatcher.IssuedJob issuedJob: The memory, core and disk requirements of the completed job
+        :param IssuedJob issuedJob: The memory, core and disk requirements of the completed job
+
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
-        s = Shape(wallTime=wallTime, memory=issuedJob.memory, 
+        s = Shape(wallTime=wallTime, memory=issuedJob.memory,
                   cores=issuedJob.cores, disk=issuedJob.disk)
         if issuedJob.preemptable:
             self.preemptableRunningJobShape.add(s)
         else:
             self.nonPreemptableRunningJobShape.add(s)
-    
+
     @staticmethod
-    def scaler(provisioner, jobDispatcher, 
+    def scaler(provisioner, jobDispatcher,
                minNodes, maxNodes, runningJobShapes,
                config, nodeShape,
                stop, error, preemptable):
@@ -256,16 +274,30 @@ class ClusterScaler(object):
         the size of the cluster is adapted. The beta factor is an inertia parameter 
         that prevents continual fluctuations in the number of nodes.
 
-        :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner: Provisioner instance to scale.
-        :param toil.batchSystem.abstractBatchSysten.jobDispatcher.JobDispatcher jobDispatcher: Class used to schedule jobs. This is monitored to make scaling decisions.
+        :param AbstractProvisioner provisioner: Provisioner instance to scale.
+
+        :param JobDispatcher jobDispatcher: Class used to schedule jobs. This is monitored to
+               make scaling decisions.
+
         :param int minNodes: the minimum nodes in the cluster
-        :param int maxNodex: the maximum nodes in the cluster
+
+        :param int maxNodes: the maximum nodes in the cluster
+
         :param RunningJobShapes runningJobShapes: the class used to monitor the requirements of the last N completed jobs.
-        :param toil.common.Config config: Config object from which to draw parameters. 
-        :param Shape nodeShape: The resource requirements and wall-time of an atomic node allocation.
-        :param stop multiprocessing.Event: Event used to signify that the function should shut down the cluster and terminate.
-        :param error multiprocessing.Event: Event used to signify that the function has terminated unexpectedly..
-        :param boolean preemptable:  If True create/cleanup preemptable nodes, else create/cleanup non-preemptable nodes.
+
+        :param Config config: Config object from which to draw parameters.
+
+        :param Shape nodeShape: The resource requirements and wall-time of an atomic node
+               allocation.
+
+        :param Event stop: The event instance used to signify that the function should shut down
+               the cluster and terminate.
+
+        :param Event error: Event used to signify that the function has
+               terminated unexpectedly.
+
+        :param bool preemptable: If True create/cleanup preemptable nodes, else create/cleanup
+               non-preemptable nodes.
         """
         try:
             totalNodes = minNodes
@@ -277,12 +309,12 @@ class ClusterScaler(object):
                     logger.debug("We tried to create a minimal cluster of %s nodes,"
                                  " but got a provisioning exception: %s" % (minNodes, e))
                     raise
-                
+
             # The scaling loop iterated until we get the stop signal
             while True:
-                
+
                 # Check if we've got the cleanup signal       
-                if stop.is_set(): #Cleanup logic
+                if stop.is_set():  # Cleanup logic
                     try:
                         provisioner.removeNodes(totalNodes, preemptable=preemptable)
                     except ProvisioningException as e:
@@ -291,45 +323,50 @@ class ClusterScaler(object):
                         raise
                     logger.debug("Scalar (preemptable=%s) exiting normally" % preemptable)
                     break
-                
+
                 # Calculate the approx. number nodes needed
-#TODO: Correct for jobs already running which can be considered fractions of a job
+                # TODO: Correct for jobs already running which can be considered fractions of a job
                 queueSize = jobDispatcher.getNumberOfJobsIssued()
                 recentJobShapes = runningJobShapes.getLastNJobShapes()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = runningJobShapes.binPacking(recentJobShapes, nodeShape)
-                estimatedNodesRequired = 0 if queueSize == 0 else max(round(config.alphaPacking * nodesToRunRecentJobs * float(queueSize) / len(recentJobShapes)), 1)
+                estimatedNodesRequired = 0 if queueSize == 0 else max(round(
+                    config.alphaPacking * nodesToRunRecentJobs * float(queueSize) / len(
+                        recentJobShapes)), 1)
                 nodesDelta = estimatedNodesRequired - totalNodes
-                
+
                 logger.debug("Estimating cluster needs %s, node-shape: %s "
                              "current total-worker nodes: %s, queue-size: %s, "
-                             "jobs/node estimated required: %s, alpha: %s" % 
-                             (estimatedNodesRequired, nodeShape, totalNodes, queueSize, 
-                              len(recentJobShapes)/float(nodesToRunRecentJobs) if nodesToRunRecentJobs > 0 else 0, 
+                             "jobs/node estimated required: %s, alpha: %s" %
+                             (estimatedNodesRequired, nodeShape, totalNodes, queueSize,
+                              len(recentJobShapes) / float(
+                                  nodesToRunRecentJobs) if nodesToRunRecentJobs > 0 else 0,
                               config.alphaPacking))
-                
+
                 # Use inertia parameter to stop small fluctuations
-                if (estimatedNodesRequired <= totalNodes * config.betaInertia 
-                    and estimatedNodesRequired >= totalNodes * config.betaInertia):
+                if estimatedNodesRequired <= totalNodes * config.betaInertia <= estimatedNodesRequired:
                     logger.debug("Difference in new (%s) and previous estimates of "
                                  "number of nodes (%s) required is within "
-                                 "beta (%s), making no change" % (estimatedNodesRequired, totalNodes, config.betaInertia))
+                                 "beta (%s), making no change" % (
+                                     estimatedNodesRequired, totalNodes, config.betaInertia))
                     nodesDelta = 0
-                
+
                 # Bound number using the max and min node parameters
                 if nodesDelta + totalNodes > maxNodes:
                     logger.debug("The number of nodes estimated we need: %s is "
-                                 "larger than the max allowed: %s" % (nodesDelta + totalNodes, maxNodes))
+                                 "larger than the max allowed: %s" % (
+                                     nodesDelta + totalNodes, maxNodes))
                     assert nodesDelta > 0
                     nodesDelta -= totalNodes + nodesDelta - maxNodes
                     assert nodesDelta >= 0
                 elif nodesDelta + totalNodes < minNodes:
                     logger.debug("The number of nodes estimated we need: %s is "
-                                 "smaller than the min allowed: %s" % (nodesDelta + totalNodes, minNodes))
+                                 "smaller than the min allowed: %s" % (
+                                     nodesDelta + totalNodes, minNodes))
                     assert nodesDelta < 0
                     nodesDelta += minNodes - totalNodes - nodesDelta
                     assert nodesDelta <= 0
-                    
+
                 if nodesDelta != 0:
                     # Adjust the number of nodes in the cluster
                     try:
@@ -338,17 +375,17 @@ class ClusterScaler(object):
                         else:
                             provisioner.removeNodes(abs(int(nodesDelta)), preemptable=preemptable)
                         totalNodes += nodesDelta
-                        logger.debug("%s %s worker nodes %s the (preemptable: %s) cluster" % 
-                                     (("Added" if nodesDelta > 0 else "Removed"), 
-                                      abs(nodesDelta), preemptable, 
+                        logger.debug("%s %s worker nodes %s the (preemptable: %s) cluster" %
+                                     (("Added" if nodesDelta > 0 else "Removed"),
+                                      abs(nodesDelta), preemptable,
                                       ("from" if nodesDelta > 0 else "to")))
                     except ProvisioningException as e:
                         logger.debug("We tried to %s %s worker nodes but got a "
-                                     "provisioning exception: %s" % 
-                                     ("add" if nodesDelta > 0 else "remove", abs(nodesDelta), e))      
-                
-                # Sleep to avoid thrashing
+                                     "provisioning exception: %s" %
+                                     ("add" if nodesDelta > 0 else "remove", abs(nodesDelta), e))
+
+                        # Sleep to avoid thrashing
                 time.sleep(config.scaleInterval)
         except:
-            error.set() #Set the error event
+            error.set()  # Set the error event
             raise

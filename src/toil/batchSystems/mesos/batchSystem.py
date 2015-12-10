@@ -49,7 +49,7 @@ class MesosBatchSystem(BatchSystemSupport,
     node.
     """
 
-    def getNumberOfEmptyNodes(self, preemptable=False):
+    def getNumberOfIdleNodes(self, preemptable=False):
         # TODO: Implement the additional AbstractScalableBatchSystem methods
         pass
 
