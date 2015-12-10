@@ -24,6 +24,7 @@ import time
 import copy_reg
 import cPickle
 import logging
+import subprocess
 import shutil
 import stat
 import inspect
@@ -445,7 +446,7 @@ class Job(object):
         """
         #Variables used for synching reads/writes
         _lockFilesLock = Semaphore()
-        _lockFiles = set()
+        _lockFiles = {}
         #For files in jobStore that are on the local disk, 
         #map of jobStoreFileIDs to locations in localTempDir.
         _jobStoreFileIDToCacheLocation = {}
@@ -527,11 +528,13 @@ class Job(object):
             cacheFile = open(cacheFile, 'r+')
             try:
                 flock(cacheFile, LOCK_EX)
+                logger.debug("Obtained Cache Lock")
                 yield cacheFile
             except IOError:
                 raise RuntimeError('Unable to acquire lock on ' + cacheFile.name)
             finally:
                 cacheFile.close()
+                logger.debug("Released Cache Lock")
 
         def getLocalTempDir(self):
             """
@@ -582,6 +585,11 @@ class Job(object):
             #Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
             cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
+            getFileSystem = lambda x: subprocess.check_output(['df', x]).split('\n')[1].split()[1]
+            #  TODO: If absLocalFileName is on the same File System as the jobstore, os.link it instead of async writing
+            #  For this, I will need to figure out a way to identify the jobstore location.
+            if getFileSystem(absLocalFileName) == getFileSystem(self.localTempDir):
+                pass
             if absLocalFileName.startswith(self.localTempDir):
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
                 self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
@@ -815,41 +823,18 @@ class Job(object):
                 os.remove(filePath)
                 totalCachedFileSizes -= fileSize
                 assert totalCachedFileSizes >= 0
+            assert totalCachedFileSizes <= cacheSize, 'Unable to free up enough space for caching.'
 
-        def _cleanLocalTempDir(self, cacheSize):
+        def _cleanLocalTempDir(self):
             """
-            At the end of the job, remove all localTempDir files except those whose \
-            value is in _jobStoreFileIDToCacheLocation.
-            
-            :param int cacheSize: the total number of bytes of files allowed in the cache.
+            At the end of the job, remove all localTempDir files except those whose values are set as "Locked" since
+            those files are currently being written to fileStore.
             """
             #Remove files so that the total cached files are smaller than a cacheSize
             
             #List of pairs of (fileCreateTime, fileStoreID) for cached files
             with self._lockFilesLock:
-                deletableCacheFiles = set(self._jobStoreFileIDToCacheLocation.keys()) - self._lockFiles
-            cachedFileCreateTimes = map(lambda x : (os.stat(self._jobStoreFileIDToCacheLocation[x]).st_ctime, x),
-                                        deletableCacheFiles)
-            #Total number of bytes stored in cached files
-            totalCachedFileSizes = sum([os.stat(self._jobStoreFileIDToCacheLocation[x]).st_size for x in
-                                        self._jobStoreFileIDToCacheLocation.keys()])
-            #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
-            #not be the best strategy.
-            cachedFileCreateTimes.sort()
-            cachedFileCreateTimes.reverse()
-            #Now do the actual file removal
-            while totalCachedFileSizes > cacheSize and len(cachedFileCreateTimes) > 0:
-                fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
-                fileSize = os.stat(self._jobStoreFileIDToCacheLocation[fileStoreID]).st_size
-                filePath = self._jobStoreFileIDToCacheLocation[fileStoreID]
-                self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
-                os.remove(filePath)
-                totalCachedFileSizes -= fileSize
-                assert totalCachedFileSizes >= 0
-            
-            #Iterate from the base of localTempDir and remove all 
-            #files/empty directories, recursively
-            cachedFiles = set(self._jobStoreFileIDToCacheLocation.values())
+                lockedFiles = set(self._lockFiles.values())
             
             def clean(dirOrFile, remove=True):
                 canRemove = True 
@@ -859,12 +844,12 @@ class Job(object):
                     if canRemove and remove:
                         os.rmdir(dirOrFile) #Dir should be empty if canRemove is true
                     return canRemove
-                if dirOrFile in cachedFiles:
+                if dirOrFile in lockedFiles:
                     return False
                 os.remove(dirOrFile)
                 return True    
             clean(self.localTempDir, False)
-        
+
         def _blockFn(self):
             """
             Blocks while _updateJobWhenDone is running.
