@@ -783,7 +783,39 @@ class Job(object):
             except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
                 self.updateSemaphore.release()
                 raise
-            
+
+        def _cleanCache(self, cacheSize):
+            """
+            Cleanup all files in the cache directory to ensure that at most cacheSize bytes are used for caching.
+
+            :param int cacheSize: the total number of bytes of files allowed in the cache.
+            """
+            #  List of pairs of (fileCreateTime, fileStoreID) for deletable cached files.  A deletable cache file is one
+            #  that is not in use by any other worker (identified by the number of symlinks to the file)
+            deletableCacheFiles = set([x for x in self._jobStoreFileIDToCacheLocation.keys() if
+                                       os.stat(x).st_nlink == 1])
+            cachedFileCreateTimes = map(lambda x : (os.stat(self._jobStoreFileIDToCacheLocation[x]).st_ctime, x),
+                                        deletableCacheFiles)
+            #Total number of bytes stored in cached files
+            totalCachedFileSizes = sum([os.stat(self._jobStoreFileIDToCacheLocation[x]).st_size for x in
+                                        self._jobStoreFileIDToCacheLocation.keys()])
+            #  If the total used size is less than the available space, do nothing
+            if totalCachedFileSizes < cacheSize:
+                return None
+            #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
+            #not be the best strategy.
+            cachedFileCreateTimes.sort()
+            cachedFileCreateTimes.reverse()
+            #Now do the actual file removal
+            while totalCachedFileSizes > cacheSize and len(cachedFileCreateTimes) > 0:
+                fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
+                fileSize = os.stat(self._jobStoreFileIDToCacheLocation[fileStoreID]).st_size
+                filePath = self._jobStoreFileIDToCacheLocation[fileStoreID]
+                self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
+                os.remove(filePath)
+                totalCachedFileSizes -= fileSize
+                assert totalCachedFileSizes >= 0
+
         def _cleanLocalTempDir(self, cacheSize):
             """
             At the end of the job, remove all localTempDir files except those whose \
@@ -1112,7 +1144,6 @@ class Job(object):
         Create an empty job for the job.
         """
         requirements = self.effectiveRequirements(jobStore.config)
-        del requirements.cache
         return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
 
     def effectiveRequirements(self, config):
@@ -1127,13 +1158,6 @@ class Job(object):
             memory=float(config.defaultMemory) if self.memory is None else self.memory,
             cores=float(config.defaultCores) if self.cores is None else self.cores,
             disk=float(config.defaultDisk) if self.disk is None else self.disk)
-        if self.cache is None:
-            requirements.cache = min(requirements.disk, float(config.defaultCache))
-        else:
-            requirements.cache = self.cache
-        if requirements.cache > requirements.disk:
-            raise RuntimeError("Trying to allocate a cache ({cache}) larger than the disk "
-                               "requirement for the job ({disk})".format(**requirements))
         return requirements
 
     def _makeJobWrappers(self, jobWrapper, jobStore):
