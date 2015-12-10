@@ -154,12 +154,16 @@ def main():
     #  Dir to put all the cached files in. This will be placed in the same parent as localWorkerTempDir
     #  localCacheDir could exist from a previous worker using the same filesystem
     localCacheDir = os.path.join(os.path.split(localWorkerTempDir)[0], 'cache')
-    if not os.path.exists(localCacheDir):
-        try:
-            os.mkdir(localCacheDir, 0755)
-        except OSError:
-            pass
+    try:
+        os.mkdir(localCacheDir, 0755)
+    except OSError as err:
+        # If the error is not Errno 17 (file already exists), reraise the exception
+        if e.errno != 17:
+            raise err
     #  Create the availableCacheSize file to contain the free space available for caching if necessary
+    #  This has to be a race condition because a new worker can get assigned to a place where the Lock file exists and
+    #  since os.rename silently replaces the file if it is present, we will get incorrect caching values in the file if
+    #  we go ahead without the if exists statement.
     if not os.path.exists(os.path.join(localCacheDir, '.availableCachingDisk')):
         handle, tmpFile = tempfile.mkstemp(dir=self.localCacheDir)
         os.close(handle)
@@ -303,7 +307,7 @@ def main():
                     with fileStore.cacheLock() as cacheFile:
                         #  Get the available free space from the cache Lock file.  Remove jobReqs.disk space from it.
                         availableFreeSpace = float(cacheFile.read())
-                        reducedFreeSpace = freeSpace-jobReqs.disk
+                        reducedFreeSpace = freeSpace - jobReqs.disk
                         #  Cleanup the cache to use at most reducedFreeSpace bytes of disk
                         fileStore._cleanCache(reducedFreeSpace)
                         #  Rewind the file, write the new available cache space, then purge the rest of the bytes in the
@@ -324,7 +328,7 @@ def main():
                                            fileStore=fileStore)
 
                     #Set the clean cache function
-                    cleanCacheFn = fileStore._cleanLocalTempDir
+                    fileStore._cleanLocalTempDir()
                     
                 else: #Is another command (running outside of jobs may be deprecated)
                     #Cleanup the cache from the previous job
