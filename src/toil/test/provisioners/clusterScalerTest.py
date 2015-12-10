@@ -21,11 +21,10 @@ import random
 
 from toil.test import ToilTest
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
-from toil.provisioners.abstractProvisioner import AbstractProvisioner
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
 from toil.common import Config
 from toil.batchSystems.jobDispatcher import IssuedJob
-from toil.provisioners.clusterScaler import Shape
 
 logger = logging.getLogger(__name__)
 
