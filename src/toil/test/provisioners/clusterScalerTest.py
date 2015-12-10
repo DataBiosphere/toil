@@ -16,21 +16,16 @@ from __future__ import absolute_import
 import time
 from threading import Thread, Event
 from Queue import Queue, Empty
+import logging
+import random
 
 from toil.test import ToilTest
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
 from toil.common import Config
-
-# from multiprocessing import Process as Thread
-# from multiprocessing import Event
-# from multiprocessing import Queue
-# from Queue import Empty
-import logging
 from toil.batchSystems.jobDispatcher import IssuedJob
 from toil.provisioners.clusterScaler import Shape
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +75,6 @@ class ClusterScalerTest(ToilTest):
             """
             Class that mimics a job dispatcher / provisioner
             """
-
             def __init__(self, secondsPerJob):
                 super(Dummy, self).__init__()
                 # To mimic parallel preemptable and non-preemptable queues
@@ -111,7 +105,7 @@ class ClusterScalerTest(ToilTest):
                     def getNumberOfJobsIssued(self):
                         return self.jobQueue.qsize()
 
-                    def getNumberOfEmptyNodes(self):
+                    def getNumberOfIdleNodes(self):
                         return sum(map(lambda w: 0 if w.busyEvent.is_set() else 1, self.workers))
 
                     # Methods implementing the AbstractProvisioner class
@@ -154,7 +148,7 @@ class ClusterScalerTest(ToilTest):
                             self.totalWorkerTime += worker.stop()
                             nodes -= 1
 
-                    def numberOfWorkers(self):
+                    def getNumberOfNodes(self):
                         return len(self.workers)
 
                 self.dummyBatchSystems = (DummyScalingBatchSystem(),) * 2
@@ -174,8 +168,8 @@ class ClusterScalerTest(ToilTest):
             def getNumberOfJobsIssued(self, preemptable=False):
                 return self._pick(preemptable).getNumberOfJobsIssued()
 
-            def getNumberOfEmptyNodes(self, preemptable=False):
-                return self._pick(preemptable).getNumberOfEmptyNodes()
+            def getNumberOfIdleNodes(self, preemptable=False):
+                return self._pick(preemptable).getNumberOfIdleNodes()
 
             # AbstractProvisioner methods
 
@@ -185,8 +179,10 @@ class ClusterScalerTest(ToilTest):
             def removeNodes(self, nodes=1, preemptable=False):
                 self._pick(preemptable).removeNodes(nodes=nodes)
 
-            def numberOfWorkers(self, preemptable=False):
-                return self._pick(preemptable).numberOfWorkers()
+            def getNumberOfNodes(self, preemptable=False):
+                return self._pick(preemptable).getNumberOfNodes()
+
+            # AbstractBatchSystem methods
 
             def shutdown(self):
                 pass
@@ -208,6 +204,9 @@ class ClusterScalerTest(ToilTest):
                 pass
 
             def getIssuedBatchJobIDs(self):
+                pass
+
+            def setEnv(self, name, value=None):
                 pass
 
         # First do simple test of creating 100 preemptable and non-premptable jobs
@@ -240,11 +239,13 @@ class ClusterScalerTest(ToilTest):
         # Wait while the cluster the process chunks through the jobs
         while (dummy.getNumberOfJobsIssued(preemptable=False) > 0 or
                dummy.getNumberOfJobsIssued(preemptable=True) > 0 or
-               dummy.numberOfWorkers() > 0 or dummy.numberOfWorkers(preemptable=True) > 0):
-            logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s"
-                        ", preemptable queue size: %s, preemptable workers: %s",
-                        dummy.getNumberOfJobsIssued(preemptable=False), dummy.numberOfWorkers(preemptable=False),
-                        dummy.getNumberOfJobsIssued(preemptable=True), dummy.numberOfWorkers(preemptable=True))
+               dummy.getNumberOfNodes() > 0 or dummy.getNumberOfNodes(preemptable=True) > 0):
+            logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s, "
+                        "preemptable queue size: %s, preemptable workers: %s",
+                        dummy.getNumberOfJobsIssued(preemptable=False),
+                        dummy.getNumberOfNodes(preemptable=False),
+                        dummy.getNumberOfJobsIssued(preemptable=True),
+                        dummy.getNumberOfNodes(preemptable=True))
             time.sleep(0.5)
         logger.info("We waited %s for cluster to finish" % (time.time() - startTime))
         clusterScaler.shutdown()
@@ -260,8 +261,8 @@ class ClusterScalerTest(ToilTest):
 
     def testClusterScaler_NoPreemptableJobs(self):
         """
-        Test scaling for a batch of non-preemptable jobs and no preemptable jobs 
-        (makes debugging easier).
+        Test scaling for a batch of non-preemptable jobs and no preemptable jobs (makes debugging
+        easier).
         """
         config = Config()
 

@@ -15,17 +15,18 @@
 from abc import ABCMeta, abstractmethod
 
 
-class ProvisioningException( Exception ):
+class ProvisioningException(Exception):
     """
     General provisioning exception. 
     """
-    def __init__( self, message ):
-        super( ProvisioningException, self ).__init__( message )
+
+    def __init__(self, message):
+        super(ProvisioningException, self).__init__(message)
 
 class AbstractProvisioner(object):
     """
-    An abstract base class to represent the interface for provisioning
-    worker nodes to use in a toil cluster.
+    An abstract base class to represent the interface for provisioning worker nodes to use in a
+    Toil cluster.
     """
 
     __metaclass__ = ABCMeta
@@ -33,10 +34,16 @@ class AbstractProvisioner(object):
     @abstractmethod
     def addNodes(self, nodes=1, preemptable=False):
         """
-        Adds worker node to the set of worker nodes. The function should block
-        while the node is being provisioned. 
-        
-        :param int nodes: Number of nodes to added.
+        Adds worker node to the set of worker nodes. The function must block while the nodes are
+        being provisioned. It should to fail atomically, i.e. it should either add the requested
+        number of nodes or none at all.
+
+        :type nodes: int
+        :param nodes: Number of nodes to add.
+
+        :type preemptable: bool
+        :param preemptable: whether the added nodes will be preemptable, i.e. if they may be
+               removed spontaneously by the underlying platform at any time.
         
         :raise ProvisioningException: If worker nodes can not be added.
         """
@@ -45,15 +52,23 @@ class AbstractProvisioner(object):
     @abstractmethod
     def removeNodes(self, nodes=1, preemptable=False):
         """
-        Removes worker nodes from the set of worker nodes.
-        
-        :param int nodes: Number of nodes to remove.
+        Removes worker nodes from the set of worker nodes. The function must block while the
+        nodes are being removed. It should to fail atomically, i.e. it should either add the
+        requested number of nodes or none at all.
+
+        :type nodes: int
+        :param nodes: Number of nodes to remove.
+
+        :type preemptable: bool
+        :param preemptable: if True, preemptable nodes will be removed,
+               otherwise non-preemptable nodes will be removed.
+
         :raise ProvisioningException: If worker nodes can not be removed.
         """
         raise NotImplementedError()
     
     @abstractmethod
-    def numberOfWorkers(self, preemptable=False):
+    def getNumberOfNodes(self, preemptable=False):
         """
         The total number of worker nodes in the cluster.
 
