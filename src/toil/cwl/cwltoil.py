@@ -392,6 +392,7 @@ def main(args=None):
 
     if args is None:
         args = sys.argv[1:]
+
     options = parser.parse_args([workdir] + args)
 
     if options.quiet:
