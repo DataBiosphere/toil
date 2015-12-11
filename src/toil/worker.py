@@ -87,6 +87,7 @@ def main():
     from toil.lib.bioio import system
     from toil.common import loadJobStore
     from toil.job import Job
+    from toil.cache import Cache
     
     ########################################## 
     #Input args
@@ -150,32 +151,14 @@ def main():
     ##########################################
     #Setup the cache.
     ##########################################
-
     #  Dir to put all the cached files in. This will be placed in the same parent as localWorkerTempDir
     #  localCacheDir could exist from a previous worker using the same filesystem
     localCacheDir = os.path.join(os.path.split(localWorkerTempDir)[0], 'cache')
-    try:
-        os.mkdir(localCacheDir, 0755)
-    except OSError as err:
-        # If the error is not Errno 17 (file already exists), reraise the exception
-        if e.errno != 17:
-            raise err
+    cacher = Cache(localCacheDir)
+    cacher.createCacheDir()
     #  Create the availableCacheSize file to contain the free space available for caching if necessary
-    #  This has to be a race condition because a new worker can get assigned to a place where the Lock file exists and
-    #  since os.rename silently replaces the file if it is present, we will get incorrect caching values in the file if
-    #  we go ahead without the if exists statement.
-    if not os.path.exists(os.path.join(localCacheDir, '.availableCachingDisk')):
-        handle, tmpFile = tempfile.mkstemp(dir=self.localCacheDir)
-        os.close(handle)
-        if isinstance(config.defaultcache, float):
-            freeSpace = int(subprocess.check_output(['df', config.workDir]).split('\n')[1].split()[3]) * 1024 * \
-                            config.defaultcache
-        else:
-            freeSpace = config.defaultcache
-        with open(tmpFile, 'w') as fileHandle:
-            fileHandle.write(str(freeSpace))
-        os.rename(tmpFile, os.path.join(localCacheDir, '.availableCachingDisk'))
-
+    if not os.path.exists(cacher.cacheLockFile):
+        cacher.createCacheLockFile()
 
     ##########################################
     #Setup the logging
@@ -304,18 +287,18 @@ def main():
                     jobReqs = job.effectiveRequirements(jobStore.config)
                     #  Acquire a lock on the cache lock file so the cache isn't modified by another process at the same
                     #  time.
-                    with fileStore.cacheLock() as cacheFile:
+                    with Cache.cacheLock() as cacheLockFile:
                         #  Get the available free space from the cache Lock file.  Remove jobReqs.disk space from it.
-                        availableFreeSpace = float(cacheFile.read())
-                        reducedFreeSpace = freeSpace - jobReqs.disk
+                        availableFreeSpace = float(cacheLockFile.read())
+                        reducedFreeSpace = availableFreeSpace - jobReqs.disk
                         #  Cleanup the cache to use at most reducedFreeSpace bytes of disk
                         fileStore._cleanCache(reducedFreeSpace)
                         #  Rewind the file, write the new available cache space, then purge the rest of the bytes in the
-                        #  Lock file.  If availableFreeSpace = 10000 and reducedFreeSpace = 9000, if we don't truncate,
-                        #  the Lock file will contain 90000 instead of 9000 after the rewrite.
-                        cacheFile.seek(0)
-                        cacheFile.write(str(reducedFreeSpace))
-                        cacheFile.truncate()
+                        #  Lock file.
+                        cacheLockFile.seek(0)
+                        cacheLockFile.truncate()
+                        cacheLockFile.write(str(reducedFreeSpace))
+
 
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
