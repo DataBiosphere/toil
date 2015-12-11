@@ -35,8 +35,7 @@ from bd2k.util.humanize import human2bytes
 from io import BytesIO
 from toil.resource import ModuleDescriptor
 from toil.common import loadJobStore
-from contextlib import contextmanager
-from fcntl import flock, LOCK_EX
+
 
 logger = logging.getLogger( __name__ )
 
@@ -445,8 +444,8 @@ class Job(object):
         and log messages, passed as argument to the :func:`toil.job.Job.run` method.
         """
         #Variables used for synching reads/writes
-        _lockFilesLock = Semaphore()
-        _lockFiles = {}
+        _pendingFileWritesLock = Semaphore()
+        _pendingFileWrites = {}
         #For files in jobStore that are on the local disk, 
         #map of jobStoreFileIDs to locations in localTempDir.
         _jobStoreFileIDToCacheLocation = {}
@@ -504,8 +503,8 @@ class Job(object):
                                 outputFileHandle.write(copyBuffer)
                         inputFileHandle.close()
                         #Remove the file from the lock files
-                        with self._lockFilesLock:
-                            self._lockFiles.remove(jobStoreFileID)
+                        with self._pendingFileWritesLock:
+                            self._pendingFileWrites.pop(jobStoreFileID)
                 except:
                     self._terminateEvent.set()
                     raise
@@ -516,25 +515,7 @@ class Job(object):
                 worker.start()
             self.inputBlockFn = inputBlockFn
 
-        @contextmanager
-        def cacheLock(self):
-            '''
-            This is a context manager to acquire a lock on the Lock file that will be used to prevent synchronous cache
-            operations between workers.
-            :yield: File descriptor for cache Lock file in r+ mode
-            '''
-            cacheFile = '/'.join([self.localTempDir, 'cache', '.availableCachingDisk'])
-            assert os.path.exists(cacheFile), cacheFile + ' does not exist.'
-            cacheFile = open(cacheFile, 'r+')
-            try:
-                flock(cacheFile, LOCK_EX)
-                logger.debug("Obtained Cache Lock")
-                yield cacheFile
-            except IOError:
-                raise RuntimeError('Unable to acquire lock on ' + cacheFile.name)
-            finally:
-                cacheFile.close()
-                logger.debug("Released Cache Lock")
+
 
         def getLocalTempDir(self):
             """
@@ -585,22 +566,24 @@ class Job(object):
             #Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
             cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
-            getFileSystem = lambda x: subprocess.check_output(['df', x]).split('\n')[1].split()[1]
-            #  TODO: If absLocalFileName is on the same File System as the jobstore, os.link it instead of async writing
-            #  For this, I will need to figure out a way to identify the jobstore location.
-            if getFileSystem(absLocalFileName) == getFileSystem(self.localTempDir):
-                pass
-            if absLocalFileName.startswith(self.localTempDir):
+            #  If the FileJobStore is being used, and if the local file and the filestore are on the same device, then
+            #  hardlink temp files to filestore instead of copying.
+            if self.jobStore.__name__ == 'FileJobStore' and \
+                            os.stat(absLocalFileName).st_dev == os.stat(jobStore.jobStoreDir).st_dev:
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
-                self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
-                #Chmod to make file read only to try to prevent accidental user modification
-                os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-                with self._lockFilesLock:
-                    self._lockFiles.add(jobStoreFileID)
-                self._jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
+                #  If the file is within the scope of the localTempDir, hardlink it to cache and filestore
+                if absLocalFileName.startswith(self.localTempDir):
+                    os.link(absLocalFileName, self.jobStore._getAbsPath(jobStoreFileID))
+                #  Else it is being added to the filestore for the first time and we should copy it instead of linking
+                else:
+                    self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
+                    with self._pendingFileWritesLock:
+                        self._pendingFileWrites.add(jobStoreFileID)
             else:
                 #Write the file directly to the file store
                 jobStoreFileID = self.jobStore.writeFile(localFileName, cleanupID)
+            # Link the file to the cache.
+            Cache.linkToCache(absLocalFileName, jobStoreFileID)
             return jobStoreFileID
         
         def writeGlobalFileStream(self, cleanup=False):
@@ -833,8 +816,8 @@ class Job(object):
             #Remove files so that the total cached files are smaller than a cacheSize
             
             #List of pairs of (fileCreateTime, fileStoreID) for cached files
-            with self._lockFilesLock:
-                lockedFiles = set(self._lockFiles.values())
+            with self._pendingFileWritesLock:
+                lockedFiles = set(self._pendingFileWrites.values())
             
             def clean(dirOrFile, remove=True):
                 canRemove = True 
