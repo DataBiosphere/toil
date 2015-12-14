@@ -20,7 +20,6 @@ from toil.test import ToilTest, needs_cwl
 
 @needs_cwl
 class CWLTest(ToilTest):
-    @skip("https://github.com/BD2KGenomics/toil/issues/621")
     def test_run_revsort(self):
         from toil.cwl import cwltoil
         outDir = self._createTempDir()

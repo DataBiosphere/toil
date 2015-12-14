@@ -412,7 +412,8 @@ def main(args=None):
 
     job, _ = loader.resolve_ref(uri)
 
-    t = cwltool.main.load_tool(options.cwltool, False, False, cwltool.workflow.defaultMakeTool,
+    t = cwltool.main.load_tool(options.cwltool, False, True,
+                               cwltool.workflow.defaultMakeTool,
                                True)
 
     if type(t) == int:
