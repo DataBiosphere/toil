@@ -14,7 +14,6 @@
 from __future__ import absolute_import
 import json
 import os
-from unittest import skip
 
 from toil.test import ToilTest, needs_cwl
 
