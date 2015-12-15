@@ -24,7 +24,6 @@ import time
 import copy_reg
 import cPickle
 import logging
-import subprocess
 import shutil
 import stat
 import inspect
@@ -451,7 +450,7 @@ class Job(object):
         _jobStoreFileIDToCacheLocation = {}
         _terminateEvent = Event() #Used to signify crashes in threads
         
-        def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+        def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn, cacheOp):
             """
             This constructor should not be called by the user, \
             FileStore instances are only provided as arguments to the run function.
@@ -463,10 +462,12 @@ class Job(object):
             files will be placed.
             :param method inputBlockFn: A function which blocks and which is called before \
             the fileStore completes atomically updating the jobs files in the job store.
+            :param toil.cache.Cache cacheOp: The cache class for the job
             """
             self.jobStore = jobStore
             self.jobWrapper = jobWrapper
             self.localTempDir = os.path.abspath(localTempDir)
+            self.cacheOp = cacheOp
             self.loggingMessages = []
             self.filesToDelete = set()
             self.jobsToDelete = set()
@@ -563,13 +564,13 @@ class Job(object):
             
             :returns: an ID that can be used to retrieve the file. 
             """
-            #Put the file into the cache if it is a path within localTempDir
+            #  Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
             cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
             #  If the FileJobStore is being used, and if the local file and the filestore are on the same device, then
             #  hardlink temp files to filestore instead of copying.
             if self.jobStore.__name__ == 'FileJobStore' and \
-                            os.stat(absLocalFileName).st_dev == os.stat(jobStore.jobStoreDir).st_dev:
+                        os.stat(absLocalFileName).st_dev == os.stat(jobStore.jobStoreDir).st_dev:
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
                 #  If the file is within the scope of the localTempDir, hardlink it to cache and filestore
                 if absLocalFileName.startswith(self.localTempDir):
@@ -578,12 +579,15 @@ class Job(object):
                 else:
                     self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
                     with self._pendingFileWritesLock:
-                        self._pendingFileWrites.add(jobStoreFileID)
+                        self._pendingFileWrites[jobStoreFileID] = absLocalFileName
+                # Also, if the filestore and the cache are on the same filesystem, the threshold of symlinks to use
+                # while ejecting form cache is 2.
+                self.cacheOp.nlinkThreshold = 2
             else:
                 #Write the file directly to the file store
                 jobStoreFileID = self.jobStore.writeFile(localFileName, cleanupID)
-            # Link the file to the cache.
-            Cache.linkToCache(absLocalFileName, jobStoreFileID)
+            # Add the file to the cache.
+            self.cacheOp.addToCache(absLocalFileName, jobStoreFileID)
             return jobStoreFileID
         
         def writeGlobalFileStream(self, cleanup=False):
@@ -598,7 +602,26 @@ class Job(object):
             """
             #TODO: Make this work with the caching??
             return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
-        
+
+        def _readGlobalFile(self, fileStoreID, userPath=None, cache=True):
+            """
+            Get a copy of a file in the job store.
+
+            :param string userPath: a path to the name of file to which the global file will be copied.
+
+            :param boolean cache: If True, and the file is not already in cache, then the file will also be stored in
+            cache such that child jobs can access it faster.
+
+            If userPath is specified and the file is already in cache, the userPath file will be a hard link to the
+            cached file, else it will be an actual copy of the file copied from filstore.
+
+            :return: an absolute path to a local, temporary copy of the file keyed \
+            by fileStoreID.
+            :rtype : string
+            """
+            if fileStoreID in self.filesToDelete:
+                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
+
         def readGlobalFile(self, fileStoreID, userPath=None, cache=True):
             """
             Get a copy of a file in the job store. 
@@ -628,44 +651,26 @@ class Job(object):
             by fileStoreID. 
             :rtype : string
             """
+            # Check that the file hasn't been deleted by the user
             if fileStoreID in self.filesToDelete:
                 raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
+            # setup the ouput filename
             if userPath != None:
-                userPath = os.path.abspath(userPath) #Make an absolute path
-                #Turn off caching if user file is not in localTempDir
-                if cache and not userPath.startswith(self.localTempDir):
-                    cache = False
-            #When requesting a new file from the jobStore first check if fileStoreID
-            #is a key in _jobStoreFileIDToCacheLocation.
-            if fileStoreID in self._jobStoreFileIDToCacheLocation:
-                cachedAbsFilePath = self._jobStoreFileIDToCacheLocation[fileStoreID]   
-                if cache:
-                    #If the user specifies a location and it is not the current location
-                    #return a hardlink to the location, else return the original location
-                    if userPath == None or userPath == cachedAbsFilePath:
-                        return cachedAbsFilePath
-                    #Chmod to make file read only
-                    if os.path.exists(userPath):
-                        os.remove(userPath)
-                    os.link(cachedAbsFilePath, userPath)
-                    return userPath
-                else:
-                    #If caching is not true then make a copy of the file
-                    localFilePath = userPath if userPath != None else self.getLocalTempFile()
-                    shutil.copyfile(cachedAbsFilePath, localFilePath)
-                    return localFilePath
+                localFilePath = os.path.abspath(userPath)
             else:
-                #If it is not in the cache read it from the jobStore to the 
-                #desired location
-                localFilePath = userPath if userPath != None else self.getLocalTempFile()
+                localFilePath = self.getLocalTempFile()
+
+            # First check whether the file is in cache.  If it is, then hardlink the file to userPath
+            cachedFileName = self.cacheOp.hashCachedJSID(fileStoreID)
+            if os.path.exists(cachedFileName):
+                os.link(cachedFileName, localFilePath)
+                self.cacheOp.returnFileSize(cachedFileName)
+                return userPath
+            # If the file is not in cache, then download it to the userPath and then add to cache if specified.
+            else:
                 self.jobStore.readFile(fileStoreID, localFilePath)
-                #If caching is enabled and the file is in local temp dir then
-                #add to cache and make read only
                 if cache:
-                    assert localFilePath.startswith(self.localTempDir)
-                    self._jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
-                    os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-                return localFilePath
+                    self.cacheOp.addToCache(localFilePath, fileStoreID)
 
         def readGlobalFileStream(self, fileStoreID):
             """
@@ -774,39 +779,6 @@ class Job(object):
             except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
                 self.updateSemaphore.release()
                 raise
-
-        def _cleanCache(self, cacheSize):
-            """
-            Cleanup all files in the cache directory to ensure that at most cacheSize bytes are used for caching.
-
-            :param int cacheSize: the total number of bytes of files allowed in the cache.
-            """
-            #  List of pairs of (fileCreateTime, fileStoreID) for deletable cached files.  A deletable cache file is one
-            #  that is not in use by any other worker (identified by the number of symlinks to the file)
-            deletableCacheFiles = set([x for x in self._jobStoreFileIDToCacheLocation.keys() if
-                                       os.stat(x).st_nlink == 1])
-            cachedFileCreateTimes = map(lambda x : (os.stat(self._jobStoreFileIDToCacheLocation[x]).st_ctime, x),
-                                        deletableCacheFiles)
-            #Total number of bytes stored in cached files
-            totalCachedFileSizes = sum([os.stat(self._jobStoreFileIDToCacheLocation[x]).st_size for x in
-                                        self._jobStoreFileIDToCacheLocation.keys()])
-            #  If the total used size is less than the available space, do nothing
-            if totalCachedFileSizes < cacheSize:
-                return None
-            #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
-            #not be the best strategy.
-            cachedFileCreateTimes.sort()
-            cachedFileCreateTimes.reverse()
-            #Now do the actual file removal
-            while totalCachedFileSizes > cacheSize and len(cachedFileCreateTimes) > 0:
-                fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
-                fileSize = os.stat(self._jobStoreFileIDToCacheLocation[fileStoreID]).st_size
-                filePath = self._jobStoreFileIDToCacheLocation[fileStoreID]
-                self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
-                os.remove(filePath)
-                totalCachedFileSizes -= fileSize
-                assert totalCachedFileSizes >= 0
-            assert totalCachedFileSizes <= cacheSize, 'Unable to free up enough space for caching.'
 
         def _cleanLocalTempDir(self):
             """
