@@ -21,6 +21,7 @@ import hashlib
 import shutil
 import time
 from contextlib import contextmanager
+from struct import pack, unpack
 from fcntl import flock, LOCK_EX
 
 logger = logging.getLogger( __name__ )
@@ -38,7 +39,7 @@ class Cache(object):
         '''
         self.localCacheDir = localCacheDir
         self.defaultCache = defaultCache
-        self.cacheLockFile = os.path.join(localCacheDir, '.availableCachingDisk')
+        self.cacheLockFile = os.path.join(localCacheDir, '.cacheLock')
         self.nlinkThreshold = 1
         self.linkedCacheFiles = {}
         self._setupCache()
@@ -54,6 +55,7 @@ class Cache(object):
         try:
             flock(cacheLockFile, LOCK_EX)
             logger.debug("Obtained Cache Lock")
+            # TODO Add logic for sanity checks on caching here
             yield cacheLockFile
         except IOError:
             logger.critical('Unable to acquire lock on ' + cacheLockFile.name)
@@ -93,6 +95,7 @@ class Cache(object):
         # statement.
         freeSpace = int(subprocess.check_output(['df', self.localCacheDir]).split('\n')[1].split()[3]) * 1024
         # If defaultCache is a fraction, then it's meant to be a percentage of the total
+        # TODO
         if 0.0 < self.defaultCache <= 1.0:
              cacheSpace = freeSpace * self.defaultCache
         else:
@@ -102,7 +105,7 @@ class Cache(object):
             warn('Provided cache allotment > free space on disk.')
             cacheSpace = 0.8 * freeSpace
         with open(self.cacheLockFile, 'w') as fileHandle:
-            fileHandle.write(str(cacheSpace))
+            fileHandle.write(pack('ddd', freeSpace, 0.0, 0.0))
 
     def hashCachedJSID(self, JobStoreFileID):
         '''
@@ -120,7 +123,7 @@ class Cache(object):
         :param jobStoreFileID:
         :return:
         '''
-        with self.cacheLock():
+        with self.cacheLock() as cacheFile:
             cachedFile = self.hashCachedJSID(jobStoreFileID)
             # If they're on the same filesystem, hard link them
             if os.stat(self.localCacheDir).st_dev == os.stat(src).st_dev:
@@ -130,57 +133,51 @@ class Cache(object):
             # Chmod to make file read only to try to prevent accidental user modification
             os.chmod(cachedFile, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
 
-    def returnFileSize(self, linkedFile):
-        '''
-        This module will accept a file and return it's file size to the cache pool tracked by cacheLockFile.  This is
-        done if a cached file is linked to a local temp dir.
-        There are two possible conditions:
-            1. The file is not "owned" i.e. the file is in cache and is not linked to any job's localTempDir.  In this
-            scenario, the filesize needs to be accounted for by the job otherwise the filesize will be in the cache pool
-            and the job is theoretically cullable from the cache. Hence the file size is NOT returned.
-            2. The file is "owned" by at least 1 job (from the number of links).  In this case, the size of the file has
-            been accounted for by 1 job and since the file is being hard linked and is not taking up new space in the
-            filesystem, the size of the file should not be needlessly blocked off and ahould be returned to the pool.
-        :param str linkedFile: path to a file that is stated to be linked out of the cache to a localTempDir
-        :return: None
-        '''
-        with self.cacheLock() as cacheFile:
-            self.linkedCacheFiles.add(linkedFile)
-            cacheableSpace =  float(cacheFile.read())
-            fileStat = os.stat(linkedFile)
-            if fileStat.st_nlink > (self.nlinkThreshold + 1)
-                updatedCacheableSpace = cacheableSpace + fileStat.st_size
-                cacheFile.seek(0)
-                cacheFile.truncate()
-                cacheFile.write(str(updatedCacheableSpace))
-            else:
-                pass
-
-    def cleanCache(self, cacheSize):
+    def cleanCache(self, newJobReqs):
         """
         Cleanup all files in the cache directory to ensure that at most cacheSize bytes are used for caching.
         :param float cacheSize: the total number of bytes of files allowed in the cache.
         """
-        #  List of deletable cached files.  A deletable cache file is one
-        #  that is not in use by any other worker (identified by the number of symlinks to the file)
-        allCacheFiles = [os.path.join(self.localCacheDir, x) for x in os.listdir(self.localCacheDir) if
-                         not x.startswith('.')]
-        deletableCacheFiles = set([(x, os.stat(x).st_ctime) for x in allCacheFiles if
-                                   os.stat(x).st_nlink == self.nlinkThreshold])
-        #Total number of bytes stored in cached files
-        totalCachedFileSizes = sum([os.stat(x).st_size for x in allCacheFiles])
-        #  If the total used size is less than the available space, do nothing
-        if totalCachedFileSizes < cacheSize:
-            return None
-        #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
-        #not be the best strategy.
-        cachedFileCreateTimes = sorted(deletableCacheFiles, key=lambda x: x[1])
+        with self.cacheLock() as cacheFile:
+            # Read the values from the cache lock file
+            totalFreeSpace, totaltalCachedSpace, sigmaJobDisk = unpack('ddd', cacheFile.readLine())
+            # Add the new job's disk requirements to the sigmaJobDisk variable
+            sigmaJobDisk += newJobReqs
 
-        #Now do the actual file removal
-        while totalCachedFileSizes > cacheSize and len(deletableCacheFiles) > 0:
-            cachedFile, fileCreateTime = deletableCacheFiles.pop()
-            cachedFileSize = os.stat(cachedFile).st_size
-            os.remove(cachedFile)
-            totalCachedFileSizes -= cachedFileSize
-            assert totalCachedFileSizes >= 0
-        assert totalCachedFileSizes <= cacheSize, 'Unable to free up enough space for caching.'
+            # The inequality of cachedSpace + sigmaJobDisk <= totalFreeSpace is met, do nothing.  Essentially, if the
+            # sum of all cached jobs + disk requirements of all running jobs is less than the available space on the
+            # system, then cache eviction is not required.
+            if totalCachedSpace + sigmaJobDisk <= totalFreeSpace:
+                # Update the file to the latest values first!
+                _cacheWrite(pack('ddd', totalFreeSpace, totalCachedSpace, sigmaJobDisk), cacheFile)
+                return None
+
+            #  List of deletable cached files.  A deletable cache file is one
+            #  that is not in use by any other worker (identified by the number of symlinks to the file)
+            allCacheFiles = [os.path.join(self.localCacheDir, x) for x in os.listdir(self.localCacheDir) if
+                             not x.startswith('.')]
+            deletableCacheFiles = set([(x, y.st_ctime, y.st_size) for x, y in [(z, os.stat(z)) for z in allCacheFiles]
+                                       if y.st_nlink == self.nlinkThreshold])
+
+            # Sort such that we will remove earliest created files first
+            deletableCacheFiles = sorted(deletableCacheFiles, key=lambda x: x[1])
+
+            #Now do the actual file removal
+            while totalCachedSpace + sigmaJobDisk > totalFreeSpace and len(deletableCacheFiles) > 0:
+                cachedFile, fileCreateTime, cachedFileSize = deletableCacheFiles.pop()
+                os.remove(cachedFile)
+                totalCachedSpace -= cachedFileSize
+                assert totalCachedSpace >= 0
+            assert totalCachedSpace + sigmaJobDisk <= totalFreeSpace, 'Unable to free up enough space for caching.'
+            _cacheWrite(pack('ddd', totalFreeSpace, totalCachedSpace, sigmaJobDisk), cacheFile)
+
+    def _cacheWrite(self, writeString, cacheFile):
+        '''
+        Writes a wtring to the cache lock file after flushing it.
+        :param str writeString: String to write to the cache lock file
+        :param file cacheFile: Open file handle to a writeable file
+        :return: None
+        '''
+        cacheFile.seek(0)
+        cacheFile.truncate()
+        cacheFile.write(writeString)
