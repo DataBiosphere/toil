@@ -211,7 +211,6 @@ def main():
     statsDict = MagicExpando()
     messages = []
     blockFn = lambda : True
-    cleanCacheFn = lambda x : True
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -280,20 +279,7 @@ def main():
                                               blockFn, cacher)
                     # Cleanup the cache to free up enough space for this job (if needed)
                     jobReqs = job.effectiveRequirements(jobStore.config)
-                    #  Acquire a lock on the cache lock file so the cache isn't modified by another process at the same
-                    #  time.
-                    with cacher.cacheLock() as cacheLockFile:
-                        #  Get the available free space from the cache Lock file.  Remove jobReqs.disk space from it.
-                        availableFreeSpace = float(cacheLockFile.read())
-                        reducedFreeSpace = availableFreeSpace - jobReqs.disk
-                        #  Cleanup the cache to use at most reducedFreeSpace bytes of disk
-                        cacher.cleanCache(reducedFreeSpace)
-                        #  Rewind the file, write the new available cache space, then purge the rest of the bytes in the
-                        #  Lock file.
-                        cacheLockFile.seek(0)
-                        cacheLockFile.truncate()
-                        cacheLockFile.write(str(reducedFreeSpace))
-
+                    cacher.cleanCache(jobReqs.disk)
 
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
