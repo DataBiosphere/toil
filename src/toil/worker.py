@@ -26,6 +26,7 @@ import socket
 import logging
 import cPickle
 import shutil
+import subprocess
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 import signal
@@ -65,7 +66,7 @@ class AsyncJobStoreWrite:
     
     def blockUntilSync(self):
         pass
-    
+
 def main():
     logging.basicConfig()
 
@@ -86,6 +87,7 @@ def main():
     from toil.lib.bioio import system
     from toil.common import loadJobStore
     from toil.job import Job
+    from toil.cache import Cache
     
     ########################################## 
     #Input args
@@ -145,6 +147,14 @@ def main():
     # where to put the tempDir.
     localWorkerTempDir = tempfile.mkdtemp(dir=tempRootDir)
     os.chmod(localWorkerTempDir, 0755)
+
+    ##########################################
+    #Setup the cache.
+    ##########################################
+    #  Dir to put all the cached files in. This will be placed in the same parent as localWorkerTempDir
+    #  localCacheDir could exist from a previous worker using the same filesystem
+    localCacheDir = os.path.join(os.path.split(localWorkerTempDir)[0], 'cache')
+    cacher = Cache(localCacheDir, config.defaultCache)
 
     ##########################################
     #Setup the logging
@@ -265,12 +275,26 @@ def main():
                     #Load the job
                     job = Job._loadJob(jobWrapper.command, jobStore)
                     
-                    #Cleanup the cache from the previous job
-                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
-                    
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn)
+                                              blockFn, cacher)
+                    # Cleanup the cache to free up enough space for this job (if needed)
+                    jobReqs = job.effectiveRequirements(jobStore.config)
+                    #  Acquire a lock on the cache lock file so the cache isn't modified by another process at the same
+                    #  time.
+                    with cacher.cacheLock() as cacheLockFile:
+                        #  Get the available free space from the cache Lock file.  Remove jobReqs.disk space from it.
+                        availableFreeSpace = float(cacheLockFile.read())
+                        reducedFreeSpace = availableFreeSpace - jobReqs.disk
+                        #  Cleanup the cache to use at most reducedFreeSpace bytes of disk
+                        cacher.cleanCache(reducedFreeSpace)
+                        #  Rewind the file, write the new available cache space, then purge the rest of the bytes in the
+                        #  Lock file.
+                        cacheLockFile.seek(0)
+                        cacheLockFile.truncate()
+                        cacheLockFile.write(str(reducedFreeSpace))
+
+
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
                     messages = fileStore.loggingMessages
@@ -282,7 +306,7 @@ def main():
                                            fileStore=fileStore)
 
                     #Set the clean cache function
-                    cleanCacheFn = fileStore._cleanLocalTempDir
+                    fileStore._cleanLocalTempDir()
                     
                 else: #Is another command (running outside of jobs may be deprecated)
                     #Cleanup the cache from the previous job
@@ -366,7 +390,7 @@ def main():
             assert jobWrapper.cores >= successorJob.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, cacher)
             
             #Update blockFn
             blockFn = fileStore._blockFn
