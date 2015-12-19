@@ -565,8 +565,9 @@ class Job(object):
             if absLocalFileName.startswith(self.localTempDir):
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
                 self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
-                #Chmod to make file read only to try to prevent accidental user modification
-                os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                if os.stat(absLocalFileName).st_uid == os.getuid():
+                    #Chmod if permitted to make file read only to try to prevent accidental user modification
+                    os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 with self._lockFilesLock:
                     self._lockFiles.add(jobStoreFileID)
                 self._jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
