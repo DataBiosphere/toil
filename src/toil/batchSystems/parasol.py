@@ -14,33 +14,32 @@
 
 from __future__ import absolute_import
 import logging
-
 import os
 import re
 import sys
 import subprocess
 import tempfile
 import time
-
 from Queue import Empty
 from Queue import Queue
 from threading import Thread
+
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
 
 logger = logging.getLogger(__name__)
 
 
-class ParasolBatchSystem(AbstractBatchSystem):
+class ParasolBatchSystem(BatchSystemSupport):
     """
     The interface for Parasol.
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         if maxMemory != sys.maxint:
             logger.warn('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
@@ -112,7 +111,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Issues parasol with job commands.
         """
@@ -174,7 +173,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def setEnv(self, name, value=None):
         if value and ' ' in value:
             raise ValueError('Parasol does not support spaces in environment variable values.')
-        return AbstractBatchSystem.setEnv(self, name, value)
+        return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
         return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
@@ -254,7 +253,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
     def getUpdatedBatchJob(self, maxWait):
         while True:
             try:
-                jobID, status = self.updatedJobsQueue.get(timeout=maxWait)
+                jobID, status, wallTime = self.updatedJobsQueue.get(timeout=maxWait)
             except Empty:
                 return None
             try:
@@ -263,7 +262,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
                 # We tried to kill this job, but it ended by itself instead, so skip it.
                 pass
             else:
-                return jobID, status
+                return jobID, status, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
@@ -292,7 +291,7 @@ class ParasolBatchSystem(AbstractBatchSystem):
         char *user;    /* User who ran job */
         char *errFile;    /* Location of stderr file on host */
 
-        plus you finally have the command name..
+        Plus you finally have the command name.
         """
         resultsFiles = set()
         resultsFileHandles = []
@@ -310,8 +309,8 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         if not line:
                             break
                         assert line[-1] == '\n'
-                        status, host, jobId, exe, usrTicks, sysTicks, submitTime, startTime, \
-                        endTime, user, errFile, command = line[:-1].split(None, 11)
+                        (status, host, jobId, exe, usrTicks, sysTicks, submitTime, startTime,
+                         endTime, user, errFile, command) = line[:-1].split(None, 11)
                         status = int(status)
                         jobId = int(jobId)
                         if os.WIFEXITED(status):
@@ -319,7 +318,22 @@ class ParasolBatchSystem(AbstractBatchSystem):
                         else:
                             status = -status
                         self.cpuUsageQueue.put(jobId)
-                        self.updatedJobsQueue.put((jobId, status))
+                        startTime = int(startTime)
+                        endTime = int(endTime)
+                        if endTime == startTime:
+                            # Both, start and end time is an integer so to get sub-second
+                            # accuracy we use the ticks reported by Parasol as an approximation.
+                            # This isn't documented but what Parasol calls "ticks" is actually a
+                            # hundredth of a second. Parasol does the unit conversion early on
+                            # after a job finished. Search paraNode.c for ticksToHundreths. We
+                            # also cheat a little by always reporting at least one hundredth of a
+                            # second.
+                            usrTicks = int(usrTicks)
+                            sysTicks = int(sysTicks)
+                            wallTime = float( max( 1, usrTicks + sysTicks) ) * 0.01
+                        else:
+                            wallTime = float(endTime - startTime)
+                        self.updatedJobsQueue.put((jobId, status, wallTime))
                 time.sleep(1)
         except:
             logger.warn("Error occurred while parsing parasol results files.")

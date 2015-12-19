@@ -56,9 +56,9 @@ def main():
         
     setLoggingFromOptions(options)
     options.restart = True
-    with setupToil(options) as (config, batchSystem, jobStore):
+    with setupToil(options) as (config, batchSystem, provisioner, jobStore):
         jobStore.clean(Job._loadRootJob(jobStore))
-        mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore))
+        mainLoop(config, batchSystem, provisioner, jobStore, Job._loadRootJob(jobStore))
     
 def _test():
     import doctest      

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from collections import defaultdict
 import os
 import socket
+from struct import unpack
 import time
 import pickle
 from Queue import Queue, Empty
@@ -28,21 +29,29 @@ from mesos.interface import mesos_pb2
 import pwd
 from toil import resolveEntryPoint
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, BatchSystemSupport
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
 
 log = logging.getLogger(__name__)
 
 
-class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
+class MesosBatchSystem(BatchSystemSupport,
+                       AbstractScalableBatchSystem,
+                       mesos.interface.Scheduler):
     """
-    A toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos tasks over a
-    cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This class acts as the
-    scheduler and is typically run on the master node that also runs the Mesos master process with which the
-    scheduler communicates via a driver component. The executor is implemented in a separate class. It is run on each
-    slave node and communicates with the Mesos slave process via another driver object. The scheduler may also be run
-    on a separate node from the master, which we then call somewhat ambiguously the driver node.
+    A Toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos
+    tasks over a cluster of slave nodes. A Mesos framework consists of a scheduler and an
+    executor. This class acts as the scheduler and is typically run on the master node that also
+    runs the Mesos master process with which the scheduler communicates via a driver component.
+    The executor is implemented in a separate class. It is run on each slave node and
+    communicates with the Mesos slave process via another driver object. The scheduler may also
+    be run on a separate node from the master, which we then call somewhat ambiguously the driver
+    node.
     """
+
+    def getNumberOfIdleNodes(self, preemptable=False):
+        # TODO: Implement the additional AbstractScalableBatchSystem methods
+        pass
 
     @staticmethod
     def supportsHotDeployment():
@@ -50,7 +59,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+
         # The hot-deployed resources representing the user script and the toil distribution
         # respectively. Will be passed along in every Mesos task. See
         # toil.common.HotDeployedResource for details.
@@ -71,8 +81,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         self.killSet = set()
 
         # contains jobs on which killBatchJobs were called,
-        #regardless of whether or not they actually were killed or
-        #ended by themselves.
+        # regardless of whether or not they actually were killed or
+        # ended by themselves.
         self.intendedKill = set()
 
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and slaveID.
@@ -99,7 +109,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # Start the driver
         self._startDriver()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
         the number of bytes the job needs to run in and cores is the number of cpus needed for the job and error-file
@@ -160,7 +170,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
         # TODO: Ensure jobSet holds jobs that have been "launched" from Mesos
-        jobSet= set()
+        jobSet = set()
         for queue in self.jobQueueList.values():
             for item in queue:
                 jobSet.add(item.jobID)
@@ -180,21 +190,16 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         return currentTime
 
     def getUpdatedBatchJob(self, maxWait):
-        """
-        Gets a job that has updated its status, according to the job manager. Max wait gives the number of seconds to
-        pause waiting for a result. If a result is available returns (jobID, exitValue) else it returns None.
-        """
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        jobID, exitValue, wallTime = item
         if jobID in self.intendedKill:
             self.intendedKill.remove(jobID)
             return self.getUpdatedBatchJob(maxWait)
-        log.debug("Job updated with code {}".format(retcode))
-        return i
+        log.debug('Job updated with code {}'.format(exitValue))
+        return item
 
     def getWaitDuration(self):
         """
@@ -272,7 +277,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         '127.0.0.1:123'
         """
         address = address.split(':')
-        assert len(address) in (1,2)
+        assert len(address) in (1, 2)
         address[0] = socket.gethostbyname(address[0])
         return ':'.join(address)
 
@@ -423,13 +428,13 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if self.__bytesToMB(jt_job.resources.memory) > 1:
             mem.scalar.value = self.__bytesToMB(jt_job.resources.memory)
         else:
-            log.warning("Job %s uses less memory than mesos requires. Rounding %s bytes up to 1 mb" %
-                        (jt_job.jobID, jt_job.resources.memory))
+            log.warning("Job %s uses less memory than Mesos requires. Rounding %s up to 1 MiB",
+                        jt_job.jobID, jt_job.resources.memory)
             mem.scalar.value = 1
         return task
 
-    def __updateState(self, intID, exitStatus):
-        self.updatedJobsQueue.put((intID, exitStatus))
+    def __updateState(self, intID, exitStatus, wallTime=None):
+        self.updatedJobsQueue.put((intID, exitStatus, wallTime))
         del self.runningJobMap[intID]
 
     def statusUpdate(self, driver, update):
@@ -453,7 +458,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             self.killedSet.add(taskID)
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.__updateState(taskID, 0)
+            self.__updateState(taskID, 0, unpack('d', update.data))
         elif update.state == mesos_pb2.TASK_FAILED:
             exitStatus = int(update.message)
             log.warning('Task %i failed with exit status %i', taskID, exitStatus)

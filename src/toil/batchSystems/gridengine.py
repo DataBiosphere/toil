@@ -22,7 +22,7 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
@@ -231,13 +231,13 @@ class Worker(Thread):
         return None
 
 
-class GridengineBatchSystem(AbstractBatchSystem):
+class GridengineBatchSystem(BatchSystemSupport):
     """
     The interface for SGE aka Sun GridEngine.
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(GridengineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -258,7 +258,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         # Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -299,14 +299,13 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def getUpdatedBatchJob(self, maxWait):
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        logger.debug('UpdatedJobsQueue Item: %s', item)
+        jobID, retcode = item
         self.currentJobs.remove(jobID)
-        return i
+        return jobID, retcode, None
 
     def shutdown(self):
         """
@@ -364,5 +363,4 @@ class GridengineBatchSystem(AbstractBatchSystem):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError("GridEngine does not support commata in environment variable values")
-        return AbstractBatchSystem.setEnv(self, name, value)
-
+        return super(GridengineBatchSystem,self).setEnv(name, value)

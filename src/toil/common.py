@@ -26,6 +26,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.lsf import LSFBatchSystem
+from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger( __name__ )
 
@@ -56,11 +57,27 @@ class Config(object):
         self.parasolMaxBatches = 10000
         self.environment = {}
 
+        #Autoscaling options
+        self.provisioner = None
+        self.preemptableNodeShape = None
+        self.preemptableNodeName = None
+        self.preemptableBidPrice = None
+        self.minPreemptableNodes = 0
+        self.maxPreemptableNodes = 10
+        self.nonPreemptableNodeShape = None
+        self.nonPreemptableNodeName = None
+        self.minNonPreemptableNodes = 0
+        self.maxNonPreemptableNodes = 10
+        self.alphaPacking = 0.8
+        self.betaInertia = 1.2
+        self.scaleInterval = 360
+        
         #Resource requirements
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
         self.defaultCache = self.defaultDisk
+        self.defaultPreemptable = False
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -145,12 +162,31 @@ class Config(object):
         setOption("parasolMaxBatches", int, iC(1))
 
         setOption("environment", parseSetEnv)
+        
+        #Autoscaling options
+        setOption("provisioner")
+        def parseShape(s):
+            memory, cores, disk, wallTime = s.split()
+            return Shape(human2bytes(memory), int(cores), human2bytes(disk), int(wallTime))
+        setOption("preemptableNodeShape", parseShape)
+        setOption("preemptableNodeName")
+        setOption("preemptableBidPrice")
+        setOption("minPreemptableNodes", int)
+        setOption("maxPreemptableNodes", int)
+        setOption("nonPreemptableNodeShape", parseShape)
+        setOption("nonPreemptableNodeName")
+        setOption("minNonPreemptableNodes", int)
+        setOption("maxNonPreemptableNodes", int)
+        setOption("alphaPacking", float)
+        setOption("betaInertia", float)
+        setOption("scaleInterval", float)
 
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
         setOption("defaultCache", h2b, iC(0))
+        setOption("defaultPreemptable")
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
@@ -177,7 +213,7 @@ def _addOptions(addGroupFn, config):
     #Core options
     #
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
-    location of the toil and turn on stats collation about the performance of jobs.")
+    location of the toil workflow and turn on stats collation about the performance of jobs.")
     #TODO - specify how this works when path is AWS
     addOptionFn('jobStore', type=str,
                       help=("Store in which to place job management files \
@@ -210,6 +246,7 @@ def _addOptions(addGroupFn, config):
     #
     #Batch system options
     #
+    
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
@@ -221,12 +258,70 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
                 help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
-                      help="The name or path of the parasol program. Will be looked up on PATH "
+                help="The name or path of the parasol program. Will be looked up on PATH "
                            "unless it starts with a slashdefault=%s" % config.parasolCommand)
     addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % config.parasolMaxBatches)
+
+    #
+    #Auto scaling options
+    #
+    addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes", 
+                             "Allows the specification of the minimum and maximum number of nodes"
+                             " in an autoscaled cluster, as well as parameters to control the level of provisioning.")
+    
+    addOptionFn("--provisioner", dest="provisioner", default=None, 
+                help=("The provisioner for cluster scaling, currently can be XXX"
+                      " default=%s" % config.provisioner))
+    addOptionFn("--preemptableNodeShape", dest="preemptableNodeShape", default=None, 
+                help=("The 'shape' of the preemptable node type to provision, specified"
+                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
+                      " where each attribute specifies, respectively, the memory (bytes),"
+                      " cores, local disk (bytes) and the billing interval (seconds)."
+                      " default=%s" 
+                      % config.preemptableNodeShape))
+    addOptionFn("--preemptableNodeName", dest="preemptableNodeName", default=None, 
+                help=("The name of the preemptable node type to provision. default=%s" 
+                      % config.preemptableNodeName))
+    addOptionFn("--preemptableBidPrice", dest="preemptableBidPrice", default=None, 
+                help=("The bid price, where used (e.g. spot market) for the"
+                      " preemptable node type. default=%s" 
+                      % config.preemptableBidPrice))
+    addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None, 
+                help=("Minimum number of preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.minPreemptableNodes))
+    addOptionFn("--maxPreemptableNodes", dest="maxPreemptableNodes", default=None, 
+                help=("Maximum number of preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.maxPreemptableNodes))
+    
+    addOptionFn("--nonPreemptableNodeShape", dest="nonPreemptableNodeShape", default=None, 
+                help=("The 'shape' of the non-preemptable node type to provision, specified"
+                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
+                      " where each attribute specifies, respectively, the memory (bytes),"
+                      " cores, local disk (bytes) and the billing interval (seconds)."
+                      " default=%s" 
+                      % config.nonPreemptableNodeShape))
+    addOptionFn("--nonPreemptableNodeName", dest="nonPreemptableNodeName", default=None, 
+                help=("The name of the preemptable node type to provision. default=%s" 
+                      % config.nonPreemptableNodeName))
+    addOptionFn("--minNonPreemptableNodes", dest="minNonPreemptableNodes", default=None, 
+                help=("Minimum number of non-preemptable nodes in cluster, if "
+                      "using auto-scaling. default=%s" % config.minNonPreemptableNodes))
+    addOptionFn("--maxNonPreemptableNodes", dest="maxNonPreemptableNodes", default=None, 
+                help=("Maximum number of non-preemptable nodes in cluster, if using"
+                      " auto-scaling. default=%s" % config.maxNonPreemptableNodes))
+
+    #TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
+    addOptionFn("--alphaPacking", dest="alphaPacking", default=None, 
+                help=(" default=%s" % config.alphaPacking))
+    addOptionFn("--betaInertia", dest="betaInertia", default=None, 
+                help=(" default=%s" % config.betaInertia))
+    addOptionFn("--scaleInterval", dest="scaleInterval", default=None, 
+                help=("The interval (seconds) between assessing if the scale of"
+                      " the cluster needs to change. default=%s" % config.scaleInterval))
+    
 
     #
     #Resource requirements
@@ -250,6 +345,8 @@ def _addOptions(addGroupFn, config):
                      'that do not specify an explicit value for this requirement. Standard '
                      'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
                      bytes2human( config.defaultDisk, symbols='iec' ))
+    addOptionFn("--defaultPreemptable", dest="defaultPreemptable", default=None,
+                help="The default setting for if a job can be run on a preemptable node (if not specified)")
     addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
                 help='The default amount of disk space to use for caching files shared between '
                      'jobs. Only applicable to jobs that do not specify an explicit value for '
@@ -432,7 +529,7 @@ def serialiseEnvironment(jobStore):
 @contextmanager
 def setupToil(options, userScript=None):
     """
-    Creates the data-structures needed for running a toil.
+    Creates the data-structures needed for running a toil workflow.
 
     :type userScript: toil.resource.ModuleDescriptor
     """
@@ -459,8 +556,13 @@ def setupToil(options, userScript=None):
         and batchSystemClass.supportsHotDeployment()):
         kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
         # TODO: toil distribution
-
+    # Create the batch system instance
     batchSystem = createBatchSystem(config, batchSystemClass, kwargs)
+    # Create the provisioner
+    if options.provisioner != None:
+        assert 0 #Currently we have no provisioners
+    else:
+        provisioner = None
     try:
         # Set environment variables required by job store
         for k, v in jobStore.getEnv().iteritems():
@@ -469,7 +571,7 @@ def setupToil(options, userScript=None):
         for k, v in config.environment.iteritems():
             batchSystem.setEnv(k, v)
         serialiseEnvironment(jobStore)
-        yield (config, batchSystem, jobStore)
+        yield (config, batchSystem, provisioner, jobStore)
     finally:
         logger.debug('Shutting down batch system')
         batchSystem.shutdown()
