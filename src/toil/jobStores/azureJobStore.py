@@ -39,7 +39,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              NoSuchFileException)
 import toil.lib.encryption as encryption
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 credential_file_path = '~/.toilAzureCredentials'
 
@@ -63,8 +63,8 @@ def _fetchAzureAccountKey(accountName):
     try:
         return configParser.get('AzureStorageCredentials', accountName)
     except NoOptionError:
-        raise RuntimeError("No account key found for %s, please provide it in " +
-                           credential_file_path % accountName)
+        raise RuntimeError("No account key found for %s, please provide it in %s" %
+                           (accountName, credential_file_path))
 
 
 maxAzureTablePropertySize = 64 * 1024
@@ -82,7 +82,7 @@ class AzureJobStore(AbstractJobStore):
 
         # Table names have strict requirements in Azure
         self.namePrefix = self._sanitizeTableName(namePrefix)
-        log.debug("Creating job store with name prefix '%s'" % self.namePrefix)
+        logger.debug("Creating job store with name prefix '%s'" % self.namePrefix)
 
         # These are the main API entrypoints.
         self.tableService = TableService(account_key=self.account_key, account_name=accountName)
@@ -123,8 +123,21 @@ class AzureJobStore(AbstractJobStore):
         return self.namePrefix + self.nameSeparator + name
 
     def jobs(self):
-        for jobEntity in self.jobItems.query_entities():
+        
+        # How many jobs have we done?
+        total_processed = 0
+            
+        for jobEntity in self.jobItems.query_entities_auto():
+            # Process the items in the page
             yield AzureJob.fromEntity(jobEntity)
+            total_processed += 1
+            
+            if total_processed % 1000 == 0:
+                # Produce some feedback for the user, because this can take
+                # a long time on, for example, Azure
+                logger.info("Processed %d total jobs" % total_processed)
+            
+        logger.info("Processed %d total jobs" % total_processed)
 
     def create(self, command, memory, cores, disk,
                predecessorNumber=0):
@@ -135,7 +148,13 @@ class AzureJobStore(AbstractJobStore):
                        predecessorNumber=predecessorNumber)
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
-        self.jobItems.insert_entity(entity=entity)
+        try:
+            self.jobItems.insert_entity(entity=entity)
+        except WindowsAzureConflictError as e:
+            # A conflict on insert probably means we retried but already
+            # succeeded. Just ignore it. We made a _newJobID() ourselves, so
+            # unless that's broken we can't be re-using a job ID.
+            logger.warning("Conflict when inserting job %s" % jobStoreId)
         return job
 
     def exists(self, jobStoreID):
@@ -532,7 +551,47 @@ class AzureTable(object):
             return self.__getattr__('get_entity')(**kwargs)
         except WindowsAzureMissingResourceError:
             return None
-
+    
+    def query_entities_auto(self, **kwargs):
+        """
+        An automatically-paged version of query_entities. The iterator just
+        yields all entities matching the query, occasionally going back to Azure
+        for the next page.
+        """
+        
+        # We need to page through the results, since we only get some of them at
+        # a time. Just like in the BlobService. See the only documentation
+        # available: the API bindings source code, at:
+        # https://github.com/Azure/azure-storage-python/blob/09e9f186740407672777d6cb6646c33a2273e1a8/azure/storage/table/tableservice.py#L385
+        
+        # These two together constitute the primary key for an item. 
+        next_partition_key = None
+        next_row_key = None
+    
+        while True:
+            # Get a page (up to 1000 items)
+            kwargs['next_partition_key'] = next_partition_key
+            kwargs['next_row_key'] = next_row_key
+            page = self.query_entities(**kwargs)
+            
+            for result in page:
+                # Yield each item one at a time
+                yield result
+                
+            if hasattr(page, 'x_ms_continuation'):
+                # Next time ask for the next page. If you use .get() you need
+                # the lower-case versions, but this is some kind of fancy case-
+                # insensitive dictionary.
+                next_partition_key = page.x_ms_continuation['NextPartitionKey']
+                next_row_key = page.x_ms_continuation['NextRowKey']
+            else:
+                # No continuation to check
+                next_partition_key = None
+                next_row_key = None
+            
+            if not next_partition_key and not next_row_key:
+                # If we run out of pages, stop
+                break
 
 class AzureBlobContainer(object):
     """
@@ -690,11 +749,11 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
             if last:
                 raise
             else:
-                log.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
+                logger.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
         except Exception as e:
             # For other exceptions, the retriable_check function determines whether to retry
             if retriable_check(e):
-                log.info("Exception %s passed predicate, trying again" % e.__class__.__name__)
+                logger.info("Exception %s passed predicate, trying again" % e.__class__.__name__)
             else:
                 raise
         else:
