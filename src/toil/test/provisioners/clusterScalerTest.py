@@ -172,11 +172,11 @@ class ClusterScalerTest(ToilTest):
 
             # AbstractProvisioner methods
 
-            def addNodes(self, nodes=1, preemptable=False):
-                self._pick(preemptable).addNodes(nodes=nodes)
+            def addNodes(self, numNodes=1, preemptable=False):
+                self._pick(preemptable).addNodes(numNodes=numNodes)
 
-            def removeNodes(self, nodes=1, preemptable=False):
-                self._pick(preemptable).removeNodes(nodes=nodes)
+            def removeNodes(self, numNodes=1, preemptable=False):
+                self._pick(preemptable).removeNodes(numNodes=numNodes)
 
             def getNumberOfNodes(self, preemptable=False):
                 return self._pick(preemptable).getNumberOfNodes()

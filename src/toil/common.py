@@ -19,9 +19,10 @@ import os
 import sys
 import cPickle
 from argparse import ArgumentParser
+
 from bd2k.util.humanize import bytes2human
 
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
+from toil.lib.bioio import addLoggingOptions, getLogLevelString
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -29,7 +30,6 @@ from toil.batchSystems.lsf import LSFBatchSystem
 from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger( __name__ )
-
 
 class Config(object):
     """
@@ -439,11 +439,10 @@ def loadBatchSystem(config):
 
 def loadBatchSystemClass(config):
     """
-    Returns a pair containing the concrete batch system class and a dictionary of keyword arguments to be passed to
-    the constructor of that class.
+    Returns a pair containing the concrete batch system class and a dictionary of keyword
+    arguments to be passed to the constructor of that class.
 
     :param config: the current configuration
-    :param key: the name of the configuration attribute that holds the configured batch system name
     """
     batchSystemName = config.batchSystem
     kwargs = dict(config=config,
@@ -476,7 +475,7 @@ def createBatchSystem(config, batchSystemClass, kwargs):
     Returns an instance of the given batch system class, or if a big batch system is configured, a batch system
     instance that combines the given class with the configured big batch system.
 
-    :param config: the current configuration
+    :param Config config: the current configuration
     :param batchSystemClass: the class to be instantiated
     :param kwargs: a list of keyword arguments to be passed to the given class' constructor
     """

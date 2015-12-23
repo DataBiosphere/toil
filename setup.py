@@ -24,7 +24,7 @@ kwargs = dict(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib==1.10.dev6'],
+        'bd2k-python-lib==1.11.dev7'],
     tests_require=[
         'mock==1.0.1',
         'pytest==2.8.3'],
@@ -33,7 +33,8 @@ kwargs = dict(
         'mesos': [
             'psutil==3.0.1'],
         'aws': [
-            'boto==2.38.0'],
+            'boto==2.38.0',
+            'cgcloud-lib==1.4a1.dev195' ],
         'azure': [
             'azure==0.11.1'],
         'encryption': [
