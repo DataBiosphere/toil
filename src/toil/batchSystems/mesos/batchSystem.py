@@ -496,7 +496,7 @@ class MesosBatchSystem(BatchSystemSupport,
             self.executors[nodeAddress] = executor
         executor.lastSeen = time.time()
         # Handle optional message fields
-        for k, v in message:
+        for k, v in message.iteritems():
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
                 executor.nodeInfo = NodeInfo(**v)
