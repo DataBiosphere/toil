@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 import os
+import random
+import socket
 import sys
 import threading
 import pickle
@@ -24,6 +26,7 @@ from time import sleep, time
 
 import psutil
 import mesos.interface
+from bd2k.util.expando import Expando
 from mesos.interface import mesos_pb2
 import mesos.native
 from struct import pack
@@ -45,16 +48,16 @@ class MesosExecutor(mesos.interface.Executor):
         self.runningTasks = {}
         self.workerCleanupInfo = None
         Resource.prepareSystem()
-        # FIXME: clean up resource root dir
+        self.address = socket.gethostbyname(socket.gethostname())
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.info("Registered with framework")
-        statThread = threading.Thread(target=self._sendStats, args=[driver])
-        statThread.setDaemon(True)
-        statThread.start()
+        nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
+        nodeInfoThread.daemon = True
+        nodeInfoThread.start()
 
     def reregistered(self, driver, slaveInfo):
         """
@@ -91,13 +94,24 @@ class MesosExecutor(mesos.interface.Executor):
         """
         log.critical("FATAL ERROR: " + message)
 
-    def _sendStats(self, driver):
+    def _sendFrameworkMessage(self, driver):
+        message = None
         while True:
-            coresUsage = str(psutil.cpu_percent())
-            ramUsage = str(psutil.virtual_memory().percent)
-            driver.sendFrameworkMessage("CPU usage: %s, memory usage: %s" % (coresUsage, ramUsage))
-            log.debug("Sent stats message")
-            sleep(30)
+            # The psutil documentation recommends that we ignore the value returned by the first
+            # invocation of cpu_percent(). However, we do want to send a sign of life early after
+            # starting (e.g. to unblock the provisioner waiting for an instance to come up) so
+            # the first message we send omits the load info.
+            if message is None:
+                message = Expando(address=self.address)
+                psutil.cpu_percent()
+            else:
+                message.nodeInfo = dict(cores=float(psutil.cpu_percent()) * .01,
+                                        memory=float(psutil.virtual_memory().percent) * .01,
+                                        workers=len(self.runningTasks))
+            driver.sendFrameworkMessage(repr(message))
+            # Prevent workers launched together from hitting the leader at the same time,
+            # all the time.
+            sleep(random.randint(45, 75))
 
     def launchTask(self, driver, task):
         """
@@ -149,7 +163,7 @@ class MesosExecutor(mesos.interface.Executor):
                 return subprocess.Popen(job.command,
                                         shell=True, env=dict(os.environ, **job.environment))
 
-        def sendUpdate(taskState, wallTime, message='' ):
+        def sendUpdate(taskState, wallTime, message=''):
             log.debug('Sending task status update ...')
             status = mesos_pb2.TaskStatus()
             status.task_id.value = task.task_id.value

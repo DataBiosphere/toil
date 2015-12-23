@@ -19,20 +19,26 @@ from collections import namedtuple
 
 class Shape(namedtuple("_Shape", "wallTime memory cores disk")):
     """
-    Represents a job or node's "shape", in terms of the dimensions of memory, cores, disk and
-    wall-time allocation. all attributes should be integers, wallTime is the number of seconds of a
-    node allocation memory and disk are number of bytes required
+    Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
+    wall-time allocation. All attributes are integers.
+
+    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
+    or 60 for Azure. FIXME: and for jobs?
+
+    The memory and disk attributes store the number of bytes required by a job (or provided by a
+    node) in RAM or on disk (SSD or HDD), respectively.
     """
     pass
 
 
 class ProvisioningException(Exception):
     """
-    General provisioning exception. 
+    A general provisioning exception.
     """
 
     def __init__(self, message):
         super(ProvisioningException, self).__init__(message)
+
 
 class AbstractProvisioner(object):
     """
@@ -43,41 +49,37 @@ class AbstractProvisioner(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def addNodes(self, nodes=1, preemptable=False):
+    def addNodes(self, numNodes=1, preemptable=False):
         """
-        Adds worker node to the set of worker nodes. The function must block while the nodes are
+        Add worker nodes to the set of worker nodes. The function must block while the nodes are
         being provisioned. It should to fail atomically, i.e. it should either add the requested
         number of nodes or none at all.
 
-        :type nodes: int
-        :param nodes: Number of nodes to add.
+        :param int numNodes: Number of nodes to add.
 
-        :type preemptable: bool
-        :param preemptable: whether the added nodes will be preemptable, i.e. if they may be
+        :param bool preemptable: whether the added nodes will be preemptable, i.e. if they may be
                removed spontaneously by the underlying platform at any time.
         
         :raise ProvisioningException: If worker nodes can not be added.
         """
         raise NotImplementedError()
-    
+
     @abstractmethod
-    def removeNodes(self, nodes=1, preemptable=False):
+    def removeNodes(self, numNodes=1, preemptable=False):
         """
         Removes worker nodes from the set of worker nodes. The function must block while the
         nodes are being removed. It should to fail atomically, i.e. it should either add the
         requested number of nodes or none at all.
 
-        :type nodes: int
-        :param nodes: Number of nodes to remove.
+        :param int numNodes: Number of nodes to remove.
 
-        :type preemptable: bool
-        :param preemptable: if True, preemptable nodes will be removed,
+        :param bool preemptable: if True, preemptable nodes will be removed,
                otherwise non-preemptable nodes will be removed.
 
         :raise ProvisioningException: If worker nodes can not be removed.
         """
         raise NotImplementedError()
-    
+
     @abstractmethod
     def getNumberOfNodes(self, preemptable=False):
         """
@@ -89,3 +91,16 @@ class AbstractProvisioner(object):
         :rtype: int
         """
         raise NotImplementedError()
+
+    @abstractmethod
+    def getNodeShape(self, preemptable=False):
+        """
+        The shape of a node managed by this provisioner. The node shape defines key properties of
+        a machine, such as its number of cores or the time between billing intervals.
+
+        :param preemptable: Whether to return the shape of preemptable nodes or that of
+               non-preemptable ones.
+
+        :rtype: Shape
+        """
+        raise NotImplementedError

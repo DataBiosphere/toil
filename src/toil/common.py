@@ -22,6 +22,7 @@ import cPickle
 import time
 import tempfile
 from argparse import ArgumentParser
+
 from bd2k.util.humanize import bytes2human
 from toil.leader import mainLoop
 
@@ -30,7 +31,6 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger(__name__)
-
 
 class Config(object):
     """

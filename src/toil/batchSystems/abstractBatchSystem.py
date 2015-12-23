@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from collections import namedtuple
 from toil.common import Toil
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import os
 import shutil
 
@@ -291,22 +292,36 @@ class BatchSystemSupport(AbstractBatchSystem):
             shutil.rmtree(workflowDir)
 
 
+class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
+    """
+    The cores attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
+    busy), reflecting the CPU load of the node.
+
+    The memory attribute is a floating point value between 0 (no memory used) and 1 (all memory
+    used), reflecting the memory pressure on the node.
+
+    The workers attribute is a integer reflecting the number workers currently active workers on
+    the node.
+    """
+
+
 class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
-    A batch system that supports a variable number of worker nodes. Used by
-    :class:`toil.provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in
-    the cluster up or down depending on overall load.
+    A batch system that supports a variable number of worker nodes. Used by :class:`toil.
+    provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in the cluster
+    up or down depending on overall load.
     """
 
     @abstractmethod
-    def getNumberOfIdleNodes(self, preemptable=False):
+    def getNodes(self, preemptable=False):
         """
-        A node is idle if it is not running any jobs.
+        Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
+        NodeInfo objects, one for each node.
 
-        :param boolean preemptable: If True, returns number of empty preemptable nodes, else
-               returns the number of non-preemptable nodes.
-        :return: Number of nodes in cluster that are empty.
-        :rtype: int
+        :param bool preemptable: If True only preemptable nodes will be returned. Otherwise
+        non-preemptable nodes will be returned.
+
+        :rtype: dict[str,NodeInfo]
         """
         raise NotImplementedError()
 

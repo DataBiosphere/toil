@@ -14,22 +14,25 @@
 
 from __future__ import absolute_import
 
-from collections import defaultdict
-import os
-import socket
-from struct import unpack
-import time
-import pickle
-from Queue import Queue, Empty
+import ast
 import logging
+import os
+import pickle
+import pwd
+import socket
+import time
+from Queue import Queue, Empty
+from collections import defaultdict
+from struct import unpack
 
 import mesos.interface
 import mesos.native
+from bd2k.util.expando import Expando
 from mesos.interface import mesos_pb2
-import pwd
-from toil import resolveEntryPoint
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, BatchSystemSupport
+from toil import resolveEntryPoint
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, BatchSystemSupport, \
+    NodeInfo
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
 
 log = logging.getLogger(__name__)
@@ -49,10 +52,6 @@ class MesosBatchSystem(BatchSystemSupport,
     node.
     """
 
-    def getNumberOfIdleNodes(self, preemptable=False):
-        # TODO: Implement the additional AbstractScalableBatchSystem methods
-        pass
-
     @staticmethod
     def supportsHotDeployment():
         return True
@@ -67,22 +66,21 @@ class MesosBatchSystem(BatchSystemSupport,
         self.userScript = userScript
         self.toilDistribution = toilDistribution
 
-        # Written to when mesos kills tasks, as directed by toil
-        self.killedSet = set()
-
         # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
         # defined by resource usage
-        self.jobQueueList = defaultdict(list)
+        self.jobQueues = defaultdict(list)
 
-        # Address of Mesos master in the form host:port where host can be an IP or a hostname
+        # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.masterAddress = masterAddress
 
-        # queue of jobs to kill, by jobID.
-        self.killSet = set()
+        # Written to when Mesos kills tasks, as directed by Toil
+        self.killedJobIds = set()
 
-        # contains jobs on which killBatchJobs were called,
-        # regardless of whether or not they actually were killed or
-        # ended by themselves.
+        # The IDs of job to be killed
+        self.killJobIds = set()
+
+        # Contains jobs on which killBatchJobs were called, regardless of whether or not they
+        # actually were killed or ended by themselves.
         self.intendedKill = set()
 
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and
@@ -98,9 +96,19 @@ class MesosBatchSystem(BatchSystemSupport,
         # Reference to the Mesos driver used by this scheduler, to be instantiated in run()
         self.driver = None
 
-        # FIXME: This comment makes no sense to me
+        # A dictionary mapping a node's IP to an Expando object describing important properties
+        # of our executor running on that node. Only an approximation of the truth.
+        self.executors = {}
 
-        # Returns Mesos executor object, which is merged into Mesos tasks as they are built
+        # A set of Mesos slave IDs, one for each non-preemptable node. Only an approximation of
+        # the truth. Recently launched nodes may be absent from this set for a while and a node's
+        #  absence from this set does not imply its preemptability. But it is generally safer to
+        # assume a node is preemptable since non-preemptability is a stronger requirement. If we
+        # tracked the set of preemptable nodes instead, we'd have to use absence as an indicator
+        # of non-preemptability and could therefore be misled into believeing that a recently
+        # launched preemptable node was non-preemptable.
+        self.nonPreemptibleNodes = set()
+
         self.executor = self.buildExecutor()
 
         self.nextJobID = 0
@@ -116,7 +124,7 @@ class MesosBatchSystem(BatchSystemSupport,
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
         needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
-        # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
+        # puts job into jobType_queue to be run by Mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -128,10 +136,10 @@ class MesosBatchSystem(BatchSystemSupport,
                       toilDistribution=self.toilDistribution,
                       environment=self.environment.copy(),
                       workerCleanupInfo=self.workerCleanupInfo)
-        job_type = job.resources
+        jobType = job.resources
 
-        log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
-        self.jobQueueList[job_type].append(job)
+        log.debug("Queueing the job command: %s with job id: %s ...", command, str(jobID))
+        self.jobQueues[jobType].append(job)
         log.debug("... queued")
 
         return jobID
@@ -140,51 +148,44 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         Kills the given job IDs.
         """
+        # FIXME: probably still racy
+        assert self.driver is not None
         localSet = set()
-        if self.driver is None:
-            raise RuntimeError("There is no scheduler driver")
         for jobID in jobIDs:
-            log.debug("passing tasks to kill to Mesos driver")
-            self.killSet.add(jobID)
+            self.killJobIds.add(jobID)
             localSet.add(jobID)
             self.intendedKill.add(jobID)
-
-            if jobID not in self.getIssuedBatchJobIDs():
-                self.killSet.remove(jobID)
-                localSet.remove(jobID)
-                log.debug("Job %s already finished", jobID)
-            else:
+            # FIXME: a bit too expensive for my taste
+            if jobID in self.getIssuedBatchJobIDs():
                 taskId = mesos_pb2.TaskID()
                 taskId.value = str(jobID)
                 self.driver.killTask(taskId)
-
+            else:
+                self.killJobIds.remove(jobID)
+                localSet.remove(jobID)
         while localSet:
-            log.debug("in while loop")
-            intersection = localSet.intersection(self.killedSet)
-            localSet -= intersection
-            self.killedSet -= intersection
-            if not intersection:
-                log.debug("sleeping in the while")
+            intersection = localSet.intersection(self.killedJobIds)
+            if intersection:
+                localSet -= intersection
+                self.killedJobIds -= intersection
+            else:
                 time.sleep(1)
 
     def getIssuedBatchJobIDs(self):
         """
-        A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
+        A list of IDs of jobs currently issued (may be running, or maybe just waiting).
         """
-        # TODO: Ensure jobSet holds jobs that have been "launched" from Mesos
-        jobSet = set()
-        for queue in self.jobQueueList.values():
-            for item in queue:
-                jobSet.add(item.jobID)
-        for key in self.runningJobMap.keys():
-            jobSet.add(key)
-
-        return list(jobSet)
+        jobIds = set()
+        for queue in self.jobQueues.values():
+            for job in queue:
+                jobIds.add(job.jobID)
+        jobIds.update(self.runningJobMap.keys())
+        return list(jobIds)
 
     def getRunningBatchJobIDs(self):
         """
-        Gets a map of jobs (as jobIDs) currently running (not just waiting) and a how long they have been running for
-        (in seconds).
+        Gets a map of jobs (as jobIDs) currently running (not just waiting) and a how long they
+        have been running for (in seconds).
         """
         currentTime = dict()
         for jobID, data in self.runningJobMap.items():
@@ -192,16 +193,19 @@ class MesosBatchSystem(BatchSystemSupport,
         return currentTime
 
     def getUpdatedBatchJob(self, maxWait):
-        try:
-            item = self.updatedJobsQueue.get(timeout=maxWait)
-        except Empty:
-            return None
-        jobID, exitValue, wallTime = item
-        if jobID in self.intendedKill:
-            self.intendedKill.remove(jobID)
-            return self.getUpdatedBatchJob(maxWait)
-        log.debug('Job updated with code {}'.format(exitValue))
-        return item
+        while True:
+            try:
+                item = self.updatedJobsQueue.get(timeout=maxWait)
+            except Empty:
+                return None
+            jobId, exitValue, wallTime = item
+            try:
+                self.intendedKill.remove(jobId)
+            except KeyError:
+                log.debug('Job %s ended with status %i, took %is.', jobId, exitValue, wallTime)
+                return item
+            else:
+                log.debug('Job %s ended naturally before it could be killed.', jobId)
 
     def getWaitDuration(self):
         """
@@ -296,19 +300,17 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         Invoked when the scheduler successfully registers with a Mesos master
         """
-        log.debug("Registered with framework ID %s" % frameworkId.value)
+        log.debug("Registered with framework ID %s", frameworkId.value)
 
     def _sortJobsByResourceReq(self):
-        job_types = self.jobQueueList.keys()
-        # sorts from largest to smallest core usage
-        # TODO: add a size() method to ResourceSummary and use it as the key. Ask me why.
-        job_types.sort(key=lambda resourceRequirement: resourceRequirement.cores)
-        job_types.reverse()
-        return job_types
+        jobTypes = self.jobQueues.keys()
+        jobTypes.sort(key=ResourceRequirement.size)
+        jobTypes.reverse()
+        return jobTypes
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
-            log.debug("No jobs to assign. Rejecting offer".format(offer.id.value))
+            log.debug("Declining offer".format(offer.id.value))
             driver.declineOffer(offer.id)
 
     def _determineOfferResources(self, offer):
@@ -324,14 +326,14 @@ class MesosBatchSystem(BatchSystemSupport,
                 disk += resource.scalar.value
         return cores, memory, disk
 
-    def _prepareToRun(self, job_type, offer, index):
-        jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
+    def _prepareToRun(self, jobType, offer, index):
+        jt_job = self.jobQueues[jobType][index]  # get the first element to insure FIFO
         task = self._createTask(jt_job, offer)
         return task
 
     def _deleteByJobID(self, jobID, ):
         # FIXME: not efficient, I'm sure.
-        for jobType in self.jobQueueList.values():
+        for jobType in self.jobQueues.values():
             for job in jobType:
                 if jobID == job.jobID:
                     jobType.remove(job)
@@ -347,6 +349,8 @@ class MesosBatchSystem(BatchSystemSupport,
         Invoked when resources have been offered to this framework.
         """
         jobTypes = self._sortJobsByResourceReq()
+
+        self.__updatePreemptability(offers)
 
         # TODO: We may want to assert that numIssued >= numRunning
         if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
@@ -409,24 +413,35 @@ class MesosBatchSystem(BatchSystemSupport,
                          'about tasks queued and offers made.')
                 driver.declineOffer(offer.id)
 
-    def _createTask(self, jt_job, offer):
+    def __updatePreemptability(self, offers):
+        for offer in offers:
+            preemptable = False
+            for attribute in offer.attributes:
+                if attribute.name == 'preemptable':
+                    preemptable = bool(attribute.scalar.value)
+            if preemptable:
+                try:
+                    self.nonPreemptibleNodes.remove(offer.slave_id.value)
+                except KeyError:
+                    pass
+            else:
+                self.nonPreemptibleNodes.add(offer.slave_id.value)
+
+    def _createTask(self, job, offer):
         """
-        Build the Mesos task object from the toil job here to avoid further cluttering resourceOffers
+        Build the Mesos task object from the Toil job
         """
         task = mesos_pb2.TaskInfo()
-        task.task_id.value = str(jt_job.jobID)
+        task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
-        task.name = "task %d" % jt_job.jobID
-
-        # assigns toil command to task
-        task.data = pickle.dumps(jt_job)
-
+        task.name = "task %d" % job.jobID
+        task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
 
         cpus = task.resources.add()
         cpus.name = "cpus"
         cpus.type = mesos_pb2.Value.SCALAR
-        cpus.scalar.value = jt_job.resources.cores
+        cpus.scalar.value = job.resources.cores
 
         disk = task.resources.add()
         disk.name = "disk"
@@ -465,19 +480,22 @@ class MesosBatchSystem(BatchSystemSupport,
         status update will be delivered (note, however, that this is currently not true if the
         slave sending the status update is lost/fails during that time).
         """
-        taskID = int(update.task_id.value)
+        jobId = int(update.task_id.value)
         stateName = mesos_pb2.TaskState.Name(update.state)
-        log.debug('Task %i is in state %s', taskID, stateName)
+        log.debug('Job %i is in state %s.', jobId, stateName)
 
-        try:
-            self.killSet.remove(taskID)
-        except KeyError:
-            pass
-        else:
-            self.killedSet.add(taskID)
+        def jobEnded(intID, exitStatus, wallTime=None):
+            try:
+                self.killJobIds.remove(jobId)
+            except KeyError:
+                pass
+            else:
+                self.killedJobIds.add(jobId)
+            self.updatedJobsQueue.put((intID, exitStatus, wallTime))
+            del self.runningJobMap[intID]
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.__updateState(taskID, 0, unpack('d', update.data))
+            jobEnded(jobId, 0, unpack('d', update.data))
         elif update.state == mesos_pb2.TASK_FAILED:
             try:
                 exitStatus = int(update.message)
@@ -488,9 +506,9 @@ class MesosBatchSystem(BatchSystemSupport,
                 log.warning('Task %i failed with exit status %i', taskID, exitStatus)
             self.__updateState(taskID, exitStatus)
         elif update.state in (mesos_pb2.TASK_LOST, mesos_pb2.TASK_KILLED, mesos_pb2.TASK_ERROR):
-            log.warning("Task %i is in unexpected state %s with message '%s'",
-                        taskID, stateName, update.message)
-            self.__updateState(taskID, 255)
+            log.warning("Job %i is in unexpected state %s with message '%s'.",
+                        jobId, stateName, update.message)
+            jobEnded(jobId, 255)
 
         # Explicitly acknowledge the update if implicit acknowledgements are not being used.
         if not self.implicitAcknowledgements:
@@ -500,30 +518,40 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         Invoked when an executor sends a message.
         """
-        log.debug("Executor {} on slave {} sent a message: {}".format(executorId, slaveId, message))
+        message = ast.literal_eval(message)
+        assert isinstance(message, dict)
+        # Handle the mandatory fields of a message
+        nodeAddress = message.pop('address')
+        executor = self.executors.get(nodeAddress)
+        if executor is None or executor.slaveId != slaveId:
+            executor = Expando(nodeAddress=nodeAddress, slaveId=slaveId, nodeInfo=None)
+            self.executors[nodeAddress] = executor
+        executor.lastSeen = time.time()
+        # Handle optional message fields
+        for k, v in message:
+            if k == 'nodeInfo':
+                assert isinstance(v, dict)
+                executor.nodeInfo = NodeInfo(**v)
+            else:
+                raise RuntimeError("Unknown message field '%s'." % k)
 
-    def __reconcile(self, driver):
-        """
-        Queries the master about a list of running tasks. If the master has no knowledge of them, their state will be
-        updated to LOST.
-        """
-        # FIXME: we need additional reconciliation. What about the tasks the master knows about but haven't updated?
-        now = time.time()
-        if now > self.lastReconciliation + self.reconciliationPeriod:
-            self.lastReconciliation = now
-            driver.reconcileTasks(self.runningJobMap.keys())
+    def getNodes(self, preemptable=False):
+        return {nodeAddress: executor.nodeInfo
+                for nodeAddress, executor in self.executors
+                if time.time() - executor.lastSeen < 600
+                and preemptable == (executor.slaveId not in self.nonPreemptibleNodes)}
 
     def reregistered(self, driver, masterInfo):
         """
         Invoked when the scheduler re-registers with a newly elected Mesos master.
         """
-        log.debug("Registered with new master")
+        log.debug('Registered with new master')
 
     def executorLost(self, driver, executorId, slaveId, status):
         """
         Invoked when an executor has exited/terminated.
         """
-        log.warning("executor %s lost.".format(executorId))
+        log.warning("Executor '%s' lost.", executorId)
 
     @staticmethod
     def supportsWorkerCleanup():
