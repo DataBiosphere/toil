@@ -420,39 +420,32 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
-            
-            if options.realTimeLogging:
-                # Set up real-time log message reception, and put the details in the
-                # environment to be sent out to workers.
-                RealtimeLogger.startMaster(level=options.logLevel)
-                
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
-                logger.info("Downloading entire JobStore")
-                jobCache = {jobWrapper.jobStoreID: jobWrapper
-                    for jobWrapper in jobStore.jobs()}
-                logger.info("{} jobs downloaded.".format(len(jobCache)))
-                if options.restart:
-                    #This cleans up any half written jobs after a restart
-                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache) 
-                    rootJob = job._loadRootJob(jobStore)
-                else:
-                    #Make a file to store the root jobs return value in
-                    jobStoreFileID = jobStore.getEmptyFileStoreID()
-                    #Add the root job return value as a promise
-                    if None not in job._rvs:
-                        job._rvs[None] = [] 
-                    job._rvs[None].append(jobStoreFileID)
-                    #Write the name of the promise file in a shared file
-                    with jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
-                        fH.write(jobStoreFileID)
-                    #Setup the first wrapper.
-                    rootJob = job._serialiseFirstJob(jobStore)
-                    #Make sure it's cached
-                    jobCache[rootJob.jobStoreID] = rootJob
-                return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
-            
-            # Stop reporting real-time log messages.
-            RealtimeLogger.stopMaster()
+
+            with RealtimeLogger(level=options.logLevel if options.realTimeLogging else None):
+                with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
+                    logger.info("Downloading entire JobStore")
+                    jobCache = {jobWrapper.jobStoreID: jobWrapper
+                        for jobWrapper in jobStore.jobs()}
+                    logger.info("{} jobs downloaded.".format(len(jobCache)))
+                    if options.restart:
+                        #This cleans up any half written jobs after a restart
+                        jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache)
+                        rootJob = job._loadRootJob(jobStore)
+                    else:
+                        #Make a file to store the root jobs return value in
+                        jobStoreFileID = jobStore.getEmptyFileStoreID()
+                        #Add the root job return value as a promise
+                        if None not in job._rvs:
+                            job._rvs[None] = []
+                        job._rvs[None].append(jobStoreFileID)
+                        #Write the name of the promise file in a shared file
+                        with jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
+                            fH.write(jobStoreFileID)
+                        #Setup the first wrapper.
+                        rootJob = job._serialiseFirstJob(jobStore)
+                        #Make sure it's cached
+                        jobCache[rootJob.jobStoreID] = rootJob
+                    return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
 
     class FileStore( object ):
         """

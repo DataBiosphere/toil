@@ -111,37 +111,65 @@ class RealtimeLogger(object):
 
     envPrefix = "TOIL_RT_LOGGING_"
 
+    defaultLevel = 'INFO'
+
+    lock = threading.RLock()
+
+    initialized = 0
+
     @classmethod
-    def startMaster(cls, level="INFO"):
+    def startMaster(cls, level=defaultLevel):
         """
         Start up the master server and put its details into the options namespace.
 
         Python logging should have already been configured. Takes an optional log level,
-        as a string level name, from the set supported by bioio.
+        as a string level name, from the set supported by bioio. If the level is None, False or
+        the empty string, real-time logging will be disabled, i.e. no UDP listener will be
+        started on the master and log messages will be suppressed on the workers. Note that this
+        is different to 'OFF', which is really just a synonym for 'CRITICAL' and does not disable
+        the listener.
         """
-        # Start up the logging server
-        cls.logging_server = SocketServer.ThreadingUDPServer(
-            server_address=("0.0.0.0", 0),
-            RequestHandlerClass=LoggingDatagramHandler)
+        with cls.lock:
+            if cls.initialized == 0:
+                if level:
+                    # Start up the logging server
+                    cls.logging_server = SocketServer.ThreadingUDPServer(
+                        server_address=('0.0.0.0', 0),
+                        RequestHandlerClass=LoggingDatagramHandler)
 
-        # Set up a thread to do all the serving in the background and exit when we do
-        cls.server_thread = threading.Thread(target=cls.logging_server.serve_forever)
-        cls.server_thread.daemon = True
-        cls.server_thread.start()
+                    # Set up a thread to do all the serving in the background and exit when we do
+                    cls.server_thread = threading.Thread(target=cls.logging_server.serve_forever)
+                    cls.server_thread.daemon = True
+                    cls.server_thread.start()
 
-        # Set options for logging in the environment so they get sent out to jobs
-        host = socket.getfqdn()
-        port = cls.logging_server.server_address[1]
-        os.environ[cls.envPrefix + "ADDRESS"] = host + ":" + str(port)
-        os.environ[cls.envPrefix + "LEVEL"] = level
+                    # Set options for logging in the environment so they get sent out to jobs
+                    fqdn = socket.getfqdn()
+                    try:
+                        host = socket.gethostbyname(fqdn)
+                    except socket.gaierror:
+                        # FIXME: Does this only happen for me? Should we librarize the work-around?
+                        import platform
+                        if platform.system() == 'Darwin' and not '.' in fqdn:
+                            host = socket.gethostbyname(fqdn + '.local')
+                        else:
+                            raise
+
+                    port = cls.logging_server.server_address[1]
+                    os.environ[cls.envPrefix + 'ADDRESS'] = host + ':' + str(port)
+                    os.environ[cls.envPrefix + 'LEVEL'] = level
+                cls.initialized += 1
 
     @classmethod
     def stopMaster(cls):
         """
         Stop the server on the master.
         """
-        cls.logging_server.shutdown()
-        cls.server_thread.join()
+        with cls.lock:
+            cls.initialized -= 1
+            assert cls.initialized >= 0
+            if cls.initialized == 0:
+                cls.logging_server.shutdown()
+                cls.server_thread.join()
 
     @classmethod
     def getLogger(cls):
@@ -151,23 +179,43 @@ class RealtimeLogger(object):
         Note that if the master logs here, you will see the message twice, since it still goes to
         the normal log handlers too.
         """
-        if cls.logger is None:
-            # Only do the setup once, so we don't add a handler every time we log
-            cls.logger = logging.getLogger('realtime')
-            try:
-                level = os.environ[cls.envPrefix + "LEVEL"]
-            except KeyError:
-                pass
-            else:
-                # Adopt the logging level set on the master.
-                toil.lib.bioio.setLogLevel(level, cls.logger)
-            try:
-                address = os.environ[cls.envPrefix + "HOST"]
-            except KeyError:
-                pass
-            else:
-                # We know where to send messages to, so send them.
-                host, port = address.split(':')
-                cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
+        with cls.lock:
+            if cls.logger is None:
+                # Only do the setup once, so we don't add a handler every time we log
+                cls.logger = logging.getLogger('toil-rt')
+                try:
+                    level = os.environ[cls.envPrefix + 'LEVEL']
+                except KeyError:
+                    # There is no listener running on the master, so suppress most log messages
+                    # and skip the UDP stuff.
+                    cls.logger.setLevel(logging.CRITICAL)
+                else:
+                    # Adopt the logging level set on the master.
+                    toil.lib.bioio.setLogLevel(level, cls.logger)
+                    try:
+                        address = os.environ[cls.envPrefix + 'ADDRESS']
+                    except KeyError:
+                        pass
+                    else:
+                        # We know where to send messages to, so send them.
+                        host, port = address.split(':')
+                        cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
+            return cls.logger
 
-        return cls.logger
+    def __init__(self, level=defaultLevel):
+        """
+        Initialize the real-time logging context manager, a convenience on top of startMaster() and
+        stopMaster(). Use as in
+
+        >>> with RealtimeLogger(level='INFO'):
+        ...     RealtimeLogger.info('Blah')
+        """
+        super(RealtimeLogger, self).__init__()
+        self.__level = level
+
+    def __enter__(self):
+        RealtimeLogger.startMaster(level=self.__level)
+
+    # noinspection PyUnusedLocal
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        RealtimeLogger.stopMaster()

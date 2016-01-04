@@ -18,46 +18,48 @@ from toil.test import ToilTest
 import logging
 from toil.realtimeLogger import RealtimeLogger
 
+
 class RealtimeLoggerTest(ToilTest):
     def testRealtimeLogger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "WARNING"
-        
+        options.realTimeLogging = True
+        options.logLevel = 'WARNING'
+
         detector = MessageDetector()
-        
+
         # Set up a log message detector
         logging.getLogger().addHandler(detector)
-        
+
         Job.Runner.startToil(LogTest(), options)
-        
+
         # We need the message we're supposed to see
         self.assertTrue(detector.detected)
         # But not the message that shouldn't be logged.
-        self.assertFalse(detector.over_logged)
-        
-class MessageDetector(logging.Handler):
+        self.assertFalse(detector.overLogged)
+
+
+class MessageDetector(logging.StreamHandler):
     """
     Detect the secret message and set a flag.
     """
-    
+
     def __init__(self):
-        self.detected = False # Have we seen the message we want?
-        self.over_logged = False # Have we seen the message we don't want?
+        self.detected = False  # Have we seen the message we want?
+        self.overLogged = False  # Have we seen the message we don't want?
         super(MessageDetector, self).__init__()
-    
+
     def emit(self, record):
-        if record.msg == "This should be logged at warning level":
+        super(MessageDetector, self).emit(record)
+        if record.msg == 'This should be logged at warning level':
             self.detected = True
-        if record.msg == "This should be logged at info level":
-            self.over_logged = True
-            
+        if record.msg == 'This should be logged at info level':
+            self.overLogged = True
+
 
 class LogTest(Job):
     def __init__(self):
-        Job.__init__(self,  memory=100000, cores=2, disk="3G")
+        Job.__init__(self, memory=100000, cores=2, disk='3G')
 
     def run(self, fileStore):
-        RealtimeLogger.info("This should be logged at info level")
-        RealtimeLogger.warning("This should be logged at warning level")
-        
-
+        RealtimeLogger.info('This should be logged at info level')
+        RealtimeLogger.warning('This should be logged at warning level')
