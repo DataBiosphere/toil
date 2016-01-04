@@ -26,6 +26,8 @@ from toil.lib.bioio import getTempFile
 from toil.lib.bioio import system
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
+from toil.utils.toilStats import getStats, processData
+from toil.common import loadJobStore
 
 
 class UtilsTest(ToilTest):
@@ -167,9 +169,32 @@ class UtilsTest(ToilTest):
         options.logLevel = 'debug'
         Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
 
+    def testMultipleJobsPerWorkerStats(self):
+        """
+        Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data
+        """
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.clean = 'never'
+        options.stats = True
+        Job.Runner.startToil(RunTwoJobsPerWorker(), options)
+
+        jobStore = loadJobStore(options.jobStore)
+        stats = getStats(options)
+        collatedStats =  processData(jobStore.config, stats, options)
+        self.assertTrue(len(collatedStats.job_types)==2,"Some jobs are not represented in the stats")
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
     check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
+
+class RunTwoJobsPerWorker(Job):
+    """
+    Runs child job with same resources as self in an attempt to chain the jobs on the same worker
+    """
+    def __init__(self):
+        Job.__init__(self)
+
+    def run(self, fileStore):
+        self.addChildFn(printUnicodeCharacter)
