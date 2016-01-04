@@ -557,6 +557,7 @@ def processData(config, stats, options):
     # Add worker info
     worker = filter(None, stats.workers)
     jobs = filter(None, stats.jobs)
+    jobs = [item for sublist in jobs for item in sublist]
 
     def fn4(job):
         try:
