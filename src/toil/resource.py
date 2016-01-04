@@ -328,7 +328,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         filePath = os.path.abspath(module.__file__)
         filePath = filePath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
-        assert extension in ('.py', '.pyc')
         if name == '__main__':
             if module.__package__:
                 # invoked via python -m foo.bar
