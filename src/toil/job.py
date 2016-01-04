@@ -424,7 +424,7 @@ class Job(object):
             if options.realTimeLogging:
                 # Set up real-time log message reception, and put the details in the
                 # environment to be sent out to workers.
-                RealtimeLogger.start_master(level=options.logLevel)
+                RealtimeLogger.startMaster(level=options.logLevel)
                 
             with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 logger.info("Downloading entire JobStore")
@@ -452,7 +452,7 @@ class Job(object):
                 return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
             
             # Stop reporting real-time log messages.
-            RealtimeLogger.stop_master()
+            RealtimeLogger.stopMaster()
 
     class FileStore( object ):
         """
