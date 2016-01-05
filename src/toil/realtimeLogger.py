@@ -31,7 +31,7 @@ import toil.lib.bioio
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
-    Receive logging messages from the jobs and display them on the master.
+    Receive logging messages from the jobs and display them on the leader.
     
     Uses bare JSON message encoding.
     """
@@ -88,134 +88,144 @@ class RealtimeLoggerMetaclass(type):
 
 class RealtimeLogger(object):
     """
-    All-static class for getting a logger that logs over UDP to the master.
-    
-    Usage:
-    
-    1. Make sure Job.Runner.startToil() is running on your master.
-    
-    2. From a running job on a worker, do:
-    
+    Provides a logger that logs over UDP to the leader. To use in a Toil job, do:
+
     >>> from toil.realtimeLogger import RealtimeLogger
-    >>> RealtimeLogger.info("This logging message goes straight to the master")
+    >>> RealtimeLogger.info("This logging message goes straight to the leader")
+
+    That's all a user of Toil would need to do. On the leader, Job.Runner.startToil()
+    automatically starts the UDP server by using an instance of this class as a context manager.
     """
     # Enable RealtimeLogger.info() syntactic sugar
     __metaclass__ = RealtimeLoggerMetaclass
 
-    # Also the logger
-    logger = None
-
-    # The master keeps a server and thread
-    logging_server = None
-    server_thread = None
-
+    # The names of all environment variables used by this class are prefixed with this string
     envPrefix = "TOIL_RT_LOGGING_"
 
+    # Avoid duplicating the default level everywhere
     defaultLevel = 'INFO'
+
+    # State maintained on server and client
 
     lock = threading.RLock()
 
+    # Server-side state
+
+    # The leader keeps a server and thread
+    loggingServer = None
+    serverThread = None
+
     initialized = 0
 
-    @classmethod
-    def startMaster(cls, level=defaultLevel):
-        """
-        Start up the master server and put its details into the options namespace.
+    # Client-side state
 
-        Python logging should have already been configured. Takes an optional log level,
-        as a string level name, from the set supported by bioio. If the level is None, False or
-        the empty string, real-time logging will be disabled, i.e. no UDP listener will be
-        started on the master and log messages will be suppressed on the workers. Note that this
-        is different to 'OFF', which is really just a synonym for 'CRITICAL' and does not disable
-        the listener.
-        """
+    logger = None
+
+    @classmethod
+    def _startLeader(cls, batchSystem, level=defaultLevel):
         with cls.lock:
             if cls.initialized == 0:
                 if level:
                     # Start up the logging server
-                    cls.logging_server = SocketServer.ThreadingUDPServer(
+                    cls.loggingServer = SocketServer.ThreadingUDPServer(
                         server_address=('0.0.0.0', 0),
                         RequestHandlerClass=LoggingDatagramHandler)
 
                     # Set up a thread to do all the serving in the background and exit when we do
-                    cls.server_thread = threading.Thread(target=cls.logging_server.serve_forever)
-                    cls.server_thread.daemon = True
-                    cls.server_thread.start()
+                    cls.serverThread = threading.Thread(target=cls.loggingServer.serve_forever)
+                    cls.serverThread.daemon = True
+                    cls.serverThread.start()
 
                     # Set options for logging in the environment so they get sent out to jobs
                     fqdn = socket.getfqdn()
                     try:
-                        host = socket.gethostbyname(fqdn)
+                        ip = socket.gethostbyname(fqdn)
                     except socket.gaierror:
                         # FIXME: Does this only happen for me? Should we librarize the work-around?
                         import platform
-                        if platform.system() == 'Darwin' and not '.' in fqdn:
-                            host = socket.gethostbyname(fqdn + '.local')
+                        if platform.system() == 'Darwin' and '.' not in fqdn:
+                            ip = socket.gethostbyname(fqdn + '.local')
                         else:
                             raise
+                    port = cls.loggingServer.server_address[1]
 
-                    port = cls.logging_server.server_address[1]
-                    os.environ[cls.envPrefix + 'ADDRESS'] = host + ':' + str(port)
-                    os.environ[cls.envPrefix + 'LEVEL'] = level
+                    def _setEnv(name, value):
+                        name = cls.envPrefix + name
+                        os.environ[name] = value
+                        batchSystem.setEnv(name)
+
+                    _setEnv('ADDRESS', '%s:%i' % (ip, port))
+                    _setEnv('LEVEL', level)
                 cls.initialized += 1
 
     @classmethod
-    def stopMaster(cls):
+    def _stopLeader(cls):
         """
-        Stop the server on the master.
+        Stop the server on the leader.
         """
         with cls.lock:
+            assert cls.initialized > 0
             cls.initialized -= 1
-            assert cls.initialized >= 0
             if cls.initialized == 0:
-                cls.logging_server.shutdown()
-                cls.server_thread.join()
+                if cls.loggingServer:
+                    cls.loggingServer.shutdown()
+                    cls.loggingServer = None
+                if cls.serverThread:
+                    cls.serverThread.join()
+                    cls.serverThread = None
 
     @classmethod
     def getLogger(cls):
         """
-        Get the logger that logs to the master.
+        Get the logger that logs real-time to the leader.
         
-        Note that if the master logs here, you will see the message twice, since it still goes to
-        the normal log handlers too.
+        Note that if the returned logger is used on the leader, you will see the message twice,
+        since it still goes to the normal log handlers, too.
         """
-        with cls.lock:
-            if cls.logger is None:
-                # Only do the setup once, so we don't add a handler every time we log
-                cls.logger = logging.getLogger('toil-rt')
-                try:
-                    level = os.environ[cls.envPrefix + 'LEVEL']
-                except KeyError:
-                    # There is no listener running on the master, so suppress most log messages
-                    # and skip the UDP stuff.
-                    cls.logger.setLevel(logging.CRITICAL)
-                else:
-                    # Adopt the logging level set on the master.
-                    toil.lib.bioio.setLogLevel(level, cls.logger)
+        # Only do the setup once, so we don't add a handler every time we log. Use a lock to do
+        # so safely even if we're being called in different threads. Use double-checked locking
+        # to reduce the overhead introduced by the lock.
+        if cls.logger is None:
+            with cls.lock:
+                if cls.logger is None:
+                    cls.logger = logging.getLogger('toil-rt')
                     try:
-                        address = os.environ[cls.envPrefix + 'ADDRESS']
+                        level = os.environ[cls.envPrefix + 'LEVEL']
                     except KeyError:
-                        pass
+                        # There is no server running on the leader, so suppress most log messages
+                        # and skip the UDP stuff.
+                        cls.logger.setLevel(logging.CRITICAL)
                     else:
-                        # We know where to send messages to, so send them.
-                        host, port = address.split(':')
-                        cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
-            return cls.logger
+                        # Adopt the logging level set on the leader.
+                        toil.lib.bioio.setLogLevel(level, cls.logger)
+                        try:
+                            address = os.environ[cls.envPrefix + 'ADDRESS']
+                        except KeyError:
+                            pass
+                        else:
+                            # We know where to send messages to, so send them.
+                            host, port = address.split(':')
+                            cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
+        return cls.logger
 
-    def __init__(self, level=defaultLevel):
+    def __init__(self, batchSystem, level=defaultLevel):
         """
-        Initialize the real-time logging context manager, a convenience on top of startMaster() and
-        stopMaster(). Use as in
+        A context manager that starts up the UDP server.
 
-        >>> with RealtimeLogger(level='INFO'):
-        ...     RealtimeLogger.info('Blah')
+        Should only be invoked on the leader. Python logging should have already been configured.
+        This method takes an optional log level, as a string level name, from the set supported
+        by bioio. If the level is None, False or the empty string, real-time logging will be
+        disabled, i.e. no UDP server will be started on the leader and log messages will be
+        suppressed on the workers. Note that this is different from passing level='OFF',
+        which is equivalent to level='CRITICAL' and does not disable the server.
         """
         super(RealtimeLogger, self).__init__()
         self.__level = level
+        self.__batchSystem = batchSystem
 
     def __enter__(self):
-        RealtimeLogger.startMaster(level=self.__level)
+        RealtimeLogger._startLeader(self.__batchSystem, level=self.__level)
 
     # noinspection PyUnusedLocal
     def __exit__(self, exc_type, exc_val, exc_tb):
-        RealtimeLogger.stopMaster()
+        RealtimeLogger._stopLeader()
