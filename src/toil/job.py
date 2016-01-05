@@ -1294,11 +1294,15 @@ class Job(object):
             os.chdir(baseDir)
         #Finish up the stats
         if stats != None:
-            stats.jobs.time = str(time.time() - startTime)
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
-            stats.jobs.clock = str(totalCpuTime - startClock)
-            stats.jobs.class_name = self._jobName()
-            stats.jobs.memory = str(totalMemoryUsage)
+            stats.jobs.append(
+                Expando(
+                    time=str(time.time() - startTime),
+                    clock=str(totalCpuTime - startClock),
+                    class_name=self._jobName(),
+                    memory=str(totalMemoryUsage)
+                )
+            )
 
     def _jobName(self):
         """
