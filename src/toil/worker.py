@@ -199,6 +199,7 @@ def main():
 
     workerFailed = False
     statsDict = MagicExpando()
+    statsDict.jobs = []
     messages = []
     blockFn = lambda : True
     cleanCacheFn = lambda x : True
