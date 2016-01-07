@@ -13,6 +13,10 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+import sys as _sys
+_sys.path.append('/Applications/PyCharm.app/Contents/debug-eggs/pycharm-debug.egg')
+import pydevd
+pydevd.settrace('127.0.0.1', port=21212, suspend=True, stdoutToServer=True, stderrToServer=True, trace_only_current_thread=False)
 import os
 import sys
 import copy
@@ -153,8 +157,7 @@ def main():
     ##########################################
     #  Dir to put all the cached files in. This will be placed in the same parent as localWorkerTempDir
     #  localCacheDir could exist from a previous worker using the same filesystem
-    localCacheDir = os.path.join(os.path.split(localWorkerTempDir)[0], 'cache')
-    cacher = Cache(localCacheDir, config.defaultCache)
+    cache = Cache(tempRootDir, config.defaultCache)
 
     ##########################################
     #Setup the logging
@@ -276,10 +279,10 @@ def main():
                     
                     #Create a fileStore object for the job
                     fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
-                                              blockFn, cacher)
+                                              blockFn, cache)
                     # Cleanup the cache to free up enough space for this job (if needed)
                     jobReqs = job.effectiveRequirements(jobStore.config)
-                    cacher.cleanCache(jobReqs.disk)
+                    cache.cleanCache(jobReqs.disk)
 
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
@@ -296,11 +299,10 @@ def main():
                     
                 else: #Is another command (running outside of jobs may be deprecated)
                     #Cleanup the cache from the previous job
-                    cleanCacheFn(0)
+                    cache.cleanCache(jobReqs.disk)
                     
                     system(jobWrapper.command)
-                    #Set a dummy clean cache fn
-                    cleanCacheFn = lambda x : None
+                    #TODO: return job reqs to the cache pool
             else:
                 #The command may be none, in which case
                 #the jobWrapper is either a shell ready to be deleted or has 
@@ -376,7 +378,7 @@ def main():
             assert jobWrapper.cores >= successorJob.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, cacher)
+            fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn, cache)
             
             #Update blockFn
             blockFn = fileStore._blockFn

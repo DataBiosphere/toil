@@ -152,7 +152,7 @@ class Config(object):
         setOption("defaultDisk", h2b, iC(1))
         #  defaultCache needs to be handled a tad differently because it can be either a float b/w [0.0, 1.0] or an int.
         x = getattr(options, 'defaultCache', None)
-        if float(x) > 1.0:
+        if x is None or float(x) > 1.0:
             #  Is not a fraction of free space.  Is an absolute size.
             setOption("defaultCache", h2b, iC(0))
         else:
@@ -261,8 +261,8 @@ def _addOptions(addGroupFn, config):
                 help='The default amount of disk space to use for caching files shared between '
                      'jobs. This can be specified in terms of absolute space (Standard suffixes '
                      'like K, Ki, M, Mi, G or Gi are supported) or as a fraction of the free '
-                     'space on the disk mounting workDir. Default is %s ' % config.defaultCache
-                     ' times the free disk space ')
+                     'space on the disk mounting workDir. Default is %s ' % config.defaultCache +
+                     ' times the free disk space.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
