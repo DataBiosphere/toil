@@ -60,7 +60,7 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.defaultCache = self.defaultDisk
+        self.defaultCache = 0.8
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -150,7 +150,14 @@ class Config(object):
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
-        setOption("defaultCache", h2b, iC(0))
+        #  defaultCache needs to be handled a tad differently because it can be either a float b/w [0.0, 1.0] or an int.
+        x = getattr(options, 'defaultCache', None)
+        if x is None or float(x) > 1.0:
+            #  Is not a fraction of free space.  Is an absolute size.
+            setOption("defaultCache", h2b, iC(0))
+        else:
+            #  Is a fraction of free space.
+            setOption("defaultCache", float, fC(0.0, 1.0))
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
@@ -250,11 +257,12 @@ def _addOptions(addGroupFn, config):
                      'that do not specify an explicit value for this requirement. Standard '
                      'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
                      bytes2human( config.defaultDisk, symbols='iec' ))
-    addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
+    addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='FLOAT',
                 help='The default amount of disk space to use for caching files shared between '
-                     'jobs. Only applicable to jobs that do not specify an explicit value for '
-                     'this requirement. Standard suffixes like K, Ki, M, Mi, G or Gi are '
-                     'supported. Default is %s' % bytes2human( config.defaultCache, symbols='iec' ))
+                     'jobs. This can be specified in terms of absolute space (Standard suffixes '
+                     'like K, Ki, M, Mi, G or Gi are supported) or as a fraction of the free '
+                     'space on the disk mounting workDir. Default is %s ' % config.defaultCache +
+                     ' times the free disk space.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
