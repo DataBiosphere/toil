@@ -13,6 +13,10 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+#import sys as _sys
+#_sys.path.append('/Applications/PyCharm.app/Contents/debug-eggs/pycharm-debug.egg')
+#import pydevd
+#pydevd.settrace('127.0.0.1', port=21212, suspend=True, stdoutToServer=True, stderrToServer=True, trace_only_current_thread=False)
 import os
 import sys
 import copy
@@ -26,6 +30,7 @@ import socket
 import logging
 import cPickle
 import shutil
+import subprocess
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 import signal
@@ -65,7 +70,7 @@ class AsyncJobStoreWrite:
     
     def blockUntilSync(self):
         pass
-    
+
 def main():
     logging.basicConfig()
 
@@ -255,7 +260,10 @@ def main():
             startTime = time.time()
             startClock = getTotalCpuTime()
 
-        startTime = time.time() 
+        # Flag to identify if the run is cached or not.
+        cachedToilRun = True if config.defaultCache > 0 else False
+
+        startTime = time.time()
         while True:
             ##########################################
             #Run the jobWrapper, if there is one
@@ -266,8 +274,19 @@ def main():
                     #Load the job
                     job = Job._loadJob(jobWrapper.command, jobStore)
 
+
                     #Create a fileStore object for the job
-                    fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, 
+                    if not cachedToilRun:
+                        fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir,
+                                                  blockFn)
+                    else:
+                        fileStore = Job.CachedFileStore(jobStore, jobWrapper, localTempDir,
+                                                        blockFn)
+                        # Cleanup the cache to free up enough space for this job (if needed)
+                        jobReqs = job.effectiveRequirements(jobStore.config)
+                        fileStore.cleanCache(jobReqs.disk)
+
+                    fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir,
                                               blockFn)
                     #  If at this point fileStore knows ALL the cached files, it will work.
                     #Get the requirements for the new job
@@ -292,17 +311,16 @@ def main():
                                            localTempDir=localTempDir,
                                            jobStore=jobStore,
                                            fileStore=fileStore)
+                    if cachedToilRun:
+                        fileStore.returnJobReqs(jobReqs.disk)
 
-                    #Set the clean cache function
-                    cleanCacheFn = fileStore._cleanLocalTempDir
-                    
                 else: #Is another command (running outside of jobs may be deprecated)
-                    #Cleanup the cache from the previous job
-                    cleanCacheFn(0)
+                    if cachedToilRun:
+                        #Cleanup the cache from the previous job
+                        #TODO: WHAT IS THIS?
+                        pass
                     
                     system(jobWrapper.command)
-                    #Set a dummy clean cache fn
-                    cleanCacheFn = lambda x : None
             else:
                 #The command may be none, in which case
                 #the jobWrapper is either a shell ready to be deleted or has 
@@ -376,7 +394,8 @@ def main():
             jobWrapper.stack += successorJob.stack
             assert jobWrapper.memory >= successorJob.memory
             assert jobWrapper.cores >= successorJob.cores
-            
+
+            #TODO: Benedict, what is this? Should this be a cachedFileStore instance or does it not matter?
             #Build a fileStore to update the job
             fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
             
