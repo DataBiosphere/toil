@@ -572,12 +572,15 @@ class Job(object):
             cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
             if absLocalFileName.startswith(self.localTempDir):
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
-                self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
+                fileHandle = open(absLocalFileName, 'r')
                 if os.stat(absLocalFileName).st_uid == os.getuid():
                     #Chmod if permitted to make file read only to try to prevent accidental user modification
                     os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 with self._lockFilesLock:
                     self._lockFiles.add(jobStoreFileID)
+                # A file handle added to the queue allows the asyncWrite threads to remove their jobID from _lockFiles.
+                # Therefore, a file should only be added after its fileID is added to _lockFiles
+                self.queue.put((fileHandle, jobStoreFileID))
                 self._jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
             else:
                 #Write the file directly to the file store
