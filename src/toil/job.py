@@ -697,7 +697,7 @@ class Job(object):
                 #with self.jobStore.readFileStream(fileStoreID) as fH:
                 #    yield fH
 
-        def deleteGlobalFile(self, fileStoreID):
+        def deleteGlobalFile(self, fileStoreID, toilInternal=None):
             """
             Deletes a global file with the given job store ID. 
             
@@ -705,6 +705,7 @@ class Job(object):
             will not happen until after the job's run method has completed.
             
             :param fileStoreID: the job store ID of the file to be deleted.
+            :param toilInternal: Used in the cached version. Exists here for symmetry.
             """
             self.filesToDelete.add(fileStoreID)
             #If the fileStoreID is in the cache:
@@ -910,9 +911,10 @@ class Job(object):
                     os.link(absLocalFileName, self.jobStore._getAbsPath(jobStoreFileID))
                 #  Else it is being added to the filestore for the first time and we should copy it instead of linking
                 else:
-                    self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
-                    with self._pendingFileWritesLock:
-                        self._pendingFileWrites[jobStoreFileID] = absLocalFileName
+                    jobStoreFileID = self.jobStore.writeFile(absLocalFileName, cleanupID)
+                    #self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
+                    #with self._pendingFileWritesLock:
+                    #    self._pendingFileWrites[jobStoreFileID] = absLocalFileName
             else:
                 #Write the file directly to the file store
                 jobStoreFileID = self.jobStore.writeFile(absLocalFileName, cleanupID)
@@ -920,6 +922,8 @@ class Job(object):
             #TODO: Think about whether we want to cache files that are non-local
             if absLocalFileName.startswith(self.localTempDir):
                 self.addToCache(absLocalFileName, jobStoreFileID)
+            else:
+                self.jobSpecificFiles[jobStoreFileID] = (None, 0.0, False)
             return jobStoreFileID
 
         def readGlobalFile(self, fileStoreID, userPath=None, cache=True):
@@ -965,7 +969,6 @@ class Job(object):
             with self.cacheLock() as lockFileHandle:
                 if fileIsLocal and os.path.exists(cachedFileName):
                     os.link(cachedFileName, localFilePath)
-                    #TODO: non local logic (if not same filesystem, copy)
                     self.returnFileSize(fileStoreID, localFilePath, lockFileHandle, fileAlreadyCached=True)
                 # If the file is not in cache, check whether the .partial file for the given FileStoreID exists.
                 # This is an identifier that the file is currently being downloaded by another job. Hence we should wait
@@ -976,7 +979,7 @@ class Job(object):
                     while os.path.exists(partialCachedFileName):
                         # Release the file lock and then periodically check for completed download
                         flock(lockFileHandle, LOCK_UN)
-                        time.sleep(30) # What should this value be?
+                        time.sleep(20) # What should this value be?
                         flock(lockFileHandle, LOCK_EX)
                     # If the code reaches here, the partial lock file has been removed. This means either the file was
                     # successfully downloaded and added to cache, or something failed. To prevent code duplication,
@@ -994,17 +997,27 @@ class Job(object):
                         # Use try:finally: so that the .partial file is removed whether the download succeeds or not.
                         try:
                             self.jobStore.readFile(fileStoreID, localFilePath)
-                        finally: # Does there HAVE to be an except? What except makes sense here?
-                            # In any case, reacquire the file lock and delete the partial file.
-                            flock(lockFileHandle, LOCK_EX)
-                            # If the download succeded then with the file lock held, add the file to cache.
+                        except:
+                            # Does there HAVE to be an except? What except makes sense here?
+                            raise
+                        else:
+                            # If the download succeded, add the file to cache.
                             if os.path.exists(localFilePath):
                                 self.addToCache(localFilePath, fileStoreID)
                                 # We don't need to return the file size here because addToCache already does it for us
+                        finally:
+                            # In any case, reacquire the file lock and delete the partial file.
+                            flock(lockFileHandle, LOCK_EX)
                             os.remove(partialCachedFileName)
                     else:
+                        # Release the cache lock since the remaining stuff is not cache related.
+                        flock(lockFileHandle, LOCK_UN)
                         self.jobStore.readFile(fileStoreID, localFilePath)
-                        self.jobSpecificFiles[fileStoreID] = (localFilePath, None)
+                        if self.nlinkThreshold == 2:
+                            self._accountForNlinkEquals2(localFilePath)
+                            self.jobSpecificFiles[fileStoreID] = (localFilePath, os.stat(localFilePath).st_size, False)
+                        else:
+                            self.jobSpecificFiles[fileStoreID] = (localFilePath, 0.0, False)
             return localFilePath
 
         def deleteLocalFile(self, fileStoreID):
@@ -1021,41 +1034,50 @@ class Job(object):
             # If a user specified path was provided, use it. Else the file has the same filename as the cached file,
             # only in the local temp directory.
             fileToDelete = self.jobSpecificFiles[fileStoreID][0]
-            assert os.path.exists(fileToDelete), 'Attempting to delete a non-existent file %s.' % fileToDelete
-            # The local file may or may not have been cached. If it wasn't, we just delete the file and continue with no
-            # need for any bookkeeping. If it was, we need to do some bookkeeping. We can know if a file was cached or
-            # not based on the value held in the second tuple value for the dict item having key = fileStoreID. If it
-            # was cached, it holds the file size and if not, it is NoneType.
-            if self.jobSpecificFiles[fileStoreID][1] is None:
-                os.remove(fileToDelete)
+            # Handle the case where a file not in the local temp dir was written to filestore
+            if fileToDelete is None:
                 self.jobSpecificFiles.pop(fileStoreID)
-            else:
-                with self.cacheLock() as lockFileHandle:
-                    # Read the values from the cache lock file
-                    cacheInfo = self.CacheStats.load(lockFileHandle)
-                    # Get the size of the file to be deleted, and the number of jobs using the file at the moment.
-                    fileStats = os.stat(fileToDelete)
-                    fileSize = fileStats.st_size
-                    jobsUsingFile = fileStats.st_nlink
-                    # Remove the file and return file size to the job
-                    try:
-                        os.remove(fileToDelete)
-                    except OSError:
-                        # If there is an error, write the same values back to cache lock file before exiting so other
-                        # running jobs don't get hosed.
-                        cacheInfo.write(lockFileHandle)
-                        raise
-                    cacheInfo.sigmaJob += fileSize
+                return None
+            assert os.path.exists(fileToDelete), 'Attempting to delete a non-existent file %s.' % fileToDelete
+            # The local file may or may not have been cached. If it was, we need to do some bookkeeping. If it wasn't,
+            # we just delete the file and continue with no might need some bookkeeping if the file store and cache live
+            # on the same filesystem. We can know if a file was cached or not based on the value held in the third tuple
+            # value for the dict item having key = fileStoreID. If it was cached, it holds the value True else False.
+            fileIsCached = self.jobSpecificFiles[fileStoreID][2]
+            with self.cacheLock() as lockFileHandle:
+                # If the file isn't cached and the value of the second tuple entry is zero, we can continue without
+                # bookkeeping.
+                if not fileIsCached and self.jobSpecificFiles[fileStoreID][1] == 0:
+                    os.remove(fileToDelete)
                     self.jobSpecificFiles.pop(fileStoreID)
-                    # If other jobs are using the cached copy of the file, or if retaining the file in the cache doesn't
-                    # affect the cache equation, then don't remove it from cache.
-                    if not(jobsUsingFile - 1 > self.nlinkThreshold or cacheInfo.isBalanced()):
-                        os.remove(cachedFile)
-                        cacheInfo.cached -= fileSize
-                    # Write the information into the cache lock file.
+                    return None
+                # If not, we need to do bookkeeping
+                # Read the values from the cache lock file
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                # Get the size of the file to be deleted, and the number of jobs using the file at the moment.
+                fileStats = os.stat(fileToDelete)
+                fileSize = fileStats.st_size
+                assert fileSize == self.jobSpecificFiles[fileStoreID][1]
+                jobsUsingFile = fileStats.st_nlink
+                # Remove the file and return file size to the job
+                try:
+                    os.remove(fileToDelete)
+                except OSError:
+                    # If there is an error, write the same values back to cache lock file before exiting so other
+                    # running jobs don't get hosed.
                     cacheInfo.write(lockFileHandle)
+                    raise
+                cacheInfo.sigmaJob += fileSize
+                self.jobSpecificFiles.pop(fileStoreID)
+                # If the file is cached and if other jobs are using the cached copy of the file, or if retaining the
+                # file in the cache doesn't affect the cache equation, then don't remove it from cache.
+                if fileIsCached and not(jobsUsingFile - 1 > self.nlinkThreshold or cacheInfo.isBalanced()):
+                    os.remove(cachedFile)
+                    cacheInfo.cached -= fileSize
+                # Write the information into the cache lock file.
+                cacheInfo.write(lockFileHandle)
 
-        def deleteGlobalFile(self, fileStoreID):
+        def deleteGlobalFile(self, fileStoreID, toilInternal=False):
             """
             Deletes a global file with the given job store ID.
 
@@ -1063,20 +1085,23 @@ class Job(object):
             method has completed.
 
             :param fileStoreID: the job store ID of the file to be deleted.
+            :param bool toilInternal: A flag indicating whether the call came from a toil internal or from the user.
+                                      Toil internals don't look at the cache operations.
             """
-            # Check if the fileStoreID is in the cache. If it is, ensure only the current job is using it.
-            cachedFile = self.encodedFileID(fileStoreID)
-            # Use deleteLocalFile in teh backend to delete the local copy of the file.
-            self.deleteLocalFile(fileStoreID)
-            # At this point, the local file has been deleted, and possibly the cached copy. If the cached copy exists,
-            # it is either because another job is using the file, or because retaining the file in cache doesn't
-            # unbalance the caching equation. The first case is unacceptable for deleteGlobalFile and the second
-            # requires explicit deletion of the cached copy.
-            if os.path.exists(cachedFile):
-                cachedFileStats = os.stat(cachedFile)
-                assert cachedFileStats.st_nlink <= self.nlinkThreshold + 1, 'Attempting to delete a ' + \
-                    'global file that is in use by another job.'
-                self.removeSingleCachedFile(fileStoreID)
+            if not toilInternal:
+                # Check if the fileStoreID is in the cache. If it is, ensure only the current job is using it.
+                cachedFile = self.encodedFileID(fileStoreID)
+                # Use deleteLocalFile in the backend to delete the local copy of the file.
+                self.deleteLocalFile(fileStoreID)
+                # At this point, the local file has been deleted, and possibly the cached copy. If the cached copy exists,
+                # it is either because another job is using the file, or because retaining the file in cache doesn't
+                # unbalance the caching equation. The first case is unacceptable for deleteGlobalFile and the second
+                # requires explicit deletion of the cached copy.
+                if os.path.exists(cachedFile):
+                    cachedFileStats = os.stat(cachedFile)
+                    assert cachedFileStats.st_nlink <= self.nlinkThreshold + 1, 'Attempting to delete a ' + \
+                        'global file that is in use by another job.'
+                    self.removeSingleCachedFile(fileStoreID)
             # Add the file to the list of files to be deleted once the run method completes.
             self.filesToDelete.add(fileStoreID)
 
@@ -1133,10 +1158,10 @@ class Job(object):
             Create the cache lock file file to contain the state of the cache on the node.
             :return: None
             '''
-            # Create a temp file, modfiy it, then rename to the desired name.  This has to be a race condition because a new
-            # worker can get assigned to a place where the Lock file exists and since os.rename silently replaces the file
-            # if it is present, we will get incorrect caching values in the file if we go ahead without the if exists
-            # statement.
+            # Create a temp file, modfiy it, then rename to the desired name.  This has to be a race condition because a
+            # new worker can get assigned to a place where the Lock file exists and since os.rename silently replaces
+            # the file if it is present, we will get incorrect caching values in the file if we go ahead without the if
+            # exists statement.
             freeSpace = int(subprocess.check_output(['df', self.localCacheDir]).split('\n')[1].split()[3]) * 1024
             # If defaultCache is a fraction, then it's meant to be a percentage of the total
             if 0.0 < self.defaultCache <= 1.0: # can't be 0.0 That is a flag for uncached TOIL.
@@ -1188,7 +1213,6 @@ class Job(object):
                     # Return the filesize of cachedFile to the job and increase the cached size
                     self.returnFileSize(jobStoreFileID, src, lockFileHandle, fileAlreadyCached=False)
 
-
         def returnFileSize(self, fileStoreID, cachedFileSource, lockFileHandle, fileAlreadyCached=False):
             '''
             Returns the fileSize of the if the file that was recently added to, or read from cache to the job
@@ -1204,12 +1228,15 @@ class Job(object):
             '''
             fileSize = os.stat(cachedFileSource).st_size
             cacheInfo = self.CacheStats.load(lockFileHandle)
-            if not fileAlreadyCached:
+            # If the file isn't cached, add the size of the file to the cache pool. However, if the nlink threshold is
+            # not 1 -  i.e. it is 2 (it can only be 1 or 2), then don't do this since the size of the file is accounted
+            # for by the file store copy.
+            if not fileAlreadyCached and self.nlinkThreshold == 1:
                 cacheInfo.cached += fileSize
             cacheInfo.sigmaJob -= fileSize
             assert cacheInfo.isBalanced()
             # Add the info to the job specific cache info
-            self.jobSpecificFiles[fileStoreID] = (cachedFileSource, fileSize)
+            self.jobSpecificFiles[fileStoreID] = (cachedFileSource, fileSize, True)
             cacheInfo.write(lockFileHandle)
 
 
@@ -1288,13 +1315,33 @@ class Job(object):
 
         def returnJobReqs(self, jobReqs):
             '''
-            This function returns the effective job requirements back to the pool after the job completes.
+            This function returns the effective job requirements back to the pool after the job completes. It also
+            deletes the local copies of files with the cache lock held.
+
+            :param float jobReqs: Original size requirement of the job
+            :return: None
+            '''
+            for x in self.jobSpecificFiles.keys():
+                self.deleteLocalFile(x)
+            with self.cacheLock() as lockFileHandle:
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                cacheInfo.sigmaJob -= jobReqs
+                assert cacheInfo.isBalanced()
+                cacheInfo.write(lockFileHandle)
+
+        def OLDreturnJobReqs(self, jobReqs):
+            '''
+            This function returns the effective job requirements back to the pool after the job completes. It also
+            deletes the local copies of files with the cache lock held.
 
             :param float jobReqs: Original size requirement of the job
             :return: None
             '''
             jobCachedFileSize = sum([x[1] for x in self.jobSpecificFiles.values() if x and x[1]])
+            localFilesToDelete = [x[0] for x in self.jobSpecificFiles.values() if x and x[1]]
             with self.cacheLock() as lockFileHandle:
+                for x in localFilesToDelete:
+                    os.remove(x)
                 cacheInfo = self.CacheStats.load(lockFileHandle)
                 cacheInfo.sigmaJob -= (jobReqs - jobCachedFileSize)
                 assert cacheInfo.isBalanced()
@@ -1319,6 +1366,21 @@ class Job(object):
 
             def isBalanced(self):
                 return self.cached + self.sigmaJob <= self.total
+
+        def _accountForNlinkEquals2(self, localFilePath):
+            '''
+            This is a utility function that accounts for the fact that if nlinkThreshold == 2, the size fo the file is
+            accounted for by the file store copy of the file and thus the file size shouldn't be added to the cached
+            file sizes.
+            :param str localFilePath: Path to the local file that was linked to the file store copy.
+            :return: None
+            '''
+            fileStats = os.stat(localFilePath)
+            assert fileStats.st_nlink >= self.nlinkThreshold
+            with self.cacheLock() as lockFileHandle:
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                cacheInfo.sigmaJob -= fileStats.st_size
+                cacheInfo.write(lockFileHandle)
 
 
     class Service:
@@ -1762,7 +1824,7 @@ class Job(object):
         self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
         #Add the promise files to delete to the list of jobStoreFileIDs to delete
         for jobStoreFileID in promiseFilesToDelete:
-            fileStore.deleteGlobalFile(jobStoreFileID)
+            fileStore.deleteGlobalFile(jobStoreFileID, toilInternal=True)
         promiseFilesToDelete.clear()
         #Now indicate the asynchronous update of the job can happen
 

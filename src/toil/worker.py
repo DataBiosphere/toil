@@ -30,7 +30,6 @@ import socket
 import logging
 import cPickle
 import shutil
-import subprocess
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 import signal
