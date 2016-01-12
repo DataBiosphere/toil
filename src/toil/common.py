@@ -151,7 +151,7 @@ class Config(object):
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
         #  defaultCache needs to be handled a tad differently because it can be either a float b/w [0.0, 1.0] or an int.
-        x = getattr(options, 'defaultCache', None)
+        x = options.defaultCache
         if x is None or float(x) > 1.0:
             #  Is not a fraction of free space.  Is an absolute size.
             setOption("defaultCache", h2b, iC(0))
