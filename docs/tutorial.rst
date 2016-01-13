@@ -11,6 +11,7 @@ Job basics
 The atomic unit of work in a Toil workflow is a *job* (:class:`toil.job.Job`). User
 scripts inherit from this base class to define units of work.
 For example::
+
     from toil.job import Job
     
     class HelloWorld(Job):
@@ -40,6 +41,7 @@ We can add to the previous example to turn it into a complete workflow by adding
 to create an instance of HelloWorld and to run this as a workflow containing a single job.
 This uses the :class:`toil.job.Job.Runner` class, which is used to start and resume Toil workflows. 
 For example::
+
     from toil.job import Job
     
     class HelloWorld(Job):
@@ -126,6 +128,7 @@ a constructor. To avoid this the classes :class:`toil.job.FunctionWrappingJob` a
 :class:`toil.job.JobFunctionWrappingTarget` allow functions to be directly converted to 
 jobs. 
 For example::
+
     from toil.job import Job
      
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
@@ -146,6 +149,7 @@ job, see :class:`toil.job.JobFunctionWrappingTarget`.
 
 The function 
 call::
+
     Job.wrapJobFn(helloWorld, "woot")
 
 Creates the instance of the :class:`toil.job.JobFunctionWrappingTarget` that wraps the job
@@ -157,6 +161,7 @@ they can be passed to as arguments when wrapping a function as a job and will be
 
 Non-job functions can also be wrapped, 
 for example::
+
     from toil.job import Job
      
     def helloWorld2(message):
@@ -168,6 +173,7 @@ for example::
     
 Here the only major difference to note is the 
 line::
+
     Job.Runner.startToil(Job.wrapFn(helloWorld, "woot"), options)
 
 Which uses the function :func:`toil.job.Job.wrapFn` to wrap an ordinary function
@@ -190,6 +196,7 @@ The follow-on jobs of a job are run after its child jobs and their successors
 have completed. They are also run in parallel. Follow-ons allow the easy specification of 
 cleanup tasks that happen after a set of parallel child tasks. The following shows 
 a simple example that uses the earlier helloWorld job function::
+
     from toil.job import Job
     
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
@@ -215,6 +222,7 @@ finally j4 is run as a follow-on of j1.
 
 There are multiple short hand functions to achieve the same workflow, 
 for example::
+
     from toil.job import Job
     
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
@@ -239,6 +247,7 @@ Jobs graphs are not limited to trees, and can express arbitrary directed acylic 
 precise definition of legal graphs see :func:`toil.job.Job.checkJobGraphForDeadlocks`. The previous
 example could be specified as a DAG as 
 follows::
+
     from toil.job import Job
     
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
@@ -264,6 +273,7 @@ Dynamic Job Creation
 The previous examples show a workflow being defined outside of a job. 
 However, Toil also allows jobs to be created dynamically within jobs. 
 For example::
+
     from toil.job import Job
     
     def binaryStringFn(job, message="", depth):
@@ -291,6 +301,7 @@ by recursive invocation of successor jobs within parent jobs. However, it is oft
 desirable to return variables from jobs in a non-recursive or dynamic context. 
 In Toil this is achieved with promises, as illustrated in the following 
 example::
+
     from toil.job import Job
     
     def fn(job, i):
@@ -311,6 +322,7 @@ Running this workflow results in three log messages from the jobs: "i is 1" from
 The return value from the first job is *promised* to the second job by the call to 
 :func:`toil.job.Job.rv` in the 
 line::
+
     j2 = j1.addChildFn(fn, j1.rv())
     
 The value of *j1.rv()* is a *promise*, rather than the actual return value of the function, 
@@ -323,6 +335,7 @@ Promises can be quite useful. For example, we can combine dynamic job creation
 with promises to achieve a job creation process that mimics the functional patterns 
 possible in many programming 
 languages::
+
     from toil.job import Job
     
     def binaryStrings(job, message="", depth):
@@ -358,6 +371,7 @@ shows how this can be used to create temporary files that persist for the length
 be placed in a specified local disk of the node and that 
 will be cleaned up, regardless of failure, when the job 
 finishes::
+
     from toil.job import Job
     
     class LocalFileStoreJob(Job):
@@ -380,6 +394,7 @@ finishes::
 Job functions can also access the file store for the job. The equivalent of the LocalFileStoreJob
 class is 
 equivalently::
+
     def localFileStoreJobFn(job):
         scratchDir = job.fileStore.getLocalTempDir()
         scratchFile = job.fileStore.getLocalTempFile()
@@ -390,6 +405,7 @@ In addition to temporary files that exist for the duration of a job, the file st
 creation of files in a *global* store, which persists during the workflow and are globally
 accessible (hence the name) between jobs. 
 For example::
+
     from toil.job import Job
     import os
     
@@ -457,6 +473,7 @@ for spawning such a service within a Toil workflow, allowing precise specificati
 of the start and end time of the service, and providing start and end methods to use
 for initialization and cleanup. The following simple, conceptual example illustrates how 
 services work::
+
     from toil.job import Job
     
     class DemoService(Job.Service):
@@ -504,6 +521,7 @@ Let A be a root job potentially with children and follow-ons. \
 Without an encapsulated job the simplest way to specify a job B which \
 runs after A and all its successors is to create a parent of A, call it Ap, \
 and then make B a follow-on of Ap. e.g.::
+
     from toil.job import Job
     
     # A is a job with children and follow-ons, for example:
@@ -525,7 +543,8 @@ and then make B a follow-on of Ap. e.g.::
         Job.Runner.startToil(Ap, options)
 
 An *encapsulated job* of E(A) of A saves making Ap, instead we can 
-write:: 
+write::
+
     from toil.job import Job
     
     # A 
