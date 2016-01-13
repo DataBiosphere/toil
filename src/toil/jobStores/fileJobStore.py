@@ -163,7 +163,10 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
+        if os.stat(self._getAbsPath(jobStoreFileID)).st_dev == os.stat(os.path.split(localFilePath)[0]).st_dev:
+            os.link(self._getAbsPath(jobStoreFileID), localFilePath)
+        else:
+            shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):

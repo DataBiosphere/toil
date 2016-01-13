@@ -13,39 +13,49 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-import os
-import sys
-import importlib
-from argparse import ArgumentParser
-from abc import ABCMeta, abstractmethod
-import tempfile
-import uuid
-import time
+
+import base64
 import copy_reg
 import cPickle
+import errno
+import importlib
+import inspect
 import logging
+import os
 import shutil
 import stat
-import inspect
-from threading import Thread, Semaphore, Event
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+from argparse import ArgumentParser
+from contextlib import contextmanager
+from fcntl import flock, LOCK_EX, LOCK_UN
+from io import BytesIO
 from Queue import Queue, Empty
+from struct import pack, unpack
+from threading import Thread, Semaphore, Event
+
+from abc import ABCMeta, abstractmethod
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
-from io import BytesIO
-from toil.resource import ModuleDescriptor
-from toil.common import loadJobStore
-
-logger = logging.getLogger( __name__ )
-
-from toil.lib.bioio import (setLoggingFromOptions,
-                               getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
-from toil.common import setupToil, addOptions
+from toil.common import addOptions, loadJobStore, setupToil
+from toil.jobStores.fileJobStore import FileJobStore
 from toil.leader import mainLoop
+from toil.lib.bioio import (setLoggingFromOptions,
+                            getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
+from toil.resource import ModuleDescriptor
+
+logger = logging.getLogger(__name__)
+
 
 class Job(object):
     """
     Class represents a unit of work in toil. 
     """
+
     def __init__(self, memory=None, cores=None, disk=None, cache=None):
         """
         This method must be called by any overiding constructor.
@@ -64,29 +74,28 @@ class Job(object):
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
         self.cores = cores
-        parse = lambda x : x if x is None else human2bytes(str(x))
+        parse = lambda x: x if x is None else human2bytes(str(x))
         self.memory = parse(memory)
         self.disk = parse(disk)
         self.cache = parse(cache)
-        #Private class variables
+        # Private class variables
 
-        #See Job.addChild
+        # See Job.addChild
         self._children = []
-        #See Job.addFollowOn
+        # See Job.addFollowOn
         self._followOns = []
-        #See Job.addService
+        # See Job.addService
         self._services = []
-        #A follow-on, service or child of a job A, is a "direct successor" of A, if B
-        #is a direct successor of A, then A is a "direct predecessor" of B.
+        # A follow-on, service or child of a job A, is a "direct successor" of A, if B
+        # is a direct successor of A, then A is a "direct predecessor" of B.
         self._directPredecessors = set()
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
-        #See Job.rv()
+        # See Job.rv()
         self._rvs = {}
         self._promiseJobStore = None
-        
 
     def run(self, fileStore):
         """
@@ -122,7 +131,7 @@ class Job(object):
         :rtype: Boolean
         """
         return childJob in self._children
-    
+
     def addFollowOn(self, followOnJob):
         """
         Adds a follow-on job, follow-on jobs will be run after the child jobs and \
@@ -170,7 +179,7 @@ class Job(object):
         :rtype: toil.job.FunctionWrappingJob
         """
         return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
-    
+
     def addFollowOnFn(self, fn, *args, **kwargs):
         """
         Adds a function as a follow-on job.
@@ -208,7 +217,7 @@ class Job(object):
         :rtype: toil.job.JobFunctionWrappingJob
         """
         return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
-    
+
     @staticmethod
     def wrapFn(fn, *args, **kwargs):
         """
@@ -248,10 +257,10 @@ class Job(object):
         return EncapsulatedJob(self)
 
     ####################################################
-    #The following function is used for passing return values between
-    #job run functions
+    # The following function is used for passing return values between
+    # job run functions
     ####################################################
-    
+
     def rv(self, argIndex=None):
         """
         Gets a *promise* (:class:`toil.job.PromisedJobReturnValue`) representing \
@@ -268,20 +277,23 @@ class Job(object):
         :rtype: toil.job.PromisedJobReturnValue, referred to as a "promise"
         """
         if argIndex not in self._rvs:
-            self._rvs[argIndex] = [] #This will be a list of jobStoreFileIDs for promises which will
-            #be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
+            self._rvs[
+                argIndex] = []  # This will be a list of jobStoreFileIDs for promises which will
+            # be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
+
         def registerPromiseCallBack():
-            #Returns the jobStoreFileID and jobStore string
+            # Returns the jobStoreFileID and jobStore string
             if self._promiseJobStore == None:
                 raise RuntimeError("Trying to pass a promise from a promising job "
                                    "that is not predecessor of the job receiving the promise")
             jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
             self._rvs[argIndex].append(jobStoreFileID)
             return jobStoreFileID, self._promiseJobStore.config.jobStore
+
         return PromisedJobReturnValue(registerPromiseCallBack)
 
     ####################################################
-    #Cycle/connectivity checking
+    # Cycle/connectivity checking
     ####################################################
 
     def checkJobGraphForDeadlocks(self):
@@ -304,17 +316,19 @@ class Job(object):
         """
         roots = set()
         visited = set()
-        #Function to get the roots of a job
+
+        # Function to get the roots of a job
         def getRoots(job):
             if job not in visited:
                 visited.add(job)
                 if len(job._directPredecessors) > 0:
-                    map(lambda p : getRoots(p), job._directPredecessors)
+                    map(lambda p: getRoots(p), job._directPredecessors)
                 else:
                     roots.add(job)
-                #The following call ensures we explore all successor edges.
-                map(lambda c : getRoots(c), job._children +
+                # The following call ensures we explore all successor edges.
+                map(lambda c: getRoots(c), job._children +
                     job._followOns + job._services)
+
         getRoots(self)
         return roots
 
@@ -347,30 +361,31 @@ class Job(object):
         For a job graph G = (V, E) the algorithm is ``O(|V|^2)``. It is ``O(|V| + |E|)`` for \
         a graph with no follow-ons. The former follow-on case could be improved!
         """
-        #Get the root jobs
+        # Get the root jobs
         roots = self.getRootJobs()
         if len(roots) == 0:
             raise JobGraphDeadlockException("Graph contains no root jobs due to cycles")
 
-        #Get implied edges
+        # Get implied edges
         extraEdges = self._getImpliedEdges(roots)
 
-        #Check for directed cycles in the augmented graph
+        # Check for directed cycles in the augmented graph
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
 
     ####################################################
-    #The following nested classes are used for
-    #creating jobtrees (Job.Runner),
-    #managing temporary files (Job.FileStore),
-    #and defining a service (Job.Service)
+    # The following nested classes are used for
+    # creating jobtrees (Job.Runner),
+    # managing temporary files (Job.FileStore),
+    # and defining a service (Job.Service)
     ####################################################
 
     class Runner(object):
         """
         Used to setup and run Toil workflow.
         """
+
         @staticmethod
         def getDefaultArgumentParser():
             """
@@ -382,7 +397,7 @@ class Job(object):
             parser = ArgumentParser()
             Job.Runner.addToilOptions(parser)
             return parser
-        
+
         @staticmethod
         def getDefaultOptions(jobStore):
             """
@@ -395,7 +410,7 @@ class Job(object):
             """
             parser = Job.Runner.getDefaultArgumentParser()
             return parser.parse_args(args=[jobStore])
-        
+
         @staticmethod
         def addToilOptions(parser):
             """
@@ -419,44 +434,45 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
+            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem,
+                                                                        jobStore):
                 logger.info("Downloading entire JobStore")
                 jobCache = {jobWrapper.jobStoreID: jobWrapper
-                    for jobWrapper in jobStore.jobs()}
+                            for jobWrapper in jobStore.jobs()}
                 logger.info("{} jobs downloaded.".format(len(jobCache)))
                 if options.restart:
-                    #This cleans up any half written jobs after a restart
-                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache) 
+                    # This cleans up any half written jobs after a restart
+                    jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache)
                     rootJob = job._loadRootJob(jobStore)
                 else:
-                    #Make a file to store the root jobs return value in
+                    # Make a file to store the root jobs return value in
                     jobStoreFileID = jobStore.getEmptyFileStoreID()
-                    #Add the root job return value as a promise
+                    # Add the root job return value as a promise
                     if None not in job._rvs:
-                        job._rvs[None] = [] 
+                        job._rvs[None] = []
                     job._rvs[None].append(jobStoreFileID)
-                    #Write the name of the promise file in a shared file
+                    # Write the name of the promise file in a shared file
                     with jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
                         fH.write(jobStoreFileID)
-                    #Setup the first wrapper.
+                    # Setup the first wrapper.
                     rootJob = job._serialiseFirstJob(jobStore)
-                    #Make sure it's cached
+                    # Make sure it's cached
                     jobCache[rootJob.jobStoreID] = rootJob
                 return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
 
-    class FileStore( object ):
+    class FileStore(object):
         """
         Class used to manage temporary files, read and write files from the job store\
         and log messages, passed as argument to the :func:`toil.job.Job.run` method.
         """
-        #Variables used for synching reads/writes
-        _lockFilesLock = Semaphore()
-        _lockFiles = set()
-        #For files in jobStore that are on the local disk, 
-        #map of jobStoreFileIDs to locations in localTempDir.
+        # Variables used for synching reads/writes
+        _pendingFileWritesLock = Semaphore()
+        _pendingFileWrites = {}
+        # For files in jobStore that are on the local disk,
+        # map of jobStoreFileIDs to locations in localTempDir.
         _jobStoreFileIDToCacheLocation = {}
-        _terminateEvent = Event() #Used to signify crashes in threads
-        
+        _terminateEvent = Event()  # Used to signify crashes in threads
+
         def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
             """
             This constructor should not be called by the user, \
@@ -476,46 +492,47 @@ class Job(object):
             self.loggingMessages = []
             self.filesToDelete = set()
             self.jobsToDelete = set()
-            #Asynchronous writes stuff
+            # Asynchronous writes stuff
             self.workerNumber = 2
             self.queue = Queue()
-            self.updateSemaphore = Semaphore() 
-            #Function to write files asynchronously to job store
+            self.updateSemaphore = Semaphore()
+
+            # Function to write files asynchronously to job store
             def asyncWrite():
                 try:
                     while True:
                         try:
-                            #Block for up to two seconds waiting for a file
+                            # Block for up to two seconds waiting for a file
                             args = self.queue.get(timeout=2)
                         except Empty:
-                            #Check if termination event is signaled 
-                            #(set in the event of an exception in the worker)
+                            # Check if termination event is signaled
+                            # (set in the event of an exception in the worker)
                             if self._terminateEvent.isSet():
                                 raise RuntimeError("The termination flag is set, exiting")
                             continue
-                        #Normal termination condition is getting None from queue
-                        if args == None:
+                        # Normal termination condition is getting None from queue
+                        if args is None:
                             break
                         inputFileHandle, jobStoreFileID = args
-                        #We pass in a fileHandle, rather than the file-name, in case 
-                        #the file itself is deleted. The fileHandle itself should persist 
-                        #while we maintain the open file handle
+                        # We pass in a fileHandle, rather than the file-name, in case
+                        # the file itself is deleted. The fileHandle itself should persist
+                        # while we maintain the open file handle
                         with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
-                            bufferSize=1000000 #TODO: This buffer number probably needs to be modified/tuned
+                            bufferSize = 1000000  # TODO: This buffer number probably needs to be modified/tuned
                             while 1:
                                 copyBuffer = inputFileHandle.read(bufferSize)
                                 if not copyBuffer:
                                     break
                                 outputFileHandle.write(copyBuffer)
                         inputFileHandle.close()
-                        #Remove the file from the lock files
-                        with self._lockFilesLock:
-                            self._lockFiles.remove(jobStoreFileID)
+                        # Remove the file from the lock files
+                        with self._pendingFileWritesLock:
+                            self._pendingFileWrites.pop(jobStoreFileID)
                 except:
                     self._terminateEvent.set()
                     raise
-                    
-            self.workers = map(lambda i : Thread(target=asyncWrite), 
+
+            self.workers = map(lambda i: Thread(target=asyncWrite),
                                range(self.workerNumber))
             for worker in self.workers:
                 worker.start()
@@ -533,7 +550,7 @@ class Job(object):
             :rtype: string
             """
             return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
-        
+
         def getLocalTempFile(self):
             """
             Get a new local temporary file that will persist for the duration of the job.
@@ -552,12 +569,12 @@ class Job(object):
             """
             Takes a file (as a path) and uploads it to the job store. 
             
-            If the local file is a file returned by :func:`toil.job.Job.FileStore.getLocalTempFile` \
-            or is in a directory, or, recursively, a subdirectory, returned by \
-            :func:`toil.job.Job.FileStore.getLocalTempDir` then the write is asynchronous, \
-            so further modifications during execution to the file pointed by \
-            localFileName will result in undetermined behavior. Otherwise, the \
-            method will block until the file is written to the file store. 
+            If the local file is a file returned by :func:`toil.job.Job.FileStore.getLocalTempFile`
+            or is in a directory, or, recursively, a subdirectory, returned by
+            :func:`toil.job.Job.FileStore.getLocalTempDir` then the write is asynchronous,
+            so further modifications during execution to the file pointed by localFileName will
+            result in undetermined behavior. Otherwise, the method will block until the file is
+            written to the file store.
             
             :param string localFileName: The path to the local file to upload.
             
@@ -567,23 +584,23 @@ class Job(object):
             
             :returns: an ID that can be used to retrieve the file. 
             """
-            #Put the file into the cache if it is a path within localTempDir
+            # Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
             cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
             if absLocalFileName.startswith(self.localTempDir):
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
                 self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
                 if os.stat(absLocalFileName).st_uid == os.getuid():
-                    #Chmod if permitted to make file read only to try to prevent accidental user modification
+                    # Chmod if permitted to make file read only to try to prevent accidental user modification
                     os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-                with self._lockFilesLock:
-                    self._lockFiles.add(jobStoreFileID)
+                with self._pendingFileWritesLock:
+                    self._pendingFileWrites.add(jobStoreFileID)
                 self._jobStoreFileIDToCacheLocation[jobStoreFileID] = absLocalFileName
             else:
-                #Write the file directly to the file store
+                # Write the file directly to the file store
                 jobStoreFileID = self.jobStore.writeFile(localFileName, cleanupID)
             return jobStoreFileID
-        
+
         def writeGlobalFileStream(self, cleanup=False):
             """
             Similar to writeGlobalFile, but allows the writing of a stream to the job store.
@@ -594,9 +611,10 @@ class Job(object):
             can be written to and 2) the ID of the resulting file in the job store. \
             The yielded file handle does not need to and should not be closed explicitly.
             """
-            #TODO: Make this work with the caching??
-            return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
-        
+            # TODO: Make this work with the caching??
+            return self.jobStore.writeFileStream(
+                    None if not cleanup else self.jobWrapper.jobStoreID)
+
         def readGlobalFile(self, fileStoreID, userPath=None, cache=True):
             """
             Get a copy of a file in the job store. 
@@ -628,38 +646,39 @@ class Job(object):
             :rtype : string
             """
             if fileStoreID in self.filesToDelete:
-                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
+                raise RuntimeError(
+                        "Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
             if userPath != None:
-                userPath = os.path.abspath(userPath) #Make an absolute path
-                #Turn off caching if user file is not in localTempDir
+                userPath = os.path.abspath(userPath)  # Make an absolute path
+                # Turn off caching if user file is not in localTempDir
                 if cache and not userPath.startswith(self.localTempDir):
                     cache = False
-            #When requesting a new file from the jobStore first check if fileStoreID
-            #is a key in _jobStoreFileIDToCacheLocation.
+            # When requesting a new file from the jobStore first check if fileStoreID
+            # is a key in _jobStoreFileIDToCacheLocation.
             if fileStoreID in self._jobStoreFileIDToCacheLocation:
-                cachedAbsFilePath = self._jobStoreFileIDToCacheLocation[fileStoreID]   
+                cachedAbsFilePath = self._jobStoreFileIDToCacheLocation[fileStoreID]
                 if cache:
-                    #If the user specifies a location and it is not the current location
-                    #return a hardlink to the location, else return the original location
+                    # If the user specifies a location and it is not the current location
+                    # return a hardlink to the location, else return the original location
                     if userPath == None or userPath == cachedAbsFilePath:
                         return cachedAbsFilePath
-                    #Chmod to make file read only
+                    # Chmod to make file read only
                     if os.path.exists(userPath):
                         os.remove(userPath)
                     os.link(cachedAbsFilePath, userPath)
                     return userPath
                 else:
-                    #If caching is not true then make a copy of the file
+                    # If caching is not true then make a copy of the file
                     localFilePath = userPath if userPath != None else self.getLocalTempFile()
                     shutil.copyfile(cachedAbsFilePath, localFilePath)
                     return localFilePath
             else:
-                #If it is not in the cache read it from the jobStore to the 
-                #desired location
+                # If it is not in the cache read it from the jobStore to the
+                # desired location
                 localFilePath = userPath if userPath != None else self.getLocalTempFile()
                 self.jobStore.readFile(fileStoreID, localFilePath)
-                #If caching is enabled and the file is in local temp dir then
-                #add to cache and make read only
+                # If caching is enabled and the file is in local temp dir then
+                # add to cache and make read only
                 if cache:
                     assert localFilePath.startswith(self.localTempDir)
                     self._jobStoreFileIDToCacheLocation[fileStoreID] = localFilePath
@@ -675,21 +694,22 @@ class Job(object):
             The yielded file handle does not need to and should not be closed explicitly.
             """
             if fileStoreID in self.filesToDelete:
-                raise RuntimeError("Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
-            
-            #If fileStoreID is in the cache provide a handle from the local cache
+                raise RuntimeError(
+                        "Trying to access a file in the jobStore you've deleted: %s" % fileStoreID)
+
+            # If fileStoreID is in the cache provide a handle from the local cache
             if fileStoreID in self._jobStoreFileIDToCacheLocation:
-                #This leaks file handles (but the commented out code does not work properly)
-                return open(self._jobStoreFileIDToCacheLocation[fileStoreID], 'r') 
-                #with open(self._jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
+                # This leaks file handles (but the commented out code does not work properly)
+                return open(self._jobStoreFileIDToCacheLocation[fileStoreID], 'r')
+                # with open(self._jobStoreFileIDToCacheLocation[fileStoreID], 'r') as fH:
                 #        yield fH
             else:
-                #TODO: Progressively add the file to the cache
+                # TODO: Progressively add the file to the cache
                 return self.jobStore.readFileStream(fileStoreID)
-                #with self.jobStore.readFileStream(fileStoreID) as fH:
+                # with self.jobStore.readFileStream(fileStoreID) as fH:
                 #    yield fH
 
-        def deleteGlobalFile(self, fileStoreID):
+        def deleteGlobalFile(self, fileStoreID, toilInternal=None):
             """
             Deletes a global file with the given job store ID. 
             
@@ -697,11 +717,12 @@ class Job(object):
             will not happen until after the job's run method has completed.
             
             :param fileStoreID: the job store ID of the file to be deleted.
+            :param toilInternal: Used in the cached version. Exists here for symmetry.
             """
             self.filesToDelete.add(fileStoreID)
-            #If the fileStoreID is in the cache:
+            # If the fileStoreID is in the cache:
             if fileStoreID in self._jobStoreFileIDToCacheLocation:
-                #This will result in the files removal from the cache at the end of the current job
+                # This will result in the files removal from the cache at the end of the current job
                 self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
         def logToMaster(self, text, level=logging.INFO):
@@ -709,7 +730,7 @@ class Job(object):
             Send a logging message to the leader. The message will also be \
             logged by the worker at the same level.
             
-            :param string: The string to log.
+            :param text: The string to log.
             :param int level: The logging level.
             """
             logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
@@ -721,59 +742,61 @@ class Job(object):
             until the writing threads have finished and the input blockFn has stopped \
             blocking.
             """
+
             def asyncUpdate():
                 try:
-                    #Wait till all file writes have completed
+                    # Wait till all file writes have completed
                     for i in xrange(len(self.workers)):
                         self.queue.put(None)
-            
+
                     for thread in self.workers:
                         thread.join()
-                    
-                    #Wait till input block-fn returns - in the event of an exception
-                    #this will eventually terminate 
+
+                    # Wait till input block-fn returns - in the event of an exception
+                    # this will eventually terminate
                     self.inputBlockFn()
-                    
-                    #Check the terminate event, if set we can not guarantee
-                    #that the workers ended correctly, therefore we exit without
-                    #completing the update
+
+                    # Check the terminate event, if set we can not guarantee
+                    # that the workers ended correctly, therefore we exit without
+                    # completing the update
                     if self._terminateEvent.isSet():
                         raise RuntimeError("The termination flag is set, exiting before update")
-                    
-                    #Indicate any files that should be deleted once the update of 
-                    #the job wrapper is completed.
+
+                    # Indicate any files that should be deleted once the update of
+                    # the job wrapper is completed.
                     self.jobWrapper.filesToDelete = list(self.filesToDelete)
-                    
-                    #Complete the job
+
+                    # Complete the job
                     self.jobStore.update(self.jobWrapper)
-                    
-                    #Delete any remnant jobs
+
+                    # Delete any remnant jobs
                     map(self.jobStore.delete, self.jobsToDelete)
-                    
-                    #Delete any remnant files
+
+                    # Delete any remnant files
                     map(self.jobStore.deleteFile, self.filesToDelete)
-                    
-                    #Remove the files to delete list, having successfully removed the files
+
+                    # Remove the files to delete list, having successfully removed the files
                     if len(self.filesToDelete) > 0:
                         self.jobWrapper.filesToDelete = []
-                        #Update, removing emptying files to delete
+                        # Update, removing emptying files to delete
                         self.jobStore.update(self.jobWrapper)
                 except:
                     self._terminateEvent.set()
                     raise
                 finally:
-                    #Indicate that _blockFn can return
-                    #This code will always run
+                    # Indicate that _blockFn can return
+                    # This code will always run
                     self.updateSemaphore.release()
-            #The update semaphore is held while the jobWrapper is written to disk
+
+            # The update semaphore is held while the jobWrapper is written to disk
             try:
                 self.updateSemaphore.acquire()
                 t = Thread(target=asyncUpdate)
                 t.start()
-            except: #This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
+            except:  # This is to ensure that the semaphore is released in a crash to stop a deadlock scenario
                 self.updateSemaphore.release()
                 raise
-            
+
         def _cleanLocalTempDir(self, cacheSize):
             """
             At the end of the job, remove all localTempDir files except those whose \
@@ -781,21 +804,24 @@ class Job(object):
             
             :param int cacheSize: the total number of bytes of files allowed in the cache.
             """
-            #Remove files so that the total cached files are smaller than a cacheSize
-            
-            #List of pairs of (fileCreateTime, fileStoreID) for cached files
-            with self._lockFilesLock:
-                deletableCacheFiles = set(self._jobStoreFileIDToCacheLocation.keys()) - self._lockFiles
-            cachedFileCreateTimes = map(lambda x : (os.stat(self._jobStoreFileIDToCacheLocation[x]).st_ctime, x),
-                                        deletableCacheFiles)
-            #Total number of bytes stored in cached files
-            totalCachedFileSizes = sum([os.stat(self._jobStoreFileIDToCacheLocation[x]).st_size for x in
-                                        self._jobStoreFileIDToCacheLocation.keys()])
-            #Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
-            #not be the best strategy.
+            # Remove files so that the total cached files are smaller than a cacheSize
+
+            # List of pairs of (fileCreateTime, fileStoreID) for cached files
+            with self._pendingFileWritesLock:
+                deletableCacheFiles = set(
+                        self._jobStoreFileIDToCacheLocation.keys()) - self._pendingFileWrites
+            cachedFileCreateTimes = map(
+                    lambda x: (os.stat(self._jobStoreFileIDToCacheLocation[x]).st_ctime, x),
+                    deletableCacheFiles)
+            # Total number of bytes stored in cached files
+            totalCachedFileSizes = sum(
+                    [os.stat(self._jobStoreFileIDToCacheLocation[x]).st_size for x in
+                     self._jobStoreFileIDToCacheLocation.keys()])
+            # Remove earliest created files first - this is in place of 'Remove smallest files first'.  Again, might
+            # not be the best strategy.
             cachedFileCreateTimes.sort()
             cachedFileCreateTimes.reverse()
-            #Now do the actual file removal
+            # Now do the actual file removal
             while totalCachedFileSizes > cacheSize and len(cachedFileCreateTimes) > 0:
                 fileCreateTime, fileStoreID = cachedFileCreateTimes.pop()
                 fileSize = os.stat(self._jobStoreFileIDToCacheLocation[fileStoreID]).st_size
@@ -804,36 +830,37 @@ class Job(object):
                 os.remove(filePath)
                 totalCachedFileSizes -= fileSize
                 assert totalCachedFileSizes >= 0
-            
-            #Iterate from the base of localTempDir and remove all 
-            #files/empty directories, recursively
+
+            # Iterate from the base of localTempDir and remove all
+            # files/empty directories, recursively
             cachedFiles = set(self._jobStoreFileIDToCacheLocation.values())
-            
+
             def clean(dirOrFile, remove=True):
-                canRemove = True 
+                canRemove = True
                 if os.path.isdir(dirOrFile):
                     for f in os.listdir(dirOrFile):
                         canRemove = canRemove and clean(os.path.join(dirOrFile, f))
                     if canRemove and remove:
-                        os.rmdir(dirOrFile) #Dir should be empty if canRemove is true
+                        os.rmdir(dirOrFile)  # Dir should be empty if canRemove is true
                     return canRemove
                 if dirOrFile in cachedFiles:
                     return False
                 os.remove(dirOrFile)
-                return True    
+                return True
+
             clean(self.localTempDir, False)
-        
+
         def _blockFn(self):
             """
             Blocks while _updateJobWhenDone is running.
-            """ 
+            """
             self.updateSemaphore.acquire()
-            self.updateSemaphore.release() #Release so that the block function can be recalled
-            #This works, because once acquired the semaphore will not be acquired
-            #by _updateJobWhenDone again.
+            self.updateSemaphore.release()  # Release so that the block function can be recalled
+            # This works, because once acquired the semaphore will not be acquired
+            # by _updateJobWhenDone again.
             return
-        
-        def __del__(self): 
+
+        def __del__(self):
             """Cleanup function that is run when destroying the class instance \
             that ensures that all the file writing threads exit.
             """
@@ -844,11 +871,576 @@ class Job(object):
                 thread.join()
             self.updateSemaphore.release()
 
+    class CachedFileStore(FileStore):
+        '''
+        A cache-enabled version of Filestore. Basically FileStore on Adderall(R)
+        '''
+        # Variables used for synching reads/writes
+        _pendingFileWritesLock = Semaphore()
+        _pendingFileWrites = {}
+        # Variable used to signify crashes in threads
+        _terminateEvent = Event()
+
+        def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+            super(Job.CachedFileStore, self).__init__(jobStore, jobWrapper, localTempDir,
+                                                      inputBlockFn)
+            # cacheDir has to be 2 levels above local tempdir, at the same level as the worker dirs
+            self.localCacheDir = os.path.join(os.path.split(os.path.split(localTempDir)[0])[0],
+                                              'cache')
+            self.defaultCache = self.jobStore.config.defaultCache
+            self.cacheLockFile = os.path.join(self.localCacheDir, '.cacheLock')
+            # Since each worker has it's own unique FileStore instance, and only one Job can run at
+            # a time on a worker, we can bookkeep the job's file store operated files here.
+            self.jobSpecificFiles = {}
+            self.nlinkThreshold = 1
+            self._setupCache()
+
+        # Overridden FileStore methods
+        def writeGlobalFile(self, localFileName, cleanup=False):
+            """
+            Takes a file (as a path) and uploads it to the job store.  Depending on the jobstore
+            used, carry out the appropriate cache functions.
+
+            :param string localFileName: The path to the local file to upload.
+
+            :param Boolean cleanup: if True then the copy of the global file will \
+            be deleted once the job and all its successors have completed running. \
+            If not the global file must be deleted manually.
+
+            :returns: an ID that can be used to retrieve the file.
+            """
+            absLocalFileName = os.path.abspath(localFileName)
+            # What does this do?
+            cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
+            #  If the FileJobStore is being used, and if the local file and the filestore are on the
+            # same device, then hardlink temp files to filestore instead of copying.
+            if isinstance(self.jobStore, FileJobStore) and \
+                            os.stat(absLocalFileName).st_dev == \
+                            os.stat(self.jobStore.jobStoreDir).st_dev:
+                jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
+                #  If the file is within the scope of the localTempDir, hardlink it to cache and
+                # filestore.
+                if absLocalFileName.startswith(self.localTempDir):
+                    # getEmptyFileStoreID creates the file in the scope of the job store hence we
+                    # need to delete it before linking.
+                    os.remove(self.jobStore._getAbsPath(jobStoreFileID))
+                    os.link(absLocalFileName, self.jobStore._getAbsPath(jobStoreFileID))
+                # Else it is being added to the filestore for the first time and we should copy it
+                # instead of linking
+                else:
+                    jobStoreFileID = self.jobStore.writeFile(absLocalFileName, cleanupID)
+                    # self.queue.put((open(absLocalFileName, 'r'), jobStoreFileID))
+                    # with self._pendingFileWritesLock:
+                    #    self._pendingFileWrites[jobStoreFileID] = absLocalFileName
+            else:
+                # Write the file directly to the file store
+                jobStoreFileID = self.jobStore.writeFile(absLocalFileName, cleanupID)
+            # If the file comes from a local temp dir, Add the file to the cache.
+            # TODO: Think about whether we want to cache files that are non-local
+            if absLocalFileName.startswith(self.localTempDir):
+                self.addToCache(absLocalFileName, jobStoreFileID)
+            else:
+                self.jobSpecificFiles[jobStoreFileID] = (None, 0.0, False)
+            return jobStoreFileID
+
+        def readGlobalFile(self, fileStoreID, userPath=None, cache=True):
+            """
+            Downloads a file described by fileStoreID from the file store to the local directory.
+            The function first looks for the file in the cache and if found, it hardlinks to the
+            cached copy instead of downloading.
+
+            If a user path is specified, it is used as the destination. If a user path isn't
+            specified, the file is stored in the local temp directory with an encoded name.
+
+            The cache parameter will be used only if the file isn't already in the cache, and
+            provided user path (if specified) is in the scope of local temp dir.
+
+            :param fileStoreID: file store id for the file
+
+            :param string userPath: a path to the name of file to which the global \
+            file will be copied or hard-linked (see below).
+
+            :param boolean cache: If True, a copy of the file will be saved into a cache that can be
+            used by other workers. caching supports multiple concurrent workers requesting the same
+            file by allowing only one to download the file while the others wait for it to complete.
+
+            :return: an absolute path to a local, temporary copy of the file keyed \
+            by fileStoreID.
+            :rtype : string
+            """
+            # Check that the file hasn't been deleted by the user
+            if fileStoreID in self.filesToDelete:
+                raise RuntimeError('Trying to access a file in the jobStore you\'ve deleted: ' + \
+                                   '%s' % fileStoreID)
+            # Get the name of the file as it would be in the cache
+            cachedFileName = self.encodedFileID(fileStoreID)
+            partialCachedFileName = ''.join([cachedFileName, '.partial'])
+            # setup the output filename.  If a name is provided, use it - This makes it a Named
+            # Local File. If a name isn't provided, use the base64 encoded name such that we can
+            # easily identify the files later on.
+            if userPath != None:
+                localFilePath = os.path.abspath(userPath)
+                fileIsLocal = True if localFilePath.startswith(self.localTempDir) else False
+            else:
+                localFilePath = os.path.join(self.localTempDir, os.path.split(cachedFileName)[1])
+                fileIsLocal = True
+            # First check whether the file is in cache.  If it is, then hardlink the file to
+            # userPath. Cache operations can only occur on local files.
+            with self.cacheLock() as lockFileHandle:
+                if fileIsLocal and os.path.exists(cachedFileName):
+                    os.link(cachedFileName, localFilePath)
+                    self.returnFileSize(fileStoreID, localFilePath, lockFileHandle,
+                                        fileAlreadyCached=True)
+                # If the file is not in cache, check whether the .partial file for the given
+                # FileStoreID exists. This is an identifier that the file is currently being
+                # downloaded by another job. Hence we should wait and periodically check for the
+                # removal of the file and the addition of the completed download into cache of the
+                # file by the other job. Then we link to it. This prevents multiple jobs from
+                # simultaneously downloading the same file from the file store.
+                elif fileIsLocal and os.path.exists(partialCachedFileName):
+                    while os.path.exists(partialCachedFileName):
+                        # Release the file lock and then periodically check for completed download
+                        flock(lockFileHandle, LOCK_UN)
+                        time.sleep(20)  # What should this value be?
+                        flock(lockFileHandle, LOCK_EX)
+                    # If the code reaches here, the partial lock file has been removed. This means
+                    # either the file was successfully downloaded and added to cache, or something
+                    # failed. To prevent code duplication, we recursively call readGlobalFile.
+                    flock(lockFileHandle, LOCK_UN)
+                    return self.readGlobalFile(fileStoreID, userPath, cache)
+                # If the file is not in cache, then download it to the userPath and then add to
+                # cache if specified.
+                else:
+                    if fileIsLocal and cache:
+                        # If caching of the downloaded is desired, First create the .partial file so
+                        # other jobs know not to redundantly download the same file.
+                        open(partialCachedFileName, 'w').close()  # This emulates the system 'touch'
+                        # Now release the file lock while the file is downloaded as download could
+                        # take a while.
+                        flock(lockFileHandle, LOCK_UN)
+                        # Use try:finally: so that the .partial file is removed whether the download
+                        # succeeds or not.
+                        try:
+                            self.jobStore.readFile(fileStoreID, localFilePath)
+                        except:
+                            # Does there HAVE to be an except? What except makes sense here?
+                            raise
+                        else:
+                            # If the download succeded, add the file to cache.
+                            if os.path.exists(localFilePath):
+                                self.addToCache(localFilePath, fileStoreID)
+                                # We don't need to return the file size here because addToCache
+                                # already does it for us
+                        finally:
+                            # In any case, reacquire the file lock and delete the partial file.
+                            flock(lockFileHandle, LOCK_EX)
+                            os.remove(partialCachedFileName)
+                    else:
+                        # Release the cache lock since the remaining stuff is not cache related.
+                        flock(lockFileHandle, LOCK_UN)
+                        self.jobStore.readFile(fileStoreID, localFilePath)
+                        if self.nlinkThreshold == 2:
+                            self._accountForNlinkEquals2(localFilePath)
+                            self.jobSpecificFiles[fileStoreID] = (localFilePath,
+                                                                  os.stat(localFilePath).st_size,
+                                                                  False)
+                        else:
+                            self.jobSpecificFiles[fileStoreID] = (localFilePath, 0.0, False)
+            return localFilePath
+
+        def deleteLocalFile(self, fileStoreID):
+            '''
+            Deletes a local file with the given job store ID. If a user used readGlobalFile to get a
+            file from the filestore with a custom filename, then they need to provide the filename
+            similar to readGlobalFile.
+            :param str fileStoreID: File Store ID of the file to be deleted.
+            :param str userPath: User specified file
+            :return: None
+            '''
+            assert fileStoreID in self.jobSpecificFiles.keys(), 'Attempting to delete a ' + \
+                                                                'non-local file'
+            # Obtain the name of the cached file
+            cachedFile = self.encodedFileID(fileStoreID)
+            # If a user specified path was provided, use it. Else the file has the same filename as
+            # the cached file, only in the local temp directory.
+            fileToDelete = self.jobSpecificFiles[fileStoreID][0]
+            # Handle the case where a file not in the local temp dir was written to filestore
+            if fileToDelete is None:
+                self.jobSpecificFiles.pop(fileStoreID)
+                return None
+            assert os.path.exists(fileToDelete), 'Attempting to delete a non-existent file ' + \
+                                                 '%s.' % fileToDelete
+            # The local file may or may not have been cached. If it was, we need to do some
+            # bookkeeping. If it wasn't, we just delete the file and continue with no might need
+            # some bookkeeping if the file store and cache live on the same filesystem. We can know
+            # if a file was cached or not based on the value held in the third tuple value for the
+            # dict item having key = fileStoreID. If it was cached, it holds the value True else
+            # False.
+            fileIsCached = self.jobSpecificFiles[fileStoreID][2]
+            with self.cacheLock() as lockFileHandle:
+                # If the file isn't cached and the value of the second tuple entry is zero, we can
+                # continue without bookkeeping.
+                if not fileIsCached and self.jobSpecificFiles[fileStoreID][1] == 0:
+                    os.remove(fileToDelete)
+                    self.jobSpecificFiles.pop(fileStoreID)
+                    return None
+                # If not, we need to do bookkeeping
+                # Read the values from the cache lock file
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                # Get the size of the file to be deleted, and the number of jobs using the file at
+                # the moment.
+                fileStats = os.stat(fileToDelete)
+                fileSize = fileStats.st_size
+                assert fileSize == self.jobSpecificFiles[fileStoreID][1]
+                jobsUsingFile = fileStats.st_nlink
+                # Remove the file and return file size to the job
+                try:
+                    os.remove(fileToDelete)
+                except OSError:
+                    # If there is an error, write the same values back to cache lock file before
+                    # exiting so other running jobs don't get hosed.
+                    cacheInfo.write(lockFileHandle)
+                    raise
+                cacheInfo.sigmaJob += fileSize
+                self.jobSpecificFiles.pop(fileStoreID)
+                # If the file is cached and if other jobs are using the cached copy of the file, or
+                # if retaining the file in the cache doesn't affect the cache equation, then don't
+                # remove it from cache.
+                if fileIsCached and not (jobsUsingFile - 1 > self.nlinkThreshold or \
+                                                 cacheInfo.isBalanced()):
+                    os.remove(cachedFile)
+                    cacheInfo.cached -= fileSize
+                # Write the information into the cache lock file.
+                cacheInfo.write(lockFileHandle)
+
+        def deleteGlobalFile(self, fileStoreID, toilInternal=False):
+            """
+            Deletes a global file with the given job store ID.
+
+            To ensure that the job can be restarted if necessary, the delete will not happen until
+            after the job's run method has completed.
+
+            :param fileStoreID: the job store ID of the file to be deleted.
+            :param bool toilInternal: A flag indicating whether the call came from a toil internal
+            or from the user. Toil internals don't look at the cache operations.
+            """
+            if not toilInternal:
+                # Check if the fileStoreID is in the cache. If it is, ensure only the current job is
+                # using it.
+                cachedFile = self.encodedFileID(fileStoreID)
+                # Use deleteLocalFile in the backend to delete the local copy of the file.
+                self.deleteLocalFile(fileStoreID)
+                # At this point, the local file has been deleted, and possibly the cached copy. If
+                # the cached copy exists, it is either because another job is using the file, or
+                # because retaining the file in cache doesn't unbalance the caching equation. The
+                # first case is unacceptable for deleteGlobalFile and the second requires explicit
+                # deletion of the cached copy.
+                if os.path.exists(cachedFile):
+                    cachedFileStats = os.stat(cachedFile)
+                    assert cachedFileStats.st_nlink <= self.nlinkThreshold + 1, 'Attempting to ' + \
+                        'delete a global file that is in use by another job.'
+                    self.removeSingleCachedFile(fileStoreID)
+            # Add the file to the list of files to be deleted once the run method completes.
+            self.filesToDelete.add(fileStoreID)
+
+        # Cache related methods
+        @contextmanager
+        def cacheLock(self):
+            '''
+            This is a context manager to acquire a lock on the Lock file that will be used to
+            prevent synchronous cache operations between workers.
+            :yield: File descriptor for cache Lock file in r+ mode
+            '''
+            cacheLockFile = open(self.cacheLockFile, 'r+')
+            try:
+                flock(cacheLockFile, LOCK_EX)
+                logger.debug("Obtained Cache Lock on cache lock file %s" % self.cacheLockFile)
+                # TODO Add logic for sanity checks on caching here
+                yield cacheLockFile
+            except IOError:
+                logger.critical('Unable to acquire lock on ' + cacheLockFile.name)
+                raise
+            finally:
+                cacheLockFile.close()
+                logger.debug("Released Cache Lock")
+
+        def _setupCache(self):
+            '''
+            Setup the cache based on the provided values for localCacheDir and defaultCache.
+            :return: None
+            '''
+            try:
+                os.mkdir(self.localCacheDir, 0755)
+            except OSError as err:
+                # If the error is not Errno 17 (file already exists), reraise the exception
+                if err.errno != errno.EEXIST:
+                    raise
+                attempts = 10
+                while not os.path.exists(self.cacheLockFile):
+                    time.sleep(1)
+                    attempts -= 1
+                    if attempts < 1:
+                        raise CacheTimeoutError('Timed out waiting for %s' % self.cacheLockFile)
+                # Subsequent class instances will pull the value of nlink threshold from the cache
+                # lock file where it is written when the first instance is instantiated.
+                with self.cacheLock() as lockFileHandle:
+                    cacheInfo = self.CacheStats.load(lockFileHandle)
+                    self.nlinkThreshold = cacheInfo.nlink
+            else:
+                # The nlink threshold is setup along with the first instance of the cache class on
+                # the node.
+                self.setNlinkThreshold()
+                self._createCacheLockFile()
+
+        def _createCacheLockFile(self):
+            '''
+            Create the cache lock file file to contain the state of the cache on the node.
+            :return: None
+            '''
+            # Create a temp file, modfiy it, then rename to the desired name.  This has to be a race
+            # condition because a new worker can get assigned to a place where the Lock file exists
+            # and since os.rename silently replaces the file if it is present, we will get incorrect
+            # caching values in the file if we go ahead without the if exists statement.
+            freeSpace = \
+                int(subprocess.check_output(['df',
+                                             self.localCacheDir]).split('\n')[1].split()[3]) * 1024
+            # If defaultCache is a fraction, then it's meant to be a percentage of the total
+            if 0.0 < self.defaultCache <= 1.0:  # can't be 0.0 That is a flag for uncached TOIL.
+                cacheSpace = freeSpace * self.defaultCache
+            else:
+                cacheSpace = self.defaultCache
+            # If the user has told TOIL to use more space than exists, use 80% of all the free space
+            if cacheSpace > freeSpace:
+                logger.warn('Provided cache allotment > free space on disk.')
+                cacheSpace = 0.8 * freeSpace
+            with open(self.cacheLockFile, 'w') as fileHandle:
+                cacheInfo = self.CacheStats(self.nlinkThreshold, cacheSpace, 0.0, 0.0)
+                cacheInfo.write(fileHandle)
+
+        def encodedFileID(self, JobStoreFileID):
+            '''
+            Uses a url safe base64 encoding to encodethe jobStoreFileID into a unique identifier to
+            use as filename within the cache folder.  jobstore IDs are essentially urls/paths to
+            files and thus cannot be used as is. Base64 encoding is used since it is reversible.
+
+            :param jobStoreFileID: string representing a file name
+            :return: str outCachedFile: A path to the hashed file in localCacheDir
+            '''
+            outCachedFile = os.path.join(self.localCacheDir,
+                                         base64.urlsafe_b64encode(JobStoreFileID))
+            return outCachedFile
+
+        def addToCache(self, src, jobStoreFileID):
+            '''
+            Used to add a given file to the cache directory.
+            :param str src: Path to the Source file
+            :param jobStoreFileID: jobStoreID for the file
+            :return: None
+            '''
+            with self.cacheLock() as lockFileHandle:
+                cachedFile = self.encodedFileID(jobStoreFileID)
+                # The file to be cached MUST originate in the environment of the TOIL temp directory
+                if os.stat(self.localCacheDir).st_dev != os.stat(src).st_dev:
+                    raise CacheInvalidSrcError('Attempting to cache a non-local file %s .' % src)
+                try:
+                    os.link(src, cachedFile)
+                # If the file exists in cache, delete the source and use the linked file instead
+                except OSError as err:
+                    if err.errno != errno.EEXIST:
+                        raise
+                    # This shouldn't happen with the .partial logic.
+                    raise CacheError('Attempting to recache a file.')
+                else:
+                    # Chmod to newly added cached file read only to try to prevent accidental user
+                    # modification
+                    os.chmod(cachedFile, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                    # Return the filesize of cachedFile to the job and increase the cached size
+                    self.returnFileSize(jobStoreFileID, src, lockFileHandle,
+                                        fileAlreadyCached=False)
+
+        def returnFileSize(self, fileStoreID, cachedFileSource, lockFileHandle,
+                           fileAlreadyCached=False):
+            '''
+            Returns the fileSize of the if the file that was recently added to, or read from cache
+            to the job requirements pool (A job that reads n bytes from cache doesn't really use
+            those n bytes as a part of it's job disk since cache is already accounting for that disk
+            space).
+
+            :param fileStoreID: fileStore ID of the file bein added to cache
+            :param str cachedFileSource: File being added to cache
+            :param file lockFileHandle: Open file handle to the cache lock file
+            :param bool fileAlreadyCached: A flag to indicate whether the file was already cached or
+            not. If it was, then it means that you don't need to add the filesize to cache again.
+            :return: None
+            '''
+            fileSize = os.stat(cachedFileSource).st_size
+            cacheInfo = self.CacheStats.load(lockFileHandle)
+            # If the file isn't cached, add the size of the file to the cache pool. However, if the
+            # nlink threshold is not 1 -  i.e. it is 2 (it can only be 1 or 2), then don't do this
+            # since the size of the file is accounted for by the file store copy.
+            if not fileAlreadyCached and self.nlinkThreshold == 1:
+                cacheInfo.cached += fileSize
+            cacheInfo.sigmaJob -= fileSize
+            assert cacheInfo.isBalanced()
+            # Add the info to the job specific cache info
+            self.jobSpecificFiles[fileStoreID] = (cachedFileSource, fileSize, True)
+            cacheInfo.write(lockFileHandle)
+
+        def cleanCache(self, newJobReqs):
+            """
+            Cleanup all files in the cache directory to ensure that at lead newJobReqs are available
+            for use.
+            :param float newJobReqs: the total number of bytes of files allowed in the cache.
+            """
+            with self.cacheLock() as lockFileHandle:
+                # Read the values from the cache lock file
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                # Add the new job's disk requirements to the sigmaJobDisk variable
+                cacheInfo.sigmaJob += newJobReqs
+
+                # The inequality of cachedSpace + sigmaJobDisk <= totalFreeSpace is met, do nothing.
+                # Essentially, if the sum of all cached jobs + disk requirements of all running jobs
+                # is less than the available space on the system, then cache eviction is not
+                # required.
+                if cacheInfo.isBalanced():
+                    # Update the cache lock file to the latest values
+                    cacheInfo.write(lockFileHandle)
+                    return None
+
+                # List of deletable cached files.  A deletable cache file is one
+                #  that is not in use by any other worker (identified by the number of symlinks to
+                # the file)
+                allCacheFiles = [os.path.join(self.localCacheDir, x) for x in
+                                 os.listdir(self.localCacheDir) if
+                                 not x.startswith('.')]
+                deletableCacheFiles = set([(x, y.st_ctime, y.st_size) for x, y in
+                                           [(z, os.stat(z)) for z in allCacheFiles]
+                                           if y.st_nlink == self.nlinkThreshold])
+
+                # Sort such that we will remove earliest created files first
+                deletableCacheFiles = sorted(deletableCacheFiles, key=lambda x: x[1])
+
+                # Now do the actual file removal
+                while not cacheInfo.isBalanced() and len(deletableCacheFiles) > 0:
+                    cachedFile, fileCreateTime, cachedFileSize = deletableCacheFiles.pop()
+                    os.remove(cachedFile)
+                    cacheInfo.cached -= cachedFileSize
+                    assert cacheInfo.cached >= 0
+                assert cacheInfo.isBalanced(), 'Unable to free up enough space for caching.'
+                cacheInfo.write(lockFileHandle)
+
+        def removeSingleCachedFile(self, fileStoreID):
+            '''
+            Removes a single file described by the fileStoreID from the cache. If the file is being
+            used by someone
+            else, it returns the file size to the job requirements.
+            :return:
+            '''
+            cachedFile = self.encodedFileID(fileStoreID)
+            cachedFileStats = os.stat(cachedFile)
+            with self.cacheLock() as lockFileHandle:
+                # Read the values
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                # remove the file size form the cached file size and then delete the file
+                try:
+                    os.remove(cachedFile)
+                except OSError:
+                    # If there is an error, write the same values back to cache lock file before
+                    # exiting so other running jobs don't get hosed.
+                    cacheInfo.write(lockFileHandle)
+                    raise
+                cacheInfo.cached -= cachedFileStats.st_size
+                # If the file is being used by someone, then the file size must be added back to the
+                # job requirements pool once.
+                if cachedFileStats.st_nlink > self.nlinkThreshold:
+                    cacheInfo.sigmaJob += cachedFileStats.st_size
+                assert cacheInfo.isBalanced()
+                cacheInfo.write(lockFileHandle)
+            return None
+
+        def setNlinkThreshold(self):
+            if (isinstance(self.jobStore, FileJobStore) and
+                        os.stat(self.localCacheDir).st_dev == os.stat(
+                            self.jobStore.jobStoreDir).st_dev):
+                self.nlinkThreshold = 2
+            else:
+                self.nlinkThreshold = 1
+
+        def returnJobReqs(self, jobReqs):
+            '''
+            This function returns the effective job requirements back to the pool after the job
+            completes. It also deletes the local copies of files with the cache lock held.
+
+            :param float jobReqs: Original size requirement of the job
+            :return: None
+            '''
+            for x in self.jobSpecificFiles.keys():
+                self.deleteLocalFile(x)
+            with self.cacheLock() as lockFileHandle:
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                cacheInfo.sigmaJob -= jobReqs
+                assert cacheInfo.isBalanced()
+                cacheInfo.write(lockFileHandle)
+
+        def OLDreturnJobReqs(self, jobReqs):
+            '''
+            This function returns the effective job requirements back to the pool after the job
+            completes. It also deletes the local copies of files with the cache lock held.
+
+            :param float jobReqs: Original size requirement of the job
+            :return: None
+            '''
+            jobCachedFileSize = sum([x[1] for x in self.jobSpecificFiles.values() if x and x[1]])
+            localFilesToDelete = [x[0] for x in self.jobSpecificFiles.values() if x and x[1]]
+            with self.cacheLock() as lockFileHandle:
+                for x in localFilesToDelete:
+                    os.remove(x)
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                cacheInfo.sigmaJob -= (jobReqs - jobCachedFileSize)
+                assert cacheInfo.isBalanced()
+                cacheInfo.write(lockFileHandle)
+
+        class CacheStats(object):
+            def __init__(self, nlink, total, cached, sigmaJob):
+                self.nlink = nlink
+                self.total = total
+                self.cached = cached
+                self.sigmaJob = sigmaJob
+
+            @classmethod
+            def load(cls, fh):
+                fh.seek(0)
+                return cls(*unpack('iddd', fh.read()))
+
+            def write(self, fh):
+                fh.seek(0)
+                fh.truncate()
+                fh.write(pack('iddd', self.nlink, self.total, self.cached, self.sigmaJob))
+
+            def isBalanced(self):
+                return self.cached + self.sigmaJob <= self.total
+
+        def _accountForNlinkEquals2(self, localFilePath):
+            '''
+            This is a utility function that accounts for the fact that if nlinkThreshold == 2, the
+            size fo the file is accounted for by the file store copy of the file and thus the file
+            size shouldn't be added to the cached file sizes.
+            :param str localFilePath: Path to the local file that was linked to the file store copy.
+            :return: None
+            '''
+            fileStats = os.stat(localFilePath)
+            assert fileStats.st_nlink >= self.nlinkThreshold
+            with self.cacheLock() as lockFileHandle:
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                cacheInfo.sigmaJob -= fileStats.st_size
+                cacheInfo.write(lockFileHandle)
+
     class Service:
         """
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
+
         def __init__(self, memory=None, cores=None, disk=None):
             """
             Memory, core and disk requirements are specified identically to as in \
@@ -879,7 +1471,7 @@ class Job(object):
             pass
 
     ####################################################
-    #Private functions
+    # Private functions
     ####################################################
 
     def _addPredecessor(self, predecessorJob):
@@ -900,7 +1492,7 @@ class Job(object):
         :return: The root job.
         :rtype: toil.job.Job
         """
-        with jobStore.readSharedFileStream("rootJobStoreID") as f: #Load the root job
+        with jobStore.readSharedFileStream("rootJobStoreID") as f:  # Load the root job
             rootJobID = f.read()
         if not jobStore.exists(rootJobID):
             raise JobException("No root job (%s) left in toil workflow (workflow "
@@ -973,13 +1565,13 @@ class Job(object):
 
         unpickler.find_global = filter_main
         return unpickler.load()
-    
+
     def getUserScript(self):
         return self.userModule
 
     ####################################################
-    #Functions to pass Job.run return values to the
-    #input arguments of other Job instances
+    # Functions to pass Job.run return values to the
+    # input arguments of other Job instances
     ####################################################
 
     def _setReturnValuesForPromises(self, returnValues, jobStore):
@@ -996,8 +1588,8 @@ class Job(object):
                     cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
-    #Functions associated with Job.checkJobGraphAcyclic to establish
-    #that the job graph does not contain any cycles of dependencies.
+    # Functions associated with Job.checkJobGraphAcyclic to establish
+    # that the job graph does not contain any cycles of dependencies.
     ####################################################
 
     def _dfs(self, visited):
@@ -1021,37 +1613,38 @@ class Job(object):
             assert stack.pop() == self
         if self in stack:
             stack.append(self)
-            raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
+            raise JobGraphDeadlockException(
+                    "A cycle of job dependencies has been detected '%s'" % stack)
 
     @staticmethod
     def _getImpliedEdges(roots):
         """
         Gets the set of implied edges. See Job.checkJobGraphAcylic
         """
-        #Get nodes in job graph
+        # Get nodes in job graph
         nodes = set()
         for root in roots:
             root._dfs(nodes)
 
         ##For each follow-on edge calculate the extra implied edges
-        #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
-        #connected by an implied edge
-        extraEdges = dict(map(lambda n : (n, []), nodes))
+        # Adjacency list of implied edges, i.e. map of jobs to lists of jobs
+        # connected by an implied edge
+        extraEdges = dict(map(lambda n: (n, []), nodes))
         for job in nodes:
             if len(job._followOns) > 0:
-                #Get set of jobs connected by a directed path to job, starting
-                #with a child edge
+                # Get set of jobs connected by a directed path to job, starting
+                # with a child edge
                 reacheable = set()
                 for child in job._children:
                     child._dfs(reacheable)
-                #Now add extra edges
+                # Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += job._followOns[:]
         return extraEdges
-    
+
     ####################################################
-    #The following functions are used to serialise
-    #a job graph to the jobStore
+    # The following functions are used to serialise
+    # a job graph to the jobStore
     ####################################################
 
     def _modifyJobGraphForServices(self, jobStore, jobStoreID):
@@ -1060,7 +1653,7 @@ class Job(object):
         to correctly schedule any services defined for the job.
         """
         if len(self._services) > 0:
-            #Set the start/stop jobStore fileIDs for each service
+            # Set the start/stop jobStore fileIDs for each service
             for service in self._services:
                 service.startFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
                 assert jobStore.fileExists(service.startFileStoreID)
@@ -1071,38 +1664,38 @@ class Job(object):
                 assert self in job._directPredecessors
                 job._directPredecessors.remove(self)
 
-            #t1 and t2 are used to run the children and followOns of the job
-            #after the services of the job are started
-            startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
+            # t1 and t2 are used to run the children and followOns of the job
+            # after the services of the job are started
+            startFileStoreIDs = map(lambda i: i.startFileStoreID, self._services)
             t1, t2 = Job.wrapJobFn(blockUntilDeleted, startFileStoreIDs), Job()
-            #t1 runs the children of the job
+            # t1 runs the children of the job
             for child in self._children:
                 removePredecessor(child)
                 t1.addChild(child)
             self._children = []
-            #t2 runs the followOns of the job
+            # t2 runs the followOns of the job
             for followOn in self._followOns:
                 removePredecessor(followOn)
                 t2.addChild(followOn)
             self._followOns = []
-            #Now make the services children of the job
+            # Now make the services children of the job
             for service in self._services:
                 self.addChild(service)
                 assert service._directPredecessors == set((self,))
-            #Wire up the self, t1 and t2
+            # Wire up the self, t1 and t2
             self.addChild(t1)
             t1.addFollowOn(t2)
-            #The final task once t1 and t2 have finished is to stop the services
-            #this is achieved by deleting the stopFileStoreIDs.
-            t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
-            self._services = [] #Defensive
+            # The final task once t1 and t2 have finished is to stop the services
+            # this is achieved by deleting the stopFileStoreIDs.
+            t2.addFollowOnJobFn(deleteFileStoreIDs,
+                                map(lambda i: i.stopFileStoreID, self._services))
+            self._services = []  # Defensive
 
     def _createEmptyJobForJob(self, jobStore, command=None, predecessorNumber=0):
         """
         Create an empty job for the job.
         """
         requirements = self.effectiveRequirements(jobStore.config)
-        del requirements.cache
         return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
 
     def effectiveRequirements(self, config):
@@ -1114,49 +1707,43 @@ class Job(object):
         :return: a dictionary/object hybrid with one entry/attribute for each requirement
         """
         requirements = Expando(
-            memory=float(config.defaultMemory) if self.memory is None else self.memory,
-            cores=float(config.defaultCores) if self.cores is None else self.cores,
-            disk=float(config.defaultDisk) if self.disk is None else self.disk)
-        if self.cache is None:
-            requirements.cache = min(requirements.disk, float(config.defaultCache))
-        else:
-            requirements.cache = self.cache
-        if requirements.cache > requirements.disk:
-            raise RuntimeError("Trying to allocate a cache ({cache}) larger than the disk "
-                               "requirement for the job ({disk})".format(**requirements))
+                memory=float(config.defaultMemory) if self.memory is None else self.memory,
+                cores=float(config.defaultCores) if self.cores is None else self.cores,
+                disk=float(config.defaultDisk) if self.disk is None else self.disk)
         return requirements
 
     def _makeJobWrappers(self, jobWrapper, jobStore):
         """
         Creates a job for each job in the job graph, recursively.
         """
-        jobsToJobWrappers = { self:jobWrapper }
+        jobsToJobWrappers = {self: jobWrapper}
         for successors in (self._followOns, self._children):
             jobs = map(lambda successor:
-                successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
+                       successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
             jobWrapper.stack.append(jobs)
         return jobsToJobWrappers
 
     def _makeJobWrappers2(self, jobStore, jobsToJobWrappers):
-        #Make the jobWrapper for the job, if necessary
+        # Make the jobWrapper for the job, if necessary
         if self not in jobsToJobWrappers:
-            jobWrapper = self._createEmptyJobForJob(jobStore, predecessorNumber=len(self._directPredecessors))
+            jobWrapper = self._createEmptyJobForJob(jobStore,
+                                                    predecessorNumber=len(self._directPredecessors))
             jobsToJobWrappers[self] = jobWrapper
-            #Add followOns/children to be run after the current job.
+            # Add followOns/children to be run after the current job.
             for successors in (self._followOns, self._children):
                 jobs = map(lambda successor:
-                    successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
+                           successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
                 jobWrapper.stack.append(jobs)
         else:
             jobWrapper = jobsToJobWrappers[self]
-        #The return is a tuple stored within a job.stack 
-        #The tuple is jobStoreID, memory, cores, disk, predecessorID
-        #The predecessorID is used to establish which predecessors have been
-        #completed before running the given Job - it is just a unique ID
-        #per predecessor
+        # The return is a tuple stored within a job.stack
+        # The tuple is jobStoreID, memory, cores, disk, predecessorID
+        # The predecessorID is used to establish which predecessors have been
+        # completed before running the given Job - it is just a unique ID
+        # per predecessor
         return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores, jobWrapper.disk,
                 None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
-        
+
     def getTopologicalOrderingOfJobs(self):
         """
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
@@ -1165,9 +1752,10 @@ class Job(object):
         """
         ordering = []
         visited = set()
+
         def getRunOrder(job):
-            #Do not add the job to the ordering until all its predecessors have been
-            #added to the ordering
+            # Do not add the job to the ordering until all its predecessors have been
+            # added to the ordering
             for p in job._directPredecessors:
                 if p not in visited:
                     return
@@ -1175,24 +1763,25 @@ class Job(object):
                 visited.add(job)
                 ordering.append(job)
                 map(getRunOrder, job._children + job._followOns)
+
         getRunOrder(self)
         return ordering
-    
+
     def _serialiseJob(self, jobStore, jobsToJobWrappers, rootJobWrapper):
         """
         Pickle a job and its jobWrapper to disk.
         """
-        #Pickle the job so that its run method can be run at a later time.
-        #Drop out the children/followOns/predecessors/services - which are
-        #all recorded within the jobStore and do not need to be stored within
-        #the job
+        # Pickle the job so that its run method can be run at a later time.
+        # Drop out the children/followOns/predecessors/services - which are
+        # all recorded within the jobStore and do not need to be stored within
+        # the job
         self._children = []
         self._followOns = []
         self._services = []
         self._directPredecessors = set()
-        #The pickled job is "run" as the command of the job, see worker
-        #for the mechanism which unpickles the job and executes the Job.run
-        #method.
+        # The pickled job is "run" as the command of the job, see worker
+        # for the mechanism which unpickles the job and executes the Job.run
+        # method.
         with jobStore.writeFileStream(rootJobWrapper.jobStoreID) as (fileHandle, fileStoreID):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have beeen overridden. This is intended. If we used
@@ -1202,51 +1791,51 @@ class Job(object):
         # and FunctionWrappingJob overrides getUserScript() to give us just that. Only then can
         # filter_main() in _unpickle( ) do its job of resolveing any user-defined type or function.
         userScript = self.getUserScript().globalize()
-        jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + userScript)
-        #Update the status of the jobWrapper on disk
+        jobsToJobWrappers[self].command = ' '.join(('_toil', fileStoreID) + userScript)
+        # Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
-    
-    def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):  
+
+    def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):
         """
         Pickle the graph of jobs in the jobStore. The graph is not fully serialised \
         until the jobWrapper itself is written to disk, this is not performed by this \
         function because of the need to coordinate this operation with other updates. \
         """
-        #Modify job graph to run any services correctly
+        # Modify job graph to run any services correctly
         self._modifyJobGraphForServices(jobStore, jobWrapper.jobStoreID)
-        #Check if the job graph has created
-        #any cycles of dependencies or has multiple roots
+        # Check if the job graph has created
+        # any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
-        #Create the jobWrappers for followOns/children
+        # Create the jobWrappers for followOns/children
         jobsToJobWrappers = self._makeJobWrappers(jobWrapper, jobStore)
-        #Get an ordering on the jobs which we use for pickling the jobs in the 
-        #correct order to ensure the promises are properly established
+        # Get an ordering on the jobs which we use for pickling the jobs in the
+        # correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobWrappers)
-        #Temporarily set the jobStore strings for the promise call back functions
+        # Temporarily set the jobStore strings for the promise call back functions
         for job in ordering:
-            job._promiseJobStore = jobStore 
+            job._promiseJobStore = jobStore
         ordering.reverse()
         assert self == ordering[-1]
         if firstJob:
-            #If the first job we serialise all the jobs, including the root job
+            # If the first job we serialise all the jobs, including the root job
             for job in ordering:
                 job._promiseJobStore = None
                 job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
         else:
-            #We store the return values at this point, because if a return value
-            #is a promise from another job, we need to register the promise
-            #before we serialise the other jobs
+            # We store the return values at this point, because if a return value
+            # is a promise from another job, we need to register the promise
+            # before we serialise the other jobs
             self._setReturnValuesForPromises(returnValues, jobStore)
-            #Pickle the non-root jobs
+            # Pickle the non-root jobs
             for job in ordering[:-1]:
                 job._promiseJobStore = None
                 job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
-            #Drop the completed command
+            # Drop the completed command
             assert jobWrapper.command != None
             jobWrapper.command = None
-            #Merge any children (follow-ons) created in the initial serialisation
-            #with children (follow-ons) created in the subsequent scale-up.
+            # Merge any children (follow-ons) created in the initial serialisation
+            # with children (follow-ons) created in the subsequent scale-up.
             assert len(jobWrapper.stack) >= 4
             combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
             combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
@@ -1255,28 +1844,28 @@ class Job(object):
                 jobWrapper.stack.append(combinedFollowOns)
             if len(combinedChildren) > 0:
                 jobWrapper.stack.append(combinedChildren)
-            
+
     def _serialiseFirstJob(self, jobStore):
         """
         Serialises the root job. Returns the wrapping job.
         """
-        #Create first jobWrapper
+        # Create first jobWrapper
         jobWrapper = self._createEmptyJobForJob(jobStore, None,
                                                 predecessorNumber=0)
-        #Write the graph of jobs to disk
+        # Write the graph of jobs to disk
         self._serialiseJobGraph(jobWrapper, jobStore, None, True)
-        jobStore.update(jobWrapper) 
-        #Store the name of the first job in a file in case of restart
-        #Up to this point the root-job is not recoverable
+        jobStore.update(jobWrapper)
+        # Store the name of the first job in a file in case of restart
+        # Up to this point the root-job is not recoverable
         with jobStore.writeSharedFileStream("rootJobStoreID") as f:
             f.write(jobWrapper.jobStoreID)
-        #Return the first job wrapper
+        # Return the first job wrapper
         return jobWrapper
 
     ####################################################
-    #Function which worker calls to ultimately invoke
-    #a jobs Job.run method, and then handle created
-    #children/followOn jobs
+    # Function which worker calls to ultimately invoke
+    # a jobs Job.run method, and then handle created
+    # children/followOn jobs
     ####################################################
 
     def _execute(self, jobWrapper, stats, localTempDir, jobStore, fileStore):
@@ -1287,30 +1876,30 @@ class Job(object):
             startTime = time.time()
             startClock = getTotalCpuTime()
         baseDir = os.getcwd()
-        #Run the job
+        # Run the job
         returnValues = self.run(fileStore)
-        #Serialize the new jobs defined by the run method to the jobStore
+        # Serialize the new jobs defined by the run method to the jobStore
         self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
-        #Add the promise files to delete to the list of jobStoreFileIDs to delete
+        # Add the promise files to delete to the list of jobStoreFileIDs to delete
         for jobStoreFileID in promiseFilesToDelete:
-            fileStore.deleteGlobalFile(jobStoreFileID)
-        promiseFilesToDelete.clear() 
-        #Now indicate the asynchronous update of the job can happen
-            
+            fileStore.deleteGlobalFile(jobStoreFileID, toilInternal=True)
+        promiseFilesToDelete.clear()
+        # Now indicate the asynchronous update of the job can happen
+
         fileStore._updateJobWhenDone()
-        #Change dir back to cwd dir, if changed by job (this is a safety issue)
+        # Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
-        #Finish up the stats
+        # Finish up the stats
         if stats != None:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.jobs.append(
-                Expando(
-                    time=str(time.time() - startTime),
-                    clock=str(totalCpuTime - startClock),
-                    class_name=self._jobName(),
-                    memory=str(totalMemoryUsage)
-                )
+                    Expando(
+                            time=str(time.time() - startTime),
+                            clock=str(totalCpuTime - startClock),
+                            class_name=self._jobName(),
+                            memory=str(totalMemoryUsage)
+                    )
             )
 
     def _jobName(self):
@@ -1319,25 +1908,58 @@ class Job(object):
         """
         return self.__class__.__name__
 
-class JobException( Exception ):
+
+class JobException(Exception):
     """
     General job exception. 
     """
-    def __init__( self, message ):
-        super( JobException, self ).__init__( message )
 
-class JobGraphDeadlockException( JobException ):
+    def __init__(self, message):
+        super(JobException, self).__init__(message)
+
+
+class JobGraphDeadlockException(JobException):
     """
     An exception raised in the event that a workflow contains an unresolvable \
     dependency, such as a cycle. See :func:`toil.job.Job.checkJobGraphForDeadlocks`.
     """
-    def __init__( self, string ):
-        super( JobGraphDeadlockException, self ).__init__( string )
+
+    def __init__(self, string):
+        super(JobGraphDeadlockException, self).__init__(string)
+
+
+class CacheError(Exception):
+    '''
+    Error Raised if the user attempts to add a non-local file to cache
+    '''
+
+    def __init__(self, message):
+        super(CacheError, self).__init__(message)
+
+
+class CacheInvalidSrcError(Exception):
+    '''
+    Error Raised if the user attempts to add a non-local file to cache
+    '''
+
+    def __init__(self, message):
+        super(CacheInvalidSrcError, self).__init__(message)
+
+
+class CacheTimeoutError(Exception):
+    '''
+    Error raised if the cache setup times out
+    '''
+
+    def __init__(self, message):
+        super(CacheTimeoutError, self).__init__(message)
+
 
 class FunctionWrappingJob(Job):
     """
     Job used to wrap a function. In its run method the wrapped function is called.
     """
+
     def __init__(self, userFunction, *args, **kwargs):
         """
         :param userFunction: The function to wrap. The userFunction will be called \
@@ -1352,33 +1974,35 @@ class FunctionWrappingJob(Job):
         # Use the user specified resource argument, if specified, else 
         # grab the default argument from the function, if specified, else default to None
         argSpec = inspect.getargspec(userFunction)
-        argDict = dict(zip(argSpec.args[-len(argSpec.defaults):],argSpec.defaults)) \
-                        if argSpec.defaults != None else {}
-        argFn = lambda x : kwargs.pop(x) if x in kwargs else \
-                            (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
-        Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"), 
+        argDict = dict(zip(argSpec.args[-len(argSpec.defaults):], argSpec.defaults)) \
+            if argSpec.defaults != None else {}
+        argFn = lambda x: kwargs.pop(x) if x in kwargs else \
+            (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
+        Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"),
                      disk=argFn("disk"), cache=argFn("cache"))
-        #If dill is installed pickle the user function directly
-        #TODO: Add dill support
-        #else use indirect method
+        # If dill is installed pickle the user function directly
+        # TODO: Add dill support
+        # else use indirect method
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self._args=args
-        self._kwargs=kwargs
+        self._args = args
+        self._kwargs = kwargs
 
     def _getUserFunction(self):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-    def run(self,fileStore):
-        userFunction = self._getUserFunction( )
+    def run(self, fileStore):
+        userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
     def getUserScript(self):
         return self.userFunctionModule
 
     def _jobName(self):
-        return ".".join((self.__class__.__name__,self.userFunctionModule.name,self.userFunctionName))
+        return ".".join(
+                (self.__class__.__name__, self.userFunctionModule.name, self.userFunctionName))
+
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
     """
@@ -1391,11 +2015,13 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     instance (see :func:`toil.job.Job.Run`), it is made a variable of the wrapping job \
     called fileStore.
     """
+
     def run(self, fileStore):
         userFunction = self._getUserFunction()
         self.fileStore = fileStore
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
+
 
 class EncapsulatedJob(Job):
     """
@@ -1414,6 +2040,7 @@ class EncapsulatedJob(Job):
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() \
     will resolve to the same value after A or A.encapsulate() has been run.
     """
+
     def __init__(self, job):
         """
         :param toil.job.Job job: the job to encapsulate.
@@ -1436,10 +2063,12 @@ class EncapsulatedJob(Job):
     def rv(self, argIndex=None):
         return self.encapsulatedJob.rv(argIndex)
 
+
 class ServiceJob(Job):
     """
     Job used to wrap a :class:`toil.job.Job.Service` instance.
     """
+
     def __init__(self, service):
         """
         This constructor should not be called by a user.
@@ -1450,43 +2079,44 @@ class ServiceJob(Job):
         Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
-        #The service to run, pickled
+        # The service to run, pickled
         self.pickledService = cPickle.dumps(service)
-        #An empty file in the jobStore which when deleted is used to signal
-        #that the service should cease, is initialised in
-        #Job._modifyJobGraphForServices
+        # An empty file in the jobStore which when deleted is used to signal
+        # that the service should cease, is initialised in
+        # Job._modifyJobGraphForServices
         self.stopFileStoreID = None
-        #Similarly a empty file which when deleted is used to signal that the
-        #service is established
+        # Similarly a empty file which when deleted is used to signal that the
+        # service is established
         self.startFileStoreID = None
 
     def run(self, fileStore):
-        #Unpickle the service
+        # Unpickle the service
         userModule = self._loadUserModule(self.serviceModule)
-        service = self._unpickle( userModule, BytesIO( self.pickledService ) )
-        #Start the service
+        service = self._unpickle(userModule, BytesIO(self.pickledService))
+        # Start the service
         startCredentials = service.start()
-        #The start credentials  must be communicated to processes connecting to
-        #the service, to do this while the run method is running we
-        #cheat and set the return value promise within the run method
+        # The start credentials  must be communicated to processes connecting to
+        # the service, to do this while the run method is running we
+        # cheat and set the return value promise within the run method
         self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
         self._rvs = {}  # Set this to avoid the return values being updated after the
-        #run method has completed!
-        #Now flag that the service is running jobs can connect to it
+        # run method has completed!
+        # Now flag that the service is running jobs can connect to it
         assert self.startFileStoreID != None
         assert fileStore.jobStore.fileExists(self.startFileStoreID)
         fileStore.jobStore.deleteFile(self.startFileStoreID)
         assert not fileStore.jobStore.fileExists(self.startFileStoreID)
-        #Now block until we are told to stop, which is indicated by the removal
-        #of a file
+        # Now block until we are told to stop, which is indicated by the removal
+        # of a file
         assert self.stopFileStoreID != None
         while fileStore.jobStore.fileExists(self.stopFileStoreID):
-            time.sleep(1) #Avoid excessive polling
-        #Now kill the service
+            time.sleep(1)  # Avoid excessive polling
+        # Now kill the service
         service.stop()
 
     def getUserScript(self):
         return self.serviceModule
+
 
 class PromisedJobReturnValue(object):
     """
@@ -1502,25 +2132,30 @@ class PromisedJobReturnValue(object):
     This mechanism allows a return values from one job's run method to be input \
     argument to job before the former job's run function has been executed.
     """
+
     def __init__(self, promiseCallBackFunction):
-        self.promiseCallBackFunction = promiseCallBackFunction 
-        
+        self.promiseCallBackFunction = promiseCallBackFunction
+
+
 def promisedJobReturnValuePickleFunction(promise):
     """
     This function and promisedJobReturnValueUnpickleFunction are used as custom \
     pickle/unpickle functions to ensure that when the PromisedJobReturnValue instance \
     p is unpickled it is replaced with the object pickled in p.jobStoreFileID
     """
-    #The creation of the jobStoreFileID is intentionally lazy, we only
-    #create a fileID if the promise is being pickled. This is done so
-    #that we do not create fileIDs that are discarded/never used.
+    # The creation of the jobStoreFileID is intentionally lazy, we only
+    # create a fileID if the promise is being pickled. This is done so
+    # that we do not create fileIDs that are discarded/never used.
     jobStoreFileID, jobStoreString = promise.promiseCallBackFunction()
     return promisedJobReturnValueUnpickleFunction, (jobStoreString, jobStoreFileID)
 
-#These promise files must be deleted when we know we don't need the promise again.
+
+# These promise files must be deleted when we know we don't need the promise again.
 promiseFilesToDelete = set()
-promisedJobReturnValueUnpickleFunction_jobStore = None #This is a jobStore instance
-#used to unpickle promises
+promisedJobReturnValueUnpickleFunction_jobStore = None  # This is a jobStore instance
+
+
+# used to unpickle promises
 
 def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
     """
@@ -1530,20 +2165,25 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
     if promisedJobReturnValueUnpickleFunction_jobStore == None:
         promisedJobReturnValueUnpickleFunction_jobStore = loadJobStore(jobStoreString)
     promiseFilesToDelete.add(jobStoreFileID)
-    with promisedJobReturnValueUnpickleFunction_jobStore.readFileStream(jobStoreFileID) as fileHandle:
-        value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
+    with promisedJobReturnValueUnpickleFunction_jobStore.readFileStream(
+            jobStoreFileID) as fileHandle:
+        value = cPickle.load(
+                fileHandle)  # If this doesn't work then the file containing the promise may not exist or be corrupted.
         return value
 
-#This sets up the custom magic for pickling/unpickling a PromisedJobReturnValue
+
+# This sets up the custom magic for pickling/unpickling a PromisedJobReturnValue
 copy_reg.pickle(PromisedJobReturnValue,
                 promisedJobReturnValuePickleFunction,
                 promisedJobReturnValueUnpickleFunction)
+
 
 def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
     """
     Job function that deletes a bunch of files using their jobStoreFileIDs.
     """
-    map(lambda i : job.fileStore.jobStore.deleteFile(i), jobStoreFileIDsToDelete)
+    map(lambda i: job.fileStore.jobStore.deleteFile(i), jobStoreFileIDsToDelete)
+
 
 def blockUntilDeleted(job, jobStoreFileIDs):
     """
@@ -1551,8 +2191,8 @@ def blockUntilDeleted(job, jobStoreFileIDs):
     cease to exist.
     """
     while True:
-        jobStoreFileIDs = [ i for i in jobStoreFileIDs
-                           if job.fileStore.jobStore.fileExists(i) ]
+        jobStoreFileIDs = [i for i in jobStoreFileIDs
+                           if job.fileStore.jobStore.fileExists(i)]
         if len(jobStoreFileIDs) == 0:
             break
         time.sleep(1)
