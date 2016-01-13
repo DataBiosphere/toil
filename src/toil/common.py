@@ -293,6 +293,8 @@ def _addOptions(addGroupFn, config):
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
                             "kilobytes, default=%s" % config.maxLogFileSize))
+    addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
+                help="Enable real-time logging from workers to masters")
 
     addOptionFn("--sseKey", dest="sseKey", default=None,
             help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
