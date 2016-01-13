@@ -132,7 +132,7 @@ def setLoggingFromOptions(options):
     """
     Sets the logging from a dictionary of name/value options.
     """
-    logging.basicConfig()
+    logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s: %(message)s")
     rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:
         setLogLevel(options.logLevel)
