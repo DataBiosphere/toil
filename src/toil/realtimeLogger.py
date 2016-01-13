@@ -28,6 +28,8 @@ import threading
 
 import toil.lib.bioio
 
+log = logging.getLogger(__name__)
+
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
@@ -55,7 +57,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
         else:
             # Log level filtering should have been done on the remote end. The handle() method
             # skips it on this end.
-            logging.getLogger("remote").handle(record)
+            log.handle(record)
 
 
 class JSONDatagramHandler(logging.handlers.DatagramHandler):
@@ -125,11 +127,13 @@ class RealtimeLogger(object):
     def _startLeader(cls, batchSystem, level=defaultLevel):
         with cls.lock:
             if cls.initialized == 0:
+                cls.initialized += 1
                 if level:
+                    log.info('Starting real-time logging.')
                     # Start up the logging server
                     cls.loggingServer = SocketServer.ThreadingUDPServer(
-                        server_address=('0.0.0.0', 0),
-                        RequestHandlerClass=LoggingDatagramHandler)
+                            server_address=('0.0.0.0', 0),
+                            RequestHandlerClass=LoggingDatagramHandler)
 
                     # Set up a thread to do all the serving in the background and exit when we do
                     cls.serverThread = threading.Thread(target=cls.loggingServer.serve_forever)
@@ -156,7 +160,11 @@ class RealtimeLogger(object):
 
                     _setEnv('ADDRESS', '%s:%i' % (ip, port))
                     _setEnv('LEVEL', level)
-                cls.initialized += 1
+                else:
+                    log.info('Real-time logging disabled')
+            else:
+                if level:
+                    log.warn('Ignoring nested request to start real-time logging')
 
     @classmethod
     def _stopLeader(cls):
@@ -168,11 +176,16 @@ class RealtimeLogger(object):
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:
+                    log.info('Stopping real-time logging server.')
                     cls.loggingServer.shutdown()
                     cls.loggingServer = None
                 if cls.serverThread:
+                    log.info('Joining real-time logging server thread.')
                     cls.serverThread.join()
                     cls.serverThread = None
+                for k in os.environ.keys():
+                    if k.startswith(cls.envPrefix):
+                        os.environ.pop(k)
 
     @classmethod
     def getLogger(cls):

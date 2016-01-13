@@ -23,11 +23,11 @@ class RealtimeLoggerTest(ToilTest):
     def testRealtimeLogger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.realTimeLogging = True
-        options.logLevel = 'WARNING'
+        options.logLevel = 'INFO'
 
         detector = MessageDetector()
 
-        # Set up a log message detector
+        # Set up a log message detector to the root logger
         logging.getLogger().addHandler(detector)
 
         Job.Runner.startToil(LogTest(), options)
@@ -49,10 +49,9 @@ class MessageDetector(logging.StreamHandler):
         super(MessageDetector, self).__init__()
 
     def emit(self, record):
-        super(MessageDetector, self).emit(record)
-        if record.msg == 'This should be logged at warning level':
-            self.detected = True
         if record.msg == 'This should be logged at info level':
+            self.detected = True
+        if record.msg == 'This should be logged at debug level':
             self.overLogged = True
 
 
@@ -62,4 +61,4 @@ class LogTest(Job):
 
     def run(self, fileStore):
         RealtimeLogger.info('This should be logged at info level')
-        RealtimeLogger.warning('This should be logged at warning level')
+        RealtimeLogger.debug('This should be logged at debug level')
