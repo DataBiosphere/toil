@@ -6,450 +6,312 @@ File : toy_code_for_unfulfilled_promise_error.py
 '''
 from __future__ import print_function
 from toil.job import Job
+from toil.test import ToilTest
 
-import tempfile
+import unittest
+import shutil
 import time
 import os
-import argparse
+from struct import unpack
 
-################################################################################
-# Tests
-################################################################################
 
-# Sanity
-def test_toil_isnt_broken():
+class jobCacheTest(ToilTest):
     '''
-    Make a job, make a child, make merry.
+    Tests the various cache functions
     '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(sleep_func)
-    G = Job.wrapJobFn(sleep_func)
-    H = Job.wrapJobFn(sleep_func)
-    I = Job.wrapJobFn(sleep_func)
-    F.addChild(G)
-    F.addChild(H)
-    G.addChild(I)
-    H.addChild(I)
-    Job.Runner.startToil(F, params)
+
+    def setUp(self):
+        super(jobCacheTest, self).setUp()
+        testDir = self._createTempDir()
+        self.params = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        self.params.logLevel = 'INFO'
+        self.params.workDir = testDir
+
+    def tearDown(self):
+        if os.path.exists(self.params.workDir):
+            shutil.rmtree(self.params.workDir)
+        super(ToilTest, self).tearDown()
+
+    # sanity
+    def test_toil_isnt_broken(self):
+        '''
+        Make a job, make a child, make merry.
+        '''
+        F = Job.wrapJobFn(_uselessFunc)
+        G = Job.wrapJobFn(_uselessFunc)
+        H = Job.wrapJobFn(_uselessFunc)
+        I = Job.wrapJobFn(_uselessFunc)
+        F.addChild(G)
+        F.addChild(H)
+        G.addChild(I)
+        H.addChild(I)
+        Job.Runner.startToil(F, self.params)
+
+    # Cache
+    def testCacheLockRace(self):
+        '''
+        Make 2 threads compete for the same cache lock file.
+        :return:
+        '''
+        E = Job.wrapJobFn(_setUpLockFile)
+        F = Job.wrapJobFn(_mth, cores=1)
+        G = Job.wrapJobFn(_mth, cores=1)
+        H = Job.wrapJobFn(_mth, cores=1)
+        E.addChild(F)
+        E.addChild(G)
+        E.addChild(H)
+        Job.Runner.startToil(E, self.params)
+        with open(os.path.join(self.params.workDir, 'cache/.cacheLock'), 'r') as x:
+            values = unpack('iddd', x.read())
+            # values of zero has to be zero for successful run
+            assert values[0] == 0
+
+    # writeGlobalFile tests
+    def testWriteNonLocalFileToJobStore(self):
+        '''
+        Write a file not in localTempDir to the job store. Ensure the file is not
+        cached.
+        '''
+        workdir = self._createTempDir(purpose='writeTestDir')
+        currwd = os.path.abspath('.')
+        os.chdir(workdir)
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+        Job.Runner.startToil(F, self.params)
+        os.chdir(currwd)
+
+    def testWriteLocalFileToJobStore(self):
+        '''
+        Write a file not in localTempDir to the job store. Ensure the file is not
+        cached.
+        '''
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True)
+        Job.Runner.startToil(F, self.params)
+
+    # readGlobalFile tests
+    def testReadUncachedFileFromJobStore1(self):
+        '''
+        Read a file from the file store that does not have a corresponding cached copy. Do not cache
+        the read file. Ensure the number of links on the file are appropriate.
+        '''
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+        G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=False, fsID=F.rv())
+        F.addChild(G)
+        Job.Runner.startToil(F, self.params)
+
+    def testReadUncachedFileFromJobStore2(self):
+        '''
+        Read a file from the file store that does not have a corresponding cached copy. Cache the
+        read file. Ensure the number of links on the file are appropriate.
+        '''
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+        G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=True, fsID=F.rv())
+        F.addChild(G)
+        Job.Runner.startToil(F, self.params)
+
+    def testReadCachedFileFromJobStore(self):
+        '''
+        Read a file from the file store that has a corresponding cached copy. Ensure the number of
+        links on the file are appropriate.
+        '''
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True)
+        G = Job.wrapJobFn(_readFromJobStore, isCachedFile=True, cacheReadFile=None, fsID=F.rv())
+        F.addChild(G)
+        Job.Runner.startToil(F, self.params)
+
+    def testMultipleJobsReadSameCachedGlobalFile(self):
+        '''
+        Write a local file to the job store (hence adding a copy to cache), then have 10 jobs read
+        it. Assert cached file size in the cache lock file never goes up, assert sigma job reqs is
+        always (a multiple of job reqs) - (number of files linked to the cachedfile * filesize). At
+        the end, assert the cache lock file shows sigma job = 0.
+        :return:
+        '''
+        temp_dir = self._createTempDir(purpose='tempWrite')
+        with open(os.path.join(temp_dir, 'test'), 'w') as x:
+            x.write(str(0))
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True, isTest=False, fileMB=200)
+        G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
+        jobs = {}
+        for i in xrange(0,10):
+            jobs[i] = Job.wrapJobFn(_multipleReader, diskMB=200, fileInfo=F.rv(),
+                                    maxWriteFile=os.path.abspath(x.name), disk='200M', memory='10M',
+                                    cores=1)
+            F.addChild(jobs[i])
+            jobs[i].addChild(G)
+        Job.Runner.startToil(F, self.params)
+        with open(x.name, 'r') as y:
+            assert int(y.read()) > 2
 
 
-# Cache functions specific
-def test_cache_race():
-    '''
-    Make 2 threads compete for the same cache lock file. If they have the lock
-    at the same time, FAIL.
-    :return:
-    '''
-    E = Job.wrapJobFn(sleep_func)
-    F = Job.wrapJobFn(mth, cores=1)
-    G = Job.wrapJobFn(mth, cores=1)
-    H = Job.wrapJobFn(mth, cores=1)
-    E.addChild(F)
-    E.addChild(G)
-    E.addChild(H)
+    def testMultipleJobsReadSameUnachedGlobalFile(self):
+        '''
+        Write a non-local file to the job store(hence no cached copy), then have 10 jobs read it.
+        Assert cached file size in the cache lock file never goes up, assert sigma job reqs is
+        always (a multiple of job reqs) - (number of files linked to the cachedfile * filesize). At
+        the end, assert the cache lock file shows sigma job = 0.
+        :return:
+        '''
+        temp_dir = self._createTempDir(purpose='tempWrite')
+        with open(os.path.join(temp_dir, 'test'), 'w') as x:
+            x.write(str(0))
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False, isTest=False, fileMB=1024)
+        G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
+        jobs = {}
+        for i in xrange(0,10):
+            jobs[i] = Job.wrapJobFn(_multipleReader, diskMB=1024, fileInfo=F.rv(),
+                                    maxWriteFile=os.path.abspath(x.name), disk='2G', memory='10M',
+                                    cores=1)
+            F.addChild(jobs[i])
+            jobs[i].addChild(G)
+        Job.Runner.startToil(F, self.params)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--workDir', '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    Job.Runner.startToil(E, params)
-
-# WriteGlobalFile tests
-
-def test_getting_file_into_fs():
-    '''
-    Write a file not in localTempDIr to the fileStore. Ensure the file is not
-    cached.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False)
-    Job.Runner.startToil(F, params)
-
-
-def test_write_local_file_to_cache():
-    '''
-    Make a job, make a child, make merry.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, True)
-    Job.Runner.startToil(F, params)
-
-
-# readGlobalFile tests
-def child_reads_uncached_file_from_filestore_1():
-    '''
-    Read a file from the file store that does not have a corresponding cached copy. Do not cache the read file. Ensure
-    the number of links on the file are appropriate.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False)
-    G = Job.wrapJobFn(read_from_fs, False, False, F.rv())
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-def child_reads_uncached_file_from_filestore_2():
-    '''
-    Read a file from the file store that does not have a corresponding cached copy. Cache the read file. Ensure the
-    number of links on the file are appropriate.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False)
-    G = Job.wrapJobFn(read_from_fs, False, True, F.rv())
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-def child_reads_cached_file_from_filestore():
-    '''
-    Write a file not in localTempDIr to the fileStore. Ensure the file is not
-    cached.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, True)
-    G = Job.wrapJobFn(read_from_fs, True, None, F.rv())
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-def test_multiple_readers_of_cached_file():
-    '''
-    Write a file, then have 10 jobs read it. Assert cached file size in the cache lock file never goes up, assert
-    sigma job reqs is always (a multiple of job reqs) - (number of files linked to the cachedfile * filesize). At the
-    end, assert the cache lock file shows sigma job = 0.
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logInfo', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, True, 200)
-    G = Job.wrapJobFn(probe_job_reqs, disk='100M')
-    jobs = {}
-    for i in xrange(0,50):
-        jobs[i] = Job.wrapJobFn(multiple_reader, 200, F.rv(), disk='200M', memory='10M', cores=1)
-        F.addChild(jobs[i])
-        jobs[i].addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-def test_multiple_readers_of_uncached_file():
-    '''
-    Write a file, then have 10 jobs read it. Assert cached file size in the cache lock file never goes up, assert
-    sigma job reqs is always (a multiple of job reqs) - (number of files linked to the cachedfile * filesize). At the
-    end, assert the cache lock file shows sigma job = 0.
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False, filemb=1024)
-    G = Job.wrapJobFn(probe_job_reqs, disk='100M')
-    jobs = {}
-    for i in xrange(0,10):
-        jobs[i] = Job.wrapJobFn(multiple_reader, 1024, F.rv(), disk='2G', memory='10M', cores=1)
-        F.addChild(jobs[i])
-        jobs[i].addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-# deleteLocalFile
-def delete_self_written_uncached_file():
-    '''
-    Write a file to filestore that is not cached. Attempt to delete it. Ensure the cache lock file holds the right
-    values
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(local_delete, True, False, disk='200M')
-    Job.Runner.startToil(F, params)
-
-
-def delete_self_written_cached_file():
-    '''
-    Write a file to filestore that is also cached. Attempt to delete it. Ensure the cache lock file holds the right
-    values
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(local_delete, True, True, disk='200M')
-    Job.Runner.startToil(F, params)
-
-
-def delete_globally_read_uncached_file():
-    '''
-    Write a file to filestore that is not cached. Attempt to delete it. Ensure the cache lock file holds the right
-    values
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False)
-    G = Job.wrapJobFn(local_delete, False, False, F.rv(), disk='200M')
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-def delete_globally_read_cached_file():
-    '''
-    Write a file to filestore that is also cached. Attempt to delete it. Ensure the cache lock file holds the right
-    values
-    :return:
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, False)
-    G = Job.wrapJobFn(local_delete, False, True, F.rv(), disk='200M')
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
-
-
-# Runtime tests
-def test_jobreqs_being_returned():
-    '''
-    Make a job, make a child, make merry.
-    '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dummy', dest='dummy', default=None, required=False)
-    Job.Runner.addToilOptions(parser)
-    params = parser.parse_args(['--logDebug', '--workDir',
-                                '/tmp/test_toil/filestore',
-                                '/tmp/test_toil/jobstore'])
-    F = Job.wrapJobFn(write_to_fs, True, disk='200M')
-    G = Job.wrapJobFn(probe_job_reqs, disk='100M')
-    F.addChild(G)
-    Job.Runner.startToil(F, params)
 
 ################################################################################
 # Utility functions
 ################################################################################
 
-def sleep_func(job):
-    '''
-    sleep for 5s.
-    '''
-    assert TypeError('poo')
-    time.sleep(5)
-    return None
-
-def mth(job):
-    '''
-    Try to acquire a lock on the lock file. if 2 threads have the lock
-    concurrently, then abort.
-    :return: None
-    '''
-    for i in xrange(0,1000):
-        with job.fileStore.cacheLock() as x:
-            cacheInfo = job.fileStore.CacheStats.load(x)
-            assert cacheInfo.nlink != '0', 'FAIL'
-            cacheInfo.nlink = 0
-            cacheInfo.write(x)
-            time.sleep(0.001)
-            cacheInfo = job.fileStore.CacheStats.load(x)
-            cacheInfo.nlink = 2
-            cacheInfo.write(x)
-
-def write_to_fs(job, local_file, test=True, filemb=1):
+def _writeToFileStore(job, isLocalFile, isTest=True, fileMB=1):
     '''
     This function creates a file and writes it to filestore.
+    :param bool isLocalFile: Flag. Is the file local(T)?
+    :param bool isTest: Flag. Is this being run as a test(T) or an accessory to another test(F)?
+    :param int fileMB: Size of the created file in MB
     '''
-    if local_file:
+    if isLocalFile:
         work_dir = job.fileStore.getLocalTempDir()
     else:
         work_dir = os.path.abspath('.')
     with open(os.path.join(work_dir, 'testfile.test'), 'w') as testfile:
-        testfile.write(os.urandom(filemb*1024*1024))
+        testfile.write(os.urandom(fileMB * 1024 * 1024))
+
     fsID = job.fileStore.writeGlobalFile(testfile.name)
 
-    if local_file:
-        # Since the file has been hard linked it should have
-        # nlink_count = threshold +1 (local, cached, and possibly filestore)
-        x = job.fileStore.nlinkThreshold + 1
-        assert os.stat(testfile.name).st_nlink == x, 'Should have %s ' % x + \
-            'nlinks. Got %s' % os.stat(testfile.name).st_nlink
-    else:
-        # Since the file hasn't been hard linked it should have
-        # nlink_count = 1
-        assert os.stat(testfile.name).st_nlink == 1, 'Should have 1 nlink.' + \
-            ' Got %s' % os.stat(testfile.name).st_nlink
-    if test:
+    if isTest:
+        if isLocalFile:
+            # Since the file has been hard linked it should have
+            # nlink_count = threshold +1 (local, cached, and possibly filestore)
+            x = job.fileStore.nlinkThreshold + 1
+            assert os.stat(testfile.name).st_nlink == x, 'Should have %s ' % x + 'nlinks. Got ' + \
+                '%s' % os.stat(testfile.name).st_nlink
+        else:
+            # Since the file hasn't been hard linked it should have
+            # nlink_count = 1
+            assert os.stat(testfile.name).st_nlink == 1, 'Should have 1 nlink. Got ' + \
+                '%s' % os.stat(testfile.name).st_nlink
         return fsID
     else:
         return fsID, testfile.name
 
-def read_from_fs(job, cached_file, cache_read_file, fsID, test=True):
+
+def _readFromJobStore(job, isCachedFile, cacheReadFile, fsID, isTest=True):
     '''
     Read a file from the filestore. If the file was cached, ensure it was hard
     linked right. If it wasn't, ensure it was put into cache
+    :param bool isCachedFile: Flag. Was the read file read from cache(T)? This defines the nlink
+     count to be asserted.
+    :param bool cacheReadFile: Flag. Is the file to be cached(T)?
+    :param str fsID: job store file ID
+    :param bool isTest: Flag. Is this being run as a test(T) or an accessory to another test(F)?
+
     '''
     work_dir = job.fileStore.getLocalTempDir()
     x = job.fileStore.nlinkThreshold
-    if cached_file:
-        outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir,
-                                                               'temp']))
-        assert os.stat(outfile).st_nlink == x + 1, 'Should have %s' % (x+1) + \
-            ' nlinks. Got %s.' % os.stat(outfile).st_nlink
+    if isCachedFile:
+        outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']))
+        expectedNlinks = x + 1
     else:
-        if not cache_read_file:
-            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir,
-                                                                   'temp']),
-                                                   cache=False)
-            assert os.stat(outfile).st_nlink == x, 'Should have %s nlinks.' % x + \
-                ' Got %s.' % os.stat(outfile).st_nlink
+        if cacheReadFile:
+            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True)
+            expectedNlinks = x + 1
         else:
-            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir,
-                                                                   'temp']),
-                                                   cache=True)
-            assert os.stat(outfile).st_nlink == x + 1, 'Should have %s' % (x+1) + \
-                ' nlinks. Got %s.' % os.stat(outfile).st_nlink
-    if test:
+            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=False)
+            expectedNlinks = x
+    if isTest:
+        assert os.stat(outfile).st_nlink == expectedNlinks, 'Should have %s ' % expectedNlinks + \
+            'nlinks. Got %s.' % os.stat(outfile).st_nlink
         return None
     else:
         return outfile
 
 
-def local_delete(job, write_new_file, cache_test_file, fsID=None):
+def _probeJobReqs(job, diskMB):
     '''
-    try to delete
-    :param job:
-    :param bool write_new_file: Flag to indicate whether this function does the file write as well
-    :param bool cache_test_file: Flag to indicate whether the test file should be cached or not
-    :param fsID: FileStore ID. Not required if write_new_file == True
-    :return: None
-    '''
-    # Setup the file to be tested
-    if write_new_file:
-        # piggyback off other functions
-        fsID, outfile = write_to_fs(job, cache_test_file, test=False)
-    else:
-        assert fsID is not None, 'You done fucked up, son'
-        outfile = read_from_fs(job, False, cache_test_file, fsID, test=False)
-    # Now test
-    job.fileStore.deleteLocalFile(fsID)
-    with job.fileStore.cacheLock() as lockFileHandle:
-        cacheInfo = job.fileStore.CacheStats.load(lockFileHandle)
-        assert cacheInfo.sigmaJob == 200 * 1024 * 1024
-
-
-def probe_job_reqs(job):
-    '''
-    Probes the cacheLockFile to ensure the previous job returned it's
-    requirements correctly
+    Probes the cacheLockFile to ensure the previous job returned it's requirements correctly. If
+    everything went well, sigmaJob should be equal to the diskMB for this job.
+    :param int diskMB: disk requirements provided to the job.
     '''
     with job.fileStore.cacheLock() as x:
         cacheInfo = job.fileStore.CacheStats.load(x)
-        hmb = 100 * 1024 * 1024
-        assert cacheInfo.sigmaJob == hmb, 'Expected %s ' % hmb + \
-            'got %s.' % cacheInfo.sigmaJob
+        expectedMB = diskMB * 1024 * 1024
+        assert cacheInfo.sigmaJob == expectedMB, 'Expected %s ' % expectedMB + 'got ' + \
+            '%s.' % cacheInfo.sigmaJob
 
 
-def multiple_reader(job, diskmb, fsID):
+def _multipleReader(job, diskMB, fileInfo, maxWriteFile):
     '''
-    Read fsID from file store. Assert cached file size in the cache lock file never goes up, assert
-    sigma job reqs is always (a multiple of job reqs) - (number of files linked to the cachedfile * filesize).
-    :param job:
-    :param int diskmb:
-    :param fsID:
-    :return:
+    Read fsID from file store and add to cache. Assert cached file size in the cache lock file never
+    goes up, assert sum of job reqs is always
+    (a multiple of job reqs) - (number of files linked to the cachedfile * filesize).
+
+    :param int diskMB: disk requirements provided to the job
+    :param str fsID: job store file ID
+    :param str maxWriteFile: path to file where the max number of concurrent readers of cache lock
+    file will be written
     '''
+    fsID, filename = fileInfo
     work_dir = job.fileStore.getLocalTempDir()
     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True)
-    #time.sleep(20)
-    twohundredmb = diskmb * 1024 * 1024
+    twohundredmb = diskMB * 1024 * 1024
     with job.fileStore.cacheLock() as lockFileHandle:
         fileStats = os.stat(outfile)
         fileSize = fileStats.st_size
         fileNlinks = fileStats.st_nlink
+        with open(maxWriteFile, 'r+') as x:
+            prev_max = int(x.read())
+            x.seek(0)
+            x.truncate()
+            x.write(str(max(prev_max, fileNlinks)))
         cacheInfo = job.fileStore.CacheStats.load(lockFileHandle)
-        try:
-            if cacheInfo.nlink == 2:
-                assert cacheInfo.cached == 0.0 # since fileJobstore on same filesystem
-            else:
-                assert cacheInfo.cached == fileSize
-            assert (cacheInfo.sigmaJob + (fileNlinks - cacheInfo.nlink) * fileSize) % twohundredmb == 0.0
-        except AssertionError:
-            lockFileHandle.close()
-            raise
+        if cacheInfo.nlink == 2:
+            assert cacheInfo.cached == 0.0 # since fileJobstore on same filesystem
+        else:
+            assert cacheInfo.cached == fileSize
+        assert ((cacheInfo.sigmaJob + (fileNlinks - cacheInfo.nlink) * fileSize) %
+                twohundredmb) == 0.0
 
 
-if __name__ == '__main__':
-    # sanity
-    #test_toil_isnt_broken() # PASS
+def _mth(job):
+    '''
+    Try to acquire a lock on the lock file. if 2 threads have the lock concurrently, then abort.
+    This test abuses the CacheStats class and modifies values in the lock file.
+    :return: None
+    '''
+    for i in xrange(0,1000):
+        with job.fileStore.cacheLock() as x:
+            cacheInfo = job.fileStore.CacheStats.load(x)
+            cacheInfo.nlink += 1
+            cacheInfo.cached = max(cacheInfo.nlink, cacheInfo.cached)
+            cacheInfo.write(x)
+        time.sleep(0.001)
+        with job.fileStore.cacheLock() as x:
+            cacheInfo = job.fileStore.CacheStats.load(x)
+            cacheInfo.nlink -= 1
+            cacheInfo.write(x)
 
-    # cache
-    #test_cache_race() # PASS
+def _setUpLockFile(job):
+    '''
+    set nlink=0 for the cache test
+    '''
+    with job.fileStore.cacheLock() as x:
+        cacheInfo = job.fileStore.CacheStats.load(x)
+        cacheInfo.nlink=0
+        cacheInfo.write(x)
 
-    # writeGlobalFile
-    #test_getting_file_into_fs() # PASS
-    #test_write_local_file_to_cache() # PASS
+def _uselessFunc(job):
+    '''
+    I do nothing. Don't judge me.
+    '''
+    return None
 
-    # readGlobalFile
-    #child_reads_uncached_file_from_filestore_1() # PASS
-    #child_reads_uncached_file_from_filestore_2() # PASS
-    #child_reads_cached_file_from_filestore() # PASS
-    #test_multiple_readers_of_cached_file() # PASS
-    #test_multiple_readers_of_uncached_file() # PASS
 
-    # deleteLocalFile
-    #delete_self_written_uncached_file() # PASS
-    #delete_self_written_cached_file() # PASS
-    #delete_globally_read_uncached_file() # PASS
-    #delete_globally_read_cached_file() # PASS
-
-    # Runtime
-    #test_jobreqs_being_returned() # PASS
 
