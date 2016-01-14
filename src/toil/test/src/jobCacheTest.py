@@ -23,17 +23,13 @@ class jobCacheTest(ToilTest):
     def setUp(self):
         super(jobCacheTest, self).setUp()
         testDir = self._createTempDir()
-        self.params = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        self.params.logLevel = 'INFO'
-        self.params.workDir = testDir
-
-    def tearDown(self):
-        if os.path.exists(self.params.workDir):
-            shutil.rmtree(self.params.workDir)
-        super(ToilTest, self).tearDown()
+        self.options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        self.options.logLevel = 'INFO'
+        self.options.workDir = testDir
+        self.options.useSharedCache=True
 
     # sanity
-    def test_toil_isnt_broken(self):
+    def testToilIsNotBroken(self):
         '''
         Make a job, make a child, make merry.
         '''
@@ -45,7 +41,7 @@ class jobCacheTest(ToilTest):
         F.addChild(H)
         G.addChild(I)
         H.addChild(I)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
 
     # Cache
     def testCacheLockRace(self):
@@ -60,8 +56,8 @@ class jobCacheTest(ToilTest):
         E.addChild(F)
         E.addChild(G)
         E.addChild(H)
-        Job.Runner.startToil(E, self.params)
-        with open(os.path.join(self.params.workDir, 'cache/.cacheLock'), 'r') as x:
+        Job.Runner.startToil(E, self.options)
+        with open(os.path.join(self.options.workDir, 'cache/.cacheLock'), 'r') as x:
             values = unpack('iddd', x.read())
             # values of zero has to be zero for successful run
             assert values[0] == 0
@@ -72,12 +68,14 @@ class jobCacheTest(ToilTest):
         Write a file not in localTempDir to the job store. Ensure the file is not
         cached.
         '''
-        workdir = self._createTempDir(purpose='writeTestDir')
-        currwd = os.path.abspath('.')
+        workdir = self._createTempDir(purpose='nonLocalDir')
+        currwd = os.getcwd()
         os.chdir(workdir)
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
-        Job.Runner.startToil(F, self.params)
-        os.chdir(currwd)
+        try:
+            F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+            Job.Runner.startToil(F, self.options)
+        finally:
+            os.chdir(currwd)
 
     def testWriteLocalFileToJobStore(self):
         '''
@@ -85,7 +83,7 @@ class jobCacheTest(ToilTest):
         cached.
         '''
         F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
 
     # readGlobalFile tests
     def testReadUncachedFileFromJobStore1(self):
@@ -96,7 +94,7 @@ class jobCacheTest(ToilTest):
         F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
         G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=False, fsID=F.rv())
         F.addChild(G)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
 
     def testReadUncachedFileFromJobStore2(self):
         '''
@@ -106,7 +104,7 @@ class jobCacheTest(ToilTest):
         F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
         G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=True, fsID=F.rv())
         F.addChild(G)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
 
     def testReadCachedFileFromJobStore(self):
         '''
@@ -116,7 +114,7 @@ class jobCacheTest(ToilTest):
         F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True)
         G = Job.wrapJobFn(_readFromJobStore, isCachedFile=True, cacheReadFile=None, fsID=F.rv())
         F.addChild(G)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
 
     def testMultipleJobsReadSameCachedGlobalFile(self):
         '''
@@ -129,7 +127,7 @@ class jobCacheTest(ToilTest):
         temp_dir = self._createTempDir(purpose='tempWrite')
         with open(os.path.join(temp_dir, 'test'), 'w') as x:
             x.write(str(0))
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True, isTest=False, fileMB=200)
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True, fileMB=200)
         G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
         jobs = {}
         for i in xrange(0,10):
@@ -138,10 +136,9 @@ class jobCacheTest(ToilTest):
                                     cores=1)
             F.addChild(jobs[i])
             jobs[i].addChild(G)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
         with open(x.name, 'r') as y:
             assert int(y.read()) > 2
-
 
     def testMultipleJobsReadSameUnachedGlobalFile(self):
         '''
@@ -154,7 +151,7 @@ class jobCacheTest(ToilTest):
         temp_dir = self._createTempDir(purpose='tempWrite')
         with open(os.path.join(temp_dir, 'test'), 'w') as x:
             x.write(str(0))
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False, isTest=False, fileMB=1024)
+        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False, fileMB=1024)
         G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
         jobs = {}
         for i in xrange(0,10):
@@ -163,44 +160,44 @@ class jobCacheTest(ToilTest):
                                     cores=1)
             F.addChild(jobs[i])
             jobs[i].addChild(G)
-        Job.Runner.startToil(F, self.params)
+        Job.Runner.startToil(F, self.options)
+        with open(x.name, 'r') as y:
+            assert int(y.read()) > 2
 
 
 ################################################################################
 # Utility functions
 ################################################################################
 
-def _writeToFileStore(job, isLocalFile, isTest=True, fileMB=1):
+def _writeToFileStore(job, isLocalFile, fileMB=1):
     '''
     This function creates a file and writes it to filestore.
     :param bool isLocalFile: Flag. Is the file local(T)?
-    :param bool isTest: Flag. Is this being run as a test(T) or an accessory to another test(F)?
     :param int fileMB: Size of the created file in MB
     '''
     if isLocalFile:
         work_dir = job.fileStore.getLocalTempDir()
     else:
-        work_dir = os.path.abspath('.')
-    with open(os.path.join(work_dir, 'testfile.test'), 'w') as testfile:
-        testfile.write(os.urandom(fileMB * 1024 * 1024))
+        work_dir = os.getcwd()
+    with open(os.path.join(work_dir, 'testfile.test'), 'w') as testFile:
+        #with open('/dev/urandom', 'r') as randFile:
+        #    (randFile, testFile, fileMB * 1024 * 1024)
+        testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-    fsID = job.fileStore.writeGlobalFile(testfile.name)
+    fsID = job.fileStore.writeGlobalFile(testFile.name)
 
-    if isTest:
-        if isLocalFile:
-            # Since the file has been hard linked it should have
-            # nlink_count = threshold +1 (local, cached, and possibly filestore)
-            x = job.fileStore.nlinkThreshold + 1
-            assert os.stat(testfile.name).st_nlink == x, 'Should have %s ' % x + 'nlinks. Got ' + \
-                '%s' % os.stat(testfile.name).st_nlink
-        else:
-            # Since the file hasn't been hard linked it should have
-            # nlink_count = 1
-            assert os.stat(testfile.name).st_nlink == 1, 'Should have 1 nlink. Got ' + \
-                '%s' % os.stat(testfile.name).st_nlink
-        return fsID
+    if isLocalFile:
+        # Since the file has been hard linked it should have
+        # nlink_count = threshold +1 (local, cached, and possibly job store)
+        x = job.fileStore.nlinkThreshold + 1
+        assert os.stat(testFile.name).st_nlink == x, 'Should have %s ' % x + 'nlinks. Got ' + \
+            '%s' % os.stat(testFile.name).st_nlink
     else:
-        return fsID, testfile.name
+        # Since the file hasn't been hard linked it should have
+        # nlink_count = 1
+        assert os.stat(testFile.name).st_nlink == 1, 'Should have 1 nlink. Got ' + \
+            '%s' % os.stat(testFile.name).st_nlink
+    return fsID
 
 
 def _readFromJobStore(job, isCachedFile, cacheReadFile, fsID, isTest=True):
@@ -258,7 +255,7 @@ def _multipleReader(job, diskMB, fileInfo, maxWriteFile):
     :param str maxWriteFile: path to file where the max number of concurrent readers of cache lock
     file will be written
     '''
-    fsID, filename = fileInfo
+    fsID = fileInfo
     work_dir = job.fileStore.getLocalTempDir()
     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True)
     twohundredmb = diskMB * 1024 * 1024

@@ -48,8 +48,6 @@ from toil.leader import mainLoop
 from io import BytesIO
 
 
-logger = logging.getLogger( __name__ )
-
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
 from toil.resource import ModuleDescriptor
@@ -283,10 +281,8 @@ class Job(object):
         :rtype: toil.job.PromisedJobReturnValue, referred to as a "promise"
         """
         if argIndex not in self._rvs:
-            self._rvs[
-                argIndex] = []  # This will be a list of jobStoreFileIDs for promises which will
-            # be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
-
+            self._rvs[argIndex] = [] #This will be a list of jobStoreFileIDs for promises which will
+            #be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
         def registerPromiseCallBack():
             # Returns the jobStoreFileID and jobStore string
             if self._promiseJobStore == None:
@@ -295,7 +291,6 @@ class Job(object):
             jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
             self._rvs[argIndex].append(jobStoreFileID)
             return jobStoreFileID, self._promiseJobStore.config.jobStore
-
         return PromisedJobReturnValue(registerPromiseCallBack)
 
     ####################################################
@@ -322,8 +317,7 @@ class Job(object):
         """
         roots = set()
         visited = set()
-
-        # Function to get the roots of a job
+        #Function to get the roots of a job
         def getRoots(job):
             if job not in visited:
                 visited.add(job)
@@ -334,7 +328,6 @@ class Job(object):
                 # The following call ensures we explore all successor edges.
                 map(lambda c: getRoots(c), job._children +
                     job._followOns + job._services)
-
         getRoots(self)
         return roots
 
@@ -391,7 +384,6 @@ class Job(object):
         """
         Used to setup and run Toil workflow.
         """
-
         @staticmethod
         def getDefaultArgumentParser():
             """
@@ -440,8 +432,7 @@ class Job(object):
             :returns: return value of job's run function
             """
             setLoggingFromOptions(options)
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem,
-                                                                        jobStore):
+            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
                 logger.info("Downloading entire JobStore")
                 jobCache = {jobWrapper.jobStoreID: jobWrapper
                             for jobWrapper in jobStore.jobs()}
@@ -502,7 +493,6 @@ class Job(object):
             self.workerNumber = 2
             self.queue = Queue()
             self.updateSemaphore = Semaphore()
-
             # Function to write files asynchronously to job store
             def asyncWrite():
                 try:
@@ -533,7 +523,7 @@ class Job(object):
                         inputFileHandle.close()
                         # Remove the file from the lock files
                         with self._pendingFileWritesLock:
-                            self._pendingFileWrites.pop(jobStoreFileID)
+                            self._pendingFileWrites.remove(jobStoreFileID)
                 except:
                     self._terminateEvent.set()
                     raise
@@ -543,6 +533,16 @@ class Job(object):
             for worker in self.workers:
                 worker.start()
             self.inputBlockFn = inputBlockFn
+
+        @contextmanager
+        def open(self, job):
+            '''
+            This is a dummy context manager that has a true purpose in Job.CachedFileStore where the
+            __enter__ and __exit__ methods carry out cache eviction, and cache cleanup operations.
+            :param job:
+            :return:
+            '''
+            yield
 
         def getLocalTempDir(self):
             """
@@ -751,7 +751,6 @@ class Job(object):
             until the writing threads have finished and the input blockFn has stopped \
             blocking.
             """
-
             def asyncUpdate():
                 try:
                     # Wait till all file writes have completed
@@ -796,7 +795,6 @@ class Job(object):
                     # Indicate that _blockFn can return
                     # This code will always run
                     self.updateSemaphore.release()
-
             # The update semaphore is held while the jobWrapper is written to disk
             try:
                 self.updateSemaphore.acquire()
@@ -856,7 +854,6 @@ class Job(object):
                     return False
                 os.remove(dirOrFile)
                 return True
-
             clean(self.localTempDir, False)
 
         def _blockFn(self):
@@ -896,13 +893,28 @@ class Job(object):
             # cacheDir has to be 2 levels above local tempdir, at the same level as the worker dirs
             self.localCacheDir = os.path.join(os.path.split(os.path.split(localTempDir)[0])[0],
                                               'cache')
-            self.defaultCache = self.jobStore.config.defaultCache
             self.cacheLockFile = os.path.join(self.localCacheDir, '.cacheLock')
             # Since each worker has it's own unique FileStore instance, and only one Job can run at
             # a time on a worker, we can bookkeep the job's file store operated files here.
             self.jobSpecificFiles = {}
             self.nlinkThreshold = 1
             self._setupCache()
+
+        @contextmanager
+        def open(self,job):
+            '''
+            This context manager decorated method allows cache-specific operations to be conducted
+            before and after the execution of a job in worker.py
+            :param job:
+            :return:
+            '''
+            # Cleanup the cache to free up enough space for this job (if needed)
+            self.jobReqs = job.effectiveRequirements(self.jobStore.config)
+            self.cleanCache(self.jobReqs.disk)
+            try:
+                yield
+            finally:
+                self.returnJobReqs(self.jobReqs.disk)
 
         # Overridden FileStore methods
         def writeGlobalFile(self, localFileName, cleanup=False):
@@ -983,7 +995,7 @@ class Job(object):
                                    '%s' % fileStoreID)
             # Get the name of the file as it would be in the cache
             cachedFileName = self.encodedFileID(fileStoreID)
-            partialCachedFileName = ''.join([cachedFileName, '.partial'])
+            partialCachedFileName = ''.join(['.', cachedFileName, '.partial'])
             # setup the output filename.  If a name is provided, use it - This makes it a Named
             # Local File. If a name isn't provided, use the base64 encoded name such that we can
             # easily identify the files later on.
@@ -1175,7 +1187,7 @@ class Job(object):
 
         def _setupCache(self):
             '''
-            Setup the cache based on the provided values for localCacheDir and defaultCache.
+            Setup the cache based on the provided values for localCacheDir.
             :return: None
             '''
             try:
@@ -1213,17 +1225,8 @@ class Job(object):
             freeSpace = \
                 int(subprocess.check_output(['df',
                                              self.localCacheDir]).split('\n')[1].split()[3]) * 1024
-            # If defaultCache is a fraction, then it's meant to be a percentage of the total
-            if 0.0 < self.defaultCache <= 1.0:  # can't be 0.0 That is a flag for uncached TOIL.
-                cacheSpace = freeSpace * self.defaultCache
-            else:
-                cacheSpace = self.defaultCache
-            # If the user has told TOIL to use more space than exists, use 80% of all the free space
-            if cacheSpace > freeSpace:
-                logger.warn('Provided cache allotment > free space on disk.')
-                cacheSpace = 0.8 * freeSpace
             with open(self.cacheLockFile, 'w') as fileHandle:
-                cacheInfo = self.CacheStats(self.nlinkThreshold, cacheSpace, 0.0, 0.0)
+                cacheInfo = self.CacheStats(self.nlinkThreshold, freeSpace, 0.0, 0.0)
                 cacheInfo.write(fileHandle)
 
         def encodedFileID(self, JobStoreFileID):
@@ -1295,6 +1298,14 @@ class Job(object):
             self.jobSpecificFiles[fileStoreID] = (cachedFileSource, fileSize, True)
             cacheInfo.write(lockFileHandle)
 
+        def isHidden(self, filePath):
+            '''
+            This is a function that checks whether filePath is hidden
+            :param str filePath: Path to the file under consideration
+            :return:
+            '''
+            return filePath.startswith('.')
+
         def cleanCache(self, newJobReqs):
             """
             Cleanup all files in the cache directory to ensure that at lead newJobReqs are available
@@ -1307,10 +1318,7 @@ class Job(object):
                 # Add the new job's disk requirements to the sigmaJobDisk variable
                 cacheInfo.sigmaJob += newJobReqs
 
-                # The inequality of cachedSpace + sigmaJobDisk <= totalFreeSpace is met, do nothing.
-                # Essentially, if the sum of all cached jobs + disk requirements of all running jobs
-                # is less than the available space on the system, then cache eviction is not
-                # required.
+                # if the caching equation is balanced, , do nothing.
                 if cacheInfo.isBalanced():
                     # Update the cache lock file to the latest values
                     cacheInfo.write(lockFileHandle)
@@ -1319,12 +1327,13 @@ class Job(object):
                 # List of deletable cached files.  A deletable cache file is one
                 #  that is not in use by any other worker (identified by the number of symlinks to
                 # the file)
-                allCacheFiles = [os.path.join(self.localCacheDir, x) for x in
-                                 os.listdir(self.localCacheDir) if
-                                 not x.startswith('.')]
-                deletableCacheFiles = set([(x, y.st_ctime, y.st_size) for x, y in
-                                           [(z, os.stat(z)) for z in allCacheFiles]
-                                           if y.st_nlink == self.nlinkThreshold])
+                allCacheFiles = [os.path.join(self.localCacheDir, x)
+                                 for x in os.listdir(self.localCacheDir)
+                                 if not self.isHidden(x) and x not in ('.', '..')]
+                allCacheFiles = [(path, os.stat(path)) for path in allCacheFiles]
+                deletableCacheFiles = {(path, inode.st_ctime, inode.st_size)
+                                       for path, inode in allCacheFiles
+                                       if inode.st_nlink == self.nlinkThreshold}
 
                 # Sort such that we will remove earliest created files first
                 deletableCacheFiles = sorted(deletableCacheFiles, key=lambda x: x[1])
@@ -1410,6 +1419,10 @@ class Job(object):
                 cacheInfo.write(lockFileHandle)
 
         class CacheStats(object):
+            '''
+            Utility class to read and write the cache lock file. Also for checking whether the
+            caching equation is balanced or not.
+            '''
             def __init__(self, nlink, total, cached, sigmaJob):
                 self.nlink = nlink
                 self.total = total
@@ -1427,6 +1440,13 @@ class Job(object):
                 fh.write(pack('iddd', self.nlink, self.total, self.cached, self.sigmaJob))
 
             def isBalanced(self):
+                '''
+                Checks for the inequality of the caching equation, i.e.
+                                cachedSpace + sigmaJobDisk <= totalFreeSpace
+                Essentially, the sum of all cached file + disk requirements of all running jobs
+                should always be less than the available space on the system
+                :return: Boolean for equation is balanced (T) or not (F)
+                '''
                 return self.cached + self.sigmaJob <= self.total
 
         def _accountForNlinkEquals2(self, localFilePath):
@@ -1705,6 +1725,8 @@ class Job(object):
         Create an empty job for the job.
         """
         requirements = self.effectiveRequirements(jobStore.config)
+        if not jobStore.config.useSharedCache:
+            del requirements.cache
         return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
 
     def effectiveRequirements(self, config):
@@ -1716,9 +1738,17 @@ class Job(object):
         :return: a dictionary/object hybrid with one entry/attribute for each requirement
         """
         requirements = Expando(
-                memory=float(config.defaultMemory) if self.memory is None else self.memory,
-                cores=float(config.defaultCores) if self.cores is None else self.cores,
-                disk=float(config.defaultDisk) if self.disk is None else self.disk)
+            memory=float(config.defaultMemory) if self.memory is None else self.memory,
+            cores=float(config.defaultCores) if self.cores is None else self.cores,
+            disk=float(config.defaultDisk) if self.disk is None else self.disk)
+        if not config.useSharedCache:
+            if self.cache is None:
+                requirements.cache = min(requirements.disk, float(config.defaultCache))
+            else:
+                requirements.cache = self.cache
+            if requirements.cache > requirements.disk:
+                raise RuntimeError("Trying to allocate a cache ({cache}) larger than the disk "
+                                   "requirement for the job ({disk})".format(**requirements))
         return requirements
 
     def _makeJobWrappers(self, jobWrapper, jobStore):

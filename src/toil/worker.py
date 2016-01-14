@@ -205,7 +205,7 @@ def main():
     statsDict = MagicExpando()
     statsDict.jobs = []
     messages = []
-    blockFn = lambda : True
+    blockFn = lambda : None
     cleanCacheFn = lambda x : True
     try:
 
@@ -220,9 +220,7 @@ def main():
 
         # Setup the caching variable now in case of an exception during loading of jobwrapper, etc
         # Flag to identify if the run is cached or not.
-        useCache = config.defaultCache > 0
-        FileStore = Job.CachedFileStore if useCache else Job.FileStore
-
+        FileStore = Job.CachedFileStore if config.useSharedCache else Job.FileStore
 
         ##########################################
         #Load the jobWrapper
@@ -265,9 +263,6 @@ def main():
             startTime = time.time()
             startClock = getTotalCpuTime()
 
-        # Flag to identify if the run is cached or not.
-        cachedToilRun = True if config.defaultCache > 0 else False
-
         startTime = time.time()
         while True:
             ##########################################
@@ -279,24 +274,27 @@ def main():
                 #Load the job
                 job = Job._loadJob(jobWrapper.command, jobStore)
 
+                # Need to fix all this for non shared cache runs
+                if not config.useSharedCache:
+                    #Cleanup the cache from the previous job
+                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
+
                 #Create a fileStore object for the job
                 fileStore = FileStore(jobStore, jobWrapper, localTempDir, blockFn)
-                if useCache:
-                    # Cleanup the cache to free up enough space for this job (if needed)
-                    jobReqs = job.effectiveRequirements(jobStore.config)
-                    fileStore.cleanCache(jobReqs.disk)
+                with fileStore.open(job):
+                    #Get the next block function and list that will contain any messages
+                    blockFn = fileStore._blockFn
+                    messages = fileStore.loggingMessages
 
-                #Get the next block function and list that will contain any messages
-                blockFn = fileStore._blockFn
-                messages = fileStore.loggingMessages
-
-                job._execute(jobWrapper=jobWrapper,
-                                       stats=statsDict if config.stats else None,
-                                       localTempDir=localTempDir,
-                                       jobStore=jobStore,
-                                       fileStore=fileStore)
-                if useCache:
-                    fileStore.returnJobReqs(jobReqs.disk)
+                    job._execute(jobWrapper=jobWrapper,
+                                           stats=statsDict if config.stats else None,
+                                           localTempDir=localTempDir,
+                                           jobStore=jobStore,
+                                           fileStore=fileStore)
+                # Need to fix all this for non shared cache runs
+                if not config.useSharedCache:
+                    #Set the clean cache function
+                    cleanCacheFn = fileStore._cleanLocalTempDir
 
             else:
                 #The command may be none, in which case
@@ -372,8 +370,7 @@ def main():
             assert jobWrapper.memory >= successorJob.memory
             assert jobWrapper.cores >= successorJob.cores
 
-            # Build a fileStore to update the job.  The filestore is used only for deletion of the
-            # successor jobstore id hence we don't need to use a cached filestore.
+            # Build a fileStore to update the job.
             fileStore = FileStore(jobStore, jobWrapper, localTempDir, blockFn)
 
             #Update blockFn

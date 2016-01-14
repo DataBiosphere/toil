@@ -61,12 +61,11 @@ class AbstractJobStore(object):
 
     def __init__(self, config=None):
         """
-        :param config: If config is not None then the \
-        given configuration object will be written to the shared file "config.pickle" which can \
-        later be retrieved using the readSharedFileStream. See writeConfigToStore. \
-        If this file already exists it will be overwritten. If config is None, \
+        :param config: If config is not None then the
+        given configuration object will be written to the shared file "config.pickle" which can
+        later be retrieved using the readSharedFileStream. See writeConfigToStore.
+        If this file already exists it will be overwritten. If config is None,
         the shared file "config.pickle" is assumed to exist and is retrieved. See loadConfigFromStore.
-
         """
         # Now get on with reading or writing the config
         if config is None:
@@ -399,7 +398,7 @@ class AbstractJobStore(object):
         Replaces the existing version of a file in the jobStore. Throws an exception if the file
         does not exist.
 
-        :raises ConcurrentFileModificationException: if the file was modified concurrently during \
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
         an invocation of this method
         """
         raise NotImplementedError()
@@ -411,7 +410,7 @@ class AbstractJobStore(object):
         which can be written to. The yielded file handle does not need to and 
         should not be closed explicitly.
 
-        :raises ConcurrentFileModificationException: if the file was modified concurrently during \
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
         an invocation of this method
         """
         raise NotImplementedError()
@@ -429,16 +428,16 @@ class AbstractJobStore(object):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         """
-        Returns a context manager yielding a writable file handle to the global file referenced \
+        Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.
 
-        :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within \
+        :param sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
         the physical storage represented by this job store
 
-        :param isProtected: True if the file must be encrypted, None if it may be encrypted or \
+        :param isProtected: True if the file must be encrypted, None if it may be encrypted or
         False if it must be stored in the clear.
 
-        :raises ConcurrentFileModificationException: if the file was modified concurrently during \
+        :raises ConcurrentFileModificationException: if the file was modified concurrently during
         an invocation of this method
         """
         raise NotImplementedError()
