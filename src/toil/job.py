@@ -995,7 +995,7 @@ class Job(object):
                                    '%s' % fileStoreID)
             # Get the name of the file as it would be in the cache
             cachedFileName = self.encodedFileID(fileStoreID)
-            partialCachedFileName = ''.join(['.', cachedFileName, '.partial'])
+            partialCachedFileName = ''.join(['.'.join(os.path.split(cachedFileName)), '.partial'])
             # setup the output filename.  If a name is provided, use it - This makes it a Named
             # Local File. If a name isn't provided, use the base64 encoded name such that we can
             # easily identify the files later on.

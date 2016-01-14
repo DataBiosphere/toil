@@ -101,10 +101,16 @@ class jobCacheTest(ToilTest):
         Read a file from the file store that does not have a corresponding cached copy. Cache the
         read file. Ensure the number of links on the file are appropriate.
         '''
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
-        G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=True, fsID=F.rv())
-        F.addChild(G)
-        Job.Runner.startToil(F, self.options)
+        workdir = self._createTempDir(purpose='nonLocalDir')
+        currwd = os.getcwd()
+        os.chdir(workdir)
+        try:
+            F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+            G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=True, fsID=F.rv())
+            F.addChild(G)
+            Job.Runner.startToil(F, self.options)
+        finally:
+            os.chdir(currwd)
 
     def testReadCachedFileFromJobStore(self):
         '''
@@ -148,19 +154,24 @@ class jobCacheTest(ToilTest):
         the end, assert the cache lock file shows sigma job = 0.
         :return:
         '''
-        temp_dir = self._createTempDir(purpose='tempWrite')
-        with open(os.path.join(temp_dir, 'test'), 'w') as x:
+        workdir = self._createTempDir(purpose='nonLocalDir')
+        with open(os.path.join(workdir, 'test'), 'w') as x:
             x.write(str(0))
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False, fileMB=1024)
-        G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
-        jobs = {}
-        for i in xrange(0,10):
-            jobs[i] = Job.wrapJobFn(_multipleReader, diskMB=1024, fileInfo=F.rv(),
-                                    maxWriteFile=os.path.abspath(x.name), disk='2G', memory='10M',
-                                    cores=1)
-            F.addChild(jobs[i])
-            jobs[i].addChild(G)
-        Job.Runner.startToil(F, self.options)
+        currwd = os.getcwd()
+        os.chdir(workdir)
+        try:
+            F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False, fileMB=1024)
+            G = Job.wrapJobFn(_probeJobReqs, diskMB=100, disk='100M')
+            jobs = {}
+            for i in xrange(0,10):
+                jobs[i] = Job.wrapJobFn(_multipleReader, diskMB=1024, fileInfo=F.rv(),
+                                        maxWriteFile=os.path.abspath(x.name), disk='2G', memory='10M',
+                                        cores=1)
+                F.addChild(jobs[i])
+                jobs[i].addChild(G)
+            Job.Runner.startToil(F, self.options)
+        finally:
+            os.chdir(currwd)
         with open(x.name, 'r') as y:
             assert int(y.read()) > 2
 
