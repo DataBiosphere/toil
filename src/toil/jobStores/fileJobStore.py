@@ -163,7 +163,8 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        if os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
+        if self.config.useSharedCache and \
+            os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
                 os.stat(os.path.split(localFilePath)[0]).st_dev:
             # The destination could exist hence we should delete before linking. Mirroring behaviour
             # of shutil.copyfile
