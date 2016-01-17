@@ -60,7 +60,8 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.useSharedCache = False
+        self.useSharedCache = True
+        self.backwardsCompatible = True
         self.defaultCache = self.defaultDisk
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
@@ -152,6 +153,7 @@ class Config(object):
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
         setOption("useSharedCache")
+        setOption("backwardsCompatible")
         setOption("defaultCache", h2b, iC(0))
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
@@ -258,6 +260,12 @@ def _addOptions(addGroupFn, config):
                       'to the same cached file thereby reducing the disk used, and increasing '
                       'speed of file operations. This overrides the defaultCache parameter. '
                       'Default is False'))
+    addOptionFn("--backwardsCompatible", dest="backwardsCompatible", action='store_true',
+                default=None, help='Shared caching disallows modification of read global files by '
+                'default and thus is backwards incompatible with scripts written in Toil versions '
+                'lower than 3.2.0. This flag makes it compatible with those scripts, however it '
+                'also defeats the purpose of shared caching via hard links to save space. Default '
+                'is False')
     addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
                 help='The default amount of disk space to use for caching files shared between '
                      'jobs. Only applicable to jobs that do not specify an explicit value for '

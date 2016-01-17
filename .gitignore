@@ -8,3 +8,4 @@ __pycache__
 .cache/
 test-report.xml
 venv/
+.idea/

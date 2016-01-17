@@ -163,9 +163,8 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        if self.config.useSharedCache and \
-            os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
-                os.stat(os.path.split(localFilePath)[0]).st_dev:
+        if os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
+                os.stat(os.path.dirname(localFilePath)).st_dev:
             # The destination could exist hence we should delete before linking. Mirroring behaviour
             # of shutil.copyfile
             if os.path.exists(localFilePath):
@@ -198,11 +197,9 @@ class FileJobStore(AbstractJobStore):
         with open(self._getAbsPath(jobStoreFileID), 'w') as f:
             yield f
 
-    @contextmanager
     def readFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getAbsPath(jobStoreFileID), 'r') as f:
-            yield f
+        return open(self._getAbsPath(jobStoreFileID), 'r')
 
     ##########################################
     #The following methods deal with shared files, i.e. files not associated

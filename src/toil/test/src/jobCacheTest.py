@@ -9,7 +9,7 @@ from toil.job import Job
 from toil.test import ToilTest
 
 import unittest
-import shutil
+import random
 import time
 import os
 from struct import unpack
@@ -59,8 +59,39 @@ class jobCacheTest(ToilTest):
         Job.Runner.startToil(E, self.options)
         with open(os.path.join(self.options.workDir, 'cache/.cacheLock'), 'r') as x:
             values = unpack('iddd', x.read())
-            # values of zero has to be zero for successful run
+            # value of the first entry has to be zero for successful run
             assert values[0] == 0
+
+    @unittest.skip('Needs 2 filesystems')
+    def testCacheEviction(self):
+        '''
+        Ensure the cache eviction happens as expected. The cache max is force set to 200MB. Two jobs
+        each write files that combined take more than 150MB. The Third Job asks for 100MB thereby
+        requiring a cache eviction. If cache eviction doesn't occur, the caching equation will
+        become imbalanced.
+
+        Unfortunately, this test will always pass if thelocal temp dir and the job store are on the
+        same filesystem as the caching logic doesn't increment the cached total in that case (file
+        sizes are accounted for my the job store).
+        '''
+
+        for i in xrange(1, 10):
+            file1 = random.choice(xrange(0,150))
+            F = Job.wrapJobFn(_writeToFileStore, isLocalFile=True, fileMB=file1)
+            G = Job.wrapJobFn(_writeToFileStore, isLocalFile=True, fileMB=(150-file1))
+            H = Job.wrapJobFn(_forceModifyCacheLockFile, newTotalMB=200, disk='10M')
+            I = Job.wrapJobFn(_uselessFunc, disk='100M')
+            # set it to > 2GB such that the cleanup jobs don't die
+            J = Job.wrapJobFn(_forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
+            F.addChild(G)
+            G.addChild(H)
+            H.addChild(I)
+            I.addChild(J)
+            Job.Runner.startToil(F, self.options)
+            with open(os.path.join(self.options.workDir, 'cache/.cacheLock'), 'r') as x:
+                values = unpack('iddd', x.read())
+                assert values[1] <= 5000 * 1024 * 1024
+                assert values[2] <= 100 * 1024 * 1024
 
     # writeGlobalFile tests
     def testWriteNonLocalFileToJobStore(self):
@@ -91,10 +122,16 @@ class jobCacheTest(ToilTest):
         Read a file from the file store that does not have a corresponding cached copy. Do not cache
         the read file. Ensure the number of links on the file are appropriate.
         '''
-        F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
-        G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=False, fsID=F.rv())
-        F.addChild(G)
-        Job.Runner.startToil(F, self.options)
+        workdir = self._createTempDir(purpose='nonLocalDir')
+        currwd = os.getcwd()
+        os.chdir(workdir)
+        try:
+            F = Job.wrapJobFn(_writeToFileStore, isLocalFile=False)
+            G = Job.wrapJobFn(_readFromJobStore, isCachedFile=False, cacheReadFile=False, fsID=F.rv())
+            F.addChild(G)
+            Job.Runner.startToil(F, self.options)
+        finally:
+            os.chdir(currwd)
 
     def testReadUncachedFileFromJobStore2(self):
         '''
@@ -225,14 +262,16 @@ def _readFromJobStore(job, isCachedFile, cacheReadFile, fsID, isTest=True):
     work_dir = job.fileStore.getLocalTempDir()
     x = job.fileStore.nlinkThreshold
     if isCachedFile:
-        outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']))
+        outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), modifiable=False)
         expectedNlinks = x + 1
     else:
         if cacheReadFile:
-            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True)
+            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True,
+                                                   modifiable=False)
             expectedNlinks = x + 1
         else:
-            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=False)
+            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=False,
+                                                   modifiable=False)
             expectedNlinks = x
     if isTest:
         assert os.stat(outfile).st_nlink == expectedNlinks, 'Should have %s ' % expectedNlinks + \
@@ -268,7 +307,8 @@ def _multipleReader(job, diskMB, fileInfo, maxWriteFile):
     '''
     fsID = fileInfo
     work_dir = job.fileStore.getLocalTempDir()
-    outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True)
+    outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True,
+                                           modifiable=False)
     twohundredmb = diskMB * 1024 * 1024
     with job.fileStore.cacheLock() as lockFileHandle:
         fileStats = os.stat(outfile)
@@ -321,5 +361,16 @@ def _uselessFunc(job):
     '''
     return None
 
+def _forceModifyCacheLockFile(job, newTotalMB):
+    '''
+    This function opens and modifies the cache lock file to reflect a new "total" value = newTotalMB
+    and thereby fooling the cache logic into believing only newTotalMB is allowed for the run.
+    :param int newTotalMB: New value for "total" in the cacheLockFile
+    :return:
+    '''
+    with job.fileStore.cacheLock() as lockFileHandle:
+        cacheInfo = job.fileStore.CacheStats.load(lockFileHandle)
+        cacheInfo.total = float(newTotalMB * 1024 * 1024)
+        cacheInfo.write(lockFileHandle)
 
 
