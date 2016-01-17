@@ -229,6 +229,9 @@ class hidden:
                 master.updateFile(fileOne, path)
                 with worker.readFileStream(fileOne) as f:
                     self.assertEquals(f.read(), 'two')
+            except shutil.Error as err:
+                if str(err).endswith('are the same file'):
+                    pass
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
@@ -281,8 +284,10 @@ class hidden:
             master.delete(jobOnMaster.jobStoreID)
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # Files should be gone as well. NB: the fooStream() methods return context managers
-            self.assertRaises(NoSuchFileException, worker.readFileStream(fileTwo).__enter__)
-            self.assertRaises(NoSuchFileException, worker.readFileStream(fileThree).__enter__)
+            with self.assertRaises(NoSuchFileException):
+                worker.readFileStream(fileTwo).__enter__
+            with self.assertRaises(NoSuchFileException):
+                worker.readFileStream(fileThree).__enter__
 
             # TODO: Who deletes the shared files?
 
@@ -298,7 +303,8 @@ class hidden:
                 fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
-                    self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
+                    with self.assertRaises(NoSuchFileException):
+                        master.readFileStream(fileID).__enter__
 
         def testMultipartUploads(self):
             """

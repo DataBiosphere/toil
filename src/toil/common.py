@@ -61,7 +61,7 @@ class Config(object):
         self.defaultCores = 1
         self.defaultDisk = 2147483648
         self.useSharedCache = True
-        self.backwardsCompatible = False
+        self.backwardsCompatible = True
         self.defaultCache = self.defaultDisk
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
