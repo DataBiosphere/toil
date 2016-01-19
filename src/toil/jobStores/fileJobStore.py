@@ -214,7 +214,15 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
+        if os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
+                os.stat(os.path.dirname(localFilePath)).st_dev:
+            # The destination could exist hence we should delete before linking. Mirroring behaviour
+            # of shutil.copyfile
+            if os.path.exists(localFilePath):
+                os.remove(localFilePath)
+            os.link(self._getAbsPath(jobStoreFileID), localFilePath)
+        else:
+            shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):

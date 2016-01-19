@@ -197,6 +197,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                        lines=10000, N=10000)
 
     @needs_gridengine
+    @unittest.skip('Gridengine does not support shared caching')
     def testFileGridEngine(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='gridengine')
 
