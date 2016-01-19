@@ -33,8 +33,8 @@ def setup(job, inputFile, N, downCheckpoints):
     #Write the input file to the file store
     inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
     job.fileStore.logToMaster(" Starting the merge sort ")
-    job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
-                        inputFileStoreID, N, downCheckpoints, 
+    job.addFollowOnJobFn(cleanup, job.addChildJobFn(down,
+                        inputFileStoreID, N, downCheckpoints,
                         checkpoint=downCheckpoints).rv(), inputFile)
 
 def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
@@ -61,17 +61,18 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
             copySubRangeOfFile(inputFile, midPoint+1, length, fH)
         #Call down recursively
         return job.addFollowOnJobFn(up,
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, 
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N,
                               downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv(),
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, 
-                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()          
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N,
+                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting file: %s of size: %s"
                                       % (inputFileStoreID, length), level=logging.CRITICAL )
         #Sort the copy and write back to the fileStore
-        sort(inputFile)
-        return job.fileStore.writeGlobalFile(inputFile)
+        shutil.copyfile(inputFile, inputFile + '.sort')
+        sort(inputFile + '.sort')
+        return job.fileStore.writeGlobalFile(inputFile + '.sort')
 
 def up(job, inputFileID1, inputFileID2, memory=sortMemory):
     """Merges the two files and places them in the output.
@@ -90,7 +91,8 @@ def up(job, inputFileID1, inputFileID2, memory=sortMemory):
 def cleanup(job, tempOutputFileStoreID, outputFile, cores=1, memory=sortMemory, disk="3G"):
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
-    job.fileStore.readGlobalFile(tempOutputFileStoreID, userPath=outputFile)
+    fileName = job.fileStore.readGlobalFile(tempOutputFileStoreID)
+    shutil.copyfile(fileName, outputFile)
     job.fileStore.logToMaster("Finished copying sorted file to output: %s" % outputFile)
 
 def main():

@@ -289,8 +289,12 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
-        if (info.cleanWorkDir == 'always'
-            or info.cleanWorkDir in ('onSuccess', 'onError') and os.listdir(workflowDir) == []):
+        workflowDirContents = os.listdir(workflowDir)
+        from toil.job import cacheDirName
+        if (info.cleanWorkDir == 'always' or
+                info.cleanWorkDir in ('onSuccess', 'onError') and
+                    (workflowDirContents == [] or
+                        workflowDirContents == [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir)
 
 
