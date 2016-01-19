@@ -1032,7 +1032,7 @@ class Job(object):
             # currently being downloaded by another job and will be in the cache shortly. It is used
             # to prevent multiple jobs from simultaneously downloading the same file from the file
             # store.
-            harbingerFileName = ''.join(['.'.join(os.path.split(cachedFileName)), '.harbinger'])
+            harbingerFileName = ''.join(['/.'.join(os.path.split(cachedFileName)), '.harbinger'])
             # setup the output filename.  If a name is provided, use it - This makes it a Named
             # Local File. If a name isn't provided, use the base64 encoded name such that we can
             # easily identify the files later on.
@@ -1242,6 +1242,7 @@ class Job(object):
             :yield: File descriptor for cache Lock file in r+ mode
             '''
             cacheLockFile = open(self.cacheLockFile, 'r+')
+
             try:
                 flock(cacheLockFile, LOCK_EX)
                 logger.debug("Obtained Cache Lock on cache lock file %s" % self.cacheLockFile)
@@ -1259,34 +1260,97 @@ class Job(object):
             Setup the cache based on the provided values for localCacheDir.
             :return: None
             '''
+            # Setting up the cache lock for the first time requires a process level block too. We
+            # use this file as the blocking agent.
+            setupLockFileName = os.path.join(self.localCacheDir, '.stpLock')
+            graceful = False  # Flag to indicate graceful exit after cache setup, if necessary.
+
+            # The first worker in the race needs to make the cache directory
             try:
                 os.mkdir(self.localCacheDir, 0755)
+                open(setupLockFileName, 'w').close() # system 'touch'
             except OSError as err:
                 # If the error is not Errno 17 (file already exists), reraise the exception
+                # we don't need to handle the error from open because 'w' should overwrite and if
+                # the write fails, it can only be because of permissions.
                 if err.errno != errno.EEXIST:
                     raise
-                attempts = 10
-                while not os.path.exists(self.cacheLockFile):
-                    time.sleep(1)
-                    attempts -= 1
-                    if attempts < 1:
-                        raise CacheTimeoutError('Timed out waiting for %s' % self.cacheLockFile)
-                # Subsequent class instances will pull the value of nlink threshold from the cache
-                # lock file where it is written when the first instance is instantiated.
-                with self.cacheLock() as lockFileHandle:
-                    cacheInfo = self.CacheStats.load(lockFileHandle)
-                    self.nlinkThreshold = cacheInfo.nlink
-            else:
-                # The nlink threshold is setup along with the first instance of the cache class on
-                # the node.
-                self.setNlinkThreshold()
-                self._createCacheLockFile()
+            # All workers at this point will vie to create the cache lock file. They first compete
+            # for the setup file lock. Once acquired, they try to create the cache lock file. If a
+            # worker attempting to create the cache lock died in the process, it's lock on the setup
+            # lock file is released and the next one to acquire the lock can try to set it up
+            # instead.
+            while not graceful:
+                try:
+                    # Open the file and try to get a lock on it. wait till you get the lock then
+                    # make a decision with the lock held.
+                    setupLockFileHandle = open(setupLockFileName, 'r+')
+                    flock(setupLockFileHandle, LOCK_EX)
+                except IOError as err:
+                    # If the open failed due to "File doesn't exist", then it's ok. Else FAIL.
+                    # The absence of the file signifies the setup was completed.
+                    if err.errno == errno.ENOENT:
+                        # There is a chance that the cache dir was created but the setup lock wasn't
+                        # in which case we need to ensure the
+                        if not (os.path.exists(self.cacheLockFile) and
+                                os.path.exists(self.cacheLockFile + '.bkp')):
+                            # No races here. First to create, creates the inode. Rest just open and
+                            # close the same file object
+                            open(setupLockFileName, 'w').close() # system 'touch'
+                            setupLockFileHandle = open(setupLockFileName, 'r+')
+                            try:
+                                flock(setupLockFileHandle, LOCK_EX)
+                            except IOError:
+                                # handle the flock error. no idea what ERRNO to expect.
+                                logger.critical('Unable to acquire lock on %s.' % setupLockFileName)
+                        else:
+                            graceful = True
+                            logger.debug('Gracefully exiting cache lock setup')
+                    else:
+                        # handle the flock error. no idea what ERRNO to expect.
+                        logger.critical('Unable to acquire lock on %s.' % setupLockFileName)
+                        raise
+                else:
+                    # This code is reached in 2 cases
+                    # 1. This is the first worker who acquired the lock on the setup file.
+                    # 2. The previous worker(s) who acquired the file have left the loop meaning the
+                    #    setup has either completed gracefully or not. We can check by the presence
+                    #    of the cache lock file. Even if the cache lock exists but is not fully
+                    #    written, we can continue as the backup will definitely exist.
+                    # If the cache lock file doesn't exist, then we need setup. You successfully
+                    # finish setup or you die. So there's no need for attempts.
+                    if not (os.path.exists(self.cacheLockFile) and
+                            os.path.exists(self.cacheLockFile + '.bkp')):
+                        self._createCacheLockFile(setupLockFileHandle)
+                        graceful = True
+                    # If the file exists, we may have to delete the setup lock file (if the one who
+                    # created the cache lock file died before doing so).
+                    else:
+                        try:
+                            os.remove(setupLockFileName)
+                        except OSError as err:
+                            if err.errno != errno.ENOENT:
+                                raise
+                finally:
+                    # Graceful exits don't have an open file descriptor.
+                    if not graceful:
+                        setupLockFileHandle.close()
+            # Subsequent class instances will pull the value of nlink threshold from the cache
+            # lock file where it is written when the first instance was instantiated.
+            with self.cacheLock() as lockFileHandle:
+                cacheInfo = self.CacheStats.load(lockFileHandle)
+                self.nlinkThreshold = cacheInfo.nlink
 
-        def _createCacheLockFile(self):
+        def _createCacheLockFile(self, setupLockFileHandle):
             '''
             Create the cache lock file file to contain the state of the cache on the node.
+            :param file setupLockFileHandle: Open file handle for the setup lock file. Released on
+            successful setup.
             :return: None
             '''
+            # The nlink threshold is setup along with the first instance of the cache class on the
+            # node.
+            self.setNlinkThreshold()
             # Create a temp file, modfiy it, then rename to the desired name.  This has to be a race
             # condition because a new worker can get assigned to a place where the Lock file exists
             # and since os.rename silently replaces the file if it is present, we will get incorrect
@@ -1302,6 +1366,9 @@ class Job(object):
                 cacheInfo.write(bkpFileHandle)
             shutil.copyfile(self.cacheLockFile + '.bkp', self.cacheLockFile + '.tmp')
             os.rename(self.cacheLockFile + '.tmp', self.cacheLockFile)
+            # Release the lock on the setup lock
+            os.remove(setupLockFileHandle.name)
+            setupLockFileHandle.close()
 
         def encodedFileID(self, JobStoreFileID):
             '''
@@ -2134,15 +2201,6 @@ class CacheInvalidSrcError(Exception):
 
     def __init__(self, message):
         super(CacheInvalidSrcError, self).__init__(message)
-
-
-class CacheTimeoutError(Exception):
-    '''
-    Error raised if the cache setup times out
-    '''
-
-    def __init__(self, message):
-        super(CacheTimeoutError, self).__init__(message)
 
 
 class FunctionWrappingJob(Job):

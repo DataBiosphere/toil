@@ -44,6 +44,22 @@ class jobCacheTest(ToilTest):
         Job.Runner.startToil(F, self.options)
 
     # Cache
+    def testExtremeCacheSetup(self):
+        '''
+        Try to create the cache with bad worker active and then have 10 jobs try to run in the chain
+        :return:
+        '''
+        self.options.retryCount = 100
+        self.options.badWorker = 0.5
+        self.options.badWorkerFailInterval = 0.01
+        for i in xrange(0,30):
+            E = Job.wrapJobFn(_uselessFunc)
+            jobs={}
+            for i in xrange(0,10):
+                jobs[i] = Job.wrapJobFn(_uselessFunc)
+                E.addChild(jobs[i])
+            Job.Runner.startToil(E, self.options)
+
     def testCacheLockRace(self):
         '''
         Make 2 threads compete for the same cache lock file.
@@ -53,14 +69,15 @@ class jobCacheTest(ToilTest):
         F = Job.wrapJobFn(_mth, cores=1)
         G = Job.wrapJobFn(_mth, cores=1)
         H = Job.wrapJobFn(_mth, cores=1)
+        I = Job.wrapJobFn(_raceTestSuccess)
         E.addChild(F)
         E.addChild(G)
         E.addChild(H)
+        F.addChild(I)
+        G.addChild(I)
+        H.addChild(I)
         Job.Runner.startToil(E, self.options)
-        with open(os.path.join(self.options.workDir, 'cache/.cacheLock'), 'r') as x:
-            values = unpack('iddd', x.read())
-            # value of the first entry has to be zero for successful run
-            assert values[0] == 0
+
 
     @unittest.skip('Needs 2 filesystems')
     def testCacheEviction(self):
@@ -354,6 +371,16 @@ def _setUpLockFile(job):
         cacheInfo = job.fileStore.CacheStats.load(x)
         cacheInfo.nlink=0
         cacheInfo.write(x)
+
+
+def _raceTestSuccess(job):
+    '''
+    set nlink=0 for the cache test
+    '''
+    with job.fileStore.cacheLock() as x:
+        cacheInfo = job.fileStore.CacheStats.load(x)
+        # value of the nlink has to be zero for successful run
+        assert cacheInfo.nlink == 0
 
 def _uselessFunc(job):
     '''

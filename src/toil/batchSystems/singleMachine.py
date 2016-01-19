@@ -23,6 +23,7 @@ import math
 from threading import Thread
 from threading import Lock, Condition
 from Queue import Queue, Empty
+from toil.resource import Resource
 
 import toil
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -100,6 +101,9 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             worker = Thread(target=self.worker, args=(self.inputQueue,))
             self.workerThreads.append(worker)
             worker.start()
+
+        # If the job was restarted, purge the cache
+        Resource.cleanCache(self.config.workDir)
 
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
@@ -200,7 +204,8 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.inputQueue = None
         for i in xrange(self.numWorkers):
             inputQueue.put(None)
-
+        if self.config.useSharedCache:
+            Resource.cleanCache(self.config.workDir)
         for thread in self.workerThreads:
             thread.join()
 

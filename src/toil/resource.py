@@ -28,6 +28,7 @@ from zipfile import ZipFile, PyZipFile
 import sys
 import shutil
 from bd2k.util.iterables import concat
+import tempfile
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +112,21 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         for k, v in os.environ.items():
             if k.startswith(cls.resourceEnvNamePrefix):
                 os.unsetenv(k)
+
+    #TODO: get other batchsystems to somehow pass config.workdir to this guy.
+    @staticmethod
+    def cleanCache(configWorkDir):
+        '''
+        Deletes the shared cache directory (Imputed from the value of config.workDir)
+        '''
+        if not configWorkDir:
+            configWorkDir = tempfile.mkdtemp()
+            shutil.rmtree(configWorkDir)
+            configWorkDir = os.path.dirname(configWorkDir)
+        sharedCacheDir =  os.path.join(configWorkDir, 'cache')
+        if os.path.exists(sharedCacheDir):
+            shutil.rmtree(sharedCacheDir)
+
 
     def register(self):
         """

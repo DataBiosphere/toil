@@ -285,9 +285,11 @@ class hidden:
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # Files should be gone as well. NB: the fooStream() methods return context managers
             with self.assertRaises(NoSuchFileException):
-                worker.readFileStream(fileTwo).__enter__
+                with worker.readFileStream(fileTwo) as a:
+                    a.read()
             with self.assertRaises(NoSuchFileException):
-                worker.readFileStream(fileThree).__enter__
+                with worker.readFileStream(fileThree) as a:
+                    a.read()
 
             # TODO: Who deletes the shared files?
 
@@ -304,7 +306,8 @@ class hidden:
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
                     with self.assertRaises(NoSuchFileException):
-                        master.readFileStream(fileID).__enter__
+                        with master.readFileStream(fileID) as a:
+                            a.read()
 
         def testMultipartUploads(self):
             """
