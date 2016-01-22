@@ -36,12 +36,13 @@ log = logging.getLogger(__name__)
 
 class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
     """
-    A toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos tasks over a
-    cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This class acts as the
-    scheduler and is typically run on the master node that also runs the Mesos master process with which the
-    scheduler communicates via a driver component. The executor is implemented in a separate class. It is run on each
-    slave node and communicates with the Mesos slave process via another driver object. The scheduler may also be run
-    on a separate node from the master, which we then call somewhat ambiguously the driver node.
+    A toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos tasks
+    over a cluster of slave nodes. A Mesos framework consists of a scheduler and an executor. This
+    class acts as the scheduler and is typically run on the master node that also runs the Mesos
+    master process with which the scheduler communicates via a driver component. The executor is
+    implemented in a separate class. It is run on each slave node and communicates with the Mesos
+    slave process via another driver object. The scheduler may also be run on a separate node from
+    the master, which we then call somewhat ambiguously the driver node.
     """
 
     @staticmethod
@@ -75,7 +76,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         #ended by themselves.
         self.intendedKill = set()
 
-        # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and slaveID.
+        # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and
+        # slaveID.
         self.runningJobMap = {}
 
         # Queue of jobs whose status has been updated, according to mesos. Req'd by toil
@@ -101,9 +103,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def issueBatchJob(self, command, memory, cores, disk):
         """
-        Issues the following command returning a unique jobID. Command is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cores is the number of cpus needed for the job and error-file
-        is the path of the file to place any std-err/std-out in.
+        Issues the following command returning a unique jobID. Command is the string to run, memory
+        is an int giving the number of bytes the job needs to run in and cores is the number of cpus
+        needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
         # puts job into job_type_queue to be run by Mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cores, disk)
@@ -510,3 +512,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         used when converting Mesos reqs to Toil reqs
         """
         return mem * 1024 * 1024
+
+    @staticmethod
+    def supportsWorkerCleanup():
+        return True

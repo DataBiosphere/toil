@@ -226,6 +226,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         """
         return 5400
 
+    @staticmethod
+    def supportsWorkerCleanup():
+        return True
+
 
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable
