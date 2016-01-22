@@ -115,7 +115,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                       command=command,
                       userScript=self.userScript,
                       toilDistribution=self.toilDistribution,
-                      environment=self.environment.copy())
+                      environment=self.environment.copy(),
+                      workerCleanupInfo=self.workerCleanupInfo)
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))

@@ -26,6 +26,7 @@ import psutil
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
+from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
@@ -74,6 +75,7 @@ class MesosExecutor(mesos.interface.Executor):
         for taskId, pid in self.runningTasks.items():
             self.killTask(driver, taskId)
         Resource.cleanSystem()
+        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
         log.critical("Executor shut down")
 
     def error(self, driver, message):
@@ -98,7 +100,10 @@ class MesosExecutor(mesos.interface.Executor):
         def runTask():
             log.debug("Running task %s", task.task_id.value)
             sendUpdate(mesos_pb2.TASK_RUNNING)
-            popen = runJob(pickle.loads(task.data))
+            # This is where task.data is first invoked. Using this position to setup cleanupInfo
+            taskData = pickle.loads(task.data)
+            self.workerCleanupInfo = taskData.workerCleanupInfo
+            popen = runJob(taskData)
             self.runningTasks[task.task_id.value] = popen.pid
             try:
                 exitStatus = popen.wait()

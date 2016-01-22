@@ -203,6 +203,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
         for thread in self.workerThreads:
             thread.join()
+        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
         """
