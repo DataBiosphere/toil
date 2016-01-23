@@ -203,6 +203,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
 
         for thread in self.workerThreads:
             thread.join()
+        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
         """
@@ -224,6 +225,10 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """
         return 5400
+
+    @staticmethod
+    def supportsWorkerCleanup():
+        return True
 
 
 class Info(object):

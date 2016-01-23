@@ -26,6 +26,7 @@ import psutil
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
+from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, WorkerCleanupInfo
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class MesosExecutor(mesos.interface.Executor):
         super(MesosExecutor, self).__init__()
         self.popenLock = threading.Lock()
         self.runningTasks = {}
+        self.workerCleanupInfo = None
         Resource.prepareSystem()
         # FIXME: clean up resource root dir
 
@@ -61,7 +63,8 @@ class MesosExecutor(mesos.interface.Executor):
 
     def disconnected(self, driver):
         """
-        Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being restarted due to an upgrade).
+        Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being
+        restarted due to an upgrade).
         """
         log.critical("Disconnected from slave")
 
@@ -74,6 +77,7 @@ class MesosExecutor(mesos.interface.Executor):
         for taskId, pid in self.runningTasks.items():
             self.killTask(driver, taskId)
         Resource.cleanSystem()
+        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
         log.critical("Executor shut down")
 
     def error(self, driver, message):
@@ -98,7 +102,13 @@ class MesosExecutor(mesos.interface.Executor):
         def runTask():
             log.debug("Running task %s", task.task_id.value)
             sendUpdate(mesos_pb2.TASK_RUNNING)
-            popen = runJob(pickle.loads(task.data))
+            # This is where task.data is first invoked. Using this position to setup cleanupInfo
+            taskData = pickle.loads(task.data)
+            if self.workerCleanupInfo is not None:
+                assert self.workerCleanupInfo == taskData.workerCleanupInfo
+            else:
+                self.workerCleanupInfo = taskData.workerCleanupInfo
+            popen = runJob(taskData)
             self.runningTasks[task.task_id.value] = popen.pid
             try:
                 exitStatus = popen.wait()
@@ -110,7 +120,8 @@ class MesosExecutor(mesos.interface.Executor):
                     sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
             except:
                 exc_type, exc_value, exc_trace = sys.exc_info()
-                sendUpdate(mesos_pb2.TASK_FAILED, message=str(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(mesos_pb2.TASK_FAILED,
+                           message=str(traceback.format_exception_only(exc_type, exc_value)))
             finally:
                 del self.runningTasks[task.task_id.value]
 

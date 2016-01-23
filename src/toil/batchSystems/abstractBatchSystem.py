@@ -14,9 +14,16 @@
 
 
 from __future__ import absolute_import
+from collections import namedtuple
 from Queue import Empty
 import os
 
+# A class containing the information required for worker cleanup on shutdown of the batch system.
+WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
+    # A path to the value of config.workDir (where the cache would go)
+    'workDir',
+    # The value of config.workflowID (used to identify files specific to this workflow)
+    'workflowID'))
 
 class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
@@ -47,6 +54,9 @@ class AbstractBatchSystem:
         """
         :type dict[str,str]
         """
+        self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
+                                                   workflowID=self.config.workflowID)
+
 
     def checkResourceRequest(self, memory, cores, disk):
         """Check resource request is not greater than that available.
@@ -138,6 +148,22 @@ class AbstractBatchSystem:
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
+
+    @staticmethod
+    def supportsWorkerCleanup():
+        """
+        Indicates whether the batch system supports the cleanup of workers on shutdown
+        """
+        raise NotImplementedError('Abstract method')
+
+    @staticmethod
+    def workerCleanup(workerCleanupInfo):
+        '''
+        Cleans up the worker node on batch system shutdown. For now it does nothing.
+        :param collections.namedtuple workerCleanupInfo: A named tuple consisting of all the
+        relevant information for cleaning up the worker.
+        '''
+        assert workerCleanupInfo.__class__.__name__ == 'WorkerCleanupInfo'
 
 
 class InsufficientSystemResources(Exception):
