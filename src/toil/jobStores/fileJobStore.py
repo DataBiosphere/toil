@@ -134,7 +134,11 @@ class FileJobStore(AbstractJobStore):
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
                 if i.startswith( 'job' ):
-                    yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
+                    try:
+                        yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
+                    except NoSuchJobException:
+                        # An orphaned job may leave an empty or incomplete job file which we can safely ignore
+                        pass  
 
     ##########################################
     #Functions that deal with temporary files associated with jobs
