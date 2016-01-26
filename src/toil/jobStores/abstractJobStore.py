@@ -317,7 +317,9 @@ class AbstractJobStore(object):
 
     def jobs(self):
         """
-        Returns iterator on the jobs in the store.
+        Returns iterator on all jobs in the store. The iterator will contain all jobs, but may also
+        contain orphaned jobs that have already finished succesfully and should not be rerun.
+        To guarantee you only get jobs that can be run, instead construct a ToilState object
         
         :rtype : iterator
         """
