@@ -14,19 +14,28 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
+
+import StringIO
+import traceback
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
 from itertools import chain, islice
 import logging
 import os
+import io
+import itertools
 import urllib2
 from threading import Thread
 import tempfile
 import uuid
 import shutil
 import time
+import boto
+
+from boto.s3.key import Key
 from unittest import skip
+from unittest import expectedFailure
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
@@ -69,15 +78,20 @@ class hidden:
             self.namePrefix = str(uuid.uuid4())
             self.config = self._createConfig()
             self.master = self._createJobStore(self.config)
+            self.cleanUpQueue = {}  # A pairing of data storage entities
+                                    # (e.g. files, buckets) and methods to tear them down
 
         def tearDown(self):
             self.master.deleteJobStore()
+            for item, cleanUpMethod in self.cleanUpQueue.items():
+                cleanUpMethod(item)
+
             super(hidden.AbstractJobStoreTest, self).tearDown()
 
         def test(self):
             """
             This is a front-to-back test of the "happy" path in a job store, i.e. covering things
-            that occur in the dat to day life of a job store. The purist might insist that this be
+            that occur in the day to day life of a job store. The purist might insist that this be
             split up into several cases and I agree wholeheartedly.
             """
             master = self.master
@@ -489,6 +503,53 @@ class hidden:
             # Make sure we have the right number of jobs
             self.assertEquals(len(allJobs), 3001)
 
+        def testImportFileVaryingFileSizes(self):
+            self._runTestMethodWithParams(self._importFileFromFileOfSize, [0, 1, 2**20, 2**20*5, 2**20*50+1])
+
+        def testExportFileVaryingFileSizes(self):
+            def exportToFileOfSize(size):
+                JobStoreFileID = self._importFileFromFileOfSize(size)
+
+                dstPath = './testFileOfSize_%d_%s' % (size, uuid.uuid4())
+                self.cleanUpQueue[dstPath] = os.remove
+                dstUrl = 'file://%s' % (dstPath)
+
+                self.master.exportFile(JobStoreFileID, dstUrl)
+                self.assertEqual(self._hashFile(dstPath), self._hashJobStoreFileID(JobStoreFileID))
+
+            self._runTestMethodWithParams(exportToFileOfSize, [0, 1, 2**20, 2**20*5])
+
+        @expectedFailure
+        def testImportFileWithNonExistantSrcPath(self):
+            self.master.importFile('file://fakepath/%s/%s' % (uuid.uuid4(), uuid.uuid4()))
+
+        @expectedFailure
+        def testExportFileWithNonExistantDstPath(self):
+            JobStoreFileID = self._importFileFromFileOfSize(2**20)
+            self.master.exportFile(JobStoreFileID, 'file://fakepath/%s/%s' % (uuid.uuid4(), uuid.uuid4()))
+
+        @expectedFailure
+        def testExportFileWithNonExistantJobStoreFileID(self):
+            url = 'file://./thisfileshouldntexist%s' % uuid.uuid4()
+            self.master.exportFile(uuid.uuid4(), url)
+
+        def _importFileFromFileOfSize(self, size):
+            """
+            General function that creates a file on disk and imports it into the job store.
+            This functionality is needed to export files so it has been made its own function.
+            """
+            path = './testFileOfSize_%d_%s' % (size, uuid.uuid4())
+            self.cleanUpQueue[path] = os.remove
+            srcUrl = 'file://%s' % (path)
+            with open('/dev/urandom', 'rb') as rf:
+                with open(path, 'a') as wf:
+                    wf.write(rf.read(size))
+
+            JobStoreFileID = self.master.importFile(srcUrl)
+            assert self.master.fileExists(JobStoreFileID)
+            self.assertEqual(self._hashFile(path), self._hashJobStoreFileID(JobStoreFileID))
+            return JobStoreFileID
+
         # Sub-classes may want to override these in order to maximize test coverage
 
         def _largeLogEntrySize(self):
@@ -499,6 +560,35 @@ class hidden:
 
         def _partSize(self):
             return 5 * 1024 * 1024
+
+        def _hashFile(self, localFilePath):
+            with open(localFilePath, 'r') as f:
+                return hashlib.md5(f.read()).hexdigest()
+
+        def _hashJobStoreFileID(self, JobStoreFileID):
+            pass
+
+        def _runTestMethodWithParams(self, testFunc, params):
+            errors = {}
+            for prm in params:
+                try:
+                    testFunc(prm)
+                except:
+                    f = StringIO.StringIO()
+                    traceback.print_exc(file=f)
+                    errors[prm] = f.getvalue()
+
+            if len(errors) != 0:
+                m = "This test contains %d subtests %d of which failed" % (len(params), len(errors))
+
+                for prm, stackTraceStr in errors.items():
+                    itemBody = "FAIL: %s%s" % (testFunc.__name__, str(prm))
+                    itemHead = "\n\n %s \n " % ('='*(len(itemBody)+1))
+                    itemFoot = "\n %s \n" % ('-'*(len(itemBody)+1))
+
+                    m += itemHead + itemBody + itemFoot + ' ' + stackTraceStr.replace('\n', '\n ')
+
+                self.fail(msg=m)
 
     class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
         """
@@ -535,10 +625,43 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         return FileJobStore(self.namePrefix, config=config)
 
+    def _hashJobStoreFileID(self, JobStoreFileID):
+        with open(self.master._getAbsPath(JobStoreFileID), 'r') as f:
+            return hashlib.md5(f.read()).hexdigest()
+
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     testRegion = 'us-west-2'
+
+    def setUp(self):
+        self.s3 = boto.connect_s3()
+        self.srcBucket = self.s3.create_bucket('im-ex-portfile_src%s' % uuid.uuid4())
+        super(AWSJobStoreTest, self).setUp()
+
+        def emptyAndDeleteBucket(bucketName):
+            bucket = self.s3.get_bucket(bucketName)
+            for key in bucket.list():
+                key.delete()
+            self.s3.delete_bucket(bucket)
+        self.cleanUpQueue[self.srcBucket.name] = emptyAndDeleteBucket
+
+    def tearDown(self):
+        super(AWSJobStoreTest, self).tearDown()
+        
+    def testImportFileVaryingKeySizes(self):
+        self._runTestMethodWithParams(self._importFileFromKeyOfSize, [0, 1, 2**20, 2**20 * 5, 2**20 * 5 + 1])
+
+    def testExportFileVaryingKeySizes(self):
+        def exportToKeyOfSize(size):
+            JobStoreFileID = self._importFileFromKeyOfSize(size)
+            headers = self.master.FileInfo.loadOrFail(JobStoreFileID)._s3EncryptionHeaders()
+            self.master.filesBucket.get_key(JobStoreFileID, headers=headers)
+            dstUrl = 's3://%s/%s' % (self.srcBucket.name, JobStoreFileID)
+            self.master.exportFile(JobStoreFileID, dstUrl)
+            self.assertEqual(self._hashKey(JobStoreFileID), self._hashJobStoreFileID(JobStoreFileID))
+
+        self._runTestMethodWithParams(exportToKeyOfSize, [0, 1, 2**20, 2**20 * 5, 2**20 * 5 + 1])
 
     def _createJobStore(self, config=None):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -569,6 +692,110 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     def _batchDeletionSize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         return AWSJobStore.itemsPerBatchDelete
+
+    def _importFileFromKeyOfSize(self, size):
+        keyName = self.__uploadToBucketKeyOfSize(size).name
+        srcUrl = 's3://%s/%s' % (self.srcBucket.name, keyName)
+        JobStoreFileID = self.master.importFile(srcUrl)
+        self.assertEqual(self._hashKey(keyName), self._hashJobStoreFileID(JobStoreFileID))
+        return JobStoreFileID
+
+    def _hashFile(self, localFilePath):
+        totalSize = os.path.getsize(localFilePath)
+        with open(localFilePath, 'r') as f:
+            if totalSize <= 2**20 * 5:
+                return hashlib.md5(f.read()).hexdigest()
+
+            partSize = self._partSize()
+            partCount = 0
+            curr = 0
+            hashList = []
+            while curr < totalSize:
+                partCount += 1
+                hashList.append(hashlib.md5(f.read(partSize)).digest())
+                curr += partSize
+
+            return "%s-%d" % (hashlib.md5(''.join(hashList)).hexdigest(), partCount)
+
+    def _partSize(self):
+        return 50 * (2**20)
+
+    def _hashJobStoreFileID(self, JobStoreFileID):
+        bucket = self.master.filesBucket
+        keyName = JobStoreFileID
+        info = self.master.FileInfo.loadOrFail(JobStoreFileID)
+        key = bucket.get_key(keyName, headers=info._s3EncryptionHeaders())
+
+        if key is None and bucket.name == self.master.filesBucket.name and self.master.fileExists(keyName):
+            info = self.master.FileInfo.loadOrFail(keyName)
+            return hashlib.md5(info.content).hexdigest()
+        elif key is None:
+            raise RuntimeError("key '%s' does not exist in JobStore" % keyName)
+
+        return key.etag[1:-1]
+    
+    def _hashKey(self, keyName, bucketName=None):
+        bucket = self.s3.get_bucket(bucketName) if bucketName is not None else self.srcBucket
+        key = bucket.get_key(keyName)
+        if key is None:
+            raise RuntimeError("key '%s' does not exist in bucket '%s'" % (keyName, bucketName))
+        return key.etag[1:-1]
+
+    def __uploadToBucketKeyOfSize(self, fileSize, bucketName=None):
+        """
+        Uploads random bytes to a file in the file bucket of the aws jobstore
+        of size fileSize. If the file size is 50MiB or more multipart upload
+        is used. The optional parameter bucketName allows a different bucket
+        in s3 to be picked.
+
+        :param fileSize int: size of file in bytes
+        :return: a pointer to the key that was uploaded
+        """
+        partSize = self._partSize()
+
+        bucket = self.s3.get_bucket(bucketName) if bucketName is not None else self.srcBucket
+        keyName = '%.0fMiB_file_%s' % (float(fileSize/(2**20)), str(uuid.uuid4()))
+        key = Key(bucket)
+        key.key = keyName
+        with open('/dev/urandom', 'r') as f:
+            if fileSize < 2**20*5:
+                key.set_contents_from_string(f.read(fileSize))
+            else:  # Multipart
+                mp = bucket.initiate_multipart_upload(key_name=keyName)
+                start = 0
+                partNum = itertools.count()
+                try:
+                    while start < fileSize:
+                        end = min(start + partSize, fileSize)
+                        fPart = io.BytesIO(f.read(partSize))
+                        mp.upload_part_from_file(fp=fPart,
+                                                 part_num=next(partNum) + 1,
+                                                 size=end - start)
+                        start = end
+                        if start == fileSize:
+                            break
+
+                    assert start == fileSize
+                except:
+                    mp.cancel_upload()
+                    raise
+                else:
+                    mp.complete_upload()
+        return key
+
+    @expectedFailure
+    def testImportFileFromNonExistantBucket(self):
+        self.master.importFile('s3://idontexist%s/somekey' % uuid.uuid4())
+
+    @expectedFailure
+    def testExportFileToNonExistantBucket(self):
+        JobStoreFileID = self.master.importFile("s3://%s/%s" % (self.srcBucket.name, self.__uploadToBucketKeyOfSize(2**20).name))
+        self.master.exportFile(JobStoreFileID, 's3://fakebucket%s/%s/' % (uuid.uuid4(), uuid.uuid4()))
+
+    @expectedFailure
+    def testImportFileFromNonExistantKey(self):
+        url = "s3://%s/%s" % (self.srcBucket.name, uuid.uuid4())
+        self.master.importFile(url)
 
 
 @needs_aws
@@ -605,6 +832,38 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         self.assertIsNot(job1, job2)
         self.assertEqual(job2.command, command)
 
+    @skip("Unimplemented")
+    def testImportFileVaryingFileSizes(self):
+            self._runTestMethodWithParams(self._importFileFromFileOfSize, [0, 1, 2**20, 2**20*5])
+
+    @skip("Unimplemented")
+    def testExportFileVaryingFileSizes(self):
+        def exportToFileOfSize(size):
+            JobStoreFileID = self._importFileFromFileOfSize(size)
+
+            dstPath = './testFileOfSize_%d_%s' % (size, uuid.uuid4())
+            self.cleanUpQueue[dstPath] = os.remove
+            dstUrl = 'file://%s' % (dstPath)
+
+            self.master.exportFile(JobStoreFileID, dstUrl)
+            self.assertEqual(self._hashFile(dstPath), self._hashJobStoreFileID(JobStoreFileID))
+
+        self._runTestMethodWithParams(exportToFileOfSize, [0, 1, 2**20, 2**20*5])
+
+    @skip("Unimplemented")
+    def testImportFileWithNonExistantSrcPath(self):
+        self.master.importFile('file://fakepath/%s/%s' % (uuid.uuid4(), uuid.uuid4()))
+
+    @skip("Unimplemented")
+    def testExportFileWithNonExistantDstPath(self):
+        JobStoreFileID = self._importFileFromFileOfSize(2**20)
+        self.master.exportFile(JobStoreFileID, 'file://fakepath/%s/%s' % (uuid.uuid4(), uuid.uuid4()))
+
+    @skip("Unimplemented")
+    def testExportFileWithNonExistantJobStoreFileID(self):
+        url = 'file://./thisfileshouldntexist%s' % uuid.uuid4()
+        self.master.exportFile(uuid.uuid4(), url)
+
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
@@ -613,10 +872,21 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobSto
 @needs_aws
 @needs_encryption
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
-    pass
+
+    # Hashes of encrypted jobstore files cannot be verified, thus None is returned so that
+    # assert equal tests will pass.
+    def _hashJobStoreFileID(self, JobStoreFileID):
+       return None
+
+    def _hashKey(self, keyName, bucketName=None):
+        return None
+
+    def _hashFile(self, localFilePath):
+        return None
 
 
 @needs_azure
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
+
