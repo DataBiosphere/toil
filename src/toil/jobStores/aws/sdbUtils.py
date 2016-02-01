@@ -210,7 +210,7 @@ def retry_sdb(retry_after=a_short_time,
 
     :param retry_for: the timeout in seconds.
 
-    :param retry_while: a callable with one argument, an instance of SDBResponseError, returning
+    :param retry_while: a callable with one argument, an instance of SDBResponseError, returning \
     True if another attempt should be made or False otherwise
 
     :return: a generator yielding contextmanagers

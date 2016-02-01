@@ -331,7 +331,7 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
     JobWrapper objects. Jobs will be loaded from the cache (which can be
     downloaded from the jobStore in a batch).
     
-    :raises: toil.leader.FailedJobsException if at the end of function their remain
+    :raises: toil.leader.FailedJobsException if at the end of function their remain \
     failed jobs
     
     :return: The return value of the root job's run function.

@@ -683,7 +683,7 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
 
     :param num_tries: number of times to try before giving up.
     :param retriable_exceptions: a tuple of exceptions that should always be retried.
-    :param retriable_check: a function that takes an exception not in retriable_exceptions
+    :param retriable_check: a function that takes an exception not in retriable_exceptions \
     and returns True if it should be retried, and False otherwise.
 
     :return: a generator yielding contextmanagers
