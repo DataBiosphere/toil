@@ -433,7 +433,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
     def __updateState(self, intID, exitStatus):
         self.updatedJobsQueue.put((intID, exitStatus))
-        del self.runningJobMap[intID]
+        try:
+            del self.runningJobMap[intID]
+        except KeyError:
+            log.warning('Cannot find %i among running jobs. '
+                        'Sent update about its exit code of %i anyways.', intID, exitStatus)
 
     def statusUpdate(self, driver, update):
         """
