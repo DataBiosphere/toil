@@ -455,8 +455,13 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if update.state == mesos_pb2.TASK_FINISHED:
             self.__updateState(taskID, 0)
         elif update.state == mesos_pb2.TASK_FAILED:
-            exitStatus = int(update.message)
-            log.warning('Task %i failed with exit status %i', taskID, exitStatus)
+            try:
+                exitStatus = int(update.message)
+            except ValueError:
+                exitStatus = 255
+                log.warning("Task %i failed with message '%s'", taskID, update.message)
+            else:
+                log.warning('Task %i failed with exit status %i', taskID, exitStatus)
             self.__updateState(taskID, exitStatus)
         elif update.state in (mesos_pb2.TASK_LOST, mesos_pb2.TASK_KILLED, mesos_pb2.TASK_ERROR):
             log.warning("Task %i is in unexpected state %s with message '%s'",
