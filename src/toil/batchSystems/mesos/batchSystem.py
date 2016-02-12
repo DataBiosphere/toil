@@ -352,8 +352,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
         # Right now, gives priority to largest jobs
         for offer in offers:
-            tasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
+            tasks = []
             offerCores, offerMem, offerStor = self._determineOfferResources(offer)
             log.debug("Received offer %s with cores: %s, disk: %s, and mem: %s" \
                       % (offer.id.value, offerCores, offerStor, offerMem))
@@ -362,35 +362,45 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             remainingStor = offerStor
 
             for job_type in job_types:
+                tasksByJobType = []
+                # Because we are not removing from the list until outside of the while loop, we
+                # must decrement the number of jobs left to run ourselves to avoid an infinite
+                # loop.
                 nextToLaunchIndex = 0
-                # Because we are not removing from the list until outside of the while loop, we must decrement the
-                # number of jobs left to run ourselves to avoid infinite loop.
+                # Toil specifies disk and memory in bytes but mesos used MB
                 while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
                                 remainingCores >= job_type.cores and \
                                 remainingStor >= self.__bytesToMB(job_type.disk) and \
-                                remainingMem >= self.__bytesToMB(job_type.memory):  # toil specifies mem in bytes.
-
+                                remainingMem >= self.__bytesToMB(job_type.memory):
                     task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
-                    if int(task.task_id.value) not in self.runningJobMap:
-                        # check to make sure task isn't already running (possibly in very unlikely edge case)
-                        tasks.append(task)
-                        log.info("Preparing to launch Mesos task %s using offer %s..." % (
-                            task.task_id.value, offer.id.value))
-                        remainingCores -= job_type.cores
-                        remainingMem -= self.__bytesToMB(job_type.memory)
-                        remainingStor -= job_type.disk
+                    assert int(task.task_id.value) not in self.runningJobMap
+                    # check to make sure task isn't already running (possibly in very unlikely
+                    # edge case)
+                    tasksByJobType.append(task)
+                    log.info("Preparing to launch Mesos task %s using " % task.task_id.value +
+                             "offer %s..." % offer.id.value)
+                    remainingCores -= job_type.cores
+                    remainingMem -= self.__bytesToMB(job_type.memory)
+                    remainingStor -= job_type.disk
                     nextToLaunchIndex += 1
+                if self.jobQueueList[job_type] and not tasksByJobType:
+                    log.debug("Offer %s not suitable to run any tasks" % offer.id.value +
+                              " with requirements %s (memory, cpus, disk)." % (job_type,) +
+                              "Framework offered: %s" % ((self.__mbToBytes(offerMem), offerCores,
+                                                          self.__mbToBytes(offerStor)),))
+                tasks.extend(tasksByJobType)
+            # If we put the launch call inside the while loop, multiple accepts are used on the same
+            # offer.
+            if tasks:
+                driver.launchTasks(offer.id, tasks)
 
-            # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
-            driver.launchTasks(offer.id, tasks)
-
-            for task in tasks:
-                self._updateStateToRunning(offer, task)
-                log.info("...launching Mesos task %s" % task.task_id.value)
-
-            if len(tasks) == 0:
-                log.debug("Offer %s not large enough to run any tasks. Required: %s Offered: %s"
-                          % (offer.id.value, job_types[-1], (self.__mbToBytes(offerMem), offerCores, self.__mbToBytes(offerStor))))
+                for task in tasks:
+                    self._updateStateToRunning(offer, task)
+                    log.info("...launching Mesos task %s" % task.task_id.value)
+            else:
+                log.info('Although there are queued jobs, none of them could be run with the' +
+                         'offers extended to the framework.')
+                driver.declineOffer(offer.id)
 
     def _createTask(self, jt_job, offer):
         """
