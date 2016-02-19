@@ -28,6 +28,7 @@ import cPickle
 import shutil
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
+from toil.common import getToilWorkflowDir
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -133,17 +134,14 @@ def main():
 
     setLogLevel(config.logLevel)
 
-    tempRootDir = config.workDir
-    if tempRootDir is not None and not os.path.exists(tempRootDir):
-        raise RuntimeError("The temporary directory specified by workDir: %s does not exist" % tempRootDir)
+    toilWorkflowDir = getToilWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.
     ##########################################
         
-    #Dir to put all the temp files in. If tempRootDir is None, tempdir looks at environment variables to determine
-    # where to put the tempDir.
-    localWorkerTempDir = tempfile.mkdtemp(dir=tempRootDir)
+    # Dir to put all this worker's temp files in.
+    localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0755)
 
     ##########################################
