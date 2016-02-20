@@ -48,6 +48,12 @@ class hidden:
     class AbstractJobStoreTest(ToilTest):
         __metaclass__ = ABCMeta
 
+        @classmethod
+        def setUpClass(cls):
+            super(hidden.AbstractJobStoreTest, cls).setUpClass()
+            logging.basicConfig(level=logging.DEBUG)
+            logging.getLogger('boto').setLevel(logging.CRITICAL)
+
         def _createConfig(self):
             return Config()
 
@@ -455,9 +461,9 @@ class hidden:
             cacheEnd = time.time()
             
             cacheTime = cacheEnd - cacheStart
-            
-            print("Without cache: %s With cache: %s" % (str(noCacheTime), str(cacheTime)))
-            
+
+            logger.info("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
+
             # Running with the cache should be faster.
             self.assertTrue(cacheTime <= noCacheTime)
             
