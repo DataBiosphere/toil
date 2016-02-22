@@ -521,7 +521,11 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
     with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
         jobStoreFileID = fH.read()
     with jobStore.readFileStream(jobStoreFileID) as fH:
-        rootJobReturnValue = cPickle.load(fH)
+        try:
+            rootJobReturnValue = cPickle.load(fH)
+        except EOFError:
+            logger.exception("Failed to unpickle root job return value")
+            raise FailedJobsException(jobStoreFileID, totalFailedJobs)
     
     if totalFailedJobs > 0:
         if config.clean == "onError" or config.clean == "always" :
