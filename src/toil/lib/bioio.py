@@ -61,6 +61,10 @@ def setLogLevel(level):
     numericLevel = logging.getLevelName(level)
     assert logging.getLevelName(numericLevel) == level
     rootLogger.setLevel(numericLevel)
+    # There are quite a few cases where we expect AWS requests to fail, but it seems
+    # that boto handles these by logging the error *and* raising an exception. We
+    # don't want to confuse the user with those error messages.
+    logging.getLogger( 'boto' ).setLevel( logging.CRITICAL )
 
 def logFile(fileName, printFunction=logger.info):
     """Writes out a formatted version of the given log file
