@@ -32,20 +32,10 @@ import signal
 
 logger = logging.getLogger( __name__ )
 
-def truncateFile(fileNameString, tooBig=50000):
-    """
-    Truncates a file that is bigger than tooBig bytes, leaving only the 
-    last tooBig bytes in the file.
-    """
-    if os.path.getsize(fileNameString) > tooBig:
-        fh = open(fileNameString, 'rb+')
-        fh.seek(-tooBig, 2) 
-        data = fh.read()
-        fh.seek(0) # rewind
-        fh.write(data)
-        fh.truncate()
-        fh.close()
-    
+
+logFileByteReportLimit = 50000
+
+
 def nextOpenDescriptor():
     """Gets the number of the next available file descriptor.
     """
@@ -246,7 +236,7 @@ def main():
             
         #Make a temporary file directory for the jobWrapper
         localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
-    
+
         ##########################################
         #Setup the stats, if requested
         ##########################################
@@ -393,7 +383,9 @@ def main():
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
             statsDict.workers.log = messages
-        
+
+        # log the worker log path here so that if the file is truncated the path can still be found
+        logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localTempDir)
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
@@ -450,21 +442,28 @@ def main():
     
     #Copy back the log file to the global dir, if needed
     if workerFailed:
-        truncateFile(tempWorkerLogPath)
-        jobWrapper.logJobStoreFileID = jobStore.writeFile( tempWorkerLogPath, jobWrapper.jobStoreID )
-        os.remove(tempWorkerLogPath)
+        jobWrapper.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobWrapper.jobStoreID)
+        with jobStore.updateFileStream(jobWrapper.logJobStoreFileID) as w:
+            with open(tempWorkerLogPath, "r") as f:
+                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
+                    f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                w.write(f.read())
         jobStore.update(jobWrapper)
-    elif debugging: # write log messages
-        truncateFile(tempWorkerLogPath)
-        with open(tempWorkerLogPath, 'r') as logFile:
-            logMessages = logFile.read().splitlines()
-        statsDict.logs = [Expando(jobStoreID=jobStoreID,text=logMessage) for logMessage in logMessages]
 
-    if (debugging or config.stats or messages) and not workerFailed: # We have stats/logging to report back
+    elif debugging:  # write log messages
+        with open(tempWorkerLogPath, 'r') as logFile:
+            if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
+                logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+            logMessages = logFile.read().splitlines()
+        statsDict.logs = [Expando(jobStoreID=jobStoreID, text=logMessage) for logMessage in logMessages]
+
+    if (debugging or config.stats or messages) and not workerFailed:  # We have stats/logging to report back
         jobStore.writeStatsAndLogging(json.dumps(statsDict))
 
     #Remove the temp dir
-    shutil.rmtree(localWorkerTempDir)
+    cleanUp = config.cleanWorkDir
+    if cleanUp == 'always' or (cleanUp == 'onSuccess' and not workerFailed) or (cleanUp == 'onError' and workerFailed):
+        shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0:
