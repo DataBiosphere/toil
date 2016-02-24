@@ -41,7 +41,7 @@ class StatsAndLogging( object ):
     """
     Class manages process to aggregate statistics and logging information on a toil run.
     """
-    
+
     def __init__(self, jobStore):
         # Start the stats/logging aggregation process
         self._stop = ProcessEvent() 
@@ -62,7 +62,7 @@ class StatsAndLogging( object ):
         def callback(fileHandle):
             stats = json.load(fileHandle, object_hook=Expando)
             try:
-                logs = stats.workers.log
+                logs = stats.workers.logsToMaster
             except AttributeError:
                 # To be expected if there were no calls to logToMaster()
                 pass

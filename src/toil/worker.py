@@ -462,8 +462,9 @@ def main():
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
-            statsDict.workers.log = messages
-        
+
+        statsDict.workers.logsToMaster = messages  # logToMaster messages should be always be passed
+
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
