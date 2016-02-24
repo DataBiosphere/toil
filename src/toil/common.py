@@ -47,6 +47,7 @@ class Config(object):
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
+        self.cleanWorkDir = None
 
         #Restarting the workflow options
         self.restart = False
@@ -127,6 +128,7 @@ class Config(object):
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         setOption("stats")
+        setOption("cleanWorkDir")
         setOption("clean")
         if self.stats:
             if self.clean != "never" and self.clean is not None:
@@ -207,7 +209,11 @@ def _addOptions(addGroupFn, config):
                             "information from the jobStore upon completion so the jobStore will never be deleted with"
                             "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
                             "Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise"))
-
+    addOptionFn("--cleanWorkDir", dest="cleanWorkDir",
+                choices=['always', 'never', 'onSuccess', 'onError'], default='always',
+                help=("Determines deletion of temporary worker directory upon completion of a job. Choices: 'always', "
+                      "'never', 'onSuccess'. Default = always. WARNING: This option should be changed for debugging "
+                      "only. Running a full pipeline with this option could fill your disk with intermediate data."))
     #
     #Restarting the workflow options
     #
