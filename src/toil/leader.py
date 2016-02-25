@@ -45,7 +45,7 @@ def statsAndLoggingAggregatorProcess(jobStore, stop):
     def callback(fileHandle):
         stats = json.load(fileHandle, object_hook=Expando)
         try:
-            logs = stats.workers.log
+            logs = stats.workers.logsToMaster
         except AttributeError:
             # To be expected if there were no calls to logToMaster()
             pass
