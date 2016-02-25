@@ -72,11 +72,11 @@ class Worker(Thread):
         self.runningJobs = set()
         self.boss = boss
         self.allocatedCpus = dict()
-        self.sgeJobIDs = dict()
+        self.slurmJobIDs = dict()
 
     def getRunningJobIDs(self):
         times = {}
-        currentjobs = dict((str(self.sgeJobIDs[x][0]), x) for x in self.runningJobs)
+        currentjobs = dict((str(self.slurmJobIDs[x][0]), x) for x in self.runningJobs)
         process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
         stdout, stderr = process.communicate()
 
@@ -90,11 +90,11 @@ class Worker(Thread):
 
         return times
 
-    def getSgeID(self, jobID):
-        if not jobID in self.sgeJobIDs:
+    def getSlurmID(self, jobID):
+        if not jobID in self.slurmJobIDs:
             RuntimeError("Unknown jobID, could not be converted")
 
-        (job, task) = self.sgeJobIDs[jobID]
+        (job, task) = self.slurmJobIDs[jobID]
         if task is None:
             return str(job)
         else:
@@ -103,7 +103,7 @@ class Worker(Thread):
     def forgetJob(self, jobID):
         self.runningJobs.remove(jobID)
         del self.allocatedCpus[jobID]
-        del self.sgeJobIDs[jobID]
+        del self.slurmJobIDs[jobID]
 
     def killJobs(self):
         # Load hit list:
@@ -123,7 +123,7 @@ class Worker(Thread):
         for jobID in list(killList):
             if jobID in self.runningJobs:
                 logger.debug('Killing job: %s', jobID)
-                subprocess.check_call(['qdel', self.getSgeID(jobID)])
+                subprocess.check_call(['qdel', self.getSlurmID(jobID)])
             else:
                 if jobID in self.waitingJobs:
                     self.waitingJobs.remove(jobID)
@@ -133,7 +133,7 @@ class Worker(Thread):
         # Wait to confirm the kill
         while killList:
             for jobID in list(killList):
-                if self.getJobExitCode(self.sgeJobIDs[jobID]) is not None:
+                if self.getJobExitCode(self.slurmJobIDs[jobID]) is not None:
                     logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                     self.killedJobsQueue.put(jobID)
                     killList.remove(jobID)
@@ -155,8 +155,8 @@ class Worker(Thread):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             qsubline = self.prepareQsub(cpu, memory, jobID) + [command]
-            sgeJobID = self.qsub(qsubline)
-            self.sgeJobIDs[jobID] = (sgeJobID, None)
+            slurmJobID = self.qsub(qsubline)
+            self.slurmJobIDs[jobID] = (slurmJobID, None)
             self.runningJobs.add(jobID)
             self.allocatedCpus[jobID] = cpu
         return activity
@@ -165,7 +165,7 @@ class Worker(Thread):
         activity = False
         logger.debug('List of running jobs: %r', self.runningJobs)
         for jobID in list(self.runningJobs):
-            status = self.getJobExitCode(self.sgeJobIDs[jobID])
+            status = self.getJobExitCode(self.slurmJobIDs[jobID])
             if status is not None:
                 activity = True
                 self.updatedJobsQueue.put((jobID, status))
@@ -215,8 +215,8 @@ class Worker(Thread):
         result = int(process.stdout.readline().strip().split('.')[0])
         return result
 
-    def getJobExitCode(self, sgeJobID):
-        job, task = sgeJobID
+    def getJobExitCode(self, slurmJobID):
+        job, task = slurmJobID
         args = ["qacct", "-j", str(job)]
         if task is not None:
             args.extend(["-t", str(task)])
@@ -231,18 +231,18 @@ class Worker(Thread):
         return None
 
 
-class GridengineBatchSystem(AbstractBatchSystem):
+class SlurmBatchSystem(AbstractBatchSystem):
     """
-    The interface for SGE aka Sun GridEngine.
+    The interface for SLURM
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
-        self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
+        self.slurmResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
-        self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
+        self.slurmResultsFileHandle = open(self.slurmResultsFile, 'w')
         # We lose any previous state in this file, and ensure the files existence
-        self.gridengineResultsFileHandle.close()
+        self.slurmResultsFileHandle.close()
         self.currentJobs = set()
         self.maxCPU, self.maxMEM = self.obtainSystemConstants()
         self.nextJobID = 0
@@ -256,7 +256,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def __des__(self):
         # Closes the file handle associated with the results file.
-        self.gridengineResultsFileHandle.close()
+        self.slurmResultsFileHandle.close()
 
     def issueBatchJob(self, command, memory, cores, disk):
         self.checkResourceRequest(memory, cores, disk)
@@ -290,7 +290,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def getIssuedBatchJobIDs(self):
         """
-        Gets the list of jobs issued to SGE.
+        Gets the list of jobs issued to SLURM.
         """
         return list(self.currentJobs)
 
@@ -362,8 +362,8 @@ class GridengineBatchSystem(AbstractBatchSystem):
         return maxCPU, maxMEM
 
     def setEnv(self, name, value=None):
-        if value and ',' in value:
-            raise ValueError("GridEngine does not support commata in environment variable values")
+        # if value and ',' in value:
+        #     raise ValueError("GridEngine does not support commata in environment variable values")
         return AbstractBatchSystem.setEnv(self, name, value)
 
     @staticmethod
