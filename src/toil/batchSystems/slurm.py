@@ -74,19 +74,40 @@ class Worker(Thread):
         self.allocatedCpus = dict()
         self.slurmJobIDs = dict()
 
-    def getRunningJobIDs(self):
-        times = {}
-        currentjobs = dict((str(self.slurmJobIDs[x][0]), x) for x in self.runningJobs)
-        process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
-        stdout, stderr = process.communicate()
+    def parse_elapsed(self, elapsed):
+        # slurm returns elapsed time in days-hours:minutes:seconds format
+        # Sometimes it will only return minutes:seconds, so days may be omitted
+        # For ease of calculating, we'll make sure all the delimeters are ':'
+        # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
+        total_seconds = 0
+        try:
+            elapsed = elapsed.replace('-',':').split(':')
+            elapsed.reverse()
+            seconds_per_unit = [1, 60, 3600, 86400]
+            for index, multiplier in enumerate(seconds_per_unit):
+                print index, multiplier
+                if index < len(elapsed):
+                    total_seconds += multiplier * int(elapsed[index])
+        except ValueError:
+            pass # slurm may return INVALID instead of a time
+        return total_seconds
 
-        for currline in stdout.split('\n'):
-            items = currline.strip().split()
-            if items:
-                if items[0] in currentjobs and items[4] == 'r':
-                    jobstart = " ".join(items[5:7])
-                    jobstart = time.mktime(time.strptime(jobstart, "%m/%d/%Y %H:%M:%S"))
-                    times[currentjobs[items[0]]] = time.time() - jobstart
+
+    def getRunningJobIDs(self):
+        # Should return a dictionary of Job IDs and number of seconds
+        times = {}
+        currentjobs = dict((str(self.slurmJobIDs[x]), x) for x in self.runningJobs)
+        # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
+        # squeue arguments:
+        # -h for no header
+        # --format to get jobid i, state %t and time days-hours:minutes:seconds
+
+        lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+        for line in lines:
+            slurm_jobid, state, elapsed_time = line.split()
+            if slurm_jobid in currentjobs and state == 'R':
+                seconds_running = self.parse_elapsed(elapsed_time)
+                times[currentjobs[slurm_jobid]] = seconds_running
 
         return times
 
@@ -94,11 +115,8 @@ class Worker(Thread):
         if not jobID in self.slurmJobIDs:
             RuntimeError("Unknown jobID, could not be converted")
 
-        (job, task) = self.slurmJobIDs[jobID]
-        if task is None:
-            return str(job)
-        else:
-            return str(job) + "." + str(task)
+        job = self.slurmJobIDs[jobID]
+        return str(job)
 
     def forgetJob(self, jobID):
         self.runningJobs.remove(jobID)
@@ -123,7 +141,7 @@ class Worker(Thread):
         for jobID in list(killList):
             if jobID in self.runningJobs:
                 logger.debug('Killing job: %s', jobID)
-                subprocess.check_call(['qdel', self.getSlurmID(jobID)])
+                subprocess.check_call(['scancel', self.getSlurmID(jobID)])
             else:
                 if jobID in self.waitingJobs:
                     self.waitingJobs.remove(jobID)
@@ -154,9 +172,9 @@ class Worker(Thread):
                 self.boss.maxCores):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
-            qsubline = self.prepareQsub(cpu, memory, jobID) + [command]
-            slurmJobID = self.qsub(qsubline)
-            self.slurmJobIDs[jobID] = (slurmJobID, None)
+            sbatch_line = self.prepareSbatch(cpu, memory, jobID) + [command]
+            slurmJobID = self.sbatch(sbatch_line)
+            self.slurmJobIDs[jobID] = slurmJobID
             self.runningJobs.add(jobID)
             self.allocatedCpus[jobID] = cpu
         return activity
@@ -189,45 +207,56 @@ class Worker(Thread):
                 logger.debug('No activity, sleeping for %is', sleepSeconds)
                 time.sleep(sleepSeconds)
 
-    def prepareQsub(self, cpu, mem, jobID):
-        qsubline = ['qsub', '-b', 'y', '-terse', '-j', 'y', '-cwd', '-o', '/dev/null',
-                    '-e', '/dev/null', '-N', 'toil_job_' + str(jobID)]
+    def prepareSbatch(self, cpu, mem, jobID):
+        #  Returns the sbatch command line before the script to run
+        # sbatch on slurm is analogous to qsub on SGE. Below are the qsub args and their meanings
+        # for translation to slurm
+        # -b is binding y - not relevant for slurm
+        # -terse means just return the job id. Can I use -Q?
+        # -j means merge stderr + stdout (not necessary)
+        # -cwd means use the current working directory (not necessary)
+        # -o means standard output, but I think I can redirect this to /dev/null (done
+        # -e means standard error (done)
+        # -N is job name, which should be based on the jobID
+
+        sbatch_line = ['sbatch', '-Q', '-o=/dev/null', '-e=/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
-            qsubline.append('-v')
-            qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                     for k, v in self.boss.environment.iteritems()))
+            for k, v in self.boss.environment.iteritems():
+                quoted_value = quote(os.environ[k] if v is None else v)
+                sbatch_line.append('--export={}={}'.format(k, quoted_value))
 
-        reqline = list()
         if mem is not None:
-            memStr = str(mem / 1024) + 'K'
-            reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
-        if len(reqline) > 0:
-            qsubline.extend(['-hard', '-l', ','.join(reqline)])
-        if cpu is not None and math.ceil(cpu) > 1:
-            peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
-            qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
-        return qsubline
+            sbatch_line.append('--mem={}'.format(mem))
+        if cpu is not None:
+            sbatch_line.append('--cpus-per-task={}'.format(int(math.ceail(cpu))))
 
-    def qsub(self, qsubline):
-        logger.debug("Running %r", qsubline)
-        process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
-        result = int(process.stdout.readline().strip().split('.')[0])
+        return sbatch_line
+
+    def sbatch(self, sbatch_line):
+        logger.debug("Running %r", sbatch_line)
+        # TODO: I'm assuming the last argument is a shell script that sbatch can handle. If not, I can always pipe it in.
+        process = subprocess.Popen(sbatch_line, stdout=subprocess.PIPE)
+
+        # sbatch prints a line like 'Submitted batch job 2954103'
+        result = int(process.stdout.readline().strip.split()[-1])
         return result
 
     def getJobExitCode(self, slurmJobID):
-        job, task = slurmJobID
-        args = ["qacct", "-j", str(job)]
-        if task is not None:
-            args.extend(["-t", str(task)])
-
+        # SLURM job exit codes are obtained by running sacct.
+        # sacct returns
+        # -n : no header
+        # -j : job
+        # --format : specify output columns
+        args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            if line.startswith("failed") and int(line.split()[1]) == 1:
-                return 1
-            elif line.startswith("exit_status"):
-                logger.debug('Exit Status: %r', line.split()[1])
-                return int(line.split()[1])
+            cols = line.split()
+            if len(cols) < 2:
+                continue
+            state, exitcode = line.split()
+            status, _ = exitcode.split(':')
+            return int(status)
         return None
 
 
@@ -319,47 +348,31 @@ class SlurmBatchSystem(AbstractBatchSystem):
         self.worker.join()
 
     def getWaitDuration(self):
-        """
-        We give parasol a second to catch its breath (in seconds)
-        """
-        return 0.0
+        return 1.0
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        """
-        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
-        """
         return 1800  # Half an hour
 
     @staticmethod
     def obtainSystemConstants():
-        lines = filter(None, map(str.strip, subprocess.check_output(["qhost"]).split('\n')))
-        line = lines[0]
-        items = line.strip().split()
-        num_columns = len(items)
-        cpu_index = None
-        mem_index = None
-        for i in range(num_columns):
-            if items[i] == 'NCPU':
-                cpu_index = i
-            elif items[i] == 'MEMTOT':
-                mem_index = i
-        if cpu_index is None or mem_index is None:
-            RuntimeError('qhost command does not return NCPU or MEMTOT columns')
-        maxCPU = 0
-        maxMEM = MemoryString("0")
-        for line in lines[2:]:
-            items = line.strip().split()
-            if len(items) < num_columns:
-                RuntimeError('qhost output has a varying number of columns')
-            if items[cpu_index] != '-' and items[cpu_index] > maxCPU:
-                maxCPU = items[cpu_index]
-            if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
-                maxMEM = MemoryString(items[mem_index])
-        if maxCPU is 0 or maxMEM is 0:
-            RuntimeError('qhost returned null NCPU or MEMTOT info')
-        return maxCPU, maxMEM
+        # sinfo -Ne --format '%m,%c'
+        # sinfo arguments:
+        # -N for node-oriented
+        # -h for no header
+        # -e for exact values (e.g. don't return 32+)
+        # --format to get memory, cpu
+        max_cpu = 0
+        max_mem = MemoryString('0')
+        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
+        for line in lines:
+            mem, cpu = line.split()
+            max_cpu = max(max_cpu, int(cpu))
+            max_mem = max(max_mem, MemoryString(mem + 'M'))
+        if max_cpu == 0 or max_mem.byteVal() ==  0:
+            RuntimeError('sinfo did not return memory or cpu info')
+        return max_cpu, max_mem
+
 
     def setEnv(self, name, value=None):
         # if value and ',' in value:
