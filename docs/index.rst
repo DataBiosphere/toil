@@ -16,6 +16,7 @@ Contents:
    toilAPI
    batchSystem
    jobStore
+   generated_rst/modules
 
 Indices and tables
 ==================

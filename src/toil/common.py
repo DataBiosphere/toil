@@ -400,7 +400,7 @@ def loadJobStore( jobStoreString, config=None ):
     :param jobStoreString: see exception message below
     :param config: see AbstractJobStore.__init__
     :return: an instance of a concrete subclass of AbstractJobStore
-    :rtype : jobStores.abstractJobStore.AbstractJobStore
+    :rtype: jobStores.abstractJobStore.AbstractJobStore
     """
     if jobStoreString[ 0 ] in '/.':
         jobStoreString = 'file:' + jobStoreString
