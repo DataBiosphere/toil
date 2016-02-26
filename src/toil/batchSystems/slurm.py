@@ -258,12 +258,14 @@ class Worker(Thread):
         args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            values = line.split()
+            logger.debug("Parsing sacct line %s", line)
+            values = line.strip().split()
             if len(values) < 2:
                 continue
             state, exitcode = values
             status, _ = exitcode.split(':')
-            logger.debug("exit code is %s" % status)
+            logger.debug("exit code is %s" % exitcode)
+            logger.debug("status to return is %s", status)
             return int(status)
         logger.debug("Unable to get exit code")
         return None
