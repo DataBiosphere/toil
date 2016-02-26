@@ -366,7 +366,10 @@ class SlurmBatchSystem(AbstractBatchSystem):
         max_mem = MemoryString('0')
         lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
         for line in lines:
-            mem, cpu = line.split()
+            values = line.split()
+            if len(values) < 2:
+                continue
+            mem, cpu = values
             max_cpu = max(max_cpu, int(cpu))
             max_mem = max(max_mem, MemoryString(mem + 'M'))
         if max_cpu == 0 or max_mem.byteVal() ==  0:
