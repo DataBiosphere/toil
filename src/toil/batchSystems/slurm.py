@@ -258,11 +258,14 @@ class Worker(Thread):
         args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            logger.debug("Parsing sacct line %s", line)
             values = line.strip().split()
             if len(values) < 2:
                 continue
             state, exitcode = values
+            logger.debug("Job state is %s", state)
+            # If Job is in a running state, return None to indicate we don't have an update
+            if state in ('PENDING', 'RUNNING','CONFIGURING','COMPLETING','RESIZING','SUSPENDED'):
+                return None
             status, _ = exitcode.split(':')
             logger.debug("exit code is %s" % exitcode)
             logger.debug("status to return is %s", status)
