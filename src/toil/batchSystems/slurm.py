@@ -242,7 +242,7 @@ class Worker(Thread):
         process = subprocess.Popen(sbatch_line, stdout=subprocess.PIPE)
 
         # sbatch prints a line like 'Submitted batch job 2954103'
-        result = int(process.stdout.readline().strip.split()[-1])
+        result = int(process.stdout.readline().strip().split()[-1])
         return result
 
     def getJobExitCode(self, slurmJobID):
