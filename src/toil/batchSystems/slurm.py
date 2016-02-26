@@ -186,6 +186,7 @@ class Worker(Thread):
         activity = False
         logger.debug('List of running jobs: %r', self.runningJobs)
         for jobID in list(self.runningJobs):
+            logger.debug("Checking status of internal job id %d" % jobID)
             status = self.getJobExitCode(self.slurmJobIDs[jobID])
             if status is not None:
                 activity = True
@@ -244,9 +245,11 @@ class Worker(Thread):
 
         # sbatch prints a line like 'Submitted batch job 2954103'
         result = int(process.stdout.readline().strip().split()[-1])
+        logger.debug("sbatch submitted job %d" % result)
         return result
 
     def getJobExitCode(self, slurmJobID):
+        logger.debug("Getting exit code for slurm job %d" % slurmJobID)
         # SLURM job exit codes are obtained by running sacct.
         # sacct returns
         # -n : no header
@@ -260,7 +263,9 @@ class Worker(Thread):
                 continue
             state, exitcode = values
             status, _ = exitcode.split(':')
+            logger.debug("exit code is %s" % status)
             return int(status)
+        logger.debug("Unable to get exit code")
         return None
 
 
