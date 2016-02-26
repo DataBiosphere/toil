@@ -232,7 +232,7 @@ class Worker(Thread):
 
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
-            sbatch_line.append('--mem={}'.format(mem/2**20))
+            sbatch_line.append('--mem={}'.format(int(mem)/2**20))
         if cpu is not None:
             sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
