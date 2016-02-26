@@ -223,7 +223,7 @@ class Worker(Thread):
         # -e means standard error (done)
         # -N is job name, which should be based on the jobID
 
-        sbatch_line = ['sbatch', '-Q', '-o=/dev/null', '-e=/dev/null', '-J', 'toil_job_{}'.format(jobID)]
+        sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
             for k, v in self.boss.environment.iteritems():
