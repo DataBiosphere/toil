@@ -232,7 +232,7 @@ class Worker(Thread):
         if mem is not None:
             sbatch_line.append('--mem={}'.format(mem))
         if cpu is not None:
-            sbatch_line.append('--cpus-per-task={}'.format(int(math.ceail(cpu))))
+            sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
         return sbatch_line
 
