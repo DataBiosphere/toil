@@ -85,9 +85,9 @@ clean_pypi:
 
 
 docs: check_venv
-	cd docs && mkdir generated_rst
+	cd docs && mkdir -p generated_rst
 	cd docs/generated_rst && sphinx-apidoc -fo . ../../src/ # builds files for module index
-	# strange but seemingly benign sphinx warning floods stderr if not filtered
+	# strange, but seemingly benign Sphinx warning floods stderr if not filtered
 	cd docs && make html 2>&1 | grep -v "WARNING: duplicate object description of"
 clean_docs: check_venv
 	- cd docs && make clean
