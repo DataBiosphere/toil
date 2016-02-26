@@ -104,7 +104,10 @@ class Worker(Thread):
 
         lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
         for line in lines:
-            slurm_jobid, state, elapsed_time = line.split()
+            values = line.split()
+            if len(values) < 3:
+                continue
+            slurm_jobid, state, elapsed_time = values
             if slurm_jobid in currentjobs and state == 'R':
                 seconds_running = self.parse_elapsed(elapsed_time)
                 times[currentjobs[slurm_jobid]] = seconds_running
@@ -251,10 +254,10 @@ class Worker(Thread):
         args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            cols = line.split()
-            if len(cols) < 2:
+            values = line.split()
+            if len(values) < 2:
                 continue
-            state, exitcode = line.split()
+            state, exitcode = values
             status, _ = exitcode.split(':')
             return int(status)
         return None
