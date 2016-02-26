@@ -26,6 +26,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.gridengine import GridengineBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.lsf import LSFBatchSystem
+from toil.batchSystems.slurm import SlurmBatchSystem
 
 logger = logging.getLogger( __name__ )
 
@@ -372,6 +373,9 @@ def loadBatchSystemClass(config):
     elif batchSystemName == 'lsf' or batchSystemName == 'LSF':
         batchSystemClass = LSFBatchSystem
         logger.info('Using the lsf batch system')
+    elif batchSystemName == 'slurm' or batchSystemName == 'Slurm':
+        batchSystemClass = SlurmBatchSystem
+        logger.info('Using the SLURM batch system')
     elif batchSystemName == 'mesos' or batchSystemName == 'Mesos':
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         batchSystemClass = MesosBatchSystem
