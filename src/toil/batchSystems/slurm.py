@@ -240,7 +240,6 @@ class Worker(Thread):
 
     def sbatch(self, sbatch_line):
         logger.debug("Running %r", sbatch_line)
-        # TODO: I'm assuming the last argument is a shell script that sbatch can handle. If not, I can always pipe it in.
         process = subprocess.Popen(sbatch_line, stdout=subprocess.PIPE)
 
         # sbatch prints a line like 'Submitted batch job 2954103'
