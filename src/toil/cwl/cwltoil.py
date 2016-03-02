@@ -15,9 +15,12 @@
 # limitations under the License.
 
 from toil.job import Job
+from toil.version import version
+
 from argparse import ArgumentParser
 import cwltool.main
 import cwltool.workflow
+from cwltool.process import adjustFiles, shortname
 import schema_salad.ref_resolver
 import os
 import tempfile
@@ -25,25 +28,7 @@ import json
 import sys
 import logging
 import copy
-
-
-def shortname(n):
-    """Trim the leading namespace to get just the final name part of a parameter."""
-    return n.split("#")[-1].split("/")[-1].split(".")[-1]
-
-
-def adjustFiles(rec, op):
-    """Apply a mapping function to each File path in the object `rec`."""
-
-    if isinstance(rec, dict):
-        if rec.get("class") == "File":
-            rec["path"] = op(rec["path"])
-        for d in rec:
-            adjustFiles(rec[d], op)
-    if isinstance(rec, list):
-        for d in rec:
-            adjustFiles(d, op)
-
+import shutil
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -64,6 +49,17 @@ def resolve_indirect(d):
         return {k: v[1][v[0]] for k, v in d.items()}
     else:
         return d
+
+def getFile(fileStore, dir, fileStoreID, fileName, copy=False):
+    srcPath = fileStore.readGlobalFile(fileStoreID)
+    dstPath = os.path.join(dir, fileName)
+    if srcPath != dstPath:
+        if copy:
+            shutil.copyfile(srcPath, dstPath)
+        else:
+            print "linking %s to %s" % (srcPath, dstPath)
+            os.symlink(srcPath, dstPath)
+    return dstPath
 
 
 class StageJob(Job):
@@ -108,13 +104,8 @@ class FinalJob(Job):
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
 
-        def getFile(fileStoreID, fileName):
-            srcPath = fileStore.readGlobalFile(fileStoreID)
-            dstPath = os.path.join(self.outdir, fileName)
-            os.link(srcPath, dstPath)
-            return dstPath
-
-        adjustFiles(cwljob, lambda x: getFile(*x))
+        print "Running final"
+        adjustFiles(cwljob, lambda x: getFile(fileStore, self.outdir, *x, copy=True))
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
         return True
@@ -149,18 +140,15 @@ class CWLJob(Job):
 
         # Copy input files out of the global file store.
 
-        def getFile(fileStoreID, fileName):
-            srcPath = fileStore.readGlobalFile(fileStoreID)
-            dstPath = os.path.join(inpdir, fileName)
-            os.link(srcPath, dstPath)
-            return dstPath
+        adjustFiles(cwljob, lambda x: getFile(fileStore, inpdir, *x))
 
-        adjustFiles(cwljob, lambda x: getFile(*x))
+        logging.getLogger("cwltool").setLevel(logging.DEBUG)
 
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                   os.getcwd(), None,
                                                   outdir=outdir,
-                                                  tmpdir=tmpdir)
+                                                  tmpdir=tmpdir,
+                                                  use_container=True)
 
         # Copy output files into the global file store.
         adjustFiles(output, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
@@ -342,14 +330,15 @@ class CWLWorkflow(Job):
         return IndirectDict(outobj)
 
 
-supportedProcessRequirements = ["DockerRequirement",
+supportedProcessRequirements = ("DockerRequirement",
                                 "ExpressionEngineRequirement",
                                 "InlineJavascriptRequirement",
                                 "SchemaDefRequirement",
                                 "EnvVarRequirement",
                                 "CreateFileRequirement",
                                 "SubworkflowFeatureRequirement",
-                                "ScatterFeatureRequirement"]
+                                "ScatterFeatureRequirement",
+                                "ShellCommandRequirement")
 
 
 def checkRequirements(rec):
@@ -382,6 +371,7 @@ def main(args=None):
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
+    parser.add_argument("--version", action='version', version=version)
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -400,21 +390,18 @@ def main(args=None):
 
     uri = "file://" + os.path.abspath(options.cwljob)
 
-    if options.conformance_test:
-        loader = schema_salad.ref_resolver.Loader({})
-    else:
-        loader = schema_salad.ref_resolver.Loader({
-            "@base": uri,
-            "path": {
-                "@type": "@id"
-            }
-        })
-
-    job, _ = loader.resolve_ref(uri)
-
     t = cwltool.main.load_tool(options.cwltool, False, True,
                                cwltool.workflow.defaultMakeTool,
                                True)
+
+    if options.conformance_test:
+        loader = schema_salad.ref_resolver.Loader({})
+    else:
+        jobloaderctx = {"path": {"@type": "@id"}, "format": {"@type": "@id"}}
+        jobloaderctx.update(t.metadata.get("$namespaces", {}))
+        loader = schema_salad.ref_resolver.Loader(jobloaderctx)
+
+    job, _ = loader.resolve_ref(uri)
 
     if type(t) == int:
         return t
