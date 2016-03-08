@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from contextlib import contextmanager
 import re
 import logging
 import os
@@ -399,8 +400,8 @@ class Toil(object):
         """
         Clean up after a workflow invocaton. Depending on the configuration, delete the job store.
         """
-        if ((exc_type is not None and self.config.clean == "onError") or
-            (exc_type is None and self.config.clean == "onSuccess") or
+        if (exc_type is not None and self.config.clean == "onError" or
+            exc_type is None and self.config.clean == "onSuccess" or
             self.config.clean == "always"):
             self.jobStore.deleteJobStore()
         return False  # let exceptions through
@@ -497,7 +498,7 @@ class Toil(object):
 
         elif jobStoreName == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
-            return AWSJobStore.createJobStore(jobStoreArgs, config=config)
+            return AWSJobStore.loadOrCreateJobStore(jobStoreArgs, config=config)
 
         elif jobStoreName == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
@@ -559,6 +560,14 @@ class Toil(object):
                 # TODO: toil distribution
 
         return batchSystemClass(**kwargs)
+
+    def importFile(self, srcUrl):
+        self._assertContextManagerIsUsed()
+        return self.jobStore.importFile(srcUrl)
+
+    def exportFile(self, jobStoreFileID, dstUrl):
+        self._assertContextManagerIsUsed()
+        self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def _setBatchSystemEnvVars(self):
         """

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
 from StringIO import StringIO
 from contextlib import contextmanager
 import logging
@@ -47,6 +48,48 @@ import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
 
+defaultPartSize = 2 ** 20 * 50
+
+
+def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
+    """
+    Copies a key from a source key to a destination key in multiple parts. Note that if the
+    destination key exists it will be overwritten implicitly, and if it does not exist a new
+    key will be created.
+
+    :param boto.s3.key.Key srcKey: The source key to be copied from.
+    :param str dstBucketName: The name of the destination bucket for the copy.
+    :param str dstKeyName: The name of the destination key that will be created or overwritten.
+    :param dict headers: Any headers that should be passed.
+
+    :rtype: boto.s3.multipart.CompletedMultiPartUpload
+    :return: An object representing the completed upload.
+    """
+    partSize = defaultPartSize
+    s3 = boto.connect_s3()
+    headers = headers or {}
+    totalSize = srcKey.size
+
+    # initiate copy
+    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName)
+    try:
+        start = 0
+        partIndex = itertools.count()
+        while start < totalSize:
+            end = min(start + partSize, totalSize)
+            upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
+                                      src_key_name=srcKey.name,
+                                      part_num=next(partIndex)+1,
+                                      start=start,
+                                      end=end-1,
+                                      headers=headers)
+            start += partSize
+    except:
+        upload.cancel_upload()
+        raise
+    else:
+        return upload.complete_upload()
+
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -58,7 +101,7 @@ class AWSJobStore(AbstractJobStore):
     """
 
     @classmethod
-    def createJobStore(cls, jobStoreString, config=None):
+    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
         region, namePrefix = jobStoreString.split(':')
         if not cls.bucketNameRe.match(namePrefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
@@ -71,7 +114,7 @@ class AWSJobStore(AbstractJobStore):
         if '--' in namePrefix:
             raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
                              "%s." % (namePrefix, cls.nameSeparator))
-        return cls(region, namePrefix, config=config)
+        return cls(region, namePrefix, config=config, **kwargs)
 
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double
@@ -88,7 +131,7 @@ class AWSJobStore(AbstractJobStore):
 
     # Do not invoke the constructor, use the factory method above.
 
-    def __init__(self, region, namePrefix, config=None):
+    def __init__(self, region, namePrefix, config=None, partSize=defaultPartSize):
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -108,6 +151,7 @@ class AWSJobStore(AbstractJobStore):
         self.filesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
+        self.partSize = partSize
 
         # Check global registry domain for existence of this job store. The first time this is
         # being executed in an AWS account, the registry domain will be created on the fly.
@@ -227,6 +271,48 @@ class AWSJobStore(AbstractJobStore):
         info.save()
         log.debug("Created %r.", info)
         return info.fileID
+
+    def _importFile(self, otherCls, url):
+        if issubclass(otherCls, AWSJobStore):
+            srcBucket, srcKey = self._extractKeyInfoFromUrl(url)
+            info = self.FileInfo.create(srcKey.name)
+            info.copyFrom(srcKey)
+            info.save()
+            return info.fileID
+        else:
+            return super(AWSJobStore, self)._importFile(otherCls, url)
+
+    def _exportFile(self, otherCls, jobStoreFileID, url):
+        if issubclass(otherCls, AWSJobStore):
+            dstBucket, newKey = self._extractKeyInfoFromUrl(url)
+            info = self.FileInfo.loadOrFail(jobStoreFileID)
+            info.copyTo(newKey.name, dstBucket)
+        else:
+            super(AWSJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        srcBucket, srcKey = cls._extractKeyInfoFromUrl(url)
+        srcKey.get_contents_to_file(writable)
+
+    @classmethod
+    def _writeToUrl(cls, readable, url):
+        dstBucket, dstKey = cls._extractKeyInfoFromUrl(url)
+        dstKey.set_contents_from_string(readable.read())
+
+    @staticmethod
+    def _extractKeyInfoFromUrl(url):
+        """
+        :return: (bucket, key)
+        """
+        s3 = boto.connect_s3()
+        bucket = s3.get_bucket(url.netloc)
+        key = bucket.new_key(url.path[1:])
+        return bucket, key
+
+    @classmethod
+    def _supportsUrl(cls, url):
+        return url.scheme.lower() == 's3'
 
     def writeFile(self, localFilePath, jobStoreID=None):
         info = self.FileInfo.create(jobStoreID)
@@ -633,8 +719,6 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     raise
 
-        s3PartSize = 50 * 1024 * 1024
-
         def upload(self, localFilePath):
             file_size, file_time = self._fileSizeAndTime(localFilePath)
             if file_size <= self._maxInlinedSize():
@@ -642,7 +726,7 @@ class AWSJobStore(AbstractJobStore):
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                if file_size <= self.s3PartSize:
+                if file_size <= self.outer.partSize:
                     key = self.outer.filesBucket.new_key(key_name=self.fileID)
                     key.name = self.fileID
                     key.set_contents_from_filename(localFilePath, headers=headers)
@@ -656,7 +740,7 @@ class AWSJobStore(AbstractJobStore):
                             start = 0
                             part_num = itertools.count()
                             while start < file_size:
-                                end = min(start + self.s3PartSize, file_size)
+                                end = min(start + self.outer.partSize, file_size)
                                 assert f.tell() == start
                                 upload.upload_part_from_file(fp=f,
                                                              part_num=next(part_num) + 1,
@@ -683,7 +767,7 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(readable_fh, 'r') as readable:
                 with os.fdopen(writable_fh, 'w') as writable:
                     def multipartReader():
-                        buf = readable.read(self.s3PartSize)
+                        buf = readable.read(self.outer.partSize)
                         if allowInlining and len(buf) <= self._maxInlinedSize():
                             self.content = buf
                         else:
@@ -700,7 +784,7 @@ class AWSJobStore(AbstractJobStore):
                                                                  part_num=part_num + 1,
                                                                  headers=headers)
                                     if len(buf) == 0: break
-                                    buf = readable.read(self.s3PartSize)
+                                    buf = readable.read(self.outer.partSize)
                             except:
                                 upload.cancel_upload()
                                 raise
@@ -725,6 +809,68 @@ class AWSJobStore(AbstractJobStore):
                 # thread to finish.
                 thread.join()
                 assert bool(self.version) == (self.content is None)
+
+        def copyFrom(self, srcKey):
+            """
+            Copies contents of source key into file.
+
+            :param srcKey: The key that will be copied from
+            """
+            size = srcKey.bucket.get_key(srcKey.name).size
+            if size <= self._maxInlinedSize():
+                self.content = srcKey.get_contents_as_string()
+            else:
+                self.version = self._copyKey(srcKey=srcKey,
+                                             dstBucketName=self.outer.filesBucket.name,
+                                             dstKeyName=self._fileID,
+                                             headers=self._s3EncryptionHeaders()).version_id
+
+        def copyTo(self, dstKeyName, dstBucket):
+            """
+            Copies contents of file to destination key.
+
+            :param str newKeyName: The name of the new key to be created or copied to from the file.
+            :param Bucket dstBucket: The bucket that contains or will contain the destination key.
+            """
+            dstKey = dstBucket.new_key(dstKeyName)
+
+            if self.content is not None:
+                dstKey.set_contents_from_string(self.content)
+
+            elif self.version:
+                srcKey = self.outer.filesBucket.get_key(self.fileID, headers=self._s3EncryptionHeaders())
+                self._copyKey(srcKey=srcKey,
+                              dstBucketName=dstBucket.name,
+                              dstKeyName=dstKeyName,
+                              headers={"amz-copy-source".join(k.split('amz')): v
+                                       for k, v in self._s3EncryptionHeaders().items()})
+            else:
+                assert False
+
+        def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
+            headers = headers or {}
+            s3 = boto.connect_s3()
+
+            if srcKey.size > self.outer.partSize:
+                return copyKeyMultipart(srcKey=srcKey,
+                                        dstBucketName=dstBucketName,
+                                        dstKeyName=dstKeyName,
+                                        headers=headers)
+            else:
+                dstBucket = s3.get_bucket(dstBucketName)
+                return dstBucket.copy_key(new_key_name=dstKeyName,
+                                          src_bucket_name=srcKey.bucket.name,
+                                          src_key_name=srcKey.name,
+                                          metadata=srcKey.metadata,
+                                          headers=headers)
+
+        def _hashesAreEqual(self, srcHash, dstHash):
+            if self.encrypted:
+                log.debug("MD5 hash of imported or exported files cannot be checked because it is encrypted."
+                          % self._fileID)
+                return True
+            else:
+                return dstHash == srcHash
 
         def download(self, localFilePath):
             if self.content is not None:

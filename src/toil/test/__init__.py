@@ -253,3 +253,140 @@ def needs_cwl(test_item):
         raise
     else:
         return test_item
+
+methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
+# FIXME: move to bd2k-python-lib
+
+
+def make_tests(generalMethod, targetClass=None, **kwargs):
+    """
+    This method dynamically generates test methods using the generalMethod as a template. Each generated
+    function is the result of a unique combination of parameters applied to the generalMethod. Each of the
+    parameters has a corresponding string that will be used to name the method. These generated functions
+    are named in the scheme:
+        test_[generalMethodName]___[firstParamaterName]_[someValueName]__[secondParamaterName]_...
+
+    The arguments following the generalMethodName should be a series of one or more dictionaries of the form
+    {str : type, ...} where the key represents the name of the value. The names will be used to represent the
+    permutation of values passed for each parameter in the generalMethod.
+
+    :param generalMethod: A method that will be parametrized with values passed as kwargs. Note that the
+        generalMethod must be a regular method.
+
+    :param targetClass: This represents the class to which the generated test methods will be bound. If no
+        targetClass is specified the class of the generalMethod is assumed the target.
+
+    :param kwargs: a series of dictionaries defining values, and their respective names where each keyword is
+        the name of a parameter in generalMethod.
+
+    >>> class Foo:
+    ...     def has(self, num, letter):
+    ...         return num, letter
+    ...
+    ...     def hasOne(self, num):
+    ...         return num
+
+    >>> class Bar(Foo):
+    ...     pass
+
+    >>> make_tests(Foo.has, targetClass=Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
+
+    >>> b = Bar()
+
+    >>> assert b.test_has__num_One__letter_A() == b.has(1, 'a')
+
+    >>> assert b.test_has__num_One__letter_B() == b.has(1, 'b')
+
+    >>> assert b.test_has__num_Two__letter_A() == b.has(2, 'a')
+
+    >>> assert b.test_has__num_Two__letter_B() == b.has(2, 'b')
+
+    >>> f = Foo()
+
+    >>> hasattr(f, 'test_has__num_One__letter_A')  # should be false because Foo has no test methods
+    False
+
+    >>> make_tests(Foo.has, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
+
+    >>> hasattr(f, 'test_has__num_One__letter_A')
+    True
+
+    >>> assert f.test_has__num_One__letter_A() == f.has(1, 'a')
+
+    >>> assert f.test_has__num_One__letter_B() == f.has(1, 'b')
+
+    >>> assert f.test_has__num_Two__letter_A() == f.has(2, 'a')
+
+    >>> assert f.test_has__num_Two__letter_B() == f.has(2, 'b')
+
+    >>> make_tests(Foo.hasOne, num={'one':1, 'two':2})
+
+    >>> assert f.test_hasOne__num_One() == f.hasOne(1)
+
+    >>> assert f.test_hasOne__num_Two() == f.hasOne(2)
+
+    """
+    def pop(d):
+        """
+        Pops an arbitrary key value pair from the dict
+        :param d: a dictionary
+        :return: the popped key, value tuple
+        """
+        k, v = next(kwargs.iteritems())
+        del d[k]
+        return k, v
+
+    def permuteIntoLeft(left, rPrmName, right):
+        """
+        Permutes values in right dictionary into each parameter: value dict pair in the left dictionary.
+        Such that the left dictionary will contain a new set of keys each of which is a combination of one of
+        its original parameter-value names appended with some parameter-value name from the right dictionary.
+        Each original key in the left is deleted from the left dictionary after the permutation of the key and
+        every parameter-value name from the right has been added to the left dictionary.
+
+        For example
+        if left is {'__PrmOne_ValName':{'ValName':Val}} and right is {'rValName1':rVal1, 'rValName2':rVal2} then
+        left will become
+        {'__PrmOne_ValName__rParamName_rValName1':{'ValName':Val. 'rValName1':rVal1},
+        '__PrmOne_ValName__rParamName_rValName2':{'ValName':Val. 'rValName2':rVal2}}
+
+        :param left: A dictionary pairing each paramNameValue to a nested dictionary that contains each ValueName
+            and value pair described in the outer dict's paramNameValue key.
+        :param rParamName: The name of the parameter that each value in the right dict represents.
+        :param right: A dict that pairs 1 or more valueNames and values for the rParamName parameter.
+        """
+        for prmValName, lDict in left.items():
+            for rValName, rVal in right.items():
+                nextPrmVal = ('__%s_%s' % (rPrmName, rValName.title()))
+                if methodNamePartRegex.match(nextPrmVal) is None:
+                    raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+                aggDict = dict(lDict)
+                aggDict[rPrmName] = rVal
+                left[prmValName + nextPrmVal] = aggDict
+            left.pop(prmValName)
+
+    def insertMethodToClass():
+        """
+        Generates and inserts test methods.
+        """
+        def fx(self, prms=prms):
+            return generalMethod(self, **prms)
+        setattr(targetClass, 'test_%s%s' % (generalMethod.__name__, prmNames), fx)
+
+    # create first left dict
+    left = {}
+    prmName, vals = pop(kwargs)
+    for valName, val in vals.items():
+        pvName = '__%s_%s' % (prmName, valName.title())
+        if methodNamePartRegex.match(pvName) is None:
+            raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+        left[pvName] = {prmName: val}
+
+    # get cartesian product
+    while len(kwargs) > 0:
+        permuteIntoLeft(left, *pop(kwargs))
+
+    # set class attributes
+    targetClass = targetClass or generalMethod.im_class
+    for prmNames, prms in left.items():
+        insertMethodToClass()
