@@ -20,7 +20,10 @@ from toil.version import version
 from argparse import ArgumentParser
 import cwltool.main
 import cwltool.workflow
+import cwltool.expression
 from cwltool.process import adjustFiles, shortname
+from cwltool.aslist import aslist
+import schema_salad.validate as validate
 import schema_salad.ref_resolver
 import os
 import tempfile
@@ -29,6 +32,7 @@ import sys
 import logging
 import copy
 import shutil
+import functools
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -43,24 +47,89 @@ import shutil
 class IndirectDict(dict):
     pass
 
+class MergeInputs(object):
+    def __init__(self, sources):
+        self.sources = sources
+    def resolve(self):
+        raise NotImplementedError()
 
-def resolve_indirect(d):
+class MergeInputsNested(MergeInputs):
+    def resolve(self):
+        return [v[1][v[0]] for v in self.sources]
+
+class MergeInputsFlattened(MergeInputs):
+    def resolve(self):
+        r = []
+        for v in self.sources:
+            v = v[1][v[0]]
+            if isinstance(v, list):
+                r.extend(v)
+            else:
+                r.append(v)
+        return r
+
+class StepValueFrom(object):
+    def __init__(self, expr, inner, req):
+        self.expr = expr
+        self.inner = inner
+        self.req = req
+
+    def do_eval(self, inputs, ctx):
+        return cwltool.expression.do_eval(self.expr, inputs, self.req,
+                                          None, None, {}, context=ctx)
+
+def resolve_indirect_inner(d):
     if isinstance(d, IndirectDict):
-        return {k: v[1][v[0]] for k, v in d.items()}
+        r = {}
+        for k, v in d.items():
+            if isinstance(v, MergeInputs):
+                r[k] = v.resolve()
+            else:
+                r[k] = v[1][v[0]]
+        return r
     else:
         return d
 
-def getFile(fileStore, dir, fileStoreID, fileName, copy=False):
+def resolve_indirect(d):
+    inner = IndirectDict() if isinstance(d, IndirectDict) else {}
+    needEval = False
+    for k, v in d.iteritems():
+        if isinstance(v, StepValueFrom):
+            inner[k] = v.inner
+            needEval = True
+        else:
+            inner[k] = v
+    res = resolve_indirect_inner(inner)
+    if needEval:
+        ev = {}
+        for k, v in d.iteritems():
+            if isinstance(v, StepValueFrom):
+                ev[k] = v.do_eval(res, res[k])
+            else:
+                ev[k] = v
+        return ev
+    else:
+        return res
+
+def getFile(fileStore, dir, fileStoreID, fileName, index=None, copy=False):
     srcPath = fileStore.readGlobalFile(fileStoreID)
     dstPath = os.path.join(dir, fileName)
     if srcPath != dstPath:
         if copy:
             shutil.copyfile(srcPath, dstPath)
         else:
-            print "linking %s to %s" % (srcPath, dstPath)
-            os.symlink(srcPath, dstPath)
+            if os.path.exists(dstPath):
+                if index.get(dstPath, None) != fileStoreID:
+                    raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" % (index.get(dstPath, None), fileStoreID, dstPath))
+            else:
+                os.symlink(srcPath, dstPath)
+        index[dstPath] = fileStoreID
     return dstPath
 
+def writeFile(fileStore, index, x):
+    if x not in index:
+        index[x] = (fileStore.writeGlobalFile(x), x.split('/')[-1])
+    return index[x]
 
 class StageJob(Job):
     """File staging job to put local files into the global file store.
@@ -81,7 +150,7 @@ class StageJob(Job):
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
         builder = self.cwlwf._init_job(cwljob, self.basedir)
-        adjustFiles(builder.job, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
+        adjustFiles(builder.job, functools.partial(writeFile, fileStore, {}))
         return builder.job
 
 
@@ -104,8 +173,8 @@ class FinalJob(Job):
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
 
-        print "Running final"
-        adjustFiles(cwljob, lambda x: getFile(fileStore, self.outdir, *x, copy=True))
+        index={}
+        adjustFiles(cwljob, lambda x: getFile(fileStore, self.outdir, *x, index=index, copy=True))
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
         return True
@@ -140,7 +209,8 @@ class CWLJob(Job):
 
         # Copy input files out of the global file store.
 
-        adjustFiles(cwljob, lambda x: getFile(fileStore, inpdir, *x))
+        index={}
+        adjustFiles(cwljob, lambda x: getFile(fileStore, inpdir, *x, index=index))
 
         logging.getLogger("cwltool").setLevel(logging.DEBUG)
 
@@ -151,7 +221,7 @@ class CWLJob(Job):
                                                   use_container=True)
 
         # Copy output files into the global file store.
-        adjustFiles(output, lambda x: (fileStore.writeGlobalFile(x), x.split('/')[-1]))
+        adjustFiles(output, functools.partial(writeFile, fileStore, {}))
 
         return output
 
@@ -172,6 +242,42 @@ class CWLScatter(Job):
         Job.__init__(self)
         self.step = step
         self.cwljob = cwljob
+        self.valueFrom = {shortname(i["id"]): i["valueFrom"] for i in step.tool["inputs"] if "valueFrom" in i}
+
+    def valueFromFunc(self, k, v):
+        if k in self.valueFrom:
+            return cwltool.expression.do_eval(self.valueFrom[k], self.vfinputs, self.step.requirements,
+                                              None, None, {}, context=v)
+        else:
+            return v
+
+    def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs):
+        scatter_key = shortname(scatter_keys[0])
+        l = len(joborder[scatter_key])
+        for n in xrange(0, l):
+            jo = copy.copy(joborder)
+            jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
+            if len(scatter_keys) == 1:
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo)
+                self.addChild(subjob)
+                outputs.append(followOn.rv())
+            else:
+                self.flat_crossproduct_scatter(jo, scatter_keys[1:], outputs)
+
+    def nested_crossproduct_scatter(self, joborder, scatter_keys):
+        scatter_key = shortname(scatter_keys[0])
+        l = len(joborder[scatter_key])
+        outputs = []
+        for n in xrange(0, l):
+            jo = copy.copy(joborder)
+            jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
+            if len(scatter_keys) == 1:
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo)
+                self.addChild(subjob)
+                outputs.append(followOn.rv())
+            else:
+                outputs.append(self.nested_crossproduct_scatter(jo, scatter_keys[1:]))
+        return outputs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -181,21 +287,33 @@ class CWLScatter(Job):
         else:
             scatter = self.step.tool["scatter"]
 
+        scatterMethod = self.step.tool.get("scatterMethod", None)
+        if len(scatter) == 1:
+            scatterMethod = "dotproduct"
         outputs = []
 
-        if len(scatter) == 1:
-            # simple scatter
-            for n in cwljob[shortname(scatter[0])]:
+        self.vfinputs = cwljob
+
+        if scatterMethod == "dotproduct":
+            for i in xrange(0, len(cwljob[shortname(scatter[0])])):
                 copyjob = copy.copy(cwljob)
-                copyjob[shortname(scatter[0])] = n
+                for sc in scatter:
+                    scatter_key = shortname(sc)
+                    copyjob[scatter_key] = self.valueFromFunc(scatter_key, cwljob[scatter_key][i])
                 (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
-
-        elif len(scatter) > 1:
-            # complex scatter
-            raise Exception(
-                "Unsupported complex scatter type '%s'" % self.step.tool.get("scatterMethod"))
+        elif scatterMethod == "nested_crossproduct":
+            outputs = self.nested_crossproduct_scatter(cwljob, scatter)
+        elif scatterMethod == "flat_crossproduct":
+            self.flat_crossproduct_scatter(cwljob, scatter, outputs)
+        else:
+            if scatterMethod:
+                raise validate.ValidationException(
+                    "Unsupported complex scatter type '%s'" % scatterMethod)
+            else:
+                raise validate.ValidationException(
+                    "Must provide scatterMethod to scatter over multiple inputs")
 
         return outputs
 
@@ -206,13 +324,32 @@ class CWLGather(Job):
         self.step = step
         self.outputs = outputs
 
+    def allkeys(self, obj, keys):
+        if isinstance(obj, dict):
+            for k in obj.keys():
+                keys.add(k)
+        elif isinstance(obj, list):
+            for l in obj:
+                self.allkeys(l, keys)
+
+    def extract(self, obj, k):
+        if isinstance(obj, dict):
+            return obj.get(k)
+        elif isinstance(obj, list):
+            cp = []
+            for l in obj:
+                cp.append(self.extract(l, k))
+            return cp
+
     def run(self, fileStore):
         outobj = {}
-        for out in self.outputs:
-            for n in out:
-                if n not in outobj:
-                    outobj[n] = []
-                outobj[n].append(out[n])
+        keys = set()
+        self.allkeys(self.outputs, keys)
+
+        logging.warn("Outputs is %s", self.outputs)
+        for k in keys:
+            outobj[k] = self.extract(self.outputs, k)
+
         return outobj
 
 
@@ -270,25 +407,50 @@ class CWLWorkflow(Job):
                 if step.tool["id"] not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
-                        if "source" in inp and inp["source"] not in promises:
-                            stepinputs_fufilled = False
+                        if "source" in inp:
+                            for s in aslist(inp["source"]):
+                                if s not in promises:
+                                    stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
 
                         # TODO: Handle multiple inbound links
-                        # TODO: Handle scatter/gather
                         # (both are discussed in section 5.1.2 in CWL spec draft-2)
 
                         for inp in step.tool["inputs"]:
+                            key = shortname(inp["id"])
                             if "source" in inp:
-                                jobobj[shortname(inp["id"])] = (
-                                shortname(inp["source"]), promises[inp["source"]].rv())
+                                if inp.get("linkMerge") or len(aslist(inp["source"])) > 1:
+                                    linkMerge = inp.get("linkMerge", "merge_nested")
+                                    if linkMerge == "merge_nested":
+                                        jobobj[key] = (
+                                            MergeInputsNested([(shortname(s), promises[s].rv())
+                                                               for s in aslist(inp["source"])]))
+                                    elif linkMerge == "merge_flattened":
+                                        jobobj[key] = (
+                                            MergeInputsFlattened([(shortname(s), promises[s].rv())
+                                                                  for s in aslist(inp["source"])]))
+                                    else:
+                                        raise validate.ValidationException(
+                                            "Unsupported linkMerge '%s'", linkMerge)
+                                else:
+                                    jobobj[key] = (
+                                    shortname(inp["source"]), promises[inp["source"]].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 adjustFiles(d, lambda x: x.replace("file://", ""))
-                                adjustFiles(d, lambda x: (
-                                fileStore.writeGlobalFile(x), x.split('/')[-1]))
-                                jobobj[shortname(inp["id"])] = ("default", {"default": d})
+                                adjustFiles(d, functools.partial(writeFile, fileStore, {}))
+                                jobobj[key] = ("default", {"default": d})
+
+                            if "valueFrom" in inp and "scatter" not in step.tool:
+                                if key in jobobj:
+                                    jobobj[key] = StepValueFrom(inp["valueFrom"],
+                                                                jobobj[key],
+                                                                self.cwlwf.requirements)
+                                else:
+                                    jobobj[key] = StepValueFrom(inp["valueFrom"],
+                                                                ("None", {"None": None}),
+                                                                self.cwlwf.requirements)
 
                         if "scatter" in step.tool:
                             wfjob = CWLScatter(step, IndirectDict(jobobj))
@@ -301,9 +463,9 @@ class CWLWorkflow(Job):
 
                         connected = False
                         for inp in step.tool["inputs"]:
-                            if "source" in inp:
-                                if not promises[inp["source"]].hasChild(wfjob):
-                                    promises[inp["source"]].addChild(wfjob)
+                            for s in aslist(inp.get("source", [])):
+                                if not promises[s].hasChild(wfjob):
+                                    promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
                             # workflow step has default inputs only, isn't connected to other jobs,
@@ -314,10 +476,11 @@ class CWLWorkflow(Job):
                             promises[out["id"]] = followOn
 
                 for inp in step.tool["inputs"]:
-                    if "source" in inp:
-                        if inp["source"] not in promises:
+                    for s in aslist(inp.get("source", [])):
+                        if s not in promises:
                             alloutputs_fufilled = False
 
+            # may need a test
             for out in self.cwlwf.tool["outputs"]:
                 if "source" in out:
                     if out["source"] not in promises:
@@ -338,7 +501,9 @@ supportedProcessRequirements = ("DockerRequirement",
                                 "CreateFileRequirement",
                                 "SubworkflowFeatureRequirement",
                                 "ScatterFeatureRequirement",
-                                "ShellCommandRequirement")
+                                "ShellCommandRequirement",
+                                "MultipleInputFeatureRequirement",
+                                "StepInputExpressionRequirement")
 
 
 def checkRequirements(rec):
@@ -346,10 +511,10 @@ def checkRequirements(rec):
         if "requirements" in rec:
             for r in rec["requirements"]:
                 if r["class"] not in supportedProcessRequirements:
-                    raise Exception("Unsupported requirement %s" % r["class"])
-        if "scatter" in rec:
-            if isinstance(rec["scatter"], list) and rec["scatter"] > 1:
-                raise Exception("Unsupported complex scatter type '%s'" % rec.get("scatterMethod"))
+                    raise validate.ValidationException("Unsupported requirement %s" % r["class"])
+        # if "scatter" in rec:
+        #     if isinstance(rec["scatter"], list) and rec["scatter"] > 1:
+        #         raise Exception("Unsupported complex scatter type '%s'" % rec.get("scatterMethod"))
         for d in rec:
             checkRequirements(rec[d])
     if isinstance(rec, list):
@@ -421,7 +586,7 @@ def main(args=None):
         elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
             pass
         else:
-            raise Exception("Missing inputs `%s`" % shortname(inp["id"]))
+            raise validate.ValidationException("Missing inputs `%s`" % shortname(inp["id"]))
 
     adjustFiles(job, lambda x: x.replace("file://", ""))
 
