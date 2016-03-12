@@ -305,7 +305,7 @@ example::
     from toil.job import Job
     
     def fn(job, i):
-        job.fileStore.logToMaster("i is: %s" % i, logLevel=100)
+        job.fileStore.logToMaster("i is: %s" % i, level=100)
         return i+1
         
     j1 = Job.wrapJobFn(fn, 1)
