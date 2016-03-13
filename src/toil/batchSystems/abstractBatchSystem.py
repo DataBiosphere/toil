@@ -16,7 +16,9 @@
 from __future__ import absolute_import
 from collections import namedtuple
 from Queue import Empty
+from toil.common import getToilWorkflowDir
 import os
+import shutil
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -164,6 +166,10 @@ class AbstractBatchSystem:
         relevant information for cleaning up the worker.
         '''
         assert workerCleanupInfo.__class__.__name__ == 'WorkerCleanupInfo'
+        workflowDir = getToilWorkflowDir(workerCleanupInfo.workflowID, workerCleanupInfo.workDir)
+        # TODO: logic here for cleanup flag
+        shutil.rmtree(workflowDir)
+
 
 
 class InsufficientSystemResources(Exception):

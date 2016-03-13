@@ -77,6 +77,7 @@ class AbstractJobStore(object):
         else:
             assert config.workflowID is None
             config.workflowID = str(uuid4())
+            logger.info("The workflow ID is: '%s'" % config.workflowID)
             self.__config = config
             self.writeConfigToStore()
 
