@@ -102,7 +102,7 @@ class Worker(Thread):
         # -h for no header
         # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-        lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+        lines = subprocess.check_output(['squeue', '-h', '--format', '\'%i %t %M\'']).split('\n')
         for line in lines:
             values = line.split()
             if len(values) < 3:
@@ -254,10 +254,12 @@ class Worker(Thread):
         # -n : no header
         # -j : job
         # --format : specify output columns
-        args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode']
+        # -P : separate columns with pipes
+        # -S 1970-01-01 override start time limit
+        args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode', '-P', '-S', '1970-01-01']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            values = line.strip().split()
+            values = line.strip().split('|')
             if len(values) < 2:
                 continue
             state, exitcode = values
@@ -377,7 +379,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
         # --format to get memory, cpu
         max_cpu = 0
         max_mem = MemoryString('0')
-        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
+        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '\'%m %c\'']).split('\n')
         for line in lines:
             values = line.split()
             if len(values) < 2:
