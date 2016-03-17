@@ -34,7 +34,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.job import Job
-from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine
+from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine, needs_slurm
 
 log = logging.getLogger(__name__)
 
@@ -464,6 +464,29 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
     @classmethod
     def setUpClass(cls):
         super(GridEngineBatchSystemTest, cls).setUpClass()
+        logging.basicConfig(level=logging.DEBUG)
+
+
+@needs_slurm
+class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the Slurm batch system
+    """
+
+    def _createDummyConfig(self):
+        config = super(SlurmBatchSystemTest, self)._createDummyConfig()
+        # can't use _getTestJobStorePath since that method removes the directory
+        config.jobStore = self._createTempDir('jobStore')
+        return config
+
+    def createBatchSystem(self):
+        from toil.batchSystems.slurm import SlurmBatchSystem
+        return SlurmBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
+                                maxDisk=1e9)
+
+    @classmethod
+    def setUpClass(cls):
+        super(SlurmBatchSystemTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
 
