@@ -219,6 +219,22 @@ def needs_parasol(test_item):
         return test_item
 
 
+def needs_slurm(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if Slurm is installed.
+    """
+    test_item = _mark_test('slurm', test_item)
+    try:
+        with open(os.devnull, 'r+') as devnull:
+            subprocess.Popen('squeue', stdout=devnull, stderr=devnull, stdin=devnull)
+    except OSError:
+        return unittest.skip("Skipping test. Install Slurm to include this test.")(test_item)
+    except:
+        raise
+    else:
+        return test_item
+
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
