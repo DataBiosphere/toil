@@ -10,5 +10,7 @@ pip2.7 install sphinx
 make develop extras=[aws,mesos,azure,encryption,cwl]
 export LIBPROCESS_IP=127.0.0.1
 export PYTEST_ADDOPTS="--junitxml=test-report.xml"
+rm -rf /mnt/ephemeral/tmp
 mkdir /mnt/ephemeral/tmp && export TMPDIR=/mnt/ephemeral/tmp
 make $make_targets
+rm -rf /mnt/ephemeral/tmp
