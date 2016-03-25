@@ -379,6 +379,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                         remainingCores -= job_type.cores
                         remainingMem -= self.__bytesToMB(job_type.memory)
                         remainingStor -= job_type.disk
+
+                    else:
+                        # if task is already running (odd corner case above), log this
+                        log.warn("Skipping task %s, which is already in running job map." % task.task_id.value)
+
                     nextToLaunchIndex += 1
 
             # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
@@ -388,9 +393,47 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                 self._updateStateToRunning(offer, task)
                 log.info("...launching Mesos task %s" % task.task_id.value)
 
-            if len(tasks) == 0:
-                log.debug("Offer %s not large enough to run any tasks. Required: %s Offered: %s"
-                          % (offer.id.value, job_types[-1], (self.__mbToBytes(offerMem), offerCores, self.__mbToBytes(offerStor))))
+            # if we have no tasks scheduled to run, and we have no running jobs, we may never make
+            # progress due to a scheduler request issue
+            #
+            # the situation is not as dire if we're not the only framework running on mesos,
+            # but if this toil DAG is the only DAG in the system, we will hang here, and the
+            # user will wonder why forever
+            if (len(tasks) == 0 and
+                len(self.getRunningBatchJobIDs()) == 0):
+                
+                task_explanations = []
+
+                for job_type in job_types:
+
+                    resource_limits = []
+
+                    # which resources did we not have enough of?
+                    if offerCores < job_type.cores:
+                        resource_limits.append("insufficient cores (%d offered, %d requested)" % (offerCores, job_type.cores))
+                    if offerMem < self.__bytesToMB(job_type.memory):
+                        resource_limits.append("insufficient memory (%d MB offered, %d MB requested)" % (offerMem, self.__bytesToMB(job_type.memory)))
+                    if offerStor < self.__bytesToMB(job_type.disk):
+                        resource_limits.append("insufficient disk space (%d MB offered, %d MB requested)" % (offerStor, self.__bytesToMB(job_type.disk)))
+
+                    # log the resource request as well as the explanation
+                    task_explanations.append("%s: %s" % (job_type, ", ".join(resource_limits)))
+
+                log.warn("Although no jobs are running, offer %s with memory %dMB, %d cores, and disk %dMB is not large enough to run any tasks." % 
+                          (offer.id.value, offerMem, offerCores, offerStor))
+                log.warn("Pending job types are:\n%s" % '\n'.join(task_explanations))
+
+            else:
+
+                # we rejected this offer, but we currently have tasks running
+                # since tasks are running, it is possible that we will reclaim resources
+                # as those tasks finish
+                # 
+                # let's log the rejected offer to the debug log, just in case there's
+                # an odd bug here
+                log.debug("Offer %s not large enough to run tasks. Required: %s, offered: %s." % (offer.id.value,
+                             job_types[-1],
+                             (self.__mbToBytes(offerMem), offerCores, self.__mbToBytes(offerStor))))
 
     def _createTask(self, jt_job, offer):
         """
