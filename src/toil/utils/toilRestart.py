@@ -16,14 +16,12 @@
 """
 
 from __future__ import absolute_import
-import sys
+
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 
-from toil.leader import mainLoop
-from toil.common import setupToil
+from toil.common import Toil
 from toil.lib.bioio import setLoggingFromOptions
-from toil.job import Job
 from toil.version import version
 import logging
 logger = logging.getLogger( __name__ )
@@ -56,14 +54,10 @@ def main():
         
     setLoggingFromOptions(options)
     options.restart = True
-    with setupToil(options) as (config, batchSystem, jobStore):
-        # Load the whole jobstore into memory in a batch
-        logger.info("Downloading entire JobStore")
-        jobCache = {jobWrapper.jobStoreID: jobWrapper
-            for jobWrapper in jobStore.jobs()}
-        logger.info("{} jobs downloaded.".format(len(jobCache)))
-        jobStore.clean(Job._loadRootJob(jobStore), jobCache=jobCache)
-        mainLoop(config, batchSystem, jobStore, Job._loadRootJob(jobStore), jobCache=jobCache)
+
+    with Toil(options) as toil:
+        toil.run()
+
     
 def _test():
     import doctest      

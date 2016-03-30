@@ -13,7 +13,6 @@
 # limitations under the License.
 from __future__ import absolute_import
 import os
-import unittest
 import random
 from toil.lib.bioio import getTempFile
 from toil.job import Job
@@ -31,7 +30,7 @@ class JobServiceTest(ToilTest):
     """
     Tests testing the Job.Service class
     """
-    
+
     def testService(self, checkpoint=False):
         """
         Tests the creation of a Job.Service with random failures of the worker.
@@ -42,23 +41,23 @@ class JobServiceTest(ToilTest):
             try:
                 # Wire up the services/jobs
                 t = Job.wrapJobFn(serviceTest, outFile, messageInt, checkpoint=checkpoint)
-                
+
                 # Run the workflow repeatedly until success
                 self.runToil(t)
-                
+
                 # Check output
                 self.assertEquals(int(open(outFile, 'r').readline()), messageInt)
             finally:
                 os.remove(outFile)
-                
+
     def testServiceWithCheckpoints(self):
         """
         Tests the creation of a Job.Service with random failures of the worker, making the root job use checkpointing to 
         restart the subtree.
         """
         self.testService(checkpoint=True)
-     
-    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')       
+
+    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating a chain of services and accessing jobs.
@@ -71,16 +70,16 @@ class JobServiceTest(ToilTest):
             try:
                 # Wire up the services/jobs
                 t = Job.wrapJobFn(serviceTestRecursive, outFile, messages, checkpoint=checkpoint)
-                
+
                 # Run the workflow repeatedly until success
                 self.runToil(t)
-                
+
                 # Check output
                 self.assertEquals(map(int, open(outFile, 'r').readlines()), messages)
             finally:
                 os.remove(outFile)
-            
-    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')       
+
+    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
@@ -93,27 +92,26 @@ class JobServiceTest(ToilTest):
             try:
                 # Wire up the services/jobs
                 t = Job.wrapJobFn(serviceTestParallelRecursive, outFiles, messageBundles, checkpoint=True)
-                
+
                 # Run the workflow repeatedly until success
                 self.runToil(t, retryCount=2)
-                
+
                 # Check output
-                for (messages, outFile) in zip(messageBundles, outFiles): 
+                for (messages, outFile) in zip(messageBundles, outFiles):
                     self.assertEquals(map(int, open(outFile, 'r').readlines()), messages)
             finally:
                 map(os.remove, outFiles)
-            
+
     def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05):
         # Create the runner for the workflow.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
-        
+
         options.retryCount = retryCount
-        #options.clean = "never"
         options.badWorker = badWorker
         options.badWorkerFailInterval = badWorkedFailInterval
         options.servicePollingInterval = 1
-        
+
         # Run the workflow
         totalTrys = 0
         while True:
@@ -123,10 +121,10 @@ class JobServiceTest(ToilTest):
             except FailedJobsException as e:
                 i = e.numberOfFailedJobs
                 if totalTrys > 40: #p(fail after this many restarts) = 0.5**32
-                    self.fail() #Exceeded a reasonable number of restarts    
-                totalTrys += 1 
-                options.restart = True  
-            
+                    self.fail() #Exceeded a reasonable number of restarts
+                totalTrys += 1
+                options.restart = True
+
 def serviceTest(job, outFile, messageInt):
     """
     Creates one service and one accessing job, which communicate with two files to establish
@@ -148,7 +146,7 @@ def serviceTestRecursive(job, outFile, messages):
         randInt = random.randint(1, sys.maxint)
         service = TestService(messages[0] + randInt)
         child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
-        
+
         for i in xrange(1, len(messages)):
             randInt = random.randint(1, sys.maxint)
             service2 = TestService(messages[i] + randInt, cores=0.1)
@@ -166,13 +164,13 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
             randInt = random.randint(1, sys.maxint)
             service = TestService(messages[0] + randInt)
             child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
-            
+
             for i in xrange(1, len(messages)):
                 randInt = random.randint(1, sys.maxint)
                 service2 = TestService(messages[i] + randInt, cores=0.1)
                 child = child.addChildJobFn(serviceAccessor, service.addChild(service2), outFile, randInt, cores=0.1)
                 service = service2
-        
+
 class TestService(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """
@@ -188,7 +186,7 @@ class TestService(Job.Service):
         self.error = Event()
         inJobStoreID = fileStore.jobStore.getEmptyFileStoreID()
         outJobStoreID = fileStore.jobStore.getEmptyFileStoreID()
-        self.serviceThread = Thread(target=self.serviceWorker, 
+        self.serviceThread = Thread(target=self.serviceWorker,
                                     args=(fileStore.jobStore, self.terminate, self.error,
                                           inJobStoreID, outJobStoreID,
                                           self.messageInt))
@@ -198,12 +196,12 @@ class TestService(Job.Service):
     def stop(self, fileStore):
         self.terminate.set()
         self.serviceThread.join()
-        
+
     def check(self):
         if self.error.isSet():
             raise RuntimeError("Service worker failed")
         return True
-    
+
     @staticmethod
     def serviceWorker(jobStore, terminate, error, inJobStoreID, outJobStoreID, messageInt):
         try:
@@ -211,9 +209,9 @@ class TestService(Job.Service):
                 if terminate.isSet(): # Quit if we've got the terminate signal
                     logger.debug("Demo service worker being told to quit")
                     return
-                
+
                 time.sleep(0.2) # Sleep to avoid thrashing
-                
+
                 # Try reading a line from the input file
                 try:
                     with jobStore.readFileStream(inJobStoreID) as fH:
@@ -221,14 +219,14 @@ class TestService(Job.Service):
                 except:
                     logger.debug("Something went wrong reading a line")
                     raise
-                
+
                 # Try converting the input line into an integer
                 try:
                     inputInt = int(line)
                 except ValueError:
                     logger.debug("Tried casting input line to integer but got error: %s" % line)
                     continue
-                
+
                 # Write out the resulting read integer and the message              
                 with jobStore.updateFileStream(outJobStoreID) as fH:
                     fH.write("%s %s\n" % (inputInt, messageInt))
@@ -242,38 +240,33 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
     from outJobStoreFileID to get a pair of integers, the first equal to i the second written into the outputFile.
     """
     inJobStoreFileID, outJobStoreFileID = communicationFiles
-    
+
     # Get a random integer
     key = random.randint(1, sys.maxint)
-    
+
     # Write the integer into the file
     logger.debug("Writing key to inJobStoreFileID")
     with job.fileStore.jobStore.updateFileStream(inJobStoreFileID) as fH:
         fH.write("%s\n" % key)
-    
+
     logger.debug("Trying to read key and message from outJobStoreFileID")
     for i in xrange(10): # Try 10 times over
         time.sleep(0.2) #Avoid thrashing
-        
+
         # Try reading an integer from the input file and writing out the message
-        try:
-            with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
-                line = fH.readline()
-        except:
-            raise
-            logger.debug("Something went wrong")
-            continue
-        
+        with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
+            line = fH.readline()
+
         tokens = line.split()
         if len(tokens) != 2:
             continue
-        
+
         key2, message = tokens
-        
+
         if int(key2) == key:
             logger.debug("Matched key's: %s, writing message: %s with randInt: %s" % (key, int(message) - randInt, randInt))
             with open(outFile, 'a') as fH:
                 fH.write("%s\n" % (int(message) - randInt))
             return
-    
+
     assert 0 # Job failed to get info from the service

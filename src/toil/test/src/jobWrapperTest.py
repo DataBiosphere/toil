@@ -15,7 +15,7 @@
 from __future__ import absolute_import
 import os
 from argparse import ArgumentParser
-from toil.common import setupToil
+from toil.common import Toil
 from toil.job import Job
 from toil.test import ToilTest
 from toil.jobWrapper import JobWrapper
@@ -23,19 +23,19 @@ from toil.jobWrapper import JobWrapper
 class JobWrapperTest(ToilTest):
     
     def setUp(self):
-        super( JobWrapperTest, self ).setUp( )
+        super(JobWrapperTest, self).setUp()
         self.jobStorePath = self._getTestJobStorePath()
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
         options = parser.parse_args(args=[self.jobStorePath])
-        self.contextManager = setupToil(options)
-        config, batchSystem, self.jobStore = self.contextManager.__enter__()
+        self.toil = Toil(options)
+        self.assertEquals( self.toil, self.toil.__enter__() )
 
     def tearDown(self):
-        self.contextManager.__exit__(None, None, None)
-        self.jobStore.deleteJobStore()
+        self.toil.__exit__(None, None, None)
+        self.toil.jobStore.deleteJobStore()
         self.assertFalse(os.path.exists(self.jobStorePath))
-        super( JobWrapperTest, self ).tearDown( )
+        super(JobWrapperTest, self).tearDown()
     
     def testJob(self):       
         """

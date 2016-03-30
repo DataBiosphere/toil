@@ -16,11 +16,10 @@
 """
 from __future__ import absolute_import
 import logging
-import sys
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import loadJobStore, loadBatchSystem
+from toil.common import Toil
 from toil.version import version
 
 logger = logging.getLogger( __name__ )
@@ -38,11 +37,11 @@ def main():
     parser.add_argument("--version", action='version', version=version)
     options = parseBasicOptions(parser)
 
-    jobStore = loadJobStore(options.jobStore)
+    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
     
     logger.info("Starting routine to kill running jobs in the toil workflow: %s" % options.jobStore)
     ####This behaviour is now broken
-    batchSystem = loadBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
+    batchSystem = Toil.createBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.
         batchSystem.killBatchJobs(jobID)
     logger.info("All jobs SHOULD have been killed")
