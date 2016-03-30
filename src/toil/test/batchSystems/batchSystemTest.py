@@ -367,20 +367,21 @@ def job2(job, cmd):
     job.addChildFn(hello_world, cmd)
     subprocess.check_call(cmd, shell=True)
 
-
 def hello_world(cmd):
     subprocess.check_call(cmd, shell=True)
-
 
 class Service(Job.Service):
     def __init__(self, cmd):
         super(Service, self).__init__()
         self.cmd = cmd
 
-    def start(self):
+    def start(self, fileStore):
         subprocess.check_call(self.cmd + ' 1', shell=True)
+        
+    def check(self):
+        return True
 
-    def stop(self):
+    def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
 
 

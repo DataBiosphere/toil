@@ -28,7 +28,6 @@ import subprocess
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
 
-
 defaultLogLevel = logging.INFO
 
 # TODO: looks like this can be removed
@@ -52,7 +51,6 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
         handler = logging.FileHandler(fileName)
     rootLogger.addHandler(handler)
     return handler
-
 
 def setLogLevel(level, logger=rootLogger):
     """

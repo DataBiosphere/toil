@@ -27,7 +27,12 @@ class JobWrapper( object ):
                   jobStoreID, remainingRetryCount, 
                   predecessorNumber,
                   filesToDelete=None, predecessorsFinished=None, 
-                  stack=None, logJobStoreFileID=None ): 
+                  stack=None, services=None, 
+                  startJobStoreID=None, terminateJobStoreID=None,
+                  errorJobStoreID=None,
+                  logJobStoreFileID=None,
+                  checkpoint=None,
+                  checkpointFilesToDelete=None ): 
         #The command to be executed and its memory and cores requirements.
         self.command = command
         self.memory = memory #Max number of bytes used by the job
@@ -65,6 +70,30 @@ class JobWrapper( object ):
         #This will be none unless the job failed and the logging
         #has been captured to be reported on the leader.
         self.logJobStoreFileID = logJobStoreFileID 
+        
+        # A list of lists of service jobs to run. 
+        # Each sub list is a list of service jobs descriptions,
+        # each of which is stored as a 6-tuple of the form 
+        # (jobStoreId, memory, cores, disk, startJobStoreID, terminateJobStoreID). 
+        self.services = services or []
+        
+        #An empty file in the jobStore which when deleted is used to signal
+        #that the service should cease.
+        self.terminateJobStoreID = terminateJobStoreID
+        
+        #Similarly a empty file which when deleted is used to signal that the
+        #service is established
+        self.startJobStoreID = startJobStoreID
+        
+        #An empty file in the jobStore which when deleted is used to signal
+        #that the service should terminate signaling an error.
+        self.errorJobStoreID = errorJobStoreID
+        
+        # None, or a copy of the original command string used to reestablish the job after failure.
+        self.checkpoint = checkpoint
+        
+        # Files that can not be deleted until the job and its successors have completed
+        self.checkpointFilesToDelete = checkpointFilesToDelete
 
     def setupJobAfterFailure(self, config):
         """

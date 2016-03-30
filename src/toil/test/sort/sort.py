@@ -27,15 +27,17 @@ from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 
 sortMemory = human2bytes('1000M')
 
-def setup(job, inputFile, N):
+def setup(job, inputFile, N, downCheckpoints):
     """Sets up the sort.
     """
     #Write the input file to the file store
     inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
+    job.fileStore.logToMaster(" Starting the merge sort ")
     job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
-                        inputFileStoreID, N).rv(), inputFile)
+                        inputFileStoreID, N, downCheckpoints, 
+                        checkpoint=downCheckpoints).rv(), inputFile)
 
-def down(job, inputFileStoreID, N, memory=sortMemory):
+def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
@@ -59,8 +61,10 @@ def down(job, inputFileStoreID, N, memory=sortMemory):
             copySubRangeOfFile(inputFile, midPoint+1, length, fH)
         #Call down recursively
         return job.addFollowOnJobFn(up,
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, memory=sortMemory).rv(),
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, memory=sortMemory).rv()).rv()          
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, 
+                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv(),
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, 
+                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()          
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting file: %s of size: %s"
@@ -87,6 +91,7 @@ def cleanup(job, tempOutputFileStoreID, outputFile, cores=1, memory=sortMemory, 
     """Copies back the temporary file to input once we've successfully sorted the temporary file.
     """
     job.fileStore.readGlobalFile(tempOutputFileStoreID, userPath=outputFile)
+    job.fileStore.logToMaster("Finished copying sorted file to output: %s" % outputFile)
 
 def main():
     parser = ArgumentParser()
@@ -112,7 +117,7 @@ def main():
         raise RuntimeError("Invalid value of N: %s" % options.N)
 
     #Now we are ready to run
-    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N),
+    Job.Runner.startToil(Job.wrapJobFn(setup, options.fileToSort, int(options.N), False,
                                        memory=sortMemory), options)
 
 if __name__ == '__main__':

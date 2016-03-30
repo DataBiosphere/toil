@@ -47,7 +47,7 @@ class Job(object):
     """
     Class represents a unit of work in toil. 
     """
-    def __init__(self, memory=None, cores=None, disk=None, cache=None):
+    def __init__(self, memory=None, cores=None, disk=None, cache=None, checkpoint=False):
         """
         This method must be called by any overiding constructor.
         
@@ -58,7 +58,10 @@ class Job(object):
         expressed in bytes.
         :param cache: the amount of disk (so that cache <= disk), expressed in bytes, \
         for storing files from previous jobs so that they can be accessed from a local copy. 
-        
+        :param checkpoint: if any of this job's successor jobs completely fails, 
+        exhausting all their retries, remove any successor jobs and rerun this job to restart the subtree. \
+        Job must be a leaf vertex in the job graph when initially defined, \
+        see :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
@@ -69,6 +72,7 @@ class Job(object):
         self.memory = parse(memory)
         self.disk = parse(disk)
         self.cache = parse(cache)
+        self.checkpoint = checkpoint
         #Private class variables
 
         #See Job.addChild
@@ -149,13 +153,17 @@ class Job(object):
         Services allow things like databases and servers to be started and accessed \
         by jobs in a workflow.
         
+        :raises toil.job.JobException: If service has already been made the child of a job or another service. 
         :param toil.job.Job.Service service: Service to add.
         :return: a promise that will be replaced with the return value from \
         :func:`toil.job.Job.Service.start` of service in any successor of the job.
         :rtype: toil.job.PromisedJobReturnValue 
         """
+        if service._hasParent:
+            raise JobException("The service already has a parent service")
+        service._hasParent = True
         jobService = ServiceJob(service)
-        self._services.append(jobService)
+        self._services.append((service, jobService))
         return jobService.rv()
 
     ##Convenience functions for creating jobs
@@ -284,17 +292,20 @@ class Job(object):
     ####################################################
     #Cycle/connectivity checking
     ####################################################
-
+    
     def checkJobGraphForDeadlocks(self):
         """
         :raises toil.job.JobGraphDeadlockException: if the job graph \
-        is cyclic or contains multiple roots. 
+        is cyclic, contains multiple roots or contains checkpoint jobs that are
+        not leaf vertices when defined (see :func:`toil.job.Job.checkNewCheckpointsAreLeaves`).
         
-        See :func:`toil.job.Job.checkJobGraphConnected` and \
-        :func:`toil.job.Job.checkJobGraphAcyclic` for more info.
+        See :func:`toil.job.Job.checkJobGraphConnected`, \
+        :func:`toil.job.Job.checkJobGraphAcyclic` and \
+        :func:`toil.job.Job.checkNewCheckpointsAreLeafVertices` for more info.
         """
         self.checkJobGraphConnected()
         self.checkJobGraphAcylic()
+        self.checkNewCheckpointsAreLeafVertices()
 
     def getRootJobs(self):
         """
@@ -315,7 +326,7 @@ class Job(object):
                     roots.add(job)
                 #The following call ensures we explore all successor edges.
                 map(lambda c : getRoots(c), job._children +
-                    job._followOns + job._services)
+                    job._followOns)
         getRoots(self)
         return roots
 
@@ -360,6 +371,32 @@ class Job(object):
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
+    
+    def checkNewCheckpointsAreLeafVertices(self):
+        """
+        A checkpoint job is a job that is restarted if either it fails, or if any of \
+        its successors completely fails, exhausting their retries.
+        
+        A job is a leaf it is has no successors.
+        
+        A checkpoint job must be a leaf when initially added to the job graph. When its \
+        run method is invoked it can then create direct successors. This restriction is made
+        to simplify implementation.
+        
+        :raises toil.job.JobGraphDeadlockException: if there exists a job being added to the graph for which \
+        checkpoint=True and which is not a leaf.
+        """
+        roots = self.getRootJobs() # Roots jobs of component, these are preexisting jobs in the graph
+        
+        # All jobs in the component of the job graph containing self
+        jobs = set()
+        map(lambda x : x._dfs(jobs), roots)
+        
+        # Check for each job for which checkpoint is true that it is a cut vertex or leaf
+        for y in filter(lambda x : x.checkpoint, jobs):
+            if y not in roots: # The roots are the prexisting jobs
+                if len(y._children) != 0 and len(y._followOns) != 0 and len(y._services) != 0:
+                    raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
     ####################################################
     #The following nested classes are used for
@@ -864,26 +901,57 @@ class Job(object):
             self.memory = memory
             self.cores = cores
             self.disk = disk
+            self._childServices = []
+            self._hasParent = False
 
         @abstractmethod
-        def start(self):
+        def start(self, fileStore):
             """
             Start the service.
             
-            :returns: An object describing how to access the service. Must be \
-            pickleable. Will be used by jobs to access the service (see \
-            :func:`toil.job.Job.addService`).
+            :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
+            
+            :returns: An object describing how to access the service. The object must be pickleable \
+            and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
             """
             pass
 
         @abstractmethod
-        def stop(self):
+        def stop(self, fileStore):
             """
             Stops the service. 
             
+            :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
             Function can block until complete. 
             """
             pass
+        
+        def check(self):
+            """
+            Checks the service is still running.
+            
+            :raise RuntimeError: If the service failed, this will cause the service job to be labeled failed.
+            :returns: True if the service is still running, else False. If False then the service job will be terminated,
+            and considered a success.
+            """
+            pass
+        
+        def addChild(self, service):
+            """
+            Add a child service to start up after this service has started.
+            
+            :raises toil.job.JobException: If service has already been made the child of a job or another service. 
+            :param toil.job.Job.Service service: Service to add as a "child" of this service
+            :return: a promise that will be replaced with the return value from \
+            :func:`toil.job.Job.Service.start` of service after the service has started.
+            :rtype: toil.job.PromisedJobReturnValue 
+            """
+            if service._hasParent:
+                raise JobException("The service already has a parent service")
+            service._parent = True
+            jobService = ServiceJob(service)
+            self._childServices.append((service, jobService))
+            return jobService.rv()
 
     ####################################################
     #Private functions
@@ -999,8 +1067,9 @@ class Job(object):
             else:
                 argToStore = returnValues[i]
             for promiseFileStoreID in self._rvs[i]:
-                with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
-                    cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+                if jobStore.fileExists(promiseFileStoreID): # File can be gone if the job is a service being re-run and the accessing job is already complete
+                    with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
+                        cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
     #Functions associated with Job.checkJobGraphAcyclic to establish
@@ -1061,50 +1130,7 @@ class Job(object):
     #a job graph to the jobStore
     ####################################################
 
-    def _modifyJobGraphForServices(self, jobStore, jobStoreID):
-        """
-        Modifies the job graph just before it is serialised to disk \
-        to correctly schedule any services defined for the job.
-        """
-        if len(self._services) > 0:
-            #Set the start/stop jobStore fileIDs for each service
-            for service in self._services:
-                service.startFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
-                assert jobStore.fileExists(service.startFileStoreID)
-                service.stopFileStoreID = jobStore.getEmptyFileStoreID(jobStoreID)
-                assert jobStore.fileExists(service.stopFileStoreID)
-
-            def removePredecessor(job):
-                assert self in job._directPredecessors
-                job._directPredecessors.remove(self)
-
-            #t1 and t2 are used to run the children and followOns of the job
-            #after the services of the job are started
-            startFileStoreIDs = map(lambda i : i.startFileStoreID, self._services)
-            t1, t2 = Job.wrapJobFn(blockUntilDeleted, startFileStoreIDs), Job()
-            #t1 runs the children of the job
-            for child in self._children:
-                removePredecessor(child)
-                t1.addChild(child)
-            self._children = []
-            #t2 runs the followOns of the job
-            for followOn in self._followOns:
-                removePredecessor(followOn)
-                t2.addChild(followOn)
-            self._followOns = []
-            #Now make the services children of the job
-            for service in self._services:
-                self.addChild(service)
-                assert service._directPredecessors == set((self,))
-            #Wire up the self, t1 and t2
-            self.addChild(t1)
-            t1.addFollowOn(t2)
-            #The final task once t1 and t2 have finished is to stop the services
-            #this is achieved by deleting the stopFileStoreIDs.
-            t2.addFollowOnJobFn(deleteFileStoreIDs, map(lambda i : i.stopFileStoreID, self._services))
-            self._services = [] #Defensive
-
-    def _createEmptyJobForJob(self, jobStore, command=None, predecessorNumber=0):
+    def _createEmptyJobWrapperForJob(self, jobStore, command=None, predecessorNumber=0):
         """
         Create an empty job for the job.
         """
@@ -1135,7 +1161,7 @@ class Job(object):
 
     def _makeJobWrappers(self, jobWrapper, jobStore):
         """
-        Creates a job for each job in the job graph, recursively.
+        Creates a jobWrapper for each job in the job graph, recursively.
         """
         jobsToJobWrappers = { self:jobWrapper }
         for successors in (self._followOns, self._children):
@@ -1147,7 +1173,7 @@ class Job(object):
     def _makeJobWrappers2(self, jobStore, jobsToJobWrappers):
         #Make the jobWrapper for the job, if necessary
         if self not in jobsToJobWrappers:
-            jobWrapper = self._createEmptyJobForJob(jobStore, predecessorNumber=len(self._directPredecessors))
+            jobWrapper = self._createEmptyJobWrapperForJob(jobStore, predecessorNumber=len(self._directPredecessors))
             jobsToJobWrappers[self] = jobWrapper
             #Add followOns/children to be run after the current job.
             for successors in (self._followOns, self._children):
@@ -1189,17 +1215,15 @@ class Job(object):
         """
         Pickle a job and its jobWrapper to disk.
         """
-        #Pickle the job so that its run method can be run at a later time.
-        #Drop out the children/followOns/predecessors/services - which are
-        #all recorded within the jobStore and do not need to be stored within
-        #the job
-        self._children = []
-        self._followOns = []
-        self._services = []
-        self._directPredecessors = set()
-        #The pickled job is "run" as the command of the job, see worker
-        #for the mechanism which unpickles the job and executes the Job.run
-        #method.
+        # Pickle the job so that its run method can be run at a later time.
+        # Drop out the children/followOns/predecessors/services - which are
+        # all recorded within the jobStore and do not need to be stored within
+        # the job
+        self._children, self._followOns, self._services = [], [], []
+        self._directPredecessors, self._promiseJobStore = set(), None
+        # The pickled job is "run" as the command of the job, see worker
+        # for the mechanism which unpickles the job and executes the Job.run
+        # method.
         with jobStore.writeFileStream(rootJobWrapper.jobStoreID) as (fileHandle, fileStoreID):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have beeen overridden. This is intended. If we used
@@ -1212,6 +1236,55 @@ class Job(object):
         jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + userScript)
         #Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
+        
+    def _serialiseServices(self, jobStore, jobWrapper, rootJobWrapper):
+        """
+        Serialises the services for a job.
+        """
+        def processService(service, serviceJob, depth):
+            # Extend the depth of the services if necessary
+            if depth == len(jobWrapper.services):
+                jobWrapper.services.append([])
+                
+            # Recursively call to process child services
+            for childService, childServiceJob in service._childServices:
+                processService(childService, childServiceJob, depth+1)
+            
+            # Make a job wrapper 
+            serviceJobWrapper = serviceJob._createEmptyJobWrapperForJob(jobStore, predecessorNumber=1)
+            
+            # Create the start and terminate flags
+            serviceJobWrapper.startJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobWrapper.terminateJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobWrapper.errorJobStoreID = jobStore.getEmptyFileStoreID()
+            assert jobStore.fileExists(serviceJobWrapper.startJobStoreID)
+            assert jobStore.fileExists(serviceJobWrapper.terminateJobStoreID)
+            assert jobStore.fileExists(serviceJobWrapper.errorJobStoreID)
+            
+            # Create the service job tuple
+            j = (serviceJobWrapper.jobStoreID, serviceJobWrapper.memory, 
+                 serviceJobWrapper.cores, serviceJobWrapper.disk, 
+                 serviceJobWrapper.startJobStoreID, serviceJobWrapper.terminateJobStoreID,
+                 serviceJobWrapper.errorJobStoreID)
+            
+            # Add the service job tuple to the list of services to run
+            jobWrapper.services[depth].append(j)
+            
+            # Break the links between the services to stop them being serialised together
+            childServices = service._childServices
+            service._childServices = None
+            assert serviceJob._services == []
+            
+            # Serialise the service job and job wrapper
+            serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobWrapper }, rootJobWrapper)
+            
+            # Restore values
+            service._childServices = childServices
+                
+        for service, serviceJob in self._services:
+            processService(service, serviceJob, 0)
+        
+        self._services = []
 
     def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):
         """
@@ -1219,26 +1292,35 @@ class Job(object):
         until the jobWrapper itself is written to disk, this is not performed by this \
         function because of the need to coordinate this operation with other updates. \
         """
-        #Modify job graph to run any services correctly
-        self._modifyJobGraphForServices(jobStore, jobWrapper.jobStoreID)
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
+     
         #Create the jobWrappers for followOns/children
         jobsToJobWrappers = self._makeJobWrappers(jobWrapper, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobWrappers)
-        #Temporarily set the jobStore strings for the promise call back functions
+        
+        # Temporarily set the jobStore strings for the promise call back functions
         for job in ordering:
             job._promiseJobStore = jobStore
+            def setForServices(service, serviceJob):
+                serviceJob._promiseJobStore = jobStore
+                for (childService, childJobService) in service._childServices:
+                    setForServices(childService, childJobService)
+            for service, serviceJob in self._services:
+                setForServices(service, serviceJob)
+    
         ordering.reverse()
         assert self == ordering[-1]
         if firstJob:
             #If the first job we serialise all the jobs, including the root job
             for job in ordering:
-                job._promiseJobStore = None
+                # Pickle the services for the job
+                job._serialiseServices(jobStore, jobsToJobWrappers[job], jobWrapper)
+                # Now pickle the job
                 job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
         else:
             #We store the return values at this point, because if a return value
@@ -1247,28 +1329,19 @@ class Job(object):
             self._setReturnValuesForPromises(returnValues, jobStore)
             #Pickle the non-root jobs
             for job in ordering[:-1]:
-                job._promiseJobStore = None
+                # Pickle the services for the job
+                job._serialiseServices(jobStore, jobsToJobWrappers[job], jobWrapper)
+                # Pickle the job itself
                 job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
-            #Drop the completed command
-            assert jobWrapper.command != None
-            jobWrapper.command = None
-            #Merge any children (follow-ons) created in the initial serialisation
-            #with children (follow-ons) created in the subsequent scale-up.
-            assert len(jobWrapper.stack) >= 4
-            combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
-            combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
-            jobWrapper.stack = jobWrapper.stack[:-4]
-            if len(combinedFollowOns) > 0:
-                jobWrapper.stack.append(combinedFollowOns)
-            if len(combinedChildren) > 0:
-                jobWrapper.stack.append(combinedChildren)
+            # Pickle any services for the job
+            self._serialiseServices(jobStore, jobWrapper, jobWrapper)
 
     def _serialiseFirstJob(self, jobStore):
         """
         Serialises the root job. Returns the wrapping job.
         """
         #Create first jobWrapper
-        jobWrapper = self._createEmptyJobForJob(jobStore, None,
+        jobWrapper = self._createEmptyJobWrapperForJob(jobStore, None,
                                                 predecessorNumber=0)
         #Write the graph of jobs to disk
         self._serialiseJobGraph(jobWrapper, jobStore, None, True)
@@ -1279,12 +1352,33 @@ class Job(object):
             f.write(jobWrapper.jobStoreID)
         #Return the first job wrapper
         return jobWrapper
+    
+    def _serialiseExistingJob(self, jobWrapper, jobStore, returnValues):
+        """
+        Serialise an existing job.
+        """
+        self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
+        #Drop the completed command, if not dropped already
+        jobWrapper.command = None
+        #Merge any children (follow-ons) created in the initial serialisation
+        #with children (follow-ons) created in the subsequent scale-up.
+        assert len(jobWrapper.stack) >= 4 
+        combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
+        combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
+        jobWrapper.stack = jobWrapper.stack[:-4]
+        if len(combinedFollowOns) > 0:
+            jobWrapper.stack.append(combinedFollowOns)
+        if len(combinedChildren) > 0:
+            jobWrapper.stack.append(combinedChildren)
 
     ####################################################
     #Function which worker calls to ultimately invoke
     #a jobs Job.run method, and then handle created
     #children/followOn jobs
     ####################################################
+
+    def _run(self, jobWrapper, fileStore):
+        return self.run(fileStore)
 
     def _execute(self, jobWrapper, stats, localTempDir, jobStore, fileStore):
         """
@@ -1295,15 +1389,19 @@ class Job(object):
             startClock = getTotalCpuTime()
         baseDir = os.getcwd()
         #Run the job
-        returnValues = self.run(fileStore)
+        returnValues = self._run(jobWrapper, fileStore)
         #Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
-        #Add the promise files to delete to the list of jobStoreFileIDs to delete
-        for jobStoreFileID in promiseFilesToDelete:
-            fileStore.deleteGlobalFile(jobStoreFileID)
+        self._serialiseExistingJob(jobWrapper, jobStore, returnValues)
+        # If the job is not a checkpoint job, add the promise files to delete 
+        # to the list of jobStoreFileIDs to delete
+        if not self.checkpoint:
+            for jobStoreFileID in promiseFilesToDelete:
+                fileStore.deleteGlobalFile(jobStoreFileID)
+        else:
+            # Else copy them to the job wrapper to delete later
+            jobWrapper.checkpointFilesToDelete = list(promiseFilesToDelete) 
         promiseFilesToDelete.clear()
         #Now indicate the asynchronous update of the job can happen
-
         fileStore._updateJobWhenDone()
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
@@ -1364,7 +1462,8 @@ class FunctionWrappingJob(Job):
         argFn = lambda x : kwargs.pop(x) if x in kwargs else \
                             (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
         Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"),
-                     disk=argFn("disk"), cache=argFn("cache"))
+                     disk=argFn("disk"), cache=argFn("cache"), 
+                     checkpoint=kwargs.pop("checkpoint") if "checkpoint" in kwargs else False)
         #If dill is installed pickle the user function directly
         #TODO: Add dill support
         #else use indirect method
@@ -1457,41 +1556,85 @@ class ServiceJob(Job):
         Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
+        
         #The service to run, pickled
+        childServices = service._childServices
+        service._childServices = [] #Ensure we don't pickle the children
         self.pickledService = cPickle.dumps(service)
-        #An empty file in the jobStore which when deleted is used to signal
-        #that the service should cease, is initialised in
-        #Job._modifyJobGraphForServices
-        self.stopFileStoreID = None
-        #Similarly a empty file which when deleted is used to signal that the
-        #service is established
-        self.startFileStoreID = None
+        service._childServices = childServices
+
+        # This references the parent job wrapper. It is initialised just before
+        # the job is run. It is used to access the start and terminate flags.
+        self.jobWrapper = None
 
     def run(self, fileStore):
         #Unpickle the service
         userModule = self._loadUserModule(self.serviceModule)
         service = self._unpickle( userModule, BytesIO( self.pickledService ) )
-        #Start the service
-        startCredentials = service.start()
-        #The start credentials  must be communicated to processes connecting to
-        #the service, to do this while the run method is running we
-        #cheat and set the return value promise within the run method
-        self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
-        self._rvs = {}  # Set this to avoid the return values being updated after the
-        #run method has completed!
-        #Now flag that the service is running jobs can connect to it
-        assert self.startFileStoreID != None
-        assert fileStore.jobStore.fileExists(self.startFileStoreID)
-        fileStore.jobStore.deleteFile(self.startFileStoreID)
-        assert not fileStore.jobStore.fileExists(self.startFileStoreID)
-        #Now block until we are told to stop, which is indicated by the removal
-        #of a file
-        assert self.stopFileStoreID != None
-        while fileStore.jobStore.fileExists(self.stopFileStoreID):
-            time.sleep(1) #Avoid excessive polling
-        #Now kill the service
-        service.stop()
-
+        try:
+            #Start the service
+            startCredentials = service.start(fileStore)
+            
+            #The start credentials  must be communicated to processes connecting to
+            #the service, to do this while the run method is running we
+            #cheat and set the return value promise within the run method
+            self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
+            self._rvs = {}  # Set this to avoid the return values being updated after the
+            #run method has completed!
+            
+            #Now flag that the service is running jobs can connect to it
+            logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
+            assert self.jobWrapper.startJobStoreID != None
+            if fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID):
+                fileStore.jobStore.deleteFile(self.jobWrapper.startJobStoreID)
+            assert not fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID)
+            
+            #Now block until we are told to stop, which is indicated by the removal
+            #of a file
+            assert self.jobWrapper.terminateJobStoreID != None
+            while True:
+                # Check for the terminate signal 
+                if not fileStore.jobStore.fileExists(self.jobWrapper.terminateJobStoreID):
+                    logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
+                    if not fileStore.jobStore.fileExists(self.jobWrapper.errorJobStoreID):
+                        raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
+                    break
+                
+                # Check the service's status and exit if failed or complete
+                try:
+                    if not service.check():
+                        logger.debug("The service has finished okay, exiting")
+                        break
+                except RuntimeError:
+                    logger.debug("Detected termination of the service")
+                    raise
+                
+                time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
+            
+            #Now kill the service
+            #service.stop(fileStore)
+            
+            # Remove link to the jobWrapper
+            self.jobWrapper = None
+        
+            logger.debug("Service is done")
+        finally:
+            # The stop function is always called
+            service.stop(fileStore)
+    
+    def _run(self, jobWrapper, fileStore):
+        # Set the jobWrapper for the job
+        self.jobWrapper = jobWrapper
+        #Run the job
+        returnValues = self.run(fileStore)
+        assert jobWrapper.stack == []
+        assert jobWrapper.services == []
+        # Unset the jobWrapper for the job
+        self.jobWrapper = None
+        # Set the stack to mimic what would be expected for a non-service job (this is a hack)
+        jobWrapper.stack = [ [], [] ]
+        return returnValues
+   
     def getUserScript(self):
         return self.serviceModule
 
@@ -1545,21 +1688,3 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
 copy_reg.pickle(PromisedJobReturnValue,
                 promisedJobReturnValuePickleFunction,
                 promisedJobReturnValueUnpickleFunction)
-
-def deleteFileStoreIDs(job, jobStoreFileIDsToDelete):
-    """
-    Job function that deletes a bunch of files using their jobStoreFileIDs.
-    """
-    map(lambda i : job.fileStore.jobStore.deleteFile(i), jobStoreFileIDsToDelete)
-
-def blockUntilDeleted(job, jobStoreFileIDs):
-    """
-    Function will not terminate until all the fileStoreIDs in jobStoreFileIDs
-    cease to exist.
-    """
-    while True:
-        jobStoreFileIDs = [ i for i in jobStoreFileIDs
-                           if job.fileStore.jobStore.fileExists(i) ]
-        if len(jobStoreFileIDs) == 0:
-            break
-        time.sleep(1)
