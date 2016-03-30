@@ -172,10 +172,16 @@ class AbstractJobStore(object):
             if jobWrapper.jobStoreID in reachableFromRoot:
                 return
             reachableFromRoot.add(jobWrapper.jobStoreID)
+            # Traverse jobs in stack
             for jobs in jobWrapper.stack:
                 for successorJobStoreID in map(lambda x: x[0], jobs):
                     if successorJobStoreID not in reachableFromRoot and haveJob(successorJobStoreID):
                         getConnectedJobs(getJob(successorJobStoreID))
+            # Traverse service jobs
+            for jobs in jobWrapper.services:
+                for serviceJobStoreID in map(lambda x: x[0], jobs):
+                    assert serviceJobStoreID not in reachableFromRoot
+                    reachableFromRoot.add(serviceJobStoreID)
 
         logger.info("Checking job graph connectivity...")
         getConnectedJobs(rootJobWrapper)
@@ -183,7 +189,7 @@ class AbstractJobStore(object):
 
         # Cleanup the state of each jobWrapper
         for jobWrapper in getJobs():
-            changed = False  # Flag to indicate if we need to update the jobWrapper
+            changed = [False]  # Flag to indicate if we need to update the jobWrapper
             # on disk
 
             if len(jobWrapper.filesToDelete) != 0:
@@ -193,7 +199,7 @@ class AbstractJobStore(object):
                         "Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
                     self.deleteFile(fileID)
                 jobWrapper.filesToDelete = []
-                changed = True
+                changed[0] = True
 
             # Delete a jobWrapper if it is not reachable from the rootJobWrapper
             if jobWrapper.jobStoreID not in reachableFromRoot:
@@ -202,34 +208,75 @@ class AbstractJobStore(object):
                 self.delete(jobWrapper.jobStoreID)
                 continue
 
-            # While jobs at the end of the stack are already deleted remove
-            # those jobs from the stack (this cleans up the case that the jobWrapper
-            # had successors to run, but had not been updated to reflect this)
-            while len(jobWrapper.stack) > 0:
-                jobs = [command for command in jobWrapper.stack[-1] if haveJob(command[0])]
-                if len(jobs) < len(jobWrapper.stack[-1]):
-                    changed = True
-                    if len(jobs) > 0:
-                        jobWrapper.stack[-1] = jobs
-                        break
-                    else:
-                        jobWrapper.stack.pop()
+            # For a job whose command is already execute, remove jobs from the 
+            # stack that are already deleted. 
+            # This cleans up the case that the jobWrapper
+            # had successors to run, but had not been updated to reflect this
+            
+            if jobWrapper.command == None:
+                stackSize = sum(map(len, jobWrapper.stack))
+                # Remove deleted jobs
+                jobWrapper.stack = map(lambda x : filter(lambda y : self.exists(y[0]), x), jobWrapper.stack)
+                # Remove empty stuff from the stack
+                jobWrapper.stack = filter(lambda x : len(x) > 0, jobWrapper.stack)
+                # Check if anything go removed
+                if sum(map(len, jobWrapper.stack)) != stackSize:
+                    changed[0] = True
+                
+            # Cleanup any services that have already been finished
+            # Filter out deleted services and update the flags for services that exist
+            # If there are services then renew  
+            # the start and terminate flags if they have been removed
+            def subFlagFile(jobStoreID, jobStoreFileID, flag):
+                if self.fileExists(jobStoreFileID):
+                    return jobStoreFileID
+                
+                # Make a new flag
+                newFlag = self.getEmptyFileStoreID()
+                
+                # Load the jobWrapper for the service and initialise the link
+                serviceJobWrapper = getJob(jobStoreID)
+                
+                if flag == 1:
+                    logger.debug("Recreating a start service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    serviceJobWrapper.startJobStoreID = newFlag
+                elif flag == 2:
+                    logger.debug("Recreating a terminate service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    serviceJobWrapper.terminateJobStoreID = newFlag
                 else:
-                    break
+                    logger.debug("Recreating a error service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    assert flag == 3
+                    serviceJobWrapper.errorJobStoreID = newFlag
+                    
+                # Update the service job on disk
+                self.update(serviceJobWrapper)
+                
+                changed[0] = True
+                
+                return newFlag
+            
+            servicesSize = sum(map(len, jobWrapper.services))
+            jobWrapper.services = filter(lambda z : len(z) > 0, map(lambda serviceJobList : 
+                                        map(lambda x : x[:4] + (subFlagFile(x[0], x[4], 1), 
+                                                                subFlagFile(x[0], x[5], 2), 
+                                                                subFlagFile(x[0], x[6], 3)), 
+                                        filter(lambda y : self.exists(y[0]), serviceJobList)), jobWrapper.services)) 
+            if sum(map(len, jobWrapper.services)) != servicesSize:
+                changed[0] = True
 
             # Reset the retry count of the jobWrapper
             if jobWrapper.remainingRetryCount != self._defaultTryCount():
                 jobWrapper.remainingRetryCount = self._defaultTryCount()
-                changed = True
+                changed[0] = True
 
             # This cleans the old log file which may
             # have been left if the jobWrapper is being retried after a jobWrapper failure.
             if jobWrapper.logJobStoreFileID != None:
                 self.delete(jobWrapper.logJobStoreFileID)
                 jobWrapper.logJobStoreFileID = None
-                changed = True
+                changed[0] = True
 
-            if changed:  # Update, but only if a change has occurred
+            if changed[0]:  # Update, but only if a change has occurred
                 logger.critical("Repairing job: %s" % jobWrapper.jobStoreID)
                 self.update(jobWrapper)
 
