@@ -224,26 +224,76 @@ def main():
         ##########################################
         
         if jobWrapper.command == None:
-            while len(jobWrapper.stack) > 0:
-                jobs = jobWrapper.stack[-1]
-                #If the jobs still exist they have not been run, so break
-                if jobStore.exists(jobs[0][0]):
-                    break
-                #However, if they are gone then we can remove them from the stack.
-                #This is the only way to flush successors that have previously been run
-                #, as jobs are, as far as possible, read only in the leader.
-                jobWrapper.stack.pop()
-                
+            # Cleanup jobs already finished 
+            f = lambda jobs : filter(lambda x : len(x) > 0, map(lambda x : 
+                                    filter(lambda y : jobStore.exists(y[0]), x), jobs))
+            jobWrapper.stack = f(jobWrapper.stack)
+            jobWrapper.services = f(jobWrapper.services)
+            logger.debug("Cleaned up any references to completed successor jobs")
+            
         #This cleans the old log file which may 
         #have been left if the jobWrapper is being retried after a jobWrapper failure.
         oldLogFile = jobWrapper.logJobStoreFileID
-        jobWrapper.logJobStoreFileID = None
-        jobStore.update(jobWrapper) #Update first, before deleting the file
         if oldLogFile != None:
-            jobStore.delete(oldLogFile)
-            
-        #Make a temporary file directory for the jobWrapper
-        localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
+            jobWrapper.logJobStoreFileID = None
+            jobStore.update(jobWrapper) #Update first, before deleting any files
+            jobStore.deleteFile(oldLogFile)
+        
+        ##########################################
+        # If a checkpoint exists, restart from the checkpoint
+        ##########################################
+        
+        # The job is a checkpoint, and is being restarted after previously completing
+        if jobWrapper.checkpoint != None:
+            logger.debug("Job is a checkpoint")
+            if len(jobWrapper.stack) > 0 or len(jobWrapper.services) > 0 or jobWrapper.command != None:
+                if jobWrapper.command != None:
+                    assert jobWrapper.command == jobWrapper.checkpoint
+                    logger.debug("Checkpoint job already has command set to run")
+                else:
+                    jobWrapper.command = jobWrapper.checkpoint
+                
+                # Reduce the retry count
+                assert jobWrapper.remainingRetryCount >= 0
+                jobWrapper.remainingRetryCount = max(0, jobWrapper.remainingRetryCount - 1)
+                
+                jobStore.update(jobWrapper) # Update immediately to ensure that checkpoint
+                # is made before deleting any remaining successors
+                
+                if len(jobWrapper.stack) > 0 or len(jobWrapper.services) > 0:
+                    # If the subtree of successors is not complete restart everything
+                    logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " % 
+                                 (jobWrapper.stack, jobWrapper.services))
+                    
+                    # Delete everything on the stack, as these represent successors to clean
+                    # up as we restart the queue
+                    def recursiveDelete(jobWrapper2):
+                        # Recursive walk the stack to delete all remaining jobs
+                        for jobs in jobWrapper2.stack + jobWrapper2.services:
+                            for jobTuple in jobs:
+                                if jobStore.exists(jobTuple[0]):
+                                    recursiveDelete(jobStore.load(jobTuple[0]))
+                                else:
+                                    logger.debug("Job %s has already been deleted", jobTuple[0])
+                        if jobWrapper2 != jobWrapper:
+                            logger.debug("Checkpoint is deleting old successor job: %s", jobWrapper2.jobStoreID)
+                            jobStore.delete(jobWrapper2.jobStoreID)
+                    recursiveDelete(jobWrapper)
+                    
+                    jobWrapper.stack = [ [], [] ] # Initialise the job to mimic the state of a job
+                    # that has been previously serialised but which as yet has no successors 
+                    
+                    jobWrapper.services = [] # Empty the services
+    
+                    # Update the jobStore to avoid doing this twice on failure and make this clean.
+                    jobStore.update(jobWrapper)
+                
+            # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
+            # because of the job being a checkpoint
+            else:
+                logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
+                #Delete any remnant files
+                map(jobStore.deleteFile, filter(jobStore.fileExists, jobWrapper.checkpointFilesToDelete))
     
         ##########################################
         #Setup the stats, if requested
@@ -252,6 +302,9 @@ def main():
         if config.stats:
             startTime = time.time()
             startClock = getTotalCpuTime()
+        
+        #Make a temporary file directory for the jobWrapper
+        localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
 
         startTime = time.time() 
         while True:
@@ -260,9 +313,14 @@ def main():
             ##########################################
             
             if jobWrapper.command != None:
+                logger.debug("Got a command to run: %s" % jobWrapper.command)
                 if jobWrapper.command.startswith( "_toil " ):
                     #Load the job
                     job = Job._loadJob(jobWrapper.command, jobStore)
+                    
+                    # If it is a checkpoint job, save the command
+                    if job.checkpoint:
+                        jobWrapper.checkpoint = jobWrapper.command
                     
                     #Cleanup the cache from the previous job
                     cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
@@ -303,8 +361,10 @@ def main():
             #Establish if we can run another jobWrapper within the worker
             ##########################################
             
-            #No more jobs to run so quit
-            if len(jobWrapper.stack) == 0:
+            #If no more jobs to run or services not finished, quit
+            if len(jobWrapper.stack) == 0 or len(jobWrapper.services) > 0 or jobWrapper.checkpoint != None:
+                logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
+                             len(jobWrapper.stack), len(jobWrapper.services), jobWrapper.checkpoint != None)
                 break
             
             #Get the next set of jobs to run
@@ -332,10 +392,24 @@ def main():
             if successorPredecessorID != None: 
                 logger.debug("The jobWrapper has multiple predecessors, we must return to the leader.")
                 break
+            
+            # Load the successor jobWrapper
+            successorJobWrapper = jobStore.load(successorJobStoreID)
+            
+            # Somewhat ugly, but check if job is a checkpoint job and quit if 
+            # so
+            if successorJobWrapper.command.startswith( "_toil " ):
+                #Load the job
+                successorJob = Job._loadJob(successorJobWrapper.command, jobStore)
+            
+                # Check it is not a checkpoint
+                if successorJob.checkpoint:
+                    logger.debug("Next job is checkpoint, so finishing")
+                    break
           
             ##########################################
-            #We have a single successor jobWrapper.
-            #We load the successor jobWrapper and transplant its command and stack
+            #We have a single successor job that is not a checkpoint job.
+            #We transplant the successor jobWrappers command and stack
             #into the current jobWrapper so that it can be run
             #as if it were a command that were part of the current jobWrapper.
             #We can then delete the successor jobWrapper in the jobStore, as it is
@@ -348,21 +422,19 @@ def main():
             #Remove the successor jobWrapper
             jobWrapper.stack.pop()
             
-            #Load the successor jobWrapper
-            successorJob = jobStore.load(successorJobStoreID)
             #These should all match up
-            assert successorJob.memory == successorMemory
-            assert successorJob.cores == successorCores
-            assert successorJob.predecessorsFinished == set()
-            assert successorJob.predecessorNumber == 1
-            assert successorJob.command != None
-            assert successorJobStoreID == successorJob.jobStoreID
+            assert successorJobWrapper.memory == successorMemory
+            assert successorJobWrapper.cores == successorCores
+            assert successorJobWrapper.predecessorsFinished == set()
+            assert successorJobWrapper.predecessorNumber == 1
+            assert successorJobWrapper.command != None
+            assert successorJobStoreID == successorJobWrapper.jobStoreID
             
             #Transplant the command and stack to the current jobWrapper
-            jobWrapper.command = successorJob.command
-            jobWrapper.stack += successorJob.stack
-            assert jobWrapper.memory >= successorJob.memory
-            assert jobWrapper.cores >= successorJob.cores
+            jobWrapper.command = successorJobWrapper.command
+            jobWrapper.stack += successorJobWrapper.stack
+            assert jobWrapper.memory >= successorJobWrapper.memory
+            assert jobWrapper.cores >= successorJobWrapper.cores
             
             #Build a fileStore to update the job
             fileStore = Job.FileStore(jobStore, jobWrapper, localTempDir, blockFn)
@@ -370,8 +442,8 @@ def main():
             #Update blockFn
             blockFn = fileStore._blockFn
             
-            #Add successorJob to those to be deleted
-            fileStore.jobsToDelete.add(successorJob.jobStoreID)
+            #Add successorJobWrapper to those to be deleted
+            fileStore.jobsToDelete.add(successorJobWrapper.jobStoreID)
             
             #This will update the job once the previous job is done
             fileStore._updateJobWhenDone()            
@@ -465,6 +537,6 @@ def main():
     shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0:
-        #We can now safely get rid of the jobWrapper
+    if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0 and len(jobWrapper.services) == 0:
+        # We can now safely get rid of the jobWrapper
         jobStore.delete(jobWrapper.jobStoreID)

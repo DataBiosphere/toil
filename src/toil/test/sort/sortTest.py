@@ -47,7 +47,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
     def _toilSort(self, jobStore, batchSystem,
-                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen):
+                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
+                  retryCount=2, badWorker=0.5, downCheckpoints=False):
         """
         Generate a file consisting of the given number of random lines, each line of the given
         length. Sort the file with Toil by splitting the file recursively until each part is less
@@ -71,10 +72,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Specify options
                 options = Job.Runner.getDefaultOptions(jobStore)
                 options.logLevel = getLogLevelString()
-                options.retryCount = 2
+                options.retryCount = retryCount
                 options.batchSystem = batchSystem
                 options.clean = "never"
-                options.badWorker = 0.5
+                options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
 
                 # Make the file to sort
@@ -87,7 +88,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     l.sort()
 
                 # Make the first job
-                firstJob = Job.wrapJobFn(setup, tempSortFile, N, memory=sortMemory)
+                firstJob = Job.wrapJobFn(setup, tempSortFile, N, downCheckpoints=downCheckpoints, memory=sortMemory)
 
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True
@@ -124,7 +125,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
-                        if totalTrys > 16: #p(fail after this many restarts) = 0.5**32
+                        if totalTrys > 32: #p(fail after this many restarts) = 0.5**32
                             self.fail() #Exceeded a reasonable number of restarts    
                         totalTrys += 1    
 
@@ -176,9 +177,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._toilSort(jobStore=self._azureJobStore(), batchSystem="mesos")
         finally:
             self._stopMesos()
-
+            
     def testFileSingle(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine')
+
+    def testFileSingleCheckpoints(self):
+        self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine', retryCount=2, downCheckpoints=True)
 
     def testFileSingle10000(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine',

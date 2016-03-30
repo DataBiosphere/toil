@@ -18,11 +18,12 @@ import logging
 import os
 import sys
 import cPickle
+import time
 import tempfile
 from argparse import ArgumentParser
 from bd2k.util.humanize import bytes2human
 
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, absSymPath
+from toil.lib.bioio import addLoggingOptions, getLogLevelString
 
 logger = logging.getLogger( __name__ )
 
@@ -76,6 +77,7 @@ class Config(object):
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
+        self.servicePollingInterval = 60
 
         #Debug options
         self.badWorker = 0.0
@@ -169,6 +171,7 @@ class Config(object):
                 assert(len(f.readline().rstrip()) == 32)
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
+        setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
         setOption("badWorker", float, fC(0.0, 1.0))
@@ -316,7 +319,9 @@ def _addOptions(addGroupFn, config):
                      "option, the worker will try to emulate the leader's environment before "
                      "running a job. Using this option, a variable can be injected into the "
                      "worker process itself before it is started.")
-
+    addOptionFn("--servicePollingInterval", dest="servicePollingInterval", default=None,
+                help="Interval of time service jobs wait between polling for the existence"
+                " of the keep-alive flag (defailt=%s)" % config.servicePollingInterval)
     #
     #Debug options
     #
@@ -484,8 +489,10 @@ def setupToil(options, userScript=None):
         serialiseEnvironment(jobStore)
         yield (config, batchSystem, jobStore)
     finally:
+        startTime = time.time()
         logger.debug('Shutting down batch system')
         batchSystem.shutdown()
+        logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
 
 # Nested functions can't have doctests so we have to make this global
 
