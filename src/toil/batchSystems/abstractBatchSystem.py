@@ -15,7 +15,6 @@
 
 from __future__ import absolute_import
 from collections import namedtuple
-from Queue import Empty
 from toil.common import getToilWorkflowDir
 import os
 import shutil
@@ -25,7 +24,10 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     # A path to the value of config.workDir (where the cache would go)
     'workDir',
     # The value of config.workflowID (used to identify files specific to this workflow)
-    'workflowID'))
+    'workflowID',
+    # The value of the cleanWorkDir flag
+    'cleanWorkDir'))
+
 
 class AbstractBatchSystem:
     """An abstract (as far as python currently allows) base class
@@ -57,8 +59,8 @@ class AbstractBatchSystem:
         :type dict[str,str]
         """
         self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
-                                                   workflowID=self.config.workflowID)
-
+                                                   workflowID=self.config.workflowID,
+                                                   cleanWorkDir=self.config.cleanWorkDir)
 
     def checkResourceRequest(self, memory, cores, disk):
         """Check resource request is not greater than that available.
@@ -160,16 +162,17 @@ class AbstractBatchSystem:
 
     @staticmethod
     def workerCleanup(workerCleanupInfo):
-        '''
+        """
         Cleans up the worker node on batch system shutdown. For now it does nothing.
         :param collections.namedtuple workerCleanupInfo: A named tuple consisting of all the
         relevant information for cleaning up the worker.
-        '''
+        """
         assert workerCleanupInfo.__class__.__name__ == 'WorkerCleanupInfo'
         workflowDir = getToilWorkflowDir(workerCleanupInfo.workflowID, workerCleanupInfo.workDir)
-        # TODO: logic here for cleanup flag
-        shutil.rmtree(workflowDir)
-
+        dirIsEmpty = os.listdir(workflowDir) == []
+        cleanWorkDir = workerCleanupInfo.cleanWorkDir
+        if cleanWorkDir == 'always' or ((cleanWorkDir == 'onSuccess' or cleanWorkDir == 'onError') and dirIsEmpty):
+            shutil.rmtree(workflowDir)
 
 
 class InsufficientSystemResources(Exception):

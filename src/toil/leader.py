@@ -41,7 +41,7 @@ class StatsAndLogging( object ):
     """
     Class manages process to aggregate statistics and logging information on a toil run.
     """
-    
+
     def __init__(self, jobStore):
         # Start the stats/logging aggregation process
         self._stop = ProcessEvent() 
@@ -62,7 +62,7 @@ class StatsAndLogging( object ):
         def callback(fileHandle):
             stats = json.load(fileHandle, object_hook=Expando)
             try:
-                logs = stats.workers.log
+                logs = stats.workers.logsToMaster
             except AttributeError:
                 # To be expected if there were no calls to logToMaster()
                 pass
@@ -659,7 +659,11 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
     with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
         jobStoreFileID = fH.read()
     with jobStore.readFileStream(jobStoreFileID) as fH:
-        rootJobReturnValue = cPickle.load(fH)
+        try:
+            rootJobReturnValue = cPickle.load(fH)
+        except EOFError:
+            logger.exception("Failed to unpickle root job return value")
+            raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs)
 
     # Cleanup
     if config.clean == "onSuccess" or config.clean == "always":
