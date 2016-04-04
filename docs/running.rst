@@ -14,7 +14,7 @@ TODO
 Running In Depth
 ----------------
 
-TODO
+TODO: Cover logging, cleaning, kill, restart, stats and status. 
 
 Running on AWS
 --------------
