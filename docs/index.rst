@@ -3,16 +3,97 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Toil Documentation
-==================
+Toil
+====
+
+Toil is a workflow engine entirely written in Python. It features:
+
+* Easy installation, e.g. ``pip install toil``.
+
+* Common Workflow Language (`CWL`_) support
+  
+  Complete support for the 3.0 CWL specification, allowing it to execute
+  CWL workflows.
+  
+* Workflow Definition Language (`WDL`_) support
+  
+  Draft support for the WDL specification, allowing it to execute
+  WDL workflows.
+  
+* Cross platform support 
+  
+  Develop and test on your laptop then deploy on any of the following:
+  
+  - Commercial clouds
+    + `Amazon Web Services`_ (including the `spot market`_)
+    + `Microsoft Azure`_
+  - Private clouds
+    + `OpenStack`_
+  - High Performance Computing Environments
+    + `GridEngine`_
+    + `Apache Mesos`_
+    + `Parasol`_
+    + Individual multi-core machines
+
+* A small API 
+  
+  Easily mastered, the Python user API for defining and running workflows is built upon one core class.
+       
+* Complete file and stream management:
+   
+  Temporary and persistent file management that abstracts the details of the
+  underlying file system, providing a uniform interface regardless of
+  environment. Supports both atomic file transfer and streaming interfaces, and
+  provides encryption of user data.
+   
+* Scalability:
+
+  Toil can easily handle workflows concurrently using hundreds of nodes and
+  thousands of cores.
+
+* Robustness:
+
+  Toil workflows support arbitrary worker and leader failure, with strong
+  check-pointing that always allows resumption.
+
+* Efficiency:
+
+  Caching, fine grained, per task, resource requirement specifications, and
+  support for the AWS spot market mean workflows can be executed with little
+  waste.
+
+* Declarative and dynamic workflow creation:
+
+  Workflows can be declared statically, but new jobs can be added dynamically
+  during execution within any existing job, allowing arbitrarily complex
+  workflow graphs with millions of jobs within them.
+
+* Support for databases and services:
+
+  For example, Apache Spark clusters can be created in seconds and easily
+  integrated within a toil workflow as a service, with precisely defined time
+  start and end times that fits with the flow of other jobs in the workflow.
+
+* Open Source: An Apache license allows unrestricted use.
+
+.. _GridEngine: http://gridscheduler.sourceforge.net/
+.. _Parasol: https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
+.. _Apache Mesos: http://mesos.apache.org/
+.. _spot market: https://aws.amazon.com/ec2/spot/
+.. _Microsoft Azure: https://azure.microsoft.com
+.. _Amazon Web Services: https://aws.amazon.com/
+.. _OpenStack: https://www.openstack.org/
+.. _CWL: https://github.com/common-workflow-language/common-workflow-language
+.. _WDL: https://github.com/broadinstitute/wdl
 
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
-   essentials
-   tutorial
+   installation
+   running
+   developing
    toilAPI
    batchSystem
    jobStore
