@@ -10,12 +10,12 @@ Toil is a workflow engine entirely written in Python. It features:
 
 * Easy installation, e.g. ``pip install toil``.
 
-* Common Workflow Language (`CWL`_) support
+* `Common Workflow Language`_ (`CWL`_) support
   
   Complete support for the 3.0 CWL specification, allowing it to execute
   CWL workflows.
   
-* Workflow Definition Language (`WDL`_) support
+* `Workflow Description Language`_ (`WDL`_) support
   
   Draft support for the WDL specification, allowing it to execute
   WDL workflows.
@@ -74,7 +74,7 @@ Toil is a workflow engine entirely written in Python. It features:
   integrated within a toil workflow as a service, with precisely defined time
   start and end times that fits with the flow of other jobs in the workflow.
 
-* Open Source: An Apache license allows unrestricted use.
+* Open Source: An Apache license allows unrestricted use, incorporation and modification.
 
 .. _GridEngine: http://gridscheduler.sourceforge.net/
 .. _Parasol: https://users.soe.ucsc.edu/~donnak/eng/parasol.htm
@@ -84,7 +84,9 @@ Toil is a workflow engine entirely written in Python. It features:
 .. _Amazon Web Services: https://aws.amazon.com/
 .. _OpenStack: https://www.openstack.org/
 .. _CWL: https://github.com/common-workflow-language/common-workflow-language
+.. _Common Workflow Language: https://github.com/common-workflow-language/common-workflow-language
 .. _WDL: https://github.com/broadinstitute/wdl
+.. _Workflow Description Language: https://github.com/broadinstitute/wdl
 
 Contents:
 
