@@ -1,9 +1,36 @@
 .. _tutorial-ref:
 
-User Tutorial
-=============
+Developing A Workflow
+=====================
 
-This tutorial will guide you through the features of Toil from a user perspective.
+This tutorial will guide you through the features of Toil from the perspective of
+a user wanting to develop a workflow using the Toil Python API.
+
+Scripting Quick Start
+---------------------
+
+Toil's Job class (:class:`toil.job.Job`) contains the Toil API, documented below.
+To begin, consider this short toil script which illustrates defining a workflow::
+
+    from toil.job import Job
+         
+    def helloWorld(message, memory="2G", cores=2, disk="3G"):
+        return "Hello, world!, here's a message: %s" % message
+            
+    j = Job.wrapFn(helloWorld, "woot")
+               
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflow")
+        print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
+
+The workflow consists of a single job, which calls the helloWorld function. The resource
+requirements for that job are (optionally) specified by keyword arguments (memory, cores, disk).
+
+The :class:`toil.job.Job.Runner` class handles the invocation of Toil workflows. 
+It is fed an options object that configures the running of the workflow. 
+This can be populated by an argument parser object using 
+:func:`toil.job.Job.Runner.getDefaultArgumentParser`, allowing all these options to be specified 
+via the command line to the script. See :ref:`tutorial-ref` for more details.
       
 Job basics
 ----------
