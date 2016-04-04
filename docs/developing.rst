@@ -652,9 +652,3 @@ write::
 
 Note the call to :func:`toil.job.Job.encapsulate` creates the \
 :class:`toil.job.Job.EncapsulatedJob`.
-
-Toil Utilities
---------------
-
-TODO: Cover clean, kill, restart, stats and status. Note these should have APIs
-to access them as well as the utilities.
