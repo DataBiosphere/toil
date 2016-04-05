@@ -614,10 +614,25 @@ networks of services to be created, e.g. Apache Spark clusters, within a workflo
 Checkpoints
 -----------
 
-Services complicate resumption, because they can create complex dependencies between jobs.
-For example consider a service that provides a database that multiple jobs update...
+Services complicate resuming a workflow after failure, because they can create complex dependencies between jobs.
+For example, consider a service that provides a database that multiple jobs update. If the database
+service fails and loses state, it is not clear that just restarting the service will allow
+the workflow to be resumed, because jobs that created that state may have already finished. 
+To get around this problem Toil supports "checkpoint" jobs, specified
+as the boolean keyword argument "checkpoint" to a job or wrapped function, e.g.::
 
-TODO
+    j = Job(checkpoint=True)
+    
+A checkpoint job is rerun if one or more of its successors fails its retry attempts, until it itself
+has exhausted its retry attempts. Upon restarting a checkpoint job all its 
+existing successors are first deleted, and then the job is rerun to define new successors. 
+By checkpointing a job that defines a service, upon failure of the service the 
+database and the jobs that access the service can be redefined and rerun.
+
+To make the implementation of checkpoint jobs simple, a job can only be a checkpoint if 
+when first defined it has no successors, i.e. it can only define successors 
+within its run method. 
+
 
 Encapsulation
 -------------
