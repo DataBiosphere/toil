@@ -95,6 +95,7 @@ Contents:
 
    installation
    running
+   cli
    developing
    toilAPI
    architecture
