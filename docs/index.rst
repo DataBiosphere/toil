@@ -97,6 +97,7 @@ Contents:
    running
    developing
    toilAPI
+   architecture
    batchSystem
    jobStore
    generated_rst/modules
