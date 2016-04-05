@@ -921,7 +921,7 @@ class Job(object):
         
         def addChild(self, service):
             """
-            Add a child service to start up after this service has started.
+            Add a child service to start up after this service has started. 
             
             :raises toil.job.JobException: If service has already been made the child of a job or another service. 
             :param toil.job.Job.Service service: Service to add as a "child" of this service
