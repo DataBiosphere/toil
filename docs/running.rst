@@ -8,7 +8,7 @@ Running Quick Start
 
 Starting with Python, a Toil workflow can be run with just three simple steps.
 
-1. :code:`pip install toil`
+1. ``pip install toil``
 2. Copy and paste the following code block into **HelloWorld.py**::
 
         from toil.job import Job
@@ -23,12 +23,12 @@ Starting with Python, a Toil workflow can be run with just three simple steps.
             options = parser.parse_args()
             print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
 
-3. :code:`python HelloWorld.py file:jobStore`
+3. ``python HelloWorld.py file:jobStore``
 
 Now you have run Toil on **singleMachine** (default batch system) using the **FileStore** job store. The first
 positional argument after the ``.py`` is the location of the job store, a place where intermediate files are
 written to. In this example, a folder called **jobStore** will be created where **HelloWorld.py** is run from.
-Information on the jobStore can be found HERE <LINK TO INFO ABOUT THE JOBSTORE>.
+Information on the jobStore can be found at :ref:`jobStoreInterface`.
 
 Run ``python HelloWorld.py --help`` to see a complete list of available options.
 
@@ -45,7 +45,7 @@ Running on AWS
 See :ref:`installationAWS` to get setup for running on AWS.
 
 Having followed the :ref:`quickstart` guide, the user can run their **HelloWorld.py** script on a distributed cluster
-just by modifiying the run command.  We'll even use the **AWS Jobstore**, which uses S3 as a intermediate job store.
+just by modifiying the run command.  We'll use the **AWS Jobstore**, which uses S3 as a intermediate job store.
 
 Place the HelloWorld.py script on the leader node, and run::
 
