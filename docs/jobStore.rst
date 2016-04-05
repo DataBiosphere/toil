@@ -1,3 +1,5 @@
+.. _jobStoreInterface:
+
 The job store interface
 =======================
 
