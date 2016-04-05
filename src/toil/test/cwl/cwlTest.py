@@ -14,26 +14,33 @@
 from __future__ import absolute_import
 import json
 import os
+import subprocess
 
 from toil.test import ToilTest, needs_cwl
 
 @needs_cwl
 class CWLTest(ToilTest):
-    def test_run_revsort(self):
+
+    def _tester(self, cwlfile, jobfile, outDir, expect):
         from toil.cwl import cwltoil
-        outDir = self._createTempDir()
         rootDir = self._projectRootPath()
         outputJson = os.path.join(outDir, 'cwl.output.json')
         try:
             cwltoil.main(['--outdir', outDir,
-                          os.path.join(rootDir, 'src/toil/test/cwl/revsort.cwl'),
-                          os.path.join(rootDir, 'src/toil/test/cwl/revsort-job.json')])
+                          os.path.join(rootDir, cwlfile),
+                          os.path.join(rootDir, jobfile)])
             with open(outputJson) as f:
                 out = json.load(f)
         finally:
             if os.path.exists(outputJson):
                 os.remove(outputJson)
-        self.assertEquals(out, {
+        self.assertEquals(out, expect)
+
+    def test_run_revsort(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/revsort.cwl',
+                     'src/toil/test/cwl/revsort-job.json',
+                     outDir, {
             # Having unicode string literals isn't necessary for the assertion but makes for a
             # less noisy diff in case the assertion fails.
             u'output': {
@@ -41,3 +48,13 @@ class CWLTest(ToilTest):
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+
+
+    def test_run_conformance(self):
+        rootDir = self._projectRootPath()
+        cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
+        if os.path.exists(cwlSpec):
+            subprocess.check_call(["git", "pull"], cwd=cwlSpec)
+        else:
+            subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
+        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil"], cwd=os.path.join(os.getcwd(), "src/toil/test/cwl/spec"))
