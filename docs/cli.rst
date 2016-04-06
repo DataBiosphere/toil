@@ -1,6 +1,19 @@
 Command Line Interface and Arguments
 ====================================
 
+Toil provides many command line options when running a toil script (see :ref:`running`), 
+or using Toil to run a CWL or WDL script. Many of these are described below. 
+For most Toil scripts executing '--help' will show this list of options.
+
+It is also possible to set and manipulate the options described when invoking a 
+Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOptions`, e.g.::
+
+    options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
+    options.logLevel = "INFO" # Set the log level to the info level.
+    
+    Job.Runner.startToil(Job(), options) # Run the script
+ 
+
 Logging
 -------
 Toil hides stdout and stderr by default except in case of job failure.
