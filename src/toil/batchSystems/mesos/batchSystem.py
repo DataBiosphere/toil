@@ -71,9 +71,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # queue of jobs to kill, by jobID.
         self.killSet = set()
 
-        # contains jobs on which killBatchJobs were called,
-        #regardless of whether or not they actually were killed or
-        #ended by themselves.
+        # Contains jobs on which killBatchJobs were called, regardless of whether or not they
+        # actually were killed or ended by themselves.
         self.intendedKill = set()
 
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and
@@ -163,7 +162,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
         # TODO: Ensure jobSet holds jobs that have been "launched" from Mesos
-        jobSet= set()
+        jobSet = set()
         for queue in self.jobQueueList.values():
             for item in queue:
                 jobSet.add(item.jobID)
@@ -275,7 +274,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         '127.0.0.1:123'
         """
         address = address.split(':')
-        assert len(address) in (1,2)
+        assert len(address) in (1, 2)
         address[0] = socket.gethostbyname(address[0])
         return ':'.join(address)
 
