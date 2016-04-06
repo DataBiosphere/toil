@@ -307,17 +307,17 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             driver.declineOffer(offer.id)
 
     def _determineOfferResources(self, offer):
-        offerCores = 0
-        offerMem = 0
-        offerStor = 0
+        cores = 0
+        memory = 0
+        disk = 0
         for resource in offer.resources:
             if resource.name == "cpus":
-                offerCores += resource.scalar.value
+                cores += resource.scalar.value
             elif resource.name == "mem":
-                offerMem += resource.scalar.value
+                memory += resource.scalar.value
             elif resource.name == "disk":
-                offerStor += resource.scalar.value
-        return offerCores, offerMem, offerStor
+                disk += resource.scalar.value
+        return cores, memory, disk
 
     def _prepareToRun(self, job_type, offer, index):
         jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
