@@ -32,7 +32,10 @@ def real_dir_name(p, n=1):
     print p
     return p
 
+if not hasattr(sys, 'real_prefix'):
+    raise RuntimeError('A virtualenv must be active and Sphinx must be installed in it')
 path_to_dir = os.path.dirname(os.path.abspath(__file__))
+
 subprocess.check_call('mkdir -p %s/generated_rst' % path_to_dir, shell=True)
 subprocess.check_call('cd %s/generated_rst && sphinx-apidoc -fo . ../../src/' % path_to_dir, shell=True)
 
