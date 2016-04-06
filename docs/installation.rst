@@ -135,6 +135,12 @@ after installing any native dependencies listed in :ref:`installation-ref`.
 
 .. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
 
+To build the docs use
+
+::
+
+    make docs
+
 To invoke the tests (unit and integration) use
 
 ::
@@ -222,14 +228,14 @@ which contains Troubleshooting sections.
 At this point, any toil script can be run on the distributed AWS cluster following instructions in :ref:`runningAWS`.
 
 Installation on Azure
-~~~~~~~~~~~~~~~~~~~~~
+---------------------
 
 TODO
 
 .. _installationOpenStack:
 
 Installation on OpenStack
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
 Our group is working to expand distributed cluster support to OpenStack by providing
 convenient Docker containers to launch Mesos from. Currently, OpenStack nodes can be setup
