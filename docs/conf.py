@@ -15,6 +15,7 @@ import sys
 import os
 import inspect
 import re
+import subprocess
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -31,6 +32,9 @@ def real_dir_name(p, n=1):
     print p
     return p
 
+path_to_dir = os.path.dirname(os.path.abspath(__file__))
+subprocess.check_call('mkdir -p %s/generated_rst' % path_to_dir, shell=True)
+subprocess.check_call('cd %s/generated_rst && sphinx-apidoc -fo . ../../src/' % path_to_dir, shell=True)
 
 assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
     "Another Toil installation seems to have precedence over this working directory."
