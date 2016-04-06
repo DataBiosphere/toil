@@ -71,9 +71,8 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         # queue of jobs to kill, by jobID.
         self.killSet = set()
 
-        # contains jobs on which killBatchJobs were called,
-        #regardless of whether or not they actually were killed or
-        #ended by themselves.
+        # Contains jobs on which killBatchJobs were called, regardless of whether or not they
+        # actually were killed or ended by themselves.
         self.intendedKill = set()
 
         # Dict of launched jobIDs to TaskData named tuple. Contains start time, executorID, and
@@ -163,7 +162,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         A list of jobs (as jobIDs) currently issued (may be running, or maybe just waiting).
         """
         # TODO: Ensure jobSet holds jobs that have been "launched" from Mesos
-        jobSet= set()
+        jobSet = set()
         for queue in self.jobQueueList.values():
             for item in queue:
                 jobSet.add(item.jobID)
@@ -275,7 +274,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         '127.0.0.1:123'
         """
         address = address.split(':')
-        assert len(address) in (1,2)
+        assert len(address) in (1, 2)
         address[0] = socket.gethostbyname(address[0])
         return ':'.join(address)
 
@@ -308,17 +307,17 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
             driver.declineOffer(offer.id)
 
     def _determineOfferResources(self, offer):
-        offerCores = 0
-        offerMem = 0
-        offerStor = 0
+        cores = 0
+        memory = 0
+        disk = 0
         for resource in offer.resources:
             if resource.name == "cpus":
-                offerCores += resource.scalar.value
+                cores += resource.scalar.value
             elif resource.name == "mem":
-                offerMem += resource.scalar.value
+                memory += resource.scalar.value
             elif resource.name == "disk":
-                offerStor += resource.scalar.value
-        return offerCores, offerMem, offerStor
+                disk += resource.scalar.value
+        return cores, memory, disk
 
     def _prepareToRun(self, job_type, offer, index):
         jt_job = self.jobQueueList[job_type][index]  # get the first element to insure FIFO
@@ -342,55 +341,68 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         """
         Invoked when resources have been offered to this framework.
         """
-        job_types = self._sortJobsByResourceReq()
+        jobTypes = self._sortJobsByResourceReq()
 
-        if len(job_types) == 0 or (len(self.getIssuedBatchJobIDs()) - len(self.getRunningBatchJobIDs()) == 0):
-            log.debug("Declining offers")
-            # If there are no jobs, we can get stuck with no jobs and no new offers until we decline it.
+        # TODO: We may want to assert that numIssued >= numRunning
+        if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
+            log.debug('There are no queued tasks. Declining Mesos offers.')
+            # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
             return
 
         # Right now, gives priority to largest jobs
         for offer in offers:
-            tasks = []
+            runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCores, offerMem, offerStor = self._determineOfferResources(offer)
-            log.debug("Received offer %s with cores: %s, disk: %s, and mem: %s" \
-                      % (offer.id.value, offerCores, offerStor, offerMem))
+            offerCores, offerMemory, offerDisk = self._determineOfferResources(offer)
+            log.debug('Received offer %s with %i MiB memory, %i core(s) and %i MiB of disk.',
+                      offer.id.value, offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
-            remainingMem = offerMem
-            remainingStor = offerStor
+            remainingMemory = offerMemory
+            remainingDisk = offerDisk
 
-            for job_type in job_types:
+            for jobType in jobTypes:
+                runnableTasksOfType = []
+                # Because we are not removing from the list until outside of the while loop, we
+                # must decrement the number of jobs left to run ourselves to avoid an infinite
+                # loop.
                 nextToLaunchIndex = 0
-                # Because we are not removing from the list until outside of the while loop, we must decrement the
-                # number of jobs left to run ourselves to avoid infinite loop.
-                while (len(self.jobQueueList[job_type]) - nextToLaunchIndex > 0) and \
-                                remainingCores >= job_type.cores and \
-                                remainingStor >= self.__bytesToMB(job_type.disk) and \
-                                remainingMem >= self.__bytesToMB(job_type.memory):  # toil specifies mem in bytes.
-
-                    task = self._prepareToRun(job_type, offer, nextToLaunchIndex)
-                    if int(task.task_id.value) not in self.runningJobMap:
-                        # check to make sure task isn't already running (possibly in very unlikely edge case)
-                        tasks.append(task)
-                        log.info("Preparing to launch Mesos task %s using offer %s..." % (
-                            task.task_id.value, offer.id.value))
-                        remainingCores -= job_type.cores
-                        remainingMem -= self.__bytesToMB(job_type.memory)
-                        remainingStor -= job_type.disk
+                # Toil specifies disk and memory in bytes but Mesos uses MiB
+                while (len(self.jobQueueList[jobType]) - nextToLaunchIndex > 0
+                       and remainingCores >= jobType.cores
+                       and remainingDisk >= toMiB(jobType.disk)
+                       and remainingMemory >= toMiB(jobType.memory)):
+                    task = self._prepareToRun(jobType, offer, nextToLaunchIndex)
+                    # TODO: this used to be a conditional but Hannes wanted it changed to an assert
+                    # TODO: ... so we can understand why it exists.
+                    assert int(task.task_id.value) not in self.runningJobMap
+                    runnableTasksOfType.append(task)
+                    log.info("Preparing to launch Mesos task %s using offer %s ...",
+                             task.task_id.value, offer.id.value)
+                    remainingCores -= jobType.cores
+                    remainingMemory -= toMiB(jobType.memory)
+                    remainingDisk -= jobType.disk
                     nextToLaunchIndex += 1
-
-            # If we put the launch call inside the while loop, multiple accepts are used on the same offer.
-            driver.launchTasks(offer.id, tasks)
-
-            for task in tasks:
-                self._updateStateToRunning(offer, task)
-                log.info("...launching Mesos task %s" % task.task_id.value)
-
-            if len(tasks) == 0:
-                log.debug("Offer %s not large enough to run any tasks. Required: %s Offered: %s"
-                          % (offer.id.value, job_types[-1], (self.__mbToBytes(offerMem), offerCores, self.__mbToBytes(offerStor))))
+                if self.jobQueueList[jobType] and not runnableTasksOfType:
+                    log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
+                              '%(requirements)r. Mesos offered %(memory)s memory, %(cores)i cores '
+                              'and %(disk)s of disk.', dict(offer=offer.id.value,
+                                                            requirements=jobType,
+                                                            memory=fromMiB(offerMemory),
+                                                            cores=offerCores,
+                                                            disk=fromMiB(offerDisk)))
+                runnableTasks.extend(runnableTasksOfType)
+            # Launch all runnable tasks together so we only call launchTasks once per offer
+            if runnableTasks:
+                driver.launchTasks(offer.id, runnableTasks)
+                for task in runnableTasks:
+                    self._updateStateToRunning(offer, task)
+                    log.info('Launched Mesos task %s.', task.task_id.value)
+            else:
+                log.info('Although there are queued jobs, none of them could be run with the' +
+                         'offers extended to the framework. Enable debug logging to see details '
+                         'about tasks queued and offers made.')
+                driver.declineOffer(offer.id)
 
     def _createTask(self, jt_job, offer):
         """
@@ -414,20 +426,20 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         disk = task.resources.add()
         disk.name = "disk"
         disk.type = mesos_pb2.Value.SCALAR
-        if self.__bytesToMB(jt_job.resources.disk) > 1:
-            disk.scalar.value = self.__bytesToMB(jt_job.resources.disk)
+        if toMiB(jt_job.resources.disk) > 1:
+            disk.scalar.value = toMiB(jt_job.resources.disk)
         else:
-            log.warning("Job %s uses less disk than mesos requires. Rounding %s bytes up to 1 mb" %
-                        (jt_job.jobID, jt_job.resources.disk))
+            log.warning("Job %s uses less disk than mesos requires. Rounding %s up to one MiB",
+                        jt_job.jobID, jt_job.resources.disk)
             disk.scalar.value = 1
         mem = task.resources.add()
         mem.name = "mem"
         mem.type = mesos_pb2.Value.SCALAR
-        if self.__bytesToMB(jt_job.resources.memory) > 1:
-            mem.scalar.value = self.__bytesToMB(jt_job.resources.memory)
+        if toMiB(jt_job.resources.memory) > 1:
+            mem.scalar.value = toMiB(jt_job.resources.memory)
         else:
-            log.warning("Job %s uses less memory than mesos requires. Rounding %s bytes up to 1 mb" %
-                        (jt_job.jobID, jt_job.resources.memory))
+            log.warning("Job %s uses less memory than mesos requires. Rounding %s up to one MiB",
+                        jt_job.jobID, jt_job.resources.memory)
             mem.scalar.value = 1
         return task
 
@@ -509,19 +521,11 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         log.warning("executor %s lost.".format(executorId))
 
     @staticmethod
-    def __bytesToMB(mem):
-        """
-        used when converting toil reqs to Mesos reqs
-        """
-        return mem / 1024 / 1024
-
-    @staticmethod
-    def __mbToBytes(mem):
-        """
-        used when converting Mesos reqs to Toil reqs
-        """
-        return mem * 1024 * 1024
-
-    @staticmethod
     def supportsWorkerCleanup():
         return True
+
+def toMiB(n):
+    return n / 1024 / 1024
+
+def fromMiB(n):
+    return n * 1024 * 1024
