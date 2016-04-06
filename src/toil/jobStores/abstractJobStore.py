@@ -470,6 +470,30 @@ class AbstractJobStore(object):
         """
         raise NotImplementedError()
 
+    fileUrlRegex = re.compile("[fF]ile://.+$")
+
+    @abstractmethod
+    def importFile(self, sourceUrl):
+        """
+        Imports file pointed at by sourceUrl into jobstore. The jobStoreFileId of the new file is
+        returned.
+
+        :param sourceUrl: URL of scheme 'file:' pointing to local files and urls pointing to the
+            local file scheme of the jobstore, e.g. 's3:' for AWS
+        :return jobStoreFileId
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def exportFile(self, jobStoreFileId, destUrl):
+        """
+        Exports file to destination pointed at by destUrl.
+
+        :param destUrl: URL of scheme 'file:' pointing to local files and urls pointing to the
+            local file scheme of the jobstore, e.g. 's3:' for AWS
+        """
+        raise NotImplementedError()
+
     ##########################################
     # The following methods deal with shared files, i.e. files not associated
     # with specific jobs.

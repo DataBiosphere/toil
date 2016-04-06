@@ -290,6 +290,14 @@ class AzureJobStore(AbstractJobStore):
                                                      encrypted=str(encrypted)))
         self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID})
 
+    # FIXME: implementation
+    def importFile(self, sourceUrl):
+        pass
+
+    # FIXME: implementation
+    def exportFile(self, jobStoreFileId, destUrl):
+        pass
+
     def readStatsAndLogging(self, callback, readAll=False):
         suffix = '_old'
         numStatsFiles = 0

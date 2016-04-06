@@ -24,6 +24,8 @@ import base64
 import hashlib
 import itertools
 import repr as reprlib
+import urlparse
+import shutil
 
 from bd2k.util import strict_bool
 from bd2k.util.objects import InnerClass
@@ -46,6 +48,44 @@ from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
+
+
+def copy_key_multipart(srcBucket, srcKey, dstBucket, dstKeyName, part_size=None, headers={}):
+    """
+    Copies a key pointed at by the src URL to the dst URL in multiple parts.
+
+    :param srcBucket: the bucket containing the key to be copied from
+    :param srcKey: the key to be copied from
+    :param dstBucket: the bucket containing the key to be copied to
+    :param str dstKeyName: the name of the key that will be copied to
+    :param int part_size: override the default part_size of 50MiB in bytes
+    :param headers: provide enc
+    """
+    # set part_size
+    partSize = part_size or 2**20 * 50  # default size of 50MiB
+    assert partSize > int(2**20 * 5) - 1  # part_size too small
+    assert partSize < int(2**30 * 5) + 1  # part_size too big
+    totalSize = srcKey.size
+
+    # initiate copy
+    upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
+    try:
+        start = 0
+        partIndex = itertools.count()
+        while start < totalSize:
+            end = min(start + partSize, totalSize)
+            upload.copy_part_from_key(src_bucket_name=srcBucket.name,
+                                      src_key_name=srcKey.name,
+                                      part_num=next(partIndex)+1,
+                                      start=start,
+                                      end=end-1,  # end is inclusive
+                                      headers=headers)
+            start += partSize
+    except:
+        upload.cancel_upload()
+        raise
+    else:
+        return upload.complete_upload()
 
 
 class AWSJobStore(AbstractJobStore):
@@ -298,6 +338,74 @@ class AWSJobStore(AbstractJobStore):
             log.debug("File %s does not exist, skipping deletion.", jobStoreFileID)
         else:
             info.delete()
+
+    nativeUrlRegex = re.compile(r"""
+        # url scheme
+        [sS]3://
+
+        # bucket name
+        #   (1) Must have length 3-255
+        #   (2) Contain only letters, numbers, dashes(-), periods(.), and underscores(_)
+        #   (3) successive periods are not allowed
+        #   (4) bucket name must start with a letter or number
+        [a-z0-9]   (?=(?:.{2,254}/))   ([a-z0-9-_] | ([.][a-z0-9-_]))*/
+
+        # key name
+        .+$
+    """, re.VERBOSE)
+
+    def importFile(self, sourceUrl):
+        url = urlparse.urlparse(sourceUrl)
+        if self.nativeUrlRegex.match(sourceUrl):
+            srcBucketName = url.netloc
+            srcKeyName = (url.path)[1:]
+            srcBucket = self._loadBucketOrFail(srcBucketName)
+
+            # create new file
+            info = self.FileInfo.create(srcKeyName)
+            info.copyFrom(srcBucket, srcKeyName)
+            info.save()
+
+        elif self.fileUrlRegex.match(sourceUrl):
+            localFilePath = url.netloc + url.path
+            if not os.path.exists(localFilePath):
+                raise RuntimeError("File pointed at by url '%s' does not exist" % sourceUrl)
+
+            # create new file
+            info = self.FileInfo.create(localFilePath.split('/')[-1])
+            info.upload(localFilePath)
+            info.save()
+
+        else:
+            raise RuntimeError("The url '%s' is not a valid file or s3 url" % sourceUrl)
+
+        return info.fileID
+
+    def exportFile(self, jobStoreFileID, destUrl):
+        url = urlparse.urlparse(destUrl)
+        info = self.FileInfo.loadOrFail(jobStoreFileID)
+
+        if self.nativeUrlRegex.match(destUrl):
+            dstBucket = self._loadBucketOrFail(url.netloc)
+            info.copyTo(dstBucket, url.path[1:])  # url path is the dest key name
+
+        elif self.fileUrlRegex.match(destUrl):
+            localFilePath = url.netloc + url.path
+            open(localFilePath, 'w+').close()  # NOTE: if the file already exists it will be overwritten here
+            self.readFile(jobStoreFileID, localFilePath)
+
+        else:
+            raise RuntimeError("The url '%s' is not a valid file or s3 url" % destUrl)
+
+    def _loadBucketOrFail(self, bucketName):
+        s3 = boto.connect_s3()
+        try:
+            b = s3.get_bucket(bucketName)
+        except S3ResponseError as e:
+            if e.error_code == 404:
+                raise RuntimeError("Bucket '%s' does not exist" % bucketName)
+            raise
+        return b
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         info = self.FileInfo.create(str(self.statsFileOwnerID))
@@ -675,6 +783,71 @@ class AWSJobStore(AbstractJobStore):
                 assert key.size == file_size
                 # Make resonably sure that the file wasn't touched during the upload
                 assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
+
+        def copyFrom(self, srcBucket, srcKeyName):
+            srcKey = srcBucket.get_key(srcKeyName)
+            if srcKey is None:
+                raise RuntimeError("key '%s' does not exists in bucket '%s'" % (srcKeyName, srcBucket))
+
+            headers = self._s3EncryptionHeaders()
+            if srcKey.size <= self._maxInlinedSize():
+                self.content = srcKey.get_contents_as_string()
+
+            elif srcKey.size < (2**20 * 5):
+                self.version = self.outer.filesBucket.copy_key(new_key_name=self.fileID,
+                                                               src_bucket_name=srcBucket.name,
+                                                               src_key_name=srcKey.name,
+                                                               headers=headers).version_id
+            else:
+                self.version = copy_key_multipart(srcBucket=srcBucket,
+                                                  srcKey=srcKey,
+                                                  dstBucket=self.outer.filesBucket,
+                                                  dstKeyName=self.fileID,
+                                                  headers=headers).version_id
+            # compare hashes
+            if self.encrypted:
+                log.debug("MD5 hash of imported or exported files cannot be checked."
+                          "It is possible that the file '%s' does not match the imported or exported file"
+                          % self._fileID)
+            elif srcKey.size <= self._maxInlinedSize():
+                assert hashlib.md5(self.content).hexdigest() == srcKey.etag[1:-1]
+            else:
+                assert self.outer.filesBucket.get_key(self._fileID).etag[1:-1] == srcKey.etag[1:-1]
+
+        def copyTo(self, dstBucket, dstKeyName):
+            headers = self._s3EncryptionHeaders()
+            if self.content is not None:
+                dstKey = dstBucket.new_key(dstKeyName)
+                dstKey.set_contents_from_string(self.content)
+                srcHash = hashlib.md5(self.content).hexdigest()
+
+            elif self.version:
+                copyHeaders = {}
+                for key in headers.keys():
+                    copyHeaders["amz-copy-source".join(key.split('amz'))] = headers[key]
+
+                if self.outer.filesBucket.get_key(self._fileID, headers=headers).size < (2**20 * 5):
+                    dstBucket.copy_key(new_key_name=dstKeyName,
+                                       src_bucket_name=self.outer.filesBucket.name,
+                                       src_key_name=self.fileID,
+                                       headers=copyHeaders)
+                else:
+                    copy_key_multipart(srcBucket=self.outer.filesBucket,
+                                       srcKey=self.outer.filesBucket.get_key(self.fileID, headers=headers),
+                                       dstBucket=dstBucket,
+                                       dstKeyName=dstKeyName,
+                                       headers=copyHeaders).version_id
+                srcHash = self.outer.filesBucket.get_key(self._fileID, headers=headers).etag[1:-1]
+
+            else:
+                assert False
+
+            if self.encrypted:
+                log.debug("MD5 hash of imported or exported files cannot be checked."
+                          "It is possible that the file '%s' does not match the imported or exported file"
+                          % self._fileID)
+            else:
+                assert dstBucket.get_key(dstKeyName).etag[1:-1] == srcHash
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):

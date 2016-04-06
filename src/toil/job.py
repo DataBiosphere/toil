@@ -748,6 +748,12 @@ class Job(object):
                 #This will result in the files removal from the cache at the end of the current job
                 self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
+        def importFile(self, sourceUrl):
+            return self.jobStore.importFile(sourceUrl)
+
+        def exportFile(self, jobStoreFileID, destUrl):
+            self.jobStore.exportFile(jobStoreFileID, destUrl)
+
         def logToMaster(self, text, level=logging.INFO):
             """
             Send a logging message to the leader. The message will also be \

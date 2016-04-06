@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
+import hashlib
 from contextlib import contextmanager
 import logging
 import marshal as pickler
@@ -22,12 +24,16 @@ import os
 import tempfile
 import stat
 import errno
+import urlparse
+
+import re
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
+
 
 class FileJobStore(AbstractJobStore):
     """
@@ -158,7 +164,7 @@ class FileJobStore(AbstractJobStore):
         fd, absPath = self._getTempFile(jobStoreID)
         with open(absPath, 'w') as f:
             yield f, self._getRelativePath(absPath)
-        os.close(fd) #Close the os level file descriptor
+        os.close(fd)  # Close the os level file descriptor
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         with self.writeFileStream(jobStoreID) as ( fileHandle, jobStoreFileID ):
@@ -186,6 +192,44 @@ class FileJobStore(AbstractJobStore):
         if not stat.S_ISREG(st.st_mode):
             raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
         return True
+
+    fileRegex = re.compile("[fF]ile://.+")
+
+    def importFile(self, sourceUrl, jobStoreID=None):
+        url = urlparse.urlparse(sourceUrl)
+        if self.fileUrlRegex.match(sourceUrl):
+            localFilePath = url.netloc + url.path
+
+            fd, absPath = self._getTempFile(jobStoreID)
+            shutil.copyfile(localFilePath, absPath)
+            os.close(fd)
+
+            jobStoreFileID = jobStoreID or self._getRelativePath(absPath)
+            self._assertFileMatchesJobStoreFileID(jobStoreFileID, localFilePath)
+            return jobStoreFileID
+        else:
+            raise RuntimeError("The url '%s' is not a valid file url" % sourceUrl)
+
+    def exportFile(self, jobStoreFileId, destUrl):
+        url = urlparse.urlparse(destUrl)
+        if self.fileUrlRegex.match(destUrl):
+            localFilePath = url.netloc + url.path
+            self.readFile(jobStoreFileId, localFilePath)
+            self._assertFileMatchesJobStoreFileID(jobStoreFileId, localFilePath)
+        else:
+            raise RuntimeError("The url '%s' is not a valid file url" % destUrl)
+
+    def _assertFileMatchesJobStoreFileID(self, jobStoreFileID, localFilePath):
+        assert self.fileExists(jobStoreFileID)
+        assert os.path.isfile(localFilePath)
+
+        with open(self._getAbsPath(jobStoreFileID), 'r') as f:
+            importedFileHash = hashlib.md5(f.read()).hexdigest()
+        with open(localFilePath, 'r') as f:
+            srcFileHash = hashlib.md5(f.read()).hexdigest()
+
+        assert importedFileHash == srcFileHash
+
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
