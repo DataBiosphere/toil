@@ -1571,10 +1571,9 @@ class ServiceJob(Job):
         #Unpickle the service
         userModule = self._loadUserModule(self.serviceModule)
         service = self._unpickle( userModule, BytesIO( self.pickledService ) )
+        #Start the service
+        startCredentials = service.start(fileStore)
         try:
-            #Start the service
-            startCredentials = service.start(fileStore)
-            
             #The start credentials  must be communicated to processes connecting to
             #the service, to do this while the run method is running we
             #cheat and set the return value promise within the run method
