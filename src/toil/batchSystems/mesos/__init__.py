@@ -44,4 +44,8 @@ ToilJob = namedtuple('ToilJob', (
     # A dictionary with additional environment variables to be set on the worker process
     'environment',
     # A named tuple containing all the required info for cleaning up the worker node
-    'workerCleanupInfo'))
+    'workerCleanupInfo',
+    # A string containing the resolved Mesos master address
+    'masterAddress',
+    # A path to the credentials file used when the Mesos master was set up
+    'mesosCredentials'))

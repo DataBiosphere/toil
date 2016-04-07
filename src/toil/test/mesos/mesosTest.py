@@ -62,7 +62,8 @@ class MesosTest(ToilTest, MesosTestSupport):
                 '-m', helloWorld.__name__,
                 './toilTest',
                 '--batchSystem=mesos',
+                '--mesosCredentials=%s' % self.mesosCredentials,
                 '--logLevel', getLogLevelString()])
 
     def test_stress_good(self):
-        stressMain(numJobs=2)
+        stressMain(numJobs=2, mesosCreds=self.mesosCredentials)
