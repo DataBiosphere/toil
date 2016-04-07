@@ -13,12 +13,16 @@
 # limitations under the License.
 from __future__ import absolute_import
 
+import urlparse
+
 import re
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from datetime import timedelta
 from uuid import uuid4
 from toil.job import JobException
+from bd2k.util import memoize
+from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 
 try:
     import cPickle
@@ -53,6 +57,46 @@ class NoSuchFileException(Exception):
 class JobStoreCreationException(Exception):
     def __init__(self, message):
         super(JobStoreCreationException, self).__init__(message)
+
+
+@memoize
+def getJobStoreClasses():
+    """
+    Compiles as list of the classes of all jobStores whose dependencies
+    are installed.
+
+    Note that job store names must be manually added.
+    """
+    jobStoreClassNames = (
+        "toil.jobStores.azureJobStore.AzureJobStore",
+        "toil.jobStores.fileJobStore.FileJobStore",
+        "toil.jobStores.aws.jobStore.AWSJobStore"
+    )
+
+    jobStoreClasses = []
+    for className in jobStoreClassNames:
+        moduleName, className = className.rsplit('.', 1)
+        from importlib import import_module
+        try:
+            module = import_module(moduleName)
+        except ImportError:
+            logger.info("Unable to import '%s'" % moduleName)
+        else:
+            jobStoreClasses.append(getattr(module, className))
+    return jobStoreClasses
+
+
+def findJobStoreForUrl(url):
+    """
+    Returns the AbstractJobStore subclass that supports the given URL.
+
+    :param urlparse.ParseResult url: The given URL
+    :rtype: toil.jobStore.AbstractJobStore
+    """
+    for cls in getJobStoreClasses():
+        if cls._supportsUrl(url):
+            return cls
+    raise RuntimeError("No existing job store supports the URL '%s'" % url)
 
 
 class AbstractJobStore(object):
@@ -158,10 +202,118 @@ class AbstractJobStore(object):
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
                                             "is nothing to restart." % jobStoreString)
 
+    def importFile(self, srcUrl):
+        """
+        Imports the file pointed at by sourceUrl into job store. The jobStoreFileId of the new
+        file is returned.
+
+        Note that the helper method _importFile is used to read from the source and write to
+        destination (which is the current job store in this case). To implement any optimizations that
+        circumvent this, the _importFile method should be overridden by subclasses of AbstractJobStore.
+
+        Currently supported schemes are:
+            - 's3' for objects in Amazon S3
+                e.g. s3://bucket/key
+
+            - 'wasb' for blobs in Azure Blob Storage
+                e.g. wasb://container/blob
+
+            - 'file' for local files
+                e.g. file://local/file/path
+
+        :param str srcUrl: URL that points to a file or object in the storage mechanism of a
+                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+        :return The jobStoreFileId of imported file.
+        :rtype: str
+        """
+        url = urlparse.urlparse(srcUrl)
+        return self._importFile(findJobStoreForUrl(url), url)
+
+    def _importFile(self, otherCls, url):
+        """
+        Refer to importFile docstring for information about this method.
+
+        :param type otherCls: The concrete subclass of AbstractJobStore that supports exporting to the given URL.
+        :param urlparse.ParseResult url: The parsed url given to importFile.
+        :return: The job store file ID of the imported file
+        :rtype: str
+        """
+        with self.writeFileStream() as (writable, jobStoreFileID):
+            otherCls._readFromUrl(url, writable)
+            return jobStoreFileID
+
+    def exportFile(self, jobStoreFileID, dstUrl):
+        """
+        Exports file to destination pointed at by the destination URL.
+
+        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
+        Note that the helper method _exportFile is used to read from the source and write to
+        destination. To implement any optimizations that circumvent this, the _exportFile method
+        should be overridden by subclasses of AbstractJobStore.
+
+        :param str jobStoreFileID: The id of the file in the job store that should be exported.
+        :param str dstUrl: URL that points to a file or object in the storage mechanism of a
+                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+        """
+        url = urlparse.urlparse(dstUrl)
+        return self._exportFile(findJobStoreForUrl(url), jobStoreFileID, url)
+
+    def _exportFile(self, otherCls, jobStoreFileID, url):
+        """
+        Refer to exportFile docstring for information about this method.
+
+        :param type otherCls: The concrete subclass of AbstractJobStore that supports exporting to the given URL.
+        :param str jobStoreFileID: The id of the file that will be exported.
+        :param urlparse.ParseResult url: The parsed url given to importFile.
+        """
+        with self.readFileStream(jobStoreFileID) as readable:
+            otherCls._writeToUrl(readable, url)
+
+    @abstractclassmethod
+    def _readFromUrl(cls, url, writable):
+        """
+        Reads the contents of the object at the specified location and writes it to the given
+        writable stream.
+
+        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
+        :param str url: URL that points to a file or object in the storage mechanism of a
+                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+        :param writable: a writable stream
+        """
+        raise NotImplementedError()
+
+    @abstractclassmethod
+    def _writeToUrl(cls, readable, url):
+        """
+        Reads the contents of the given readable stream and writes it to the object at the
+        specified location.
+
+        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
+        :param str url: URL that points to a file or object in the storage mechanism of a
+                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+        :param readable: a readable stream
+        """
+        raise NotImplementedError()
+
+    @abstractclassmethod
+    def _supportsUrl(cls, url):
+        """
+        Returns True if the job store supports the URL's scheme.
+
+        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
+        :param urlparse.ParseResult url: a parsed URL that may be supported
+        :return bool: returns true if the cls supports the URL
+        """
+        raise NotImplementedError()
+
     @abstractmethod
     def deleteJobStore(self):
         """
-        Removes the jobStore from the disk/store. Careful!
+        Removes the job store from the disk/store. Careful!
         """
         raise NotImplementedError()
 
@@ -435,7 +587,7 @@ class AbstractJobStore(object):
         
         jobStoreID is the id of a job, or None. If specified, when delete(job) 
         is called all files written with the given job.jobStoreID will be 
-        removed from the jobStore.
+        removed from the job store.
         """
         raise NotImplementedError()
 
@@ -457,7 +609,7 @@ class AbstractJobStore(object):
         
         jobStoreID is the id of a job, or None. If specified, when delete(job) 
         is called all files written with the given job.jobStoreID will be 
-        removed from the jobStore.
+        removed from the job store.
         
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
         """

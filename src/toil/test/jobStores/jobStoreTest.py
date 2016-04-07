@@ -14,26 +14,37 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
+
+import urlparse
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
 import hashlib
 from itertools import chain, islice
 import logging
 import os
+import io
 import urllib2
 from threading import Thread
 import tempfile
 import uuid
 import shutil
 import time
+import itertools
+import boto
+import codecs
+
 from unittest import skip
+from azure.storage import BlobService
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption
 
+from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
+from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib import encryption
+from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_tests
 logger = logging.getLogger(__name__)
+
 
 
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
@@ -66,7 +77,7 @@ class hidden:
 
         def setUp(self):
             super(hidden.AbstractJobStoreTest, self).setUp()
-            self.namePrefix = str(uuid.uuid4())
+            self.namePrefix = 'jobstore-test-' + str(uuid.uuid4())
             self.config = self._createConfig()
             self.master = self._createJobStore(self.config)
 
@@ -292,6 +303,80 @@ class hidden:
 
             # TODO: Who deletes the shared files?
 
+        @abstractclassmethod
+        def _getUrlForTestFile(cls, size=None):
+            """
+            Creates a test file of the specified size and returns a URL pointing to the file and an md5
+            hash of the contents of the file. If a size is not specified the file is not created but a
+            URL pointing to a non existent file is returned.
+
+            :param int size: The size of the test entity to be created.
+            :return: Either (URL, md5 hash string) or URL
+            """
+            raise NotImplementedError()
+
+        @abstractstaticmethod
+        def _hashUrl(url):
+            """
+            Returns md5 hash of the contents of the file pointed at by URL.
+            """
+            raise NotImplementedError()
+
+        @abstractmethod
+        def _hashJobStoreFileID(self, jobStoreFileID):
+            """
+            Returns md5 hash of file contents.
+            """
+            raise NotImplementedError()
+
+        @classmethod
+        def _externalStore(cls):
+            externalStore = cls._createExternalStore()
+            return externalStore
+
+        @abstractstaticmethod
+        def _createExternalStore():
+            raise NotImplementedError()
+
+        @abstractstaticmethod
+        def _cleanUpExternalStore(url):
+            raise NotImplementedError()
+
+        mpTestPartSize = 2**20 * 5
+
+        @classmethod
+        def makeImportExportTests(cls):
+            def importExportFile(self, otherJobStore, size):
+                # prepare random file for import
+                self.master.partSize = cls.mpTestPartSize
+                srcUrl, srcHash = otherJobStore._getUrlForTestFile(size)
+                self.addCleanup(otherJobStore._cleanUpExternalStore, srcUrl)
+
+                # test import
+                jobStoreFileID = self.master.importFile(srcUrl)
+                self.assertEqual(self._hashJobStoreFileID(jobStoreFileID),
+                                 srcHash)
+
+                # prepare destination for export
+                dstUrl = otherJobStore._getUrlForTestFile()
+                self.addCleanup(otherJobStore._cleanUpExternalStore, dstUrl)
+
+                # test export
+                self.master.exportFile(jobStoreFileID, dstUrl)
+                self.assertEqual(self._hashJobStoreFileID(jobStoreFileID),
+                                 otherJobStore._hashUrl(dstUrl))
+
+            jobStoreTestClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
+            make_tests(importExportFile,
+                       targetClass=cls,
+                       otherJobStore={jsCls.__name__: jsCls for jsCls in jobStoreTestClasses},
+                       size=dict(zero=0,
+                                 one=1,
+                                 oneMiB=2**20,
+                                 partSizeMinusOne=cls.mpTestPartSize - 1,
+                                 partSize=cls.mpTestPartSize,
+                                 partSizePlusOne=cls.mpTestPartSize + 1))
+
         def testFileDeletion(self):
             """
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
@@ -466,7 +551,7 @@ class hidden:
             # Running with the cache should be faster.
             self.assertTrue(cacheTime <= noCacheTime)
             
-        @skip("too slow") # This takes a long time on the remote JobStores
+        @skip("too slow")  # This takes a long time on the remote JobStores
         def testManyJobs(self):
             # Make sure we can store large numbers of jobs
             
@@ -534,6 +619,39 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
         return FileJobStore(self.namePrefix, config=config)
 
+    @classmethod
+    def _getUrlForTestFile(cls, size=None):
+        fileName = 'testfile_%s' % uuid.uuid4()
+        dirPath = cls._externalStore()
+        localFilePath = dirPath + fileName
+        url = 'file://%s' % localFilePath
+        if size is None:
+            return url
+        else:
+            content = os.urandom(size)
+            with open(localFilePath, 'w') as writable:
+                writable.write(content)
+
+            return url, hashlib.md5(content).hexdigest()
+
+    def _hashJobStoreFileID(self, jobStoreFileID):
+        return self._hashUrl('file://%s' % self.master._getAbsPath(jobStoreFileID))
+
+    @staticmethod
+    def _hashUrl(url):
+        localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
+        with open(localFilePath, 'r') as f:
+            return hashlib.md5(f.read()).hexdigest()
+
+    @staticmethod
+    def _createExternalStore():
+        return tempfile.mkdtemp()
+
+    @staticmethod
+    def _cleanUpExternalStore(url):
+        localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
+        os.remove(localFilePath)
+
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
@@ -544,8 +662,8 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        AWSJobStore.FileInfo.s3PartSize = partSize
-        return AWSJobStore.createJobStore(self.testRegion + ':' + self.namePrefix, config=config)
+        AWSJobStore.FileInfo.defaultS3PartSize = partSize
+        return AWSJobStore.loadOrCreateJobStore(self.testRegion + ':' + self.namePrefix, config=config, partSize=2**20*5)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -560,6 +678,72 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
 
+    @classmethod
+    def _getUrlForTestFile(cls, size=None):
+        fileName = 'testfile_%s' % uuid.uuid4()
+        bucket = cls._externalStore()
+        url = 's3://%s/%s' % (bucket.name, fileName)
+        if size is None:
+            return url
+        with open('/dev/urandom', 'r') as readable:
+            if size < cls.mpTestPartSize:
+                bucket.new_key(fileName).set_contents_from_string(readable.read(size))
+            else:
+                mp = bucket.initiate_multipart_upload(key_name=fileName)
+                start = 0
+                partNum = itertools.count()
+                partSize =cls.mpTestPartSize
+                try:
+                    while start < size:
+                        end = min(start + partSize, size)
+                        part = io.BytesIO(readable.read(partSize))
+                        mp.upload_part_from_file(fp=part,
+                                                 part_num=next(partNum) + 1,
+                                                 size=end - start)
+                        start = end
+                        if start == size:
+                            break
+
+                    assert start == size
+                except:
+                    mp.cancel_upload()
+                    raise
+                else:
+                    mp.complete_upload()
+        return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
+
+    def _hashJobStoreFileID(self, jobStoreFileID):
+        info = self.master.FileInfo.loadOrFail(jobStoreFileID)
+        headers = info._s3EncryptionHeaders()
+        key = self.master.filesBucket.get_key(jobStoreFileID, headers=headers)
+        content = key.get_contents_as_string(headers=headers) if key is not None else info.content
+
+        return hashlib.md5(content).hexdigest()
+
+    @staticmethod
+    def _hashUrl(url):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        bucket, key = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url))
+        return hashlib.md5(key.get_contents_as_string()).hexdigest()
+
+    @staticmethod
+    def _createExternalStore():
+        s3 = boto.connect_s3()
+        return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
+
+    @staticmethod
+    def _cleanUpExternalStore(url):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        try:
+            bucket, _ = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url))
+        except boto.exception.S3ResponseError as ex:
+            assert ex.error_code == 404
+        else:
+            s3 = boto.connect_s3()
+            for key in bucket.list():
+                key.delete()
+            s3.delete_bucket(bucket)
+
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
@@ -569,27 +753,28 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         from toil.jobStores.aws.jobStore import AWSJobStore
         return AWSJobStore.itemsPerBatchDelete
 
-
 @needs_aws
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         self.assertRaises(ValueError,
-                          AWSJobStore.createJobStore,
+                          AWSJobStore.loadOrCreateJobStore,
                           'us-west-2:a--b')
         self.assertRaises(ValueError,
-                          AWSJobStore.createJobStore,
+                          AWSJobStore.loadOrCreateJobStore,
                           'us-west-2:' + ('a' * 100))
         self.assertRaises(ValueError,
-                          AWSJobStore.createJobStore,
+                          AWSJobStore.loadOrCreateJobStore,
                           'us-west-2:a_b')
 
 
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
+    accountName = 'toiltest'
+
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore('toiltest', self.namePrefix, config=config)
+        return AzureJobStore(self.accountName, self.namePrefix, config=config)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -603,6 +788,46 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         job2 = self.master.load(job1.jobStoreID)
         self.assertIsNot(job1, job2)
         self.assertEqual(job2.command, command)
+
+    @classmethod
+    def _getUrlForTestFile(cls, size=None):
+        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+        fileName = 'testfile_%s' % uuid.uuid4()
+        containerName = cls._externalStore()
+        url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, cls.accountName, fileName)
+        if size is None:
+            return url
+        blobService = BlobService(account_key=_fetchAzureAccountKey(cls.accountName),
+                                  account_name=cls.accountName)
+        content = os.urandom(size)
+        blobService.put_block_blob_from_text(containerName, fileName, content)
+        return url, hashlib.md5(content).hexdigest()
+
+    def _hashJobStoreFileID(self, jobStoreFileID):
+        with self.master.readFileStream(jobStoreFileID) as f:
+            return hashlib.md5(f.read()).hexdigest()
+
+    @staticmethod
+    def _hashUrl(url):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        blobService, containerName, blobName = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
+        content = blobService.get_blob_to_bytes(containerName, blobName)
+        return hashlib.md5(content).hexdigest()
+
+    @staticmethod
+    def _createExternalStore():
+        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+        blobService = BlobService(account_key=_fetchAzureAccountKey(AzureJobStoreTest.accountName),
+                                  account_name=AzureJobStoreTest.accountName)
+        containerName = 'import-export-test-%s' % uuid.uuid4()
+        blobService.create_container(containerName)
+        return containerName
+
+    @staticmethod
+    def _cleanUpExternalStore(url):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
+        blobService.delete_container(containerName)
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
@@ -619,3 +844,5 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStore
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
+
+hidden.AbstractJobStoreTest.makeImportExportTests()

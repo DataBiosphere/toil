@@ -489,6 +489,37 @@ Also worth noting is that there is no file system hierarchy for files in the glo
 store. These limitations allow us to fairly easily support different object stores and to 
 use caching to limit the amount of network file transfer between jobs.
 
+File Staging
+~~~~~~~~~~~~
+Files can be imported or exported from the current job store prior to running the workflow
+when the :class:`toil.common.Toil` context manager is used. The context manager has methods
+:func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` which import
+files into and export files out of a job store respectively. The destination and source
+locations of such files are described with urls passed to the two methods a list of the
+currently supported urls can be found at :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`
+
+
+Example::
+
+    from toil.common import Toil
+    from toil.job import Job
+
+    class HelloWorld(Job):
+        def __init__(self, message):
+            Job.__init__(self,  memory="2G", cores=2, disk="3G")
+            self.message = message
+
+        def run(self, fileStore):
+            return "Hello, world!, here's a message: %s" % self.message
+
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
+        job = HelloWorld("enter the void empty and become wind")
+        with Toil(options) as toil:
+            jobStoreFileID = toil.fileStore(job).importFile('s3://somebucketname/anditskey')
+            toil.exportFile(jobStoreFileID, 'file:///some/local/path')
+            toil.run(job)
 
 Services
 --------

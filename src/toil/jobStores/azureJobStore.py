@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import urlparse
+import re
 import os
 import uuid
 import logging
@@ -29,7 +31,7 @@ from azure import WindowsAzureMissingResourceError, WindowsAzureError
 
 from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
                            BlobSharedAccessPermissions, EntityProperty)
-from bd2k.util import strict_bool
+from bd2k.util import strict_bool, memoize
 
 from bd2k.util.threading import ExceptionalThread
 
@@ -73,6 +75,7 @@ def _fetchAzureAccountKey(accountName):
 
 maxAzureTablePropertySize = 64 * 1024
 
+
 class AzureJobStore(AbstractJobStore):
     """
     A job store that uses Azure's blob store for file storage and
@@ -83,7 +86,7 @@ class AzureJobStore(AbstractJobStore):
         self.keyPath = None
 
         self.account_key = _fetchAzureAccountKey(accountName)
-
+        self.accountName = accountName
         # Table names have strict requirements in Azure
         self.namePrefix = self._sanitizeTableName(namePrefix)
         logger.debug("Creating job store with name prefix '%s'" % self.namePrefix)
@@ -191,6 +194,43 @@ class AzureJobStore(AbstractJobStore):
 
     def getEnv(self):
         return dict(AZURE_ACCOUNT_KEY=self.account_key)
+
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        blobService, containerName, blobName = cls._extractBlobInfoFromUrl(url)
+        blobService.get_blob_to_file(containerName, blobName, writable)
+
+    @classmethod
+    def _writeToUrl(cls, readable, url):
+        blobService, containerName, blobName = cls._extractBlobInfoFromUrl(url)
+        blobService.put_block_blob_from_file(containerName, blobName, readable)
+        blobService.get_blob(containerName, blobName)
+
+    @staticmethod
+    def _extractBlobInfoFromUrl(url):
+        """
+        :return: (blobService, containerName, blobName)
+        """
+        def invalidUrl():
+            raise RuntimeError("The URL '%s' is invalid" % url.geturl())
+
+        netloc = url.netloc.split('@')
+        if len(netloc) != 2:
+            invalidUrl()
+
+        accountEnd = netloc[1].find('.blob.core.windows.net')
+        if accountEnd == -1:
+            invalidUrl()
+
+        containerName, accountName = netloc[0], netloc[1][0:accountEnd]
+        blobName = url.path[1:]  # urlparse always includes a leading '/'
+        blobService = BlobService(account_key=_fetchAzureAccountKey(accountName),
+                                  account_name=accountName)
+        return blobService, containerName, blobName
+
+    @classmethod
+    def _supportsUrl(cls, url):
+        return url.scheme.lower() == 'wasb' or url.scheme.lower() == 'wasbs'
 
     def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
@@ -470,6 +510,7 @@ class AzureJobStore(AbstractJobStore):
     @contextmanager
     def _downloadStream(self, jobStoreFileID, container):
         # The reason this is not in the writer is so we catch non-existant blobs early
+
         blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
 
         encrypted = strict_bool(blobProps['x-ms-meta-encrypted'])
@@ -590,6 +631,7 @@ class AzureTable(object):
             if not next_partition_key and not next_row_key:
                 # If we run out of pages, stop
                 break
+
 
 class AzureBlobContainer(object):
     """
