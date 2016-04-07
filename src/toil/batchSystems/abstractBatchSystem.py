@@ -245,12 +245,12 @@ class InsufficientSystemResources(Exception):
     To be raised when a job requests more of a particular resource than is either currently allowed
     or avaliable
     """
-    def __init__(self, cores_or_mem, requested, available):
+    def __init__(self, resource, requested, available):
         """
         Creates an instance of this exception that indicates which resource is insufficient for current
         demands, as well as the amount requested and amount actually available.
 
-        :param str cores_or_mem: string representing the resource type
+        :param str resource: string representing the resource type
 
         :param int requested: the amount of the particular resource requested that resulted in this exception
 
@@ -258,8 +258,8 @@ class InsufficientSystemResources(Exception):
         """
         self.requested = requested
         self.available = available
-        self.cores_or_mem = cores_or_mem
+        self.resource = resource
 
     def __str__(self):
         return 'Requesting more {} than available. Requested: {}, Available: {}' \
-               ''.format(self.cores_or_mem, self.requested, self.available)
+               ''.format(self.resource, self.requested, self.available)
