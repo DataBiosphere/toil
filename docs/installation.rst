@@ -192,8 +192,8 @@ We use CGCloud_ to provision instances and clusters in AWS. Thorough documentati
 in the CGCloud-core_ and CGCloud-toil_ documentation. Brief steps will be provided to those
 interested in using CGCloud_ for provisioning.
 
- .. _CGCloud: https://github.com/BD2KGenomics/cgcloud/
- .. _CGCloud-core: https://github.com/BD2KGenomics/cgcloud/blob/master/core/README.rst
+.. _CGCloud: https://github.com/BD2KGenomics/cgcloud/
+.. _CGCloud-core: https://github.com/BD2KGenomics/cgcloud/blob/master/core/README.rst
 .. _CGCloud-toil: https://github.com/BD2KGenomics/cgcloud/blob/master/toil/README.rst
 
 CGCloud in a Nutshell
@@ -256,7 +256,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
     4. JumpboxConfiguration: If you would like, you can select to have either a Linux or Windows "jumpbox" with remote desktop software set up on the cluster's internal network. By default this is turned off, since it is unnecessary.
     5. DnsNameForJumpboxPublicIp: If you are using a jumpbox, enter another unique DNS name fragment here to set its DNS name. See ``DnsNameForMastersPublicIp`` above.
     6. **NewStorageAccountNamePrefix**: Enter a globally unique prefix to be used in the names of new storage accounts created to support the cluster. Storage account names must be 3 to 24 characters long, include only numbers and lower-case letters, and be globally unique. Since the template internally appends to this prefix, it must be shorter than the full 24 characters. Up to 20 should work.
-    7. **AgentCount**: Choose how many agents (i.e. woker nodes) you want in the cluster. Be mindful of your Azure subscription limits on both VMs (20 per region by default) and total cores (also 20 per region by default); if you ask for more agents or more total cores than you are allowed, you will not get them all, errors will occur during template instantiation, and the resulting cluster will be smaller than you wanted it to be.
+    7. **AgentCount**: Choose how many agents (i.e. worker nodes) you want in the cluster. Be mindful of your Azure subscription limits on both VMs (20 per region by default) and total cores (also 20 per region by default); if you ask for more agents or more total cores than you are allowed, you will not get them all, errors will occur during template instantiation, and the resulting cluster will be smaller than you wanted it to be.
     8. **AgentVmSize**: Choose from the available VM instance sizes to determine how big each node will be. Again, be mindful of your Azure subscription's core limits. Also be mindful of how many cores and how much disk and memory your Toil jobs will need: if any requirement is greater than that provided by an entire node, a job may never be scheduled to run.
     9. MasterCount: Choose the number of "masters" or leader nodes for the cluster. By default only one is used, because although the underlying Mesos batch system supports master failover, currently Toil does not. You can increase this if multiple Toil jobs will be running and you want them to run from different leader nodes. Remember that the leader nodes also count against your VM and core limits.
     10. MasterVmSize: Select one of the available VM sizes to use for the leader nodes. Generally the leader node can be relatively small.
@@ -291,5 +291,3 @@ Installation on OpenStack
 Our group is working to expand distributed cluster support to OpenStack by providing
 convenient Docker containers to launch Mesos from. Currently, OpenStack nodes can be setup
 to run Toil in **singleMachine** mode following the basic installation instructions: :ref:`installation-ref`
-
-

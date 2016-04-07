@@ -1,3 +1,5 @@
+.. _commandRef:
+
 Command Line Interface and Arguments
 ====================================
 
@@ -13,6 +15,8 @@ Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOpti
     
     Job.Runner.startToil(Job(), options) # Run the script
  
+
+.. _loggingRef:
 
 Logging
 -------
@@ -64,6 +68,16 @@ Toil uses resource requirements to intelligently schedule jobs. The defaults for
 can all be changed using ``--defaultCores``, ``--defaultDisk``, and ``--defaultMemory``. Standard suffixes
 like K, Ki, M, Mi, G or Gi are supported.
 
+
+Job Store
+---------
+
+Running toil scripts has one required positional argument: the job store.  The default job store is just a path
+to where the user would like the job store to be created. To use the :ref:`quickstart` example,
+if you're on a node that has a large **/scratch** volume, you can specify the jobstore be created there by
+executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
+``python HelloWorld.py file:/scratch/my-job-store``.  Toil uses the colon as way to explicitly name what type of
+job store the user would like.  Different types of job store options can be looked up in :ref:`jobStoreInterface`.
 
 Miscellaneous
 -------------
