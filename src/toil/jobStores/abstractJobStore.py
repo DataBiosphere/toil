@@ -18,6 +18,7 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from datetime import timedelta
 from uuid import uuid4
+from toil.job import JobException
 
 try:
     import cPickle
@@ -93,6 +94,49 @@ class AbstractJobStore(object):
     def config(self):
         return self.__config
 
+    def setRootJob(self, rootJobStoreID):
+        """
+        Set the root job of the workflow backed by this job store
+
+        :param str rootJobStoreID: The ID of the job to set as root
+        """
+        with self.writeSharedFileStream('rootJobStoreID') as f:
+            f.write(rootJobStoreID)
+
+    def loadRootJob(self):
+        """
+        Loads the root job in the current job store.
+
+        :raises toil.job.JobException: If not root job is set or if the root job doesn't exist in
+                this jobstore
+        :return: The root job.
+        :rtype: toil.jobWrapper.JobWrapper
+        """
+        try:
+            with self.readSharedFileStream('rootJobStoreID') as f:
+                rootJobID = f.read()
+        except NoSuchFileException:
+            raise JobException('No job has been set as the root in this job store')
+
+        if not self.exists(rootJobID):
+            raise JobException("The root job '%s' doesn't exist. Either the Toil workflow "
+                               "is finished or has never been started" % rootJobID)
+        return self.load(rootJobID)
+
+    def createRootJob(self, command, memory, cores, disk, predecessorNumber=0):
+        """
+        Create a new job and set it as the root job in this job store
+
+        :rtype : toil.jobWrapper.JobWrapper
+        """
+        rootJob = self.create(command=command,
+                              memory=memory,
+                              cores=cores,
+                              disk=disk,
+                              predecessorNumber=predecessorNumber)
+        self.setRootJob(rootJob.jobStoreID)
+        return rootJob
+
     @staticmethod
     def _checkJobStoreCreation(create, exists, jobStoreString):
         """
@@ -132,16 +176,19 @@ class AbstractJobStore(object):
 
     ##Cleanup functions
 
-    def clean(self, rootJobWrapper, jobCache=None):
+    def clean(self, jobCache=None):
         """
         Function to cleanup the state of a jobStore after a restart.
         Fixes jobs that might have been partially updated.
         Resets the try counts.
-        Removes jobs that are not successors of the rootJobWrapper.
+        Removes jobs that are not successors of the current root job.
         
         If jobCache is passed, it must be a dict from job ID to JobWrapper
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
+
+        :return: The root job of the workflow backed by this job store
+        :rtype: toil.jobWrapper.JobWrapper
         """
         # Iterate from the root jobWrapper and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
@@ -184,7 +231,7 @@ class AbstractJobStore(object):
                     reachableFromRoot.add(serviceJobStoreID)
 
         logger.info("Checking job graph connectivity...")
-        getConnectedJobs(rootJobWrapper)
+        getConnectedJobs(self.loadRootJob())
         logger.info("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup the state of each jobWrapper
@@ -201,7 +248,7 @@ class AbstractJobStore(object):
                 jobWrapper.filesToDelete = []
                 changed[0] = True
 
-            # Delete a jobWrapper if it is not reachable from the rootJobWrapper
+            # Delete a jobWrapper if it is not reachable from the rootJob
             if jobWrapper.jobStoreID not in reachableFromRoot:
                 logger.critical(
                     "Removing job: %s that is not a successor of the root job in cleanup" % jobWrapper.jobStoreID)
@@ -213,7 +260,7 @@ class AbstractJobStore(object):
             # This cleans up the case that the jobWrapper
             # had successors to run, but had not been updated to reflect this
             
-            if jobWrapper.command == None:
+            if jobWrapper.command is None:
                 stackSize = sum(map(len, jobWrapper.stack))
                 # Remove deleted jobs
                 jobWrapper.stack = map(lambda x : filter(lambda y : self.exists(y[0]), x), jobWrapper.stack)
@@ -285,6 +332,8 @@ class AbstractJobStore(object):
         self.readStatsAndLogging(lambda x: None)
 
         logger.info("Job store is clean")
+        # TODO: reloading of the rootJob may be redundant here
+        return self.loadRootJob()
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the

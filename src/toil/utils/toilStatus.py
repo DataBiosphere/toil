@@ -22,7 +22,7 @@ import sys
 from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import loadJobStore
+from toil.common import Toil
 from toil.leader import ToilState
 from toil.job import Job, JobException
 from toil.version import version
@@ -74,9 +74,9 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = loadJobStore(options.jobStore)
+    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
     try:
-        rootJob = Job._loadRootJob(jobStore)
+        rootJob = jobStore.loadRootJob()
     except JobException:
         print "The root job of the jobStore is not present, the toil workflow has probably completed okay"
         sys.exit(0)

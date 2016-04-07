@@ -22,6 +22,7 @@ import subprocess
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.common import Toil
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -36,6 +37,7 @@ log = logging.getLogger(__name__)
 defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', '10'))
 defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
 defaultN = int(os.environ.get('TOIL_TEST_SORT_N', str(defaultLineLen * defaultLines / 5)))
+
 
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     """
@@ -93,7 +95,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True
                 try:
-                    Job.Runner.startToil(firstJob, options)
+                    with Toil(options) as toil:
+                        toil.run()
                     self.fail()
                 except JobStoreCreationException:
                     pass
@@ -102,14 +105,16 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
                 # Now actually run the workflow
                 try:
-                    Job.Runner.startToil(firstJob, options)
+                    with Toil(options) as toil:
+                        toil.run(firstJob)
                     i = 0
                 except FailedJobsException as e:
                     i = e.numberOfFailedJobs
 
                 # Check we get an exception if we try to run without restart on an existing store
                 try:
-                    Job.Runner.startToil(firstJob, options)
+                    with Toil(options) as toil:
+                        toil.run(firstJob)
                     self.fail()
                 except JobStoreCreationException:
                     pass
@@ -121,7 +126,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 while i != 0:
                     options.useExistingOptions = random.random() > 0.5
                     try:
-                        Job.Runner.startToil(firstJob, options)
+                        with Toil(options) as toil:
+                            toil.run()
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
@@ -132,10 +138,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
                 try:
-                    Job.Runner.startToil(firstJob, options)
-                    self.fail()
+                    with Toil(options) as toil:
+                        toil.run()
                 except JobException:
                     pass
+                else:
+                    self.fail('Expected %s to be raised' % JobException )
 
                 # Now check the file is properly sorted..
                 with open(tempSortFile, 'r') as fileHandle:

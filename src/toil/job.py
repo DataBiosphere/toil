@@ -33,15 +33,13 @@ from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 from io import BytesIO
 from toil.resource import ModuleDescriptor
-from toil.common import loadJobStore
+from toil.common import Toil, addOptions
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 from toil.lib.bioio import (setLoggingFromOptions,
-                               getTotalCpuTimeAndMemoryUsage, getTotalCpuTime)
-from toil.common import setupToil, addOptions
-from toil.leader import mainLoop
-from toil.realtimeLogger import RealtimeLogger
+                            getTotalCpuTimeAndMemoryUsage,
+                            getTotalCpuTime)
 
 class Job(object):
     """
@@ -454,36 +452,15 @@ class Job(object):
             :param toil.job.Job job: root job of the workflow
             :raises: toil.leader.FailedJobsException if at the end of function \
             their remain failed jobs.
-            :returns: return value of job's run function
+            :return: The return value of the root job's run function.
+            :rtype: Any
             """
             setLoggingFromOptions(options)
+            with Toil(options) as toil:
+                if options.restart:
+                    job = None
+                return toil.run(job)
 
-            with setupToil(options, userScript=job.getUserScript()) as (config, batchSystem, jobStore):
-                with RealtimeLogger(batchSystem,
-                                    level=options.logLevel if options.realTimeLogging else None):
-                    logger.info("Downloading entire JobStore")
-                    jobCache = {jobWrapper.jobStoreID: jobWrapper
-                        for jobWrapper in jobStore.jobs()}
-                    logger.info("{} jobs downloaded.".format(len(jobCache)))
-                    if options.restart:
-                        #This cleans up any half written jobs after a restart
-                        jobStore.clean(job._loadRootJob(jobStore), jobCache=jobCache)
-                        rootJob = job._loadRootJob(jobStore)
-                    else:
-                        #Make a file to store the root jobs return value in
-                        jobStoreFileID = jobStore.getEmptyFileStoreID()
-                        #Add the root job return value as a promise
-                        if None not in job._rvs:
-                            job._rvs[None] = []
-                        job._rvs[None].append(jobStoreFileID)
-                        #Write the name of the promise file in a shared file
-                        with jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
-                            fH.write(jobStoreFileID)
-                        #Setup the first wrapper.
-                        rootJob = job._serialiseFirstJob(jobStore)
-                        #Make sure it's cached
-                        jobCache[rootJob.jobStoreID] = rootJob
-                    return mainLoop(config, batchSystem, jobStore, rootJob, jobCache=jobCache)
 
     class FileStore( object ):
         """
@@ -965,22 +942,6 @@ class Job(object):
         if predecessorJob in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
         self._directPredecessors.add(predecessorJob)
-
-    @staticmethod
-    def _loadRootJob(jobStore):
-        """
-        Loads the root job in the job store.
-        
-        :raises toil.job.JobException: If root job is not in the job store. 
-        :return: The root job.
-        :rtype: toil.job.Job
-        """
-        with jobStore.readSharedFileStream("rootJobStoreID") as f: #Load the root job
-            rootJobID = f.read()
-        if not jobStore.exists(rootJobID):
-            raise JobException("No root job (%s) left in toil workflow (workflow "
-                               "has finished successfully or not been started?)" % rootJobID)
-        return jobStore.load(rootJobID)
 
     @classmethod
     def _loadUserModule(cls, userModule):
@@ -1678,7 +1639,7 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
     """
     global promisedJobReturnValueUnpickleFunction_jobStore
     if promisedJobReturnValueUnpickleFunction_jobStore == None:
-        promisedJobReturnValueUnpickleFunction_jobStore = loadJobStore(jobStoreString)
+        promisedJobReturnValueUnpickleFunction_jobStore = Toil.loadOrCreateJobStore(jobStoreString)
     promiseFilesToDelete.add(jobStoreFileID)
     with promisedJobReturnValueUnpickleFunction_jobStore.readFileStream(jobStoreFileID) as fileHandle:
         value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.

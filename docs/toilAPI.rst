@@ -22,6 +22,13 @@ The Runner contains the methods needed to configure and start a Toil run.
 .. autoclass:: toil.job::Job.Runner
    :members:
    
+Toil
+----
+The Toil class provides for a more general way to configure and start a Toil run.
+
+.. autoclass:: toil.common::Toil
+   :members:
+
 Job.Service
 -----------
 The Service class allows databases and servers to be spawned within a Toil workflow.
@@ -66,8 +73,4 @@ Toil specific exceptions.
    :members:  
    
 .. autoclass:: toil.job::JobGraphDeadlockException
-   :members: 
-   
-
-
-   
+   :members:

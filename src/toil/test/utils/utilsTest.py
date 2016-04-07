@@ -27,7 +27,7 @@ from toil.lib.bioio import system
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.common import loadJobStore
+from toil.common import Toil
 
 
 class UtilsTest(ToilTest):
@@ -178,7 +178,7 @@ class UtilsTest(ToilTest):
         options.stats = True
         Job.Runner.startToil(RunTwoJobsPerWorker(), options)
 
-        jobStore = loadJobStore(options.jobStore)
+        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
         stats = getStats(options)
         collatedStats =  processData(jobStore.config, stats, options)
         self.assertTrue(len(collatedStats.job_types)==2,"Some jobs are not represented in the stats")

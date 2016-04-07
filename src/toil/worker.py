@@ -28,7 +28,7 @@ import cPickle
 import shutil
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
-from toil.common import getToilWorkflowDir
+from toil.common import Toil
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -75,7 +75,6 @@ def main():
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.lib.bioio import makePublicDir
     from toil.lib.bioio import system
-    from toil.common import loadJobStore
     from toil.job import Job
     
     ########################################## 
@@ -89,7 +88,7 @@ def main():
     #Load the jobStore/config file
     ##########################################
     
-    jobStore = loadJobStore(jobStoreString)
+    jobStore = Toil.loadOrCreateJobStore(jobStoreString)
     config = jobStore.config
     
     ##########################################
@@ -124,7 +123,7 @@ def main():
 
     setLogLevel(config.logLevel)
 
-    toilWorkflowDir = getToilWorkflowDir(config.workflowID, config.workDir)
+    toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.
@@ -453,7 +452,7 @@ def main():
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
 
-		# logToMaster messages should be always be passed
+        # logToMaster messages should be always be passed
         statsDict.workers.logsToMaster = messages
 
         # log the worker log path here so that if the file is truncated the path can still be found

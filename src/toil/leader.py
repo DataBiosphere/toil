@@ -22,8 +22,6 @@ import json
 from multiprocessing import Process
 from multiprocessing import Event as ProcessEvent
 import cPickle
-import sys
-import traceback
 
 from bd2k.util.expando import Expando
 from toil import resolveEntryPoint
@@ -614,6 +612,7 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
     failed jobs
     
     :return: The return value of the root job's run function.
+    :rtype: Any
     """
 
     # Get a snap shot of the current state of the jobs in the jobStore
@@ -651,25 +650,18 @@ def mainLoop(config, batchSystem, jobStore, rootJobWrapper, jobCache=None):
 
     # Cleanup
     if len(toilState.totalFailedJobs) > 0:
-        if config.clean == "onError" or config.clean == "always" :
-            jobStore.deleteJobStore()
         raise FailedJobsException( config.jobStore, len(toilState.totalFailedJobs) )
 
     # Parse out the return value from the root job
-    with jobStore.readSharedFileStream("rootJobReturnValue") as fH:
-        jobStoreFileID = fH.read()
-    with jobStore.readFileStream(jobStoreFileID) as fH:
-        try:
-            rootJobReturnValue = cPickle.load(fH)
-        except EOFError:
-            logger.exception("Failed to unpickle root job return value")
-            raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs)
+    with jobStore.readSharedFileStream("rootJobReturnValue") as jobStoreFileID:
+        with jobStore.readFileStream(jobStoreFileID.read()) as fH:
+            try:
+                return cPickle.load(fH)  # rootJobReturnValue
+            except EOFError:
+                logger.exception("Failed to unpickle root job return value")
+                raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs)
 
-    # Cleanup
-    if config.clean == "onSuccess" or config.clean == "always":
-        jobStore.deleteJobStore()
 
-    return rootJobReturnValue
 
 def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging):
     # Putting this in separate function for easier reading
@@ -891,11 +883,12 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
         serviceManager.check()
 
     logger.info("Finished the main loop")
-    
+
     # Consistency check the toil state
     assert toilState.updatedJobs == set()
-    assert toilState.successorCounts == { }
-    assert toilState.successorJobStoreIDToPredecessorJobs == { }
-    assert toilState.serviceJobStoreIDToPredecessorJob == { }
-    assert toilState.servicesIssued == { }
-    #assert toilState.hasFailedSuccessors == set() # These are not properly emptied yet
+    assert toilState.successorCounts == {}
+    assert toilState.successorJobStoreIDToPredecessorJobs == {}
+    assert toilState.serviceJobStoreIDToPredecessorJob == {}
+    assert toilState.servicesIssued == {}
+    # assert toilState.hasFailedSuccessors == set() # These are not properly emptied yet
+

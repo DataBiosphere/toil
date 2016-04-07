@@ -438,17 +438,16 @@ class hidden:
             master = self.master
 
             # Create parent job
-            rootJob = master.create('rootjob', 12, 34, 35)
-            
+            rootJob = master.createRootJob('rootjob', 12, 34, 35)
             # Create a bunch of child jobs
             for i in range(100):
                 child = master.create("child%s" % i, 23, 45, 46, 1)
                 rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
             master.update(rootJob)
-            
+
             # See how long it takes to clean with no cache
             noCacheStart = time.time()
-            master.clean(rootJob)
+            master.clean()
             noCacheEnd = time.time()
             
             noCacheTime = noCacheEnd - noCacheStart
@@ -457,7 +456,7 @@ class hidden:
             jobCache = {jobWrapper.jobStoreID: jobWrapper
                         for jobWrapper in master.jobs()}
             cacheStart = time.time()
-            master.clean(rootJob, jobCache=jobCache)
+            master.clean(jobCache)
             cacheEnd = time.time()
             
             cacheTime = cacheEnd - cacheStart
@@ -475,7 +474,7 @@ class hidden:
             master = self.master
 
             # Create parent job
-            rootJob = master.create('rootjob', 12, 34, 35)
+            rootJob = master.createRootJob('rootjob', 12, 34, 35)
             
             # Create a bunch of child jobs
             for i in range(3000):

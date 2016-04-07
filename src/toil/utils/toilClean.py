@@ -15,12 +15,11 @@
 """
 from __future__ import absolute_import
 import logging
-import os
 import sys
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import loadJobStore
+from toil.common import Toil
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 from toil.version import version
 
@@ -51,7 +50,7 @@ def main():
     ##########################################
     logger.info("Checking if we have files for toil")
     try:
-        jobStore = loadJobStore(options.jobStore)
+        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
     except JobStoreCreationException:
         logger.info("The specified JobStore does not exist, it may have already been deleted")
         sys.exit(0)
