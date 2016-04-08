@@ -54,8 +54,9 @@ class CWLTest(ToilTest):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
         if os.path.exists(cwlSpec):
-            subprocess.check_call(["git", "fetch"], cwd=cwlSpec)
+            subprocess.call(["git", "fetch"], cwd=cwlSpec)
         else:
             subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
         subprocess.check_call(["git", "checkout", "4daac6db94ccf626c4509fe0c3e645ceda23f50a"], cwd=cwlSpec)
-        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=draft-3"], cwd=os.path.join(os.getcwd(), "src/toil/test/cwl/spec"))
+        subprocess.check_call(["git", "clean", "-f", "-x", "."], cwd=cwlSpec)
+        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=draft-3"], cwd=cwlSpec)
