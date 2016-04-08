@@ -298,7 +298,3 @@ class LSFBatchSystem(AbstractBatchSystem):
         if self.maxCPU is 0 or self.maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.info("Got the maxCPU: %s" % (self.maxMEM))
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return False
