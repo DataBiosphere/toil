@@ -15,6 +15,7 @@ from __future__ import absolute_import
 import json
 import os
 import subprocess
+import StringIO
 
 from toil.test import ToilTest, needs_cwl
 
@@ -24,16 +25,12 @@ class CWLTest(ToilTest):
     def _tester(self, cwlfile, jobfile, outDir, expect):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
-        outputJson = os.path.join(outDir, 'cwl.output.json')
-        try:
-            cwltoil.main(['--outdir', outDir,
-                          os.path.join(rootDir, cwlfile),
-                          os.path.join(rootDir, jobfile)])
-            with open(outputJson) as f:
-                out = json.load(f)
-        finally:
-            if os.path.exists(outputJson):
-                os.remove(outputJson)
+        st = StringIO.StringIO()
+        cwltoil.main(['--outdir', outDir,
+                            os.path.join(rootDir, cwlfile),
+                            os.path.join(rootDir, jobfile)],
+                     stdout=st)
+        out = json.loads(st.getvalue())
         self.assertEquals(out, expect)
 
     def test_run_revsort(self):
