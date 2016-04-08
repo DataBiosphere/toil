@@ -1,6 +1,7 @@
 # Implement support for Common Workflow Language (CWL) for Toil.
 #
 # Copyright (C) 2015 Curoverse, Inc
+# Copyright (C) 2016 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +22,7 @@ from argparse import ArgumentParser
 import cwltool.main
 import cwltool.workflow
 import cwltool.expression
-from cwltool.process import adjustFiles, shortname
+from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary
 from cwltool.aslist import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -111,10 +112,25 @@ def resolve_indirect(d):
     else:
         return res
 
-def getFile(fileStore, dir, fileStoreID, fileName, index=None, copy=False):
+def getFile(fileStore, dir, fileTuple, index=None, copy=False, primary=None, rename_collision=False):
+    fileStoreID, fileName = fileTuple
+
+    if rename_collision is False:
+        if primary:
+            dir = os.path.dirname(primary)
+        else:
+            dir = tempfile.mkdtemp(dir=dir)
+
     srcPath = fileStore.readGlobalFile(fileStoreID)
     dstPath = os.path.join(dir, fileName)
     if srcPath != dstPath:
+        if rename_collision:
+            n = 1
+            while os.path.exists(dstPath):
+                n += 1
+                stem, ext = os.path.splitext(dstPath)
+                stem = "%s_%s" % (stem, n)
+                dstPath = stem + ext
         if copy:
             shutil.copyfile(srcPath, dstPath)
         else:
@@ -128,7 +144,8 @@ def getFile(fileStore, dir, fileStoreID, fileName, index=None, copy=False):
 
 def writeFile(fileStore, index, x):
     if x not in index:
-        index[x] = (fileStore.writeGlobalFile(x), x.split('/')[-1])
+        rp = os.path.realpath(x)
+        index[x] = (fileStore.writeGlobalFile(rp), os.path.basename(x))
     return index[x]
 
 class StageJob(Job):
@@ -174,7 +191,8 @@ class FinalJob(Job):
         cwljob = resolve_indirect(self.cwljob)
 
         index={}
-        adjustFiles(cwljob, lambda x: getFile(fileStore, self.outdir, *x, index=index, copy=True))
+        adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, self.outdir, index=index, copy=True, rename_collision=True))
+
         with open(os.path.join(self.outdir, "cwl.output.json"), "w") as f:
             json.dump(cwljob, f, indent=4)
         return True
@@ -210,7 +228,7 @@ class CWLJob(Job):
         # Copy input files out of the global file store.
 
         index={}
-        adjustFiles(cwljob, lambda x: getFile(fileStore, inpdir, *x, index=index))
+        adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index))
 
         logging.getLogger("cwltool").setLevel(logging.DEBUG)
 
@@ -293,6 +311,10 @@ class CWLScatter(Job):
         outputs = []
 
         self.vfinputs = cwljob
+
+        shortscatter = [shortname(s) for s in scatter]
+        cwljob = {k: self.valueFromFunc(k, v) if k not in shortscatter else v
+                    for k,v in cwljob.items()}
 
         if scatterMethod == "dotproduct":
             for i in xrange(0, len(cwljob[shortname(scatter[0])])):
