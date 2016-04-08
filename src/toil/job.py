@@ -474,10 +474,10 @@ class Job(object):
             """
             setLoggingFromOptions(options)
             with Toil(options) as toil:
-                if options.restart:
-                    job = None
-                return toil.run(job)
-
+                if not options.restart:
+                    return toil.start(job)
+                else:
+                    return toil.restart()
 
     class FileStore( object ):
         """

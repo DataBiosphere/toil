@@ -16,62 +16,75 @@ from __future__ import absolute_import
 
 import uuid
 
-import shutil
-
-import os
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest
-import tempfile
+from toil.leader import FailedJobsException
+from toil.test import ToilTest, make_tests
 
 
 class ImportExportFileTest(ToilTest):
     def setUp(self):
-        self.srcFile = "%s/%s" % (tempfile.mkdtemp(), uuid.uuid4())
-        with open(self.srcFile, 'w') as f:
-            f.write(os.urandom(2**10))
+        super(ImportExportFileTest, self).setUp()
+        self._tempDir = self._createTempDir()
+        self.dstFile = '%s/%s' % (self._tempDir, 'out')
 
-    def tearDown(self):
-        shutil.rmtree(self.srcFile.rsplit('/', 1)[0])
+    def _importExportFile(self, options, fail):
+        with Toil(options) as toil:
+            if not options.restart:
 
-    def testImportExportFile(self):
+                srcFile = '%s/%s%s' % (self._tempDir, 'in', uuid.uuid4())
+                with open(srcFile, 'w') as f:
+                    f.write('Hello')
+                inputFileID = toil.importFile('file://' + srcFile)
+
+                # Write a boolean that determines whether the job fails.
+                with toil._jobStore.writeFileStream() as (f, failFileID):
+                    self.failFileID = failFileID
+                    f.write(str(fail))
+
+                outputFileID = toil.start(HelloWorld(inputFileID, self.failFileID))
+            else:
+                # Set up job for failure
+                with toil._jobStore.updateFileStream(self.failFileID) as f:
+                    f.write('False')
+
+                outputFileID = toil.restart()
+
+            toil.exportFile(outputFileID, 'file://' + self.dstFile)
+            with open(self.dstFile, 'r') as f:
+                assert f.read() == "HelloWorld!"
+
+    def _importExport(self, restart):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
-        job = HelloWorld()
-        with Toil(options) as toil:
-            jobStoreFileID = toil.importFile('file://%s' % self.srcFile)
-            assert toil.jobStore.fileExists(jobStoreFileID)
 
-            destPath = '%s/%s' % (self.srcFile.rsplit('/', 1)[0], uuid.uuid4())
-            toil.exportFile(jobStoreFileID, 'file://%s' % destPath)
-            assert os.path.exists(destPath)
+        if restart:
+            try:
+                self._importExportFile(options, fail=True)
+            except FailedJobsException:
+                options.restart = True
 
-            toil.run(job)
+        self._importExportFile(options, fail=False)
+
+    def testImportExportRestartTrue(self):
+        self._importExport(restart=True)
+
+    def testImportExportRestartFalse(self):
+        self._importExport(restart=False)
 
 
 class HelloWorld(Job):
-    def __init__(self):
-        Job.__init__(self,  memory=100000, cores=2, disk="3G")
+    def __init__(self, inputFileID, failFileID):
+        Job.__init__(self,  memory=100000, cores=1, disk="1M")
+        self.inputFileID = inputFileID
+        self.failFileID = failFileID
 
     def run(self, fileStore):
-        fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="1M").rv()
-        self.addFollowOn(FollowOn(fileID))
-
-
-def childFn(job):
-    with job.fileStore.writeGlobalFileStream() as (fH, fileID):
-        fH.write("Hello, World!")
-        return fileID
-
-
-class FollowOn(Job):
-    def __init__(self,fileId):
-        Job.__init__(self)
-        self.fileId=fileId
-
-    def run(self, fileStore):
-        tempDir = fileStore.getLocalTempDir()
-        tempFilePath = "/".join([tempDir,"LocalCopy"])
-        with fileStore.readGlobalFileStream(self.fileId) as globalFile:
-            with open(tempFilePath, "w") as localFile:
-                localFile.write(globalFile.read())
+        with fileStore.readGlobalFileStream(self.failFileID) as failValue:
+            if failValue.read() == 'True':
+                raise RuntimeError('planned exception')
+            else:
+                with fileStore.readGlobalFileStream(self.inputFileID) as fi:
+                    with fileStore.writeGlobalFileStream() as (fo, outputFileID):
+                        fo.write(fi.read() + 'World!')
+                        return outputFileID

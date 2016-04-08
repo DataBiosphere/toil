@@ -22,7 +22,7 @@ import subprocess
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
-from toil.common import Toil
+from toil.common import Toil, ToilConfigException
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -96,7 +96,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.restart = True
                 try:
                     with Toil(options) as toil:
-                        toil.run()
+                        toil.restart()
                     self.fail()
                 except JobStoreCreationException:
                     pass
@@ -106,7 +106,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Now actually run the workflow
                 try:
                     with Toil(options) as toil:
-                        toil.run(firstJob)
+                        toil.start(firstJob)
                     i = 0
                 except FailedJobsException as e:
                     i = e.numberOfFailedJobs
@@ -114,7 +114,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Check we get an exception if we try to run without restart on an existing store
                 try:
                     with Toil(options) as toil:
-                        toil.run(firstJob)
+                        toil.start(firstJob)
                     self.fail()
                 except JobStoreCreationException:
                     pass
@@ -127,7 +127,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     options.useExistingOptions = random.random() > 0.5
                     try:
                         with Toil(options) as toil:
-                            toil.run()
+                            toil.restart()
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
@@ -139,7 +139,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # indicating that there are no jobs remaining in the workflow.
                 try:
                     with Toil(options) as toil:
-                        toil.run()
+                        toil.restart()
                 except JobException:
                     pass
                 else:

@@ -582,7 +582,7 @@ def main(args=None, stdout=sys.stdout):
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
 
-        outobj = toil.run(wf1)
+        outobj = toil.start(wf1)
         outobj = resolve_indirect(outobj)
 
         adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={}, export=True, rename_collision=True))

@@ -33,7 +33,7 @@ class JobWrapperTest(ToilTest):
 
     def tearDown(self):
         self.toil.__exit__(None, None, None)
-        self.toil.jobStore.deleteJobStore()
+        self.toil._jobStore.deleteJobStore()
         self.assertFalse(os.path.exists(self.jobStorePath))
         super(JobWrapperTest, self).tearDown()
     
