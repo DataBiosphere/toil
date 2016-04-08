@@ -32,7 +32,7 @@ def real_dir_name(p, n=1):
     return p
 
 if not hasattr(sys, 'real_prefix'):
-    raise RuntimeError('A virtualenv must be active')
+    raise RuntimeError('A virtualenv must be active and Sphinx must be installed in it')
 
 assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
     "Another Toil installation seems to have precedence over this working directory."
