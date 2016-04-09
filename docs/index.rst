@@ -24,16 +24,16 @@ Toil is a workflow engine entirely written in Python. It features:
   
   Develop and test on your laptop then deploy on any of the following:
   
-  - Commercial clouds
-    + `Amazon Web Services`_ (including the `spot market`_)
-    + `Microsoft Azure`_
-  - Private clouds
-    + `OpenStack`_
-  - High Performance Computing Environments
-    + `GridEngine`_
-    + `Apache Mesos`_
-    + `Parasol`_
-    + Individual multi-core machines
+  - Commercial clouds:
+    - `Amazon Web Services`_ (including the `spot market`_)
+    - `Microsoft Azure`_
+  - Private clouds:
+    - `OpenStack`_
+  - High Performance Computing Environments:
+    - `GridEngine`_
+    - `Apache Mesos`_
+    - `Parasol`_
+    - Individual multi-core machines
 
 * A small API 
   
@@ -70,7 +70,7 @@ Toil is a workflow engine entirely written in Python. It features:
 
 * Support for databases and services:
 
-  For example, Apache Spark clusters can be created in seconds and easily
+  For example, Apache Spark clusters can be created quickly and easily
   integrated within a toil workflow as a service, with precisely defined time
   start and end times that fits with the flow of other jobs in the workflow.
 
