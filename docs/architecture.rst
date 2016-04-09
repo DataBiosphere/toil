@@ -94,5 +94,10 @@ that can use preemptable nodes allows for workflows to be efficiently scheduled 
 Caching
 ~~~~~~~
 
-ARJUN - please write something useful here.
-
+Running bioinformatic pipelines requires efficient passing of large datasets between jobs. Toil
+caches the resuts from jobs such that child jobs running on the same node can directly use the same
+file object, thereby eliminating the need an intermediary transfer to the job store. Multiple child
+jobs using the same file passed from a parent share the same physical file object and reduce the
+burden on the disk. This allows pipelines to run faster, and also allows users to run more jobs
+in parallel as parallelly running jobs requesting the same file share a portion of their requested
+disk.
