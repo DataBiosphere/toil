@@ -156,23 +156,27 @@ class AbstractBatchSystem:
     @staticmethod
     def supportsWorkerCleanup():
         """
-        Indicates whether the batch system supports the cleanup of workers on shutdown
+        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
+        a particular workflow invocation finishes. Note that the term *worker* refers to an
+        entire node, not just a worker process. A worker process may run more than one job
+        sequentially, and more than one concurrent worker process may exist on a worker node,
+        for the same workflow. The batch system is said to *shut down* after the last worker
+        process terminates.
         """
-        raise NotImplementedError('Abstract method')
+        return False
 
     @staticmethod
-    def workerCleanup(workerCleanupInfo):
+    def workerCleanup(info):
         """
-        Cleans up the worker node on batch system shutdown. For now it does nothing.
-        :param collections.namedtuple workerCleanupInfo: A named tuple consisting of all the
-        relevant information for cleaning up the worker.
+        Cleans up the worker node on batch system shutdown. Also see :meth:`supportsWorkerCleanup`.
+
+        :param WorkerCleanupInfo info: A named tuple consisting of all the relevant information
+               for cleaning up the worker.
         """
-        # FIXME: not the correct way to check for a type (Hannes)
-        assert workerCleanupInfo.__class__.__name__ == 'WorkerCleanupInfo'
-        workflowDir = Toil.getWorkflowDir(workerCleanupInfo.workflowID, workerCleanupInfo.workDir)
-        dirIsEmpty = os.listdir(workflowDir) == []
-        cleanWorkDir = workerCleanupInfo.cleanWorkDir
-        if cleanWorkDir == 'always' or dirIsEmpty and cleanWorkDir in ('onSuccess', 'onError'):
+        assert isinstance(info, WorkerCleanupInfo)
+        workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
+        if (info.cleanWorkDir == 'always'
+            or info.cleanWorkDir in ('onSuccess', 'onError') and os.listdir(workflowDir) == []):
             shutil.rmtree(workflowDir)
 
 

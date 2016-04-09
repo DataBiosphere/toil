@@ -346,7 +346,3 @@ class ParasolBatchSystem(AbstractBatchSystem):
         for results in self.resultsFiles.values():
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return False

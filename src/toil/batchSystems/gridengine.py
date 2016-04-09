@@ -365,8 +365,3 @@ class GridengineBatchSystem(AbstractBatchSystem):
         if value and ',' in value:
             raise ValueError("GridEngine does not support commata in environment variable values")
         return AbstractBatchSystem.setEnv(self, name, value)
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return False
-

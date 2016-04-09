@@ -200,7 +200,6 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         self.inputQueue = None
         for i in xrange(self.numWorkers):
             inputQueue.put(None)
-
         for thread in self.workerThreads:
             thread.join()
         AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
