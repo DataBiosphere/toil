@@ -96,7 +96,24 @@ Caching
 
 Running bioinformatic pipelines often require the passing of large datasets between jobs. Toil
 caches the results from jobs such that child jobs running on the same node can directly use the same
-file objects, thereby eliminating the need for an intermediary transfer to the job store. Caching also
-reduces the burden on the local disks, because multiple jobs can share a single file. 
+file objects, thereby eliminating the need for an intermediary transfer to the job store. Caching
+also reduces the burden on the local disks, because multiple jobs can share a single file.
 The resulting drop in I/O allows pipelines to run faster, and, by the sharing of files, 
 allows users to run more jobs in parallel by reducing overall disk requirements.  
+
+To demonstrate the efficiency of caching, we ran an experimental internal pipeline on 3 samples from
+the TCGA Lung Squamous Carcinoma (LUSC) dataset. The pipeline takes the tumor and normal exome
+fastqs, and the tumor rna fastq and input, and predicts MHC presented neoepitopes in the patient
+that are potential targets for T-cell based immunotherapies. The pipeline was run individually on
+the samples on c3.8xlarge machines on AWS (60GB RAM,600GB SSD storage, 32 cores). The pipeline
+aligns the data to hg19-based references, predicts MHC haplotypes using PHLAT, calls mutations using
+2 callers (MuTect and RADIA) and annotates them using SnpEff, then predicts MHC:peptide binding
+using the IEDB suite of tools before running an in-house boosting algorithm on the final calls.
+
+To optimize time taken, The pipeline is written such that mutations are called on a per-chromosome
+basis from the whole-exome bams and are merged into a complete vcf. Running mutect in parallel on
+whole exome bams requires each mutect job to download the complete Tumor and Normal Bams to their
+working directories -- An operation that quickly fills the disk and limits the parallelizability of
+jobs. The script was run in Toil, with and without caching, and Supplementary figure 2 of the
+Toil manuscript shows that the workflow finishes faster in the cached case while using less disk on
+average than the uncached run. We believe that benefits of caching arising from file transfers
