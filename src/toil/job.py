@@ -1998,7 +1998,8 @@ class Job(object):
 
             :raise RuntimeError: If the service failed, this will cause the service job to be labeled failed.
             :returns: True if the service is still running, else False. If False then the service job will be terminated,
-            and considered a success.
+            and considered a success. Important point: if the service job exits due to a failure, it should raise a
+            RuntimeError, not return False!
             """
             pass
 
