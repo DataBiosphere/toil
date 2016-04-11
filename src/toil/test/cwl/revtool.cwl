@@ -4,6 +4,10 @@
     class: CommandLineTool
     description: "Reverse each line using the `rev` command"
 
+    requirements:
+      - class: ResourceRequirement
+        ramMax: 256
+
     # The "inputs" array defines the structure of the input object that describes
     # the inputs to the underlying program.  Here, there is one input field
     # defined that will be called "input" and will contain a "File" object.
