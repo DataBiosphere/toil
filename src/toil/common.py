@@ -650,8 +650,8 @@ class Toil(object):
         """
         workFlowDirRegexp = re.compile('^toil-[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab]'
                                        '[a-f0-9]{3}-?[a-f0-9]{12}\Z', re.I)
-        selfWorkFlowDir = cls.getWorkflowDir(workflowID, configWorkDir)
-        return [d for d in os.listdir(os.path.dirname(selfWorkFlowDir))
+        workDir = os.path.dirname(cls.getWorkflowDir(workflowID, configWorkDir))
+        return [os.path.join(workDir, d) for d in os.listdir(workDir)
                 if re.match(workFlowDirRegexp, d)]
 
     def _assertContextManagerIsUsed(self):
