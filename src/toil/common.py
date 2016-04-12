@@ -58,6 +58,7 @@ class Config(object):
         #Batch system options
         self.batchSystem = "singleMachine"
         self.scale = 1
+        self.mesosCredentials = '/etc/mesos/credentials'
         self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
         self.parasolMaxBatches = 10000
@@ -149,6 +150,7 @@ class Config(object):
         #Batch system options
         setOption("batchSystem")
         setOption("scale", float, fC(0.0))
+        setOption("mesosCredentials")
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
@@ -240,6 +242,10 @@ def _addOptions(addGroupFn, config):
                       "Used in singleMachine batch system. default=%s" % config.scale))
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
                 help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
+    addOptionFn("--mesosCredentials", dest="mesosCredentials", default=None,
+                help=("A path to a credentials file used to authenticate Mesos HTTP requests. The "
+                      "file contains one line with \"<principal><tab><secret>\. NOTE: The file has "
+                      "to be present on the master and on ALL slaves. default=%s" % config.mesosCredentials))
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The name or path of the parasol program. Will be looked up on PATH "
                            "unless it starts with a slashdefault=%s" % config.parasolCommand)

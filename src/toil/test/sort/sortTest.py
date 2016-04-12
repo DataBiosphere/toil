@@ -49,7 +49,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
     def _toilSort(self, jobStore, batchSystem,
-                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
+                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen, mesosCreds=None,
                   retryCount=2, badWorker=0.5, downCheckpoints=False):
         """
         Generate a file consisting of the given number of random lines, each line of the given
@@ -76,6 +76,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.logLevel = getLogLevelString()
                 options.retryCount = retryCount
                 options.batchSystem = batchSystem
+                options.mesosCredentials = mesosCreds
                 options.clean = "never"
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
@@ -161,7 +162,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testAwsMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._awsJobStore(), batchSystem="mesos")
+            self._toilSort(jobStore=self._awsJobStore(), batchSystem="mesos",
+                           mesosCreds=self.mesosCredentials)
         finally:
             self._stopMesos()
 
@@ -169,7 +171,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testFileMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem="mesos")
+            self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem="mesos",
+                           mesosCreds=self.mesosCredentials)
         finally:
             self._stopMesos()
 
@@ -182,10 +185,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testAzureMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStore=self._azureJobStore(), batchSystem="mesos")
+            self._toilSort(jobStore=self._azureJobStore(), batchSystem="mesos",
+                           mesosCreds=self.mesosCredentials)
         finally:
             self._stopMesos()
-            
+
     def testFileSingle(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine')
 

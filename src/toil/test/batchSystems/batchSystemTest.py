@@ -20,12 +20,16 @@ from inspect import getsource
 import logging
 import os
 import tempfile
+import json
 from textwrap import dedent
 import time
 import multiprocessing
 import sys
 import subprocess
 from unittest import skipIf
+import requests
+import random
+import uuid
 
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -191,6 +195,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
+        self.config.mesosCredentials = self.mesosCredentials  # Setup in _startMesos
         return MesosBatchSystem(config=self.config,
                                 maxCores=numCores, maxMemory=1e9, maxDisk=1001,
                                 masterAddress='127.0.0.1:5050')
@@ -198,6 +203,77 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def tearDown(self):
         self._stopMesos()
         super(MesosBatchSystemTest, self).tearDown()
+
+    def testAggressiveDynamicReservation(self):
+        time.sleep(1)  # Allow short time for the Mesos master and slave to come up fully
+
+        def getSlaveInfo():
+            content = requests.get('http://127.0.0.1:5050/master/slaves')
+            return content.json()['slaves'][0]
+
+        def runJob(outer, call):
+            self.batchSystem.issueBatchJob(call, **defaultRequirements)
+            # Wait for, and ensure the job ended
+            exitStatus = None
+            while exitStatus is None:
+                _, exitStatus = outer.batchSystem.getUpdatedBatchJob(maxWait=100)
+            self.assertEqual(exitStatus, 0)
+            time.sleep(1)  # Give Mesos time to react to the reservation
+
+        # This directory is guaranteed to be in the same filesystem as the working directory, but
+        # outside the workDir (since workdir will also be created with tempfile.mkdtemp) and hence
+        # will contribute towards the leftovers.
+        nonWorkDir = self._createTempDir('non-toil-working')
+        testFile = os.path.join(nonWorkDir, 'test.txt')
+        # First, run a dummy job that does nothing of import. When the job finishes, the
+        # reservations will be updated by the amount of space taken up on the Mesos-tracked disk
+        # since the slave was configured (if any) -- This is typically just the files that the slave
+        # creates upon startup and should be 1 - 1.5Mb at max.
+        runJob(self, "touch %s" % testFile)
+        firstJobInfo = getSlaveInfo()
+        if firstJobInfo['reserved_resources']:
+            self.assertAlmostEqual(firstJobInfo['reserved_resources']['toil_leftover']['disk'],
+                                   1, delta=1)
+        # Now we create many jobs job that write or delete small files from the non-working-dir
+        # location (hence affecting leftover) and we will then assert the reservation has changed
+        # appropriately.  This requires accounting for the size of the Mesos logs.
+        writtenFiles = []
+        i = 20
+        previousReservation = 0
+        while i > 0:
+            write = random.random() <= 0.6
+            if write:
+                writtenFiles.append((os.path.join(nonWorkDir, str(uuid.uuid4())),
+                                     random.randint(30,100)))
+                runJob(self, "dd if=/dev/urandom of=%s bs=1M count=%s" % writtenFiles[-1])
+                fileSize = writtenFiles[-1][1]
+            else:
+                if not writtenFiles:
+                    continue
+                fileToDelete, fileSize = random.choice(writtenFiles)
+                runJob(self, "rm %s" % fileToDelete)
+                writtenFiles.remove((fileToDelete, fileSize))
+                fileSize *= -1
+            secondJobInfo = getSlaveInfo()
+            if writtenFiles:
+                self.assertTrue(secondJobInfo['reserved_resources'])
+                self.assertAlmostEqual(secondJobInfo['reserved_resources']['toil_leftover']['disk'],
+                                       previousReservation + fileSize, delta=1)
+                previousReservation = secondJobInfo['reserved_resources']['toil_leftover']['disk']
+            else:
+                previousReservation = 0
+            i -= 1
+        # Lastly, we can delete all written  files
+        totalSize = 0
+        for fileToDelete, fileSize in writtenFiles:
+            totalSize += fileSize
+            runJob(self, "rm %s" % fileToDelete)
+        thirdJobInfo = getSlaveInfo()
+        if thirdJobInfo['reserved_resources']:
+            thirdJobReservedDisk = thirdJobInfo['reserved_resources']['toil_leftover']['disk']
+        else:
+            thirdJobReservedDisk = 0
+        self.assertAlmostEqual(thirdJobReservedDisk, previousReservation - totalSize, delta=1)
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):

@@ -58,7 +58,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         self.userScript = userScript
         self.toilDistribution = toilDistribution
 
-        # Written to when mesos kills tasks, as directed by toil
+        # Written to when Mesos kills tasks, as directed by toil
         self.killedSet = set()
 
         # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
@@ -67,6 +67,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
 
         # Address of Mesos master in the form host:port where host can be an IP or a hostname
         self.masterAddress = masterAddress
+
+        # Path to the Mesos credentials file
+        self.mesosCredentials = config.mesosCredentials
 
         # queue of jobs to kill, by jobID.
         self.killSet = set()
@@ -117,7 +120,9 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
                       userScript=self.userScript,
                       toilDistribution=self.toilDistribution,
                       environment=self.environment.copy(),
-                      workerCleanupInfo=self.workerCleanupInfo)
+                      workerCleanupInfo=self.workerCleanupInfo,
+                      masterAddress=self.resolveAddress(self.masterAddress),
+                      mesosCredentials=self.mesosCredentials)
         job_type = job.resources
 
         log.debug("Queueing the job command: %s with job id: %s ..." % (command, str(jobID)))
@@ -429,7 +434,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if toMiB(jt_job.resources.disk) > 1:
             disk.scalar.value = toMiB(jt_job.resources.disk)
         else:
-            log.warning("Job %s uses less disk than mesos requires. Rounding %s up to one MiB",
+            log.warning("Job %s uses less disk than Mesos requires. Rounding %s up to one MiB",
                         jt_job.jobID, jt_job.resources.disk)
             disk.scalar.value = 1
         mem = task.resources.add()
@@ -438,7 +443,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if toMiB(jt_job.resources.memory) > 1:
             mem.scalar.value = toMiB(jt_job.resources.memory)
         else:
-            log.warning("Job %s uses less memory than mesos requires. Rounding %s up to one MiB",
+            log.warning("Job %s uses less Memory than mesos requires. Rounding %s up to one MiB",
                         jt_job.jobID, jt_job.resources.memory)
             mem.scalar.value = 1
         return task

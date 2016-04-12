@@ -59,12 +59,13 @@ class HelloWorldFollowOn(Job):
     def run(self, fileStore):
         touchFile( fileStore)
 
-def main(numJobs):
+def main(numJobs, mesosCreds):
     # Boilerplate -- startToil requires options
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args( args=["./toilTest"] )
     options.batchSystem="mesos"
+    options.mesosCredentials = mesosCreds
     # Launch first toil Job
     i = LongTestJob( numJobs )
     Job.Runner.startToil(i,  options )

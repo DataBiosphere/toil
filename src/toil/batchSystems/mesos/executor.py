@@ -20,6 +20,8 @@ import pickle
 import logging
 import subprocess
 import traceback
+import json
+import requests
 from time import sleep
 
 import psutil
@@ -28,21 +30,26 @@ from mesos.interface import mesos_pb2
 import mesos.native
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, WorkerCleanupInfo
 from toil.resource import Resource
+from fcntl import flock, LOCK_EX
 
 log = logging.getLogger(__name__)
 
 
 class MesosExecutor(mesos.interface.Executor):
     """
-    Part of mesos framework, runs on mesos slave. A toil job is passed to it via the task.data field, and launched
-    via call(toil.command). Uses the ExecutorDriver to communicate.
+    Part of Mesos framework, runs on Mesos slave. A Toil job is passed to it via the task.data
+    field, and launched via call(toil.command). Uses the ExecutorDriver to communicate.
     """
-
     def __init__(self):
         super(MesosExecutor, self).__init__()
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
+        # Required for dynamic disk offers
+        self.deadSpace = None
+        self.masterAddress = None
+        self.mesosCredentials = None
+
         Resource.prepareSystem()
         # FIXME: clean up resource root dir
 
@@ -102,24 +109,67 @@ class MesosExecutor(mesos.interface.Executor):
         def runTask():
             log.debug("Running task %s", task.task_id.value)
             sendUpdate(mesos_pb2.TASK_RUNNING)
-            # This is where task.data is first invoked. Using this position to setup cleanupInfo
             taskData = pickle.loads(task.data)
             if self.workerCleanupInfo is not None:
                 assert self.workerCleanupInfo == taskData.workerCleanupInfo
+                assert self.masterAddress == taskData.masterAddress
+                assert self.mesosCredentials == taskData.mesosCredentials
             else:
+                # This is where task.data is invoked for the first time on this executor. Using this
+                # position to setup workerCleanupInfo, masterAddress, mesosCredentials, and
+                # deadSpace for this executor.
                 self.workerCleanupInfo = taskData.workerCleanupInfo
+                self.masterAddress = taskData.masterAddress
+                self.mesosCredentials = taskData.mesosCredentials
+                # Now that we have a master address, we can find the dead space on the node
+                # Dead space is defined as the space on the disk unavailable to Mesos. By default,
+                # this includes all the used space, and 50% of the free disk space, or 5GB
+                # (whichever is less) when the slave was set up. When we calculate the used disk for
+                # reservations, we need to factor this in.
+                slaveInfo = self._getSlaveInfo(task.slave_id.value)
+                diskSize = AbstractBatchSystem.getFileSystemSize(**self.workerCleanupInfo._asdict())
+                diskSize = round(diskSize / 1024 / 1024.0)
+                if round(slaveInfo['resources']['disk']) < 2560:  # (0.5 * 5GB)
+                    initialFreeSize = round(2 * slaveInfo['resources']['disk'])
+                else:
+                    initialFreeSize = round(slaveInfo['resources']['disk']) + 5120
+                self.deadSpace = diskSize - initialFreeSize
+            # Set the environment variable TOIL_USABLE_DISK
+            slaveInfo = self._getSlaveInfo(task.slave_id.value)
+            os.environ['TOIL_USABLE_DISK'] = str(slaveInfo['unreserved_resources']['disk'])
             try:
                 popen = runJob(taskData)
                 self.runningTasks[task.task_id.value] = popen.pid
+                exitStatus = None
                 try:
                     exitStatus = popen.wait()
-                    if 0 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_FINISHED)
-                    elif -9 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_KILLED)
-                    else:
-                        sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
                 finally:
+                    # Update the reservations based on whatever the job left behind.  Use a file
+                    # lock to overcome race conditions between concurrent processes on a worker.
+                    with open(self.mesosCredentials, 'r+') as lockFile:
+                        flock(lockFile, LOCK_EX)
+                        slaveInfo = self._getSlaveInfo(task.slave_id.value)
+                        usedDisk = AbstractBatchSystem.probeUsedDisk(
+                                        **self.workerCleanupInfo._asdict())
+                        usedDisk = round(usedDisk / 1024 / 1024.0) - self.deadSpace
+                        # If there have been no previous reservations, reserve the whole amount
+                        if not slaveInfo['reserved_resources']:
+                            self._updateSlaveReservations(task.slave_id.value, delta=usedDisk)
+                        elif usedDisk != slaveInfo['reserved_resources']['toil_leftover']['disk']:
+                            # Else if the used disk has gone up or down, reserve or unreserve the
+                            # delta respectively
+                            delta = usedDisk - slaveInfo['reserved_resources']['toil_leftover'
+                                                                                ]['disk']
+                            self._updateSlaveReservations(task.slave_id.value, delta=delta)
+                        else:
+                            pass  # No Change
+                    if exitStatus is not None:
+                        if 0 == exitStatus:
+                            sendUpdate(mesos_pb2.TASK_FINISHED)
+                        elif -9 == exitStatus:
+                            sendUpdate(mesos_pb2.TASK_KILLED)
+                        else:
+                            sendUpdate(mesos_pb2.TASK_FAILED, message=str(exitStatus))
                     del self.runningTasks[task.task_id.value]
             except:
                 exc_info = sys.exc_info()
@@ -152,6 +202,45 @@ class MesosExecutor(mesos.interface.Executor):
 
         thread = threading.Thread(target=runTask)
         thread.start()
+
+    def _getSlaveInfo(self, slaveId):
+        """
+        Return a dict containing the information Mesos provides about slave with ID == slaveId
+
+        :param slaveId: Id of the slave of interest
+        """
+        # This doesn't need authentication
+        slaveInfos = requests.get('http://' + self.masterAddress + '/master/slaves').json()['slaves']
+        return next(slaveInfo for slaveInfo in slaveInfos if slaveInfo['id'] == slaveId)
+
+    def _updateSlaveReservations(self, slaveID, delta):
+        """
+        Updates the reservation of toil-disk on slave slaveID by delta. if delta is positive, make
+        a reserve request and if it is negative, make an unreserve request.
+
+        :param str slaveID: Id of the slave. required for reserve and unreserve requests
+        :param int delta: The value to reserve/unreserve (positive/negative).
+        :return: None
+        """
+        endpoint = 'unreserve' if delta < 0 else 'reserve'
+        delta = abs(delta)
+        url = 'http://' + self.masterAddress + '/master/' + endpoint
+        with open(self.mesosCredentials, 'r') as cF:
+            username, password = cF.readline().strip().split()
+        resourceRequest = {'slaveId': slaveID,
+                           'resources': json.dumps([{"name": "disk",
+                                                     "type": "SCALAR",
+                                                     "scalar": { "value": delta},
+                                                     "role": "toil_leftover",
+                                                     "reservation": {"principal": "toil"}}])}
+        log.debug("Sending a %s request to the Mesos master." % endpoint)
+        content = requests.post(url, auth=(username, password), data=resourceRequest)
+        if content.status_code == 200:
+            log.debug("Successfully '%sd' an additional (%s)mb on slave (%s)" % (endpoint, delta,
+                                                                                 slaveID))
+        else:
+            log.warn("Failed to '%s' an additional (%s)mb on slave (%s)" % (endpoint, delta,
+                                                                            slaveID))
 
     def frameworkMessage(self, driver, message):
         """
