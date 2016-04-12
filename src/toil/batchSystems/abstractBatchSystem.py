@@ -244,7 +244,7 @@ class AbstractBatchSystem:
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError') and os.listdir(workflowDir) == []):
-        shutil.rmtree(workflowDir)
+            shutil.rmtree(workflowDir)
 
 
 class InsufficientSystemResources(Exception):
