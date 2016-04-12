@@ -108,12 +108,29 @@ that are potential targets for T-cell based immunotherapies. The pipeline was ru
 the samples on c3.8xlarge machines on AWS (60GB RAM,600GB SSD storage, 32 cores). The pipeline
 aligns the data to hg19-based references, predicts MHC haplotypes using PHLAT, calls mutations using
 2 callers (MuTect and RADIA) and annotates them using SnpEff, then predicts MHC:peptide binding
-using the IEDB suite of tools before running an in-house boosting algorithm on the final calls.
+using the IEDB suite of tools before running an in-house rank boosting algorithm on the final calls.
 
 To optimize time taken, The pipeline is written such that mutations are called on a per-chromosome
 basis from the whole-exome bams and are merged into a complete vcf. Running mutect in parallel on
 whole exome bams requires each mutect job to download the complete Tumor and Normal Bams to their
 working directories -- An operation that quickly fills the disk and limits the parallelizability of
-jobs. The script was run in Toil, with and without caching, and Supplementary figure 2 of the
-Toil manuscript shows that the workflow finishes faster in the cached case while using less disk on
-average than the uncached run. We believe that benefits of caching arising from file transfers
+jobs. The script was run in Toil, with and without caching, and Figure 2 shows that the workflow
+finishes faster in the cached case while using less disk on average than the uncached run. We
+believe that benefits of caching arising from file transfers will be much higher on magnetic
+disk-based storage systems as compared to the SSD systems we tested this on.
+
+.. figure:: caching_benefits.png
+    :width: 700px
+    :align: center
+    :height: 1000px
+    :alt: alternate text
+    :figclass: align-center
+
+    Figure 2: Efficiency gain from caching. The lower half of each plot describes the disk used by
+    the pipeline recorded every 10 minutes over the duration of the pipeline, and the upper half
+    shows the corresponding stage of the pipeline that is being processed. Since jobs requesting the
+    same file shared the same inode, the effective load on the disk is considerably lower than in
+    the uncached case where every job downloads a personal copy of every file it needs. We see that
+    in all cases, the uncached run uses almost 300-400GB more that the uncached run in the resource
+    heavy mutation calling step. We also see a benefit in terms of wall time for each stage since we
+    eliminate the time taken for file transfers.
