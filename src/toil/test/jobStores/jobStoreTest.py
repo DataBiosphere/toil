@@ -377,6 +377,20 @@ class hidden:
                                  partSize=cls.mpTestPartSize,
                                  partSizePlusOne=cls.mpTestPartSize + 1))
 
+        @classmethod
+        def makeImportOnlyTests(cls):
+            def importHttpFile(self):
+                # prepare random file for import
+                self.master.partSize = cls.mpTestPartSize
+                srcUrl = 'https://raw.githubusercontent.com/BD2KGenomics/toil/master/Makefile'
+                srcHash = hashlib.md5(urllib2.urlopen(srcUrl).read()).hexdigest()
+                # test import
+                jobStoreFileID = self.master.importFile(srcUrl)
+                self.assertEqual(self._hashJobStoreFileID(jobStoreFileID), srcHash)
+
+            make_tests(importHttpFile, targetClass=cls)
+
+
         def testFileDeletion(self):
             """
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
@@ -846,3 +860,4 @@ class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobS
     pass
 
 hidden.AbstractJobStoreTest.makeImportExportTests()
+hidden.AbstractJobStoreTest.makeImportOnlyTests()

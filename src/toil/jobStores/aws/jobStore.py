@@ -331,8 +331,9 @@ class AWSJobStore(AbstractJobStore):
         return bucket, key
 
     @classmethod
-    def _supportsUrl(cls, url):
+    def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
+
 
     def writeFile(self, localFilePath, jobStoreID=None):
         info = self.FileInfo.create(jobStoreID)

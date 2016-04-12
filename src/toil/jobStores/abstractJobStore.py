@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import
 
+import urllib2
 import urlparse
 
 import re
@@ -93,7 +94,8 @@ def getJobStoreClasses():
     jobStoreClassNames = (
         "toil.jobStores.azureJobStore.AzureJobStore",
         "toil.jobStores.fileJobStore.FileJobStore",
-        "toil.jobStores.aws.jobStore.AWSJobStore"
+        "toil.jobStores.aws.jobStore.AWSJobStore",
+        "toil.jobStores.abstractJobStore.JobStoreSupport"
     )
 
     jobStoreClasses = []
@@ -109,7 +111,7 @@ def getJobStoreClasses():
     return jobStoreClasses
 
 
-def findJobStoreForUrl(url):
+def findJobStoreForUrl(url, export=False):
     """
     Returns the AbstractJobStore subclass that supports the given URL.
 
@@ -117,9 +119,10 @@ def findJobStoreForUrl(url):
     :rtype: toil.jobStore.AbstractJobStore
     """
     for cls in getJobStoreClasses():
-        if cls._supportsUrl(url):
+        if cls._supportsUrl(url, export):
             return cls
-    raise RuntimeError("No existing job store supports the URL '%s'" % url)
+    raise RuntimeError("No existing job store supports %sporting for URL '%s'" %
+                       ('ex' if export else 'im', url.geturl()))
 
 
 class AbstractJobStore(object):
@@ -248,7 +251,10 @@ class AbstractJobStore(object):
                 e.g. wasb://container/blob
 
             - 'file' for local files
-                e.g. file://local/file/path
+                e.g. file:///local/file/path
+
+            - 'http'
+                e.g. http://someurl.com/path
 
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
@@ -286,7 +292,7 @@ class AbstractJobStore(object):
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
         """
         url = urlparse.urlparse(dstUrl)
-        return self._exportFile(findJobStoreForUrl(url), jobStoreFileID, url)
+        return self._exportFile(findJobStoreForUrl(url, export=True), jobStoreFileID, url)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         """
@@ -307,7 +313,7 @@ class AbstractJobStore(object):
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
-        :param str url: URL that points to a file or object in the storage mechanism of a
+        :param urlparse.ParseResult url: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
         :param writable: a writable stream
         """
@@ -321,19 +327,20 @@ class AbstractJobStore(object):
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
-        :param str url: URL that points to a file or object in the storage mechanism of a
+        :param urlparse.ParseResult url: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
         :param readable: a readable stream
         """
         raise NotImplementedError()
 
     @abstractclassmethod
-    def _supportsUrl(cls, url):
+    def _supportsUrl(cls, url, export=False):
         """
         Returns True if the job store supports the URL's scheme.
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
+        :param bool export: Determines if the url is supported for exported
         :param urlparse.ParseResult url: a parsed URL that may be supported
         :return bool: returns true if the cls supports the URL
         """
@@ -866,3 +873,20 @@ class AbstractJobStore(object):
     @classmethod
     def _validateSharedFileName(cls, sharedFileName):
         return bool(cls.sharedFileNameRegex.match(sharedFileName))
+
+
+class JobStoreSupport(AbstractJobStore):
+
+    @classmethod
+    def _supportsUrl(cls, url, export=False):
+        return url.scheme.lower() in ('http', 'https') and not export
+
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        out = urllib2.urlopen(url.geturl())
+        while True:
+            toWrite = out.read(2**20)
+            if toWrite in ('', None):
+                break
+            else:
+                writable.write(toWrite)
