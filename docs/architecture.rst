@@ -52,9 +52,8 @@ These components are described below:
 Optimizations
 -------------
 
-Toil implements lots of optimizations designed to allow it to scale out. 
-Many are not worth mentioning, but we detail some of the key ones below that we
-have found useful.
+Toil implements lots of optimizations designed for scalability.
+Here we detail some of the key optimizations.
 
 Read-only Leader
 ~~~~~~~~~~~~~~~~
