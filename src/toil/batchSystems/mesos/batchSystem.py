@@ -443,7 +443,7 @@ class MesosBatchSystem(AbstractBatchSystem, mesos.interface.Scheduler):
         if toMiB(jt_job.resources.memory) > 1:
             mem.scalar.value = toMiB(jt_job.resources.memory)
         else:
-            log.warning("Job %s uses less Memory than mesos requires. Rounding %s up to one MiB",
+            log.warning("Job %s uses less memory than Mesos requires. Rounding %s up to one MiB",
                         jt_job.jobID, jt_job.resources.memory)
             mem.scalar.value = 1
         return task

@@ -19,8 +19,7 @@ from toil.common import Toil
 import os
 import shutil
 
-# This constant is set to the default value used on unix for block size (in bytes) when
-# os.stat(<file>).st_blocks is called.
+# The unit of os.stat().st_blocks according to the documentation of os.stat
 unixBlockSize = 512
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.

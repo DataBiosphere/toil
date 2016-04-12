@@ -29,12 +29,12 @@ bash -ex <<-"END"
                 sudo umount /dev/loop0
             fi
         fi
-        rm -rf /mnt/ephemeral/tmp*
+        rm -rf /mnt/ephemeral/tmp /mnt/ephemeral/tmp.img
     }
 
     # We place the workdir into a loopback file system to isolate it from the rest of the system.
     # The size of the loopback device is large enough to run tests that don't specify a value for
-    # disk in jobs (default=2G)
+    # disk in jobs (The default disk request it 2GB -- the device set to 10GB)
     cleanup
     dd if=/dev/zero of=/mnt/ephemeral/tmp.img bs=1M count=10240
     mkfs.ext4 -F -E root_owner=$UID:$UID /mnt/ephemeral/tmp.img
