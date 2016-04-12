@@ -170,8 +170,7 @@ class AbstractBatchSystem:
         :param collections.namedtuple workerCleanupInfo: A named tuple consisting of all the
         relevant information for cleaning up the worker.
         """
-        # FIXME: not the correct way to check for a type (Hannes)
-        assert workerCleanupInfo.__class__.__name__ == 'WorkerCleanupInfo'
+        assert isinstance(workerCleanupInfo, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(workerCleanupInfo.workflowID, workerCleanupInfo.workDir)
         dirIsEmpty = os.listdir(workflowDir) == []
         cleanWorkDir = workerCleanupInfo.cleanWorkDir
@@ -190,8 +189,8 @@ class AbstractBatchSystem:
         :param dict **kwargs: Buffer to handle the other objects in the workerCleanupInfo construct
         :return: Amount of disk used by non-Toil purposes
         '''
-        workflowDir = Toil.getWorkflowDir(workflowID, workDir)
-        toilDiskUsed = cls.getWorkflowDirSize(workflowDir)
+        allWorkflowDirs = Toil.getAllWorkflowDirs(workflowID, workDir)
+        toilDiskUsed = sum([cls.getWorkflowDirSize(wFD) for wFD in allWorkflowDirs])
         diskStats = os.statvfs(workflowDir)
         # Total Disk used = block size * (total blocks - free blocks)
         diskUsed = diskStats.f_frsize * (diskStats.f_blocks - diskStats.f_bavail)

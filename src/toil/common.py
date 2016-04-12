@@ -206,7 +206,9 @@ def _addOptions(addGroupFn, config):
                      "will be reported in the workflow logs. Default is determined by the "
                      "user-defined environmental variable TOIL_TEMPDIR, or the environment "
                      "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
-                     "all machines running jobs.")
+                     "all machines running jobs.  If you plan on running multiple sonsecutive "
+                     "Toil-Mesos frameworks, this value MUST be the same for all workflows for "
+                     "the batch system to accurately compute available space per node.")
     addOptionFn("--stats", dest="stats", action="store_true", default=None,
                       help="Records statistics about the toil workflow to be used by 'toil stats'.")
     addOptionFn("--clean", dest="clean", choices=['always', 'onError','never', 'onSuccess'], default=None,
@@ -633,6 +635,24 @@ class Toil(object):
         else:
             logger.info('Created the workflow directory at %s' % workflowDir)
         return workflowDir
+
+    @classmethod
+    def getAllWorkflowDirs(cls, workflowID, configWorkDir=None):
+        """
+        Returns a list of paths to all workflow directories in workDir.  This allows for multiple
+        simultaneously running Toil frameworks on the same Mesos Cluster without each one
+        contributing to anothers leftover.
+
+        :param str workflowID: Unique identifier for the workflow
+        :param str configWorkDir: Value passed to the program using the --workDir flag
+        :return: List of path to workflow directories
+        :rtype: list
+        """
+        workFlowDirRegexp = re.compile('^toil-[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?[89ab]'
+                                       '[a-f0-9]{3}-?[a-f0-9]{12}\Z', re.I)
+        selfWorkFlowDir = cls.getWorkflowDir(workflowID, configWorkDir)
+        return [d for d in os.listdir(os.path.dirname(selfWorkFlowDir))
+                if re.match(workFlowDirRegexp, d)]
 
     def _assertContextManagerIsUsed(self):
         # Assert that we are inside the context manager
