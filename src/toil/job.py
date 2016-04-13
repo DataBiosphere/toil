@@ -18,6 +18,7 @@ import sys
 import importlib
 from argparse import ArgumentParser
 from abc import ABCMeta, abstractmethod
+import dill
 import tempfile
 import uuid
 import time
@@ -60,13 +61,35 @@ class Job(object):
         exhausting all their retries, remove any successor jobs and rerun this job to restart the subtree. \
         Job must be a leaf vertex in the job graph when initially defined, \
         see :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
-        :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :param int|PromisedRequirement cores:
+        :param int|str|PromisedRequirement disk:        
+        :param int|str|PromisedRequirement cache:
+        :param int|str|PromisedRequirement memory:
         """
-        self.cores = cores
+
+        # If resource requirement is a PromisedRequirement,
+        # then set the parameter to the default until the
+        # promise can be fulfilled.
+        # See toil.job.PromisedRequirement
+        if isinstance(cores, PromisedRequirement):
+            self.cores_promise = cores
+            cores = None 
+
+        if isinstance(disk, PromisedRequirement):
+            self.disk_promise = disk
+            disk = None
+
+        if isinstance(memory, PromisedRequirement):
+            self.memory_promise = memory
+            memory = None
+
+        if isinstance(cache, PromisedRequirement):
+            self.cache_promise = cache
+            cache = None
+
         parse = lambda x : x if x is None else human2bytes(str(x))
+
+        self.cores = cores
         self.memory = parse(memory)
         self.disk = parse(disk)
         self.cache = parse(cache)
@@ -176,6 +199,9 @@ class Job(object):
         :return: The new child job that wraps fn.
         :rtype: toil.job.FunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return self.addChild(PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs))
         return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
 
     def addFollowOnFn(self, fn, *args, **kwargs):
@@ -188,6 +214,9 @@ class Job(object):
         :return: The new follow-on job that wraps fn.
         :rtype: toil.job.FunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return self.addFollowOn(PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs))
         return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
 
     def addChildJobFn(self, fn, *args, **kwargs):
@@ -201,6 +230,9 @@ class Job(object):
         :return: The new child job that wraps fn.
         :rtype: toil.job.JobFunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return self.addChild(PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs))
         return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
     def addFollowOnJobFn(self, fn, *args, **kwargs):
@@ -214,6 +246,9 @@ class Job(object):
         :return: The new follow-on job that wraps fn.
         :rtype: toil.job.JobFunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs))
         return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
 
     @staticmethod
@@ -228,6 +263,9 @@ class Job(object):
         :return: The new function that wraps fn.
         :rtype: toil.job.FunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs)
         return FunctionWrappingJob(fn, *args, **kwargs)
 
     @staticmethod
@@ -242,6 +280,9 @@ class Job(object):
         :return: The new job function that wraps fn.
         :rtype: toil.job.JobFunctionWrappingJob
         """
+        kwargs = Job.update_kwargs(kwargs)
+        if Job.has_promised_requirement(kwargs):
+            return PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs)
         return JobFunctionWrappingJob(fn, *args, **kwargs)
 
     def encapsulate(self):
@@ -253,6 +294,32 @@ class Job(object):
         :rtype: toil.job.EncapsulatedJob.
         """
         return EncapsulatedJob(self)
+
+
+    @staticmethod
+    def update_kwargs(kwargs):
+        """
+        Converts PromisedJobReturnValue objects to PromisedRequirement objects
+        for function requirement parameters disk, memory, cache, and cores.
+        :param kwargs: function keyword arguments
+        :return: kwargs object with updated values
+        """
+        # If a PromisedJobReturnValue was passed as a job requirement,
+        # convert it into a PromisedRequirement object
+        requirements = ["disk", "memory", "cache", "cores"]
+        for r in requirements:
+            if isinstance(kwargs.get(r), PromisedJobReturnValue):
+                kwargs[r] = PromisedRequirement(kwargs[r])
+        return kwargs
+
+    @staticmethod
+    def has_promised_requirement(kwargs):
+        """
+        Returns true if keyword dictionary contains a PromisedRequirement object
+        for function requirements disk, memory, cache, and cores.
+        """
+        requirements = ["disk", "memory", "cache", "cores"]
+        return any(isinstance(kwargs.get(r), PromisedRequirement) for r in requirements)
 
     ####################################################
     #The following function is used for passing return values between
@@ -1470,6 +1537,39 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
 
+
+class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
+    """
+    Creates a child function using parent function parameters and promised resource requirements.
+
+    (see :class:`toil.job.FunctionWrappingJob` and :class:`toil.job.Job`)
+    """
+
+    def run(self, fileStore):
+        userFunction = self._getUserFunction()
+        self._kwargs["cores"] = self.cores_promise() if hasattr(self, "cores_promise") else self.cores
+        self._kwargs["disk"] = self.disk_promise() if hasattr(self, "disk_promise") else self.disk
+        self._kwargs["memory"] = self.memory_promise() if hasattr(self, "memory_promise") else self.memory
+        self._kwargs["cache"] = self.cache_promise() if hasattr(self, "cache_promise") else self.cache
+        return self.addChildFn(userFunction, *self._args, **self._kwargs).rv()
+
+
+class PromisedRequirementJobFunctionWrappingJob(FunctionWrappingJob):
+    """
+    Creates a child job function using parent function parameters and promised resource requirements.
+
+    (see :class:`toil.job.JobFunctionWrappingJob and :class:`toil.job.Job`)
+    """
+
+    def run(self, fileStore):
+        userFunction = self._getUserFunction()
+        self._kwargs["cores"] = self.cores_promise() if hasattr(self, "cores_promise") else self.cores
+        self._kwargs["disk"] = self.disk_promise() if hasattr(self, "disk_promise") else self.disk
+        self._kwargs["memory"] = self.memory_promise() if hasattr(self, "memory_promise") else self.memory
+        self._kwargs["cache"] = self.cache_promise() if hasattr(self, "cache_promise") else self.cache
+        return self.addChildJobFn(userFunction, *self._args, **self._kwargs).rv()
+
+
 class EncapsulatedJob(Job):
     """
     A convenience Job class used to make a job subgraph appear to be a single job. 
@@ -1654,3 +1754,29 @@ def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
 copy_reg.pickle(PromisedJobReturnValue,
                 promisedJobReturnValuePickleFunction,
                 promisedJobReturnValueUnpickleFunction)
+
+
+class PromisedRequirement(object):
+    def __init__(self, *args):
+        """
+        Class for generating function resource requirement values using promised return values.
+        (see toil.job.PromisedJobReturnValue)
+        :param args[0]: function for calculating job requirement
+                        default: lambda x: x
+        :param args[1:]: list of args, ordered with respect to function parameters
+        """
+        if hasattr(args[0], '__call__'):
+            func = args[0]
+            args = args[1:]
+        else:
+            func = lambda x: x
+
+        self._func = dill.dumps(func)
+        self._args = list(args)
+
+    def __call__(self):
+        """
+        Returns PromisedRequirement value
+        """
+        func = dill.loads(self._func)
+        return func(*self._args)
