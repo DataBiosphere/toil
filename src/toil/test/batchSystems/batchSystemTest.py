@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
+from copy import deepcopy
 from fractions import Fraction
 from inspect import getsource
 import logging
@@ -31,7 +32,7 @@ import requests
 import random
 import uuid
 
-from toil.common import Config
+from toil.common import Config, Toil
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -77,6 +78,7 @@ class hidden:
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
             self.config = self._createDummyConfig()
+            self.config.workflowID = str(uuid.uuid4())
             self.batchSystem = self.createBatchSystem()
             self.tempDir = self._createTempDir('testFiles')
 
@@ -207,19 +209,6 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def testAggressiveDynamicReservation(self):
         time.sleep(1)  # Allow short time for the Mesos master and slave to come up fully
 
-        def getSlaveInfo():
-            content = requests.get('http://127.0.0.1:5050/master/slaves')
-            return content.json()['slaves'][0]
-
-        def runJob(outer, call):
-            self.batchSystem.issueBatchJob(call, **defaultRequirements)
-            # Wait for, and ensure the job ended
-            exitStatus = None
-            while exitStatus is None:
-                _, exitStatus = outer.batchSystem.getUpdatedBatchJob(maxWait=100)
-            self.assertEqual(exitStatus, 0)
-            time.sleep(1)  # Give Mesos time to react to the reservation
-
         # This directory is guaranteed to be in the same filesystem as the working directory, but
         # outside the workDir (since workdir will also be created with tempfile.mkdtemp) and hence
         # will contribute towards the leftovers.
@@ -229,7 +218,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         # reservations will be updated by the amount of space taken up on the Mesos-tracked disk
         # since the slave was configured (if any) -- This is typically just the files that the slave
         # creates upon startup and should be 1 - 1.5Mb at max.
-        runJob(self, "touch %s" % testFile)
+        self.runJob(self, "touch %s" % testFile)
         firstJobInfo = getSlaveInfo()
         if firstJobInfo['reserved_resources']:
             self.assertAlmostEqual(firstJobInfo['reserved_resources']['toil_leftover']['disk'],
@@ -245,13 +234,13 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
             if write:
                 writtenFiles.append((os.path.join(nonWorkDir, str(uuid.uuid4())),
                                      random.randint(30,100)))
-                runJob(self, "dd if=/dev/urandom of=%s bs=1M count=%s" % writtenFiles[-1])
+                self.runJob(self, "dd if=/dev/urandom of=%s bs=1M count=%s" % writtenFiles[-1])
                 fileSize = writtenFiles[-1][1]
             else:
                 if not writtenFiles:
                     continue
                 fileToDelete, fileSize = random.choice(writtenFiles)
-                runJob(self, "rm %s" % fileToDelete)
+                self.runJob(self, "rm %s" % fileToDelete)
                 writtenFiles.remove((fileToDelete, fileSize))
                 fileSize *= -1
             secondJobInfo = getSlaveInfo()
@@ -267,7 +256,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         totalSize = 0
         for fileToDelete, fileSize in writtenFiles:
             totalSize += fileSize
-            runJob(self, "rm %s" % fileToDelete)
+            self.runJob(self, "rm %s" % fileToDelete)
         thirdJobInfo = getSlaveInfo()
         if thirdJobInfo['reserved_resources']:
             thirdJobReservedDisk = thirdJobInfo['reserved_resources']['toil_leftover']['disk']
@@ -275,6 +264,74 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
             thirdJobReservedDisk = 0
         self.assertAlmostEqual(thirdJobReservedDisk, previousReservation - totalSize, delta=1)
 
+    def testConcurrentFrameworks(self):
+        time.sleep(1)  # Allow short time for the Mesos master and slave to come up fully
+
+        # Setup a second framework
+        class second(Object):
+            pass
+        second.config = deepcopy(self.config)
+        second.config.workFlodID = str(uuid.uuid4())
+        from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
+        second.batchSystem = MesosBatchSystem(config=second.config, maxCores=numCores,maxMemory=1e9,
+                                              maxDisk=1001, masterAddress='127.0.0.1:5050')
+        # Get the workflow dirs
+        self.workFlowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+        second.workFlowDir = Toil.getWorkflowDir(second.config.workflowID, second.config.workDir)
+        # Get a test file both can write to and write 0 to it
+        nonWorkDir = self._createTempDir('non-toil-working')
+        testFile = os.path.join(nonWorkDir, 'test.txt')
+        with open(testFile, 'w') as tF:
+            tF.write(str(0))
+
+        # Define the functions for each batchsystem (framework)
+        def selfFunc(outer, selfFileName, testFileName):
+            outer.runJob("dd if=/dev/urandom of=%s bs=1M count=1024" % selfFileName)
+            with open(testFileName) as tF:
+                x = int(tF.read())
+            outer.assertEqual(x, 2)
+
+        def secondFunc(outer, selfFileName, testFileName):
+            for i in range(2)
+                outer.runJob("dd if=/dev/urandom of=%s bs=1M count=50" % selfFileName + str(i))
+                with open(testFileName, 'r+') as tF:
+                    x = int(tF.read())
+                    tF.seek(0)
+                    tF.write(x+1)
+
+        # First, run a dummy job that does nothing of import. When the job finishes, the
+        # reservations will be updated by the amount of space taken up on the Mesos-tracked disk
+        # since the slave was configured (if any) -- This is typically just the files that the slave
+        # creates upon startup and should be 1 - 1.5Mb at max.
+        self.runJob("touch %s" % testFile)
+        firstJobInfo = getSlaveInfo()
+        if firstJobInfo['reserved_resources']:
+            self.assertAlmostEqual(firstJobInfo['reserved_resources']['toil_leftover']['disk'],
+                                   1, delta=1)
+        # Now run the the two batchsystem jobs
+        #TODO
+
+        thirdJobInfo = getSlaveInfo()
+        if thirdJobInfo['reserved_resources']:
+            thirdJobReservedDisk = thirdJobInfo['reserved_resources']['toil_leftover']['disk']
+        else:
+            thirdJobReservedDisk = 0
+        self.assertAlmostEqual(thirdJobReservedDisk, previousReservation - totalSize, delta=1)
+
+    # Aux functions for mesos tests
+    def getSlaveInfo(self):
+        content = requests.get('http://127.0.0.1:5050/master/slaves')
+        return content.json()['slaves'][0]
+
+    @staticmethod
+    def runJob(outer, call):
+        outer.batchSystem.issueBatchJob(call, **defaultRequirements)
+        # Wait for, and ensure the job ended
+        exitStatus = None
+        while exitStatus is None:
+            _, exitStatus = outer.batchSystem.getUpdatedBatchJob(maxWait=100)
+        outer.assertEqual(exitStatus, 0)
+        time.sleep(1)  # Give Mesos time to react to the reservation
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):

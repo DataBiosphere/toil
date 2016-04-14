@@ -191,7 +191,7 @@ class AbstractBatchSystem:
         '''
         allWorkflowDirs = Toil.getAllWorkflowDirs(workflowID, workDir)
         toilDiskUsed = sum([cls.getWorkflowDirSize(wFD) for wFD in allWorkflowDirs])
-        diskStats = os.statvfs(workflowDir)
+        diskStats = os.statvfs(allWorkflowDirs[0])
         # Total Disk used = block size * (total blocks - free blocks)
         diskUsed = diskStats.f_frsize * (diskStats.f_blocks - diskStats.f_bavail)
         # Disk used for non-toil purposes = Total disk used - Disk used by toil (workDir)
