@@ -36,10 +36,28 @@ Run ``python HelloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a hello world example, refer to :ref:`runningDetail`
 
-Running CWL and WDL Workflows
------------------------------
+Running CWL Workflows
+---------------------
 
-TODO
+The `Common Workflow Language`_ (CWL) is an emerging standard for writing
+workflows that are portable across multiple workflow engines and platforms.  To
+run workflows written using CWL, first ensure that Toil is installed with the
+"cwl" extra as described in :ref:`installation-ref`.  This will install the
+executables ``cwl-runner`` and ``cwltoil`` (these are identical, where
+``cwl-runner`` is the portable name for the default system CWL runner).  To
+learn more about CWL, see the `CWL User Guide`_.
+
+To run in local batch mode, simply provide the CWL file and the input object
+file::
+
+    cwltoil example.cwl example-job.yml
+
+To run in cloud and HPC configurations, you may need to provide additional
+command line parameters to select and configure the batch system to use.
+Consult the appropriate sections.
+
+.. _Common Workflow Language: http://commonwl.org
+.. _CWL User Guide: http://commonwl.org/draft-3/UserGuide.html
 
 .. _runningDetail:
 
@@ -290,6 +308,16 @@ Place the HelloWorld.py script on the leader node, and run::
     python --batchSystem=mesos --mesosMaster=mesos-master:5050 \
                     HelloWorld.py aws:us-west-2:my-s3-jobstore
 
+To run a CWL workflow::
+
+    cwltoil --batchSystem=mesos --mesosMaster=mesos-master:5050 \
+                    --jobStore=aws:us-west-2:my-s3-jobstore \
+                    example.cwl example-job.yml
+
+When running a CWL workflow on AWS, input files can be provided either on the
+local file system or in S3 buckets using s3:// URL references.  Final output
+files will be copied to the local file system of the leader node.
+
 .. _runningAzure:
 
 Running on Azure
@@ -320,10 +348,10 @@ To do this permanently:
 
 1.  On the leader node, run ``nano ~/.toilAzureCredentials``.
 2.  In the editor that opens, navigate with the arrow keys, and give the file the following contents::
-        
+
         [AzureStorageCredentials]
         <accountname>=<accountkey>
-        
+
     Be sure to replace ``<accountname>`` with the name that you used for your Azure Storage Account, and ``<accountkey>`` with the key you obtained above. (If you want, you can have multiple accounts with different keys in this file, by adding multipe lines. If you do this, be sure to leave the ``AZURE_ACCOUNT_KEY`` environment variable unset.)
 
 3.  Press ``ctrl-o`` to save the file, and ``ctrl-x`` to exit the editor.
@@ -332,12 +360,18 @@ Once that's done, you are now ready to actually execute a job, storing your job 
 
 1.  Place your script on the leader node, either by downloading it from the command line or typing or copying it into a command-line editor.
 2.  Run the command::
-        
+
         python --batchSystem=mesos --mesosMaster=10.0.0.5:5050 \
                         HelloWorld.py azure:<accountname>:hello-world001
-                      
+
+    To run a CWL workflow::
+
+        cwltoil --batchSystem=mesos --mesosMaster=10.0.0.5:5050 \
+                        --jobStore=azure:<accountname>:hello-world001 \
+                        example.cwl example-job.yml
+
     Be sure to replace ``<accountname>`` with the name of your Azure Storage Account.
-    
+
 Note that once you run a job with a particular job store name (the part after the account name) in a particular Storage Account, you cannot re-use that name in that account unless one of the following happens:
 
 1. You are restarting the same job with the ``--restart`` option.
@@ -355,4 +389,3 @@ location as shown in :ref:`quickstart`.  The location of temporary directories T
 can be specified with ``--workDir``::
 
     python HelloWorld.py file:jobStore --workDir /tmp/
-
