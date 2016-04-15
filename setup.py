@@ -35,7 +35,7 @@ kwargs = dict(
         'aws': [
             'boto==2.38.0'],
         'azure': [
-            'azure==0.11.1'],
+            'azure==1.0.3'],
         'encryption': [
             'pynacl==0.3.0'],
         'cwl': [
