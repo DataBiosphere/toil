@@ -11,19 +11,19 @@ Toil is a workflow engine entirely written in Python. It features:
 * Easy installation, e.g. ``pip install toil``.
 
 * `Common Workflow Language`_ (`CWL`_) support
-  
-  Complete support for the 3.0 CWL specification, allowing it to execute
+
+  Complete support for the draft-3 CWL specification, allowing it to execute
   CWL workflows.
-  
+
 * `Workflow Description Language`_ (`WDL`_) support
-  
+
   Draft support for the WDL specification, allowing it to execute
   WDL workflows.
-  
-* Cross platform support 
-  
+
+* Cross platform support
+
   Develop and test on your laptop then deploy on any of the following:
-  
+
   - Commercial clouds:
     - `Amazon Web Services`_ (including the `spot market`_)
     - `Microsoft Azure`_
@@ -35,17 +35,17 @@ Toil is a workflow engine entirely written in Python. It features:
     - `Parasol`_
     - Individual multi-core machines
 
-* A small API 
-  
+* A small API
+
   Easily mastered, the Python user API for defining and running workflows is built upon one core class.
-       
+
 * Complete file and stream management:
-   
+
   Temporary and persistent file management that abstracts the details of the
   underlying file system, providing a uniform interface regardless of
   environment. Supports both atomic file transfer and streaming interfaces, and
   provides encryption of user data.
-   
+
 * Scalability:
 
   Toil can easily handle workflows concurrently using hundreds of nodes and
@@ -83,8 +83,8 @@ Toil is a workflow engine entirely written in Python. It features:
 .. _Microsoft Azure: https://azure.microsoft.com
 .. _Amazon Web Services: https://aws.amazon.com/
 .. _OpenStack: https://www.openstack.org/
-.. _CWL: https://github.com/common-workflow-language/common-workflow-language
-.. _Common Workflow Language: https://github.com/common-workflow-language/common-workflow-language
+.. _CWL: http://commonwl.org
+.. _Common Workflow Language: http://commonwl.org
 .. _WDL: https://github.com/broadinstitute/wdl
 .. _Workflow Description Language: https://github.com/broadinstitute/wdl
 
@@ -109,4 +109,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

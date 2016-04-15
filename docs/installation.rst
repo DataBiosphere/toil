@@ -18,7 +18,7 @@ Basic Installation
 To setup a basic Toil installation use
 
 ::
-    
+
     pip install toil
 
 Toil uses setuptools' extras_ mechanism for dependencies of optional features
@@ -26,7 +26,7 @@ like support for Mesos or AWS. To install Toil with all bells and whistles use
 
 ::
 
-   pip install toil[aws,mesos,azure,encryption]
+   pip install toil[aws,mesos,azure,encryption,cwl]
 
 .. _extras: https://pythonhosted.org/setuptools/setuptools.html#declaring-extras-optional-features-with-their-own-dependencies
 
@@ -49,10 +49,12 @@ Here's what each extra provides:
 * The ``encryption`` extra provides client-side encryption for files stored in
   the Azure and AWS job stores. This extra requires the following native
   dependencies:
-  
+
   * :ref:`Python headers and static libraries <python-dev>`
   * :ref:`Libffi headers and library <libffi-dev>`
-  
+
+* The ``cwl`` extra provides support for running workflows written using the `Common Workflow Language`_.
+
 .. _mesos:
 .. topic:: Apache Mesos
 
@@ -99,11 +101,13 @@ Here's what each extra provides:
 
 .. _Homebrew: http://brew.sh/
 
+.. _Common Workflow Language: http://commonwl.org
+
 Building & Testing
 ------------------
 
 For developers and people interested in building the project from source the following
-explains how to setup virtualenv to create an environment to use Toil in. 
+explains how to setup virtualenv to create an environment to use Toil in.
 
 After cloning the source and ``cd``-ing into the project root, create a virtualenv and activate it::
 
@@ -180,7 +184,7 @@ activating the virtualenv and running .. ``pip list | grep mesos``. On OS X,
 this may come up empty. To fix it, run the following::
 
     for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
-    
+
 Cloud Installation
 ==================
 
@@ -249,7 +253,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
     .. image:: azurescreenshot1.png
 
 5.  Fill out the form on the far right (marked "1" in the image), giving the following information. Important fields for which you will want to override the defaults are in bold:
-    
+
     1. **AdminUsername**: Enter a username for logging into the cluster. It is easiest to set this to match your username on your local machine.
     2. **AdminPassword**: Choose a strong root password. Since you will be configuring SSH keys, you will not actually need to use this password to log in in practice, so choose something long and complex and store it safely.
     3. **DnsNameForMastersPublicIp**: Enter a unique DNS name fragment to identify your cluster within your region. For example, if you are putting your cluster in ``westus``, and you choose ``awesomecluster``, your cluster's public IP would be assigned the name ``awesomecluster.westus.cloudapp.azure.com``.
@@ -270,7 +274,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
     18. **SshRsaPublicKey**: Replace ``default`` with your SSH public key contents, beginning with ``ssh-rsa``. Paste in the whole line. Only one key is supported, and as the name suggests it must be an RSA key. This enables SSH key-based login on the cluster.
     19. GithubSource: If you would like to install Toil from a nonstandard fork on Github (for example, installing a version inclusing your own patches), set this to the Github fork (formatted as ``<username>/<reponame>``) from which Toil should be downloaded and installed. If not, leave it set to the default of ``BD2KGenomics/toil``.
     20. **GithubBranch**: To install Toil from a branch other than ``master``, enter the name of its branch here. For example, for the latest release of Toil 3.1, enter ``releases/3.1.x``. By default, you will get the latest and greatest Toil, but it may have bugs or breaking changes introduced since the last release.
-    
+
 6.  Click OK (marked "2" in the screenshot).
 7.  Choose a subscription and select or create a Resource Group (marked "3" in the screenshot). If creating a Resource Group, select a region in which to place it. It is recommended to create a new Resource Group for every cluster; the template creates a large number of Azure entitites besides just the VMs (like virtual networks), and if they are organized into their own Resource Group they can all be cleaned up at once when you are done with the cluster, by deleting the Resource Group.
 8.  Read the Azure terms of service (by clicking on the item marked "4" in the screenshot) and accept them by clicking the "Create" button on the right (not shown). This is the contract that you are accepting with Microsoft, under which you are purchasing the cluster.
