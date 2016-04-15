@@ -547,6 +547,10 @@ class Toil(object):
 
             kwargs['masterAddress'] = config.mesosMasterAddress
 
+        elif config.batchSystem == 'yarn' or config.batchSystem == 'YARN':
+            from toil.batchSystems.yarn import YARNBatchSystem
+            batchSystemClass = YARNBatchSystem
+
         else:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 

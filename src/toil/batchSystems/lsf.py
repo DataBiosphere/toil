@@ -57,6 +57,9 @@ class MemoryString:
         elif self.unit == 'G':
             return self.val * 1000000000
 
+    def megabyteVal(self):
+        return self.byteVal() / 1000000
+
     def __cmp__(self, other):
         return cmp(self.bytes, other.bytes)
 

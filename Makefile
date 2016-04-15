@@ -69,7 +69,9 @@ clean_sdist:
 
 
 test: check_venv
-	$(python) setup.py test --pytest-args "-vv $(tests)"
+	
+	echo ${HADOOP_HOME}
+	$(python) setup.py test --pytest-args "-s -vv $(tests)"
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins

@@ -32,9 +32,10 @@ from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+from toil.batchSystems.yarn import YARNTestSupport
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.job import Job
-from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine
+from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine, needs_yarn
 
 log = logging.getLogger(__name__)
 
@@ -86,35 +87,47 @@ class hidden:
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
 
+            import sys
+            print >> sys.stderr, 'Issuing sleep jobs'
             job1 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
             job2 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
 
+            print >> sys.stderr, 'Checking for jobs to issue'
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
 
+            print >> sys.stderr, 'Waiting for jobs to start'
             runningJobIDs = self._waitForJobsToStart(2)
             self.assertEqual(set(runningJobIDs), {job1, job2})
 
             # Killing the jobs instead of allowing them to complete means this
             # test can run very quickly if the batch system issues and starts
             # the jobs quickly.
+            print >> sys.stderr, 'Killing jobs'
             self.batchSystem.killBatchJobs([job1, job2])
+            print >> sys.stderr, 'Running jobs: %s' % self.batchSystem.getRunningBatchJobIDs()
             self.assertEqual({}, self.batchSystem.getRunningBatchJobIDs())
 
             # Issue a job and then allow it to finish by itself, causing
             # it to be added to the updated jobs queue.
+            print >> sys.stderr, 'Launching another job'
             self.assertFalse(os.path.exists(testPath))
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
+            print >> sys.stderr, 'Checking for updated status'
             updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs
             # queue should be job 3. If the first two jobs were (incorrectly) added
             # to the queue, this will fail with updatedID being equal to job1 or job2.
+            print >> sys.stderr, 'Waiting for final job --> %d %s' % (exitStatus, updatedID)
+            test1 = os.path.exists(testPath)
+            test2 = self.batchSystem.getUpdatedBatchJob(0)
+            print >> sys.stderr, 'Tests %s %s' % (test1, test2)
             self.assertEqual(exitStatus, 0)
             self.assertEqual(updatedID, job3)
-            self.assertTrue(os.path.exists(testPath))
-            self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
+            self.assertTrue(test1)
+            self.assertFalse(test2)
 
             # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
@@ -176,9 +189,12 @@ class hidden:
 
         def _waitForJobsToStart(self, numJobs):
             runningIDs = []
+            import sys
             while not len(runningIDs) == numJobs:
+                print >> sys.stderr, 'Looping... Running IDs: %s' % runningIDs
                 time.sleep(0.1)
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
+            print >> sys.stderr, 'Running IDs: %s' % runningIDs
             return runningIDs
 
 
@@ -198,6 +214,28 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def tearDown(self):
         self._stopMesos()
         super(MesosBatchSystemTest, self).tearDown()
+
+
+@needs_yarn
+class YARNBatchSystemTest(hidden.AbstractBatchSystemTest, YARNTestSupport):
+    '''
+    Tests against the Apache Hadoop YARN resource manager and the
+    YARNBatchSystem.
+    '''
+
+    def createBatchSystem(self):
+        from toil.batchSystems.yarn import YARNBatchSystem
+        self._startYARN()
+        return YARNBatchSystem(config = self.config,
+                               maxCores = numCores,
+                               maxMemory = 1e9,
+                               maxDisk = 1001)
+
+    def tearDown(self):
+        import sys
+        print >> sys.stderr, 'SHUTTING DOWN YARN!!!!'
+        self._stopYARN()
+        super(YARNBatchSystemTest, self).tearDown()
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):

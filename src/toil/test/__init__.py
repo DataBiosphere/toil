@@ -227,6 +227,27 @@ def needs_parasol(test_item):
         return test_item
 
 
+def needs_yarn(test_item):
+    '''
+    Use as decorator so tests are only run if YARN is installed.
+    '''
+    import sys
+
+    try:
+        hadoop_home = os.environ['HADOOP_HOME']
+        
+        if not os.path.exists(os.path.join(hadoop_home, 'bin/yarn')):
+            return unittest.skip('Skipping test. Could not find YARN executable'
+                                 'under HADOOP_HOME (%s).' % hadoop_home)(test_item)
+    except KeyError:
+        return unittest.skip('Skipping test. Install YARN and set HADOOP_HOME to'
+                             'include this test.')(test_item)
+    except:
+        raise
+    else:
+        return test_item
+
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
