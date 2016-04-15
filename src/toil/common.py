@@ -547,6 +547,10 @@ class Toil(object):
 
             kwargs['masterAddress'] = config.mesosMasterAddress
 
+        elif config.batchSystem == 'slurm' or config.batchSystem == 'Slurm':
+            from toil.batchSystems.slurm import SlurmBatchSystem
+            batchSystemClass = SlurmBatchSystem
+
         else:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
