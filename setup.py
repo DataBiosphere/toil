@@ -36,7 +36,7 @@ kwargs = dict(
             'boto==2.38.0',
             'cgcloud-lib==1.4a1.dev195' ],
         'azure': [
-            'azure==0.11.1'],
+            'azure==1.0.3'],
         'encryption': [
             'pynacl==0.3.0'],
         'cwl': [

@@ -27,10 +27,12 @@ from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
 
-from azure import WindowsAzureMissingResourceError, WindowsAzureError
+from azure.common import AzureMissingResourceHttpError, AzureException
+from azure.storage import SharedAccessPolicy, AccessPolicy
+from azure.storage.table import TableService, EntityProperty
+from azure.storage.blob import BlobService, BlobSharedAccessPermissions
 
-from azure.storage import (TableService, BlobService, SharedAccessPolicy, AccessPolicy,
-                           BlobSharedAccessPermissions, EntityProperty)
+import requests
 from bd2k.util import strict_bool, memoize
 
 from bd2k.util.threading import ExceptionalThread
@@ -175,7 +177,7 @@ class AzureJobStore(AbstractJobStore):
     def delete(self, jobStoreID):
         try:
             self.jobItems.delete_entity(row_key=jobStoreID)
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             # Job deletion is idempotent, and this job has been deleted already
             return
         filterString = "PartitionKey eq '%s'" % jobStoreID
@@ -254,14 +256,14 @@ class AzureJobStore(AbstractJobStore):
                         buf = read_fd.read(self._maxAzureBlockBytes)
                         write_fd.write(buf)
                         if not buf: break
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             raise NoSuchFileException(jobStoreFileID)
 
     def deleteFile(self, jobStoreFileID):
         try:
             self.files.delete_blob(blob_name=jobStoreFileID)
             self._dissociateFileFromJob(jobStoreFileID)
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             pass
 
     def fileExists(self, jobStoreFileID):
@@ -271,7 +273,7 @@ class AzureJobStore(AbstractJobStore):
         try:
             self.files.get_blob_metadata(blob_name=jobStoreFileID)
             return True
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             return False
 
     @contextmanager
@@ -355,7 +357,7 @@ class AzureJobStore(AbstractJobStore):
     def getPublicUrl(self, jobStoreFileID):
         try:
             self.files.get_blob_properties(blob_name=jobStoreFileID)
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             raise NoSuchFileException(jobStoreFileID)
         # Compensate of a little bit of clock skew
         startTimeStr = (datetime.utcnow() - timedelta(minutes=5)).strftime(self._azureTimeFormat)
@@ -432,7 +434,7 @@ class AzureJobStore(AbstractJobStore):
         if checkForModification:
             try:
                 expectedVersion = container.get_blob_properties(blob_name=jobStoreFileID)['etag']
-            except WindowsAzureMissingResourceError:
+            except AzureMissingResourceHttpError:
                 expectedVersion = None
 
         if encrypted is None:
@@ -587,7 +589,7 @@ class AzureTable(object):
     def get_entity(self, **kwargs):
         try:
             return self.__getattr__('get_entity')(**kwargs)
-        except WindowsAzureMissingResourceError:
+        except AzureMissingResourceHttpError:
             return None
     
     def query_entities_auto(self, **kwargs):
@@ -712,12 +714,12 @@ class AzureJob(JobWrapper):
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
     busyMsg = "Service Unavailable"
-    return isinstance(exception, WindowsAzureError) and (timeoutMsg in str(exception)
-        or busyMsg in str(exception))
+    return (isinstance(exception, AzureException) and
+            (timeoutMsg in str(exception) or busyMsg in str(exception)))
 
 
 def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException),
+                                                      httplib.HTTPException, requests.ConnectionError),
                    retriable_check=retryOnAzureTimeout):
     """
     Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
