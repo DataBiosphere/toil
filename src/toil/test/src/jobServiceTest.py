@@ -150,7 +150,7 @@ def serviceTestRecursive(job, outFile, messages):
         for i in xrange(1, len(messages)):
             randInt = random.randint(1, sys.maxint)
             service2 = TestService(messages[i] + randInt, cores=0.1)
-            child = child.addChildJobFn(serviceAccessor, service.addChild(service2), outFile, randInt, cores=0.1)
+            child = child.addChildJobFn(serviceAccessor, job.addService(service2, parentService=service), outFile, randInt, cores=0.1)
             service = service2
 
 def serviceTestParallelRecursive(job, outFiles, messageBundles):
@@ -168,7 +168,7 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
             for i in xrange(1, len(messages)):
                 randInt = random.randint(1, sys.maxint)
                 service2 = TestService(messages[i] + randInt, cores=0.1)
-                child = child.addChildJobFn(serviceAccessor, service.addChild(service2), outFile, randInt, cores=0.1)
+                child = child.addChildJobFn(serviceAccessor, job.addService(service2, parentService=service), outFile, randInt, cores=0.1)
                 service = service2
 
 class TestService(Job.Service):

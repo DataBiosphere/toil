@@ -139,7 +139,7 @@ class Job(object):
         followOnJob._addPredecessor(self)
         return followOnJob
 
-    def addService(self, service):
+    def addService(self, service, parentService=None):
         """
         Add a service. 
         
@@ -153,16 +153,29 @@ class Job(object):
         
         :raises toil.job.JobException: If service has already been made the child of a job or another service. 
         :param toil.job.Job.Service service: Service to add.
+        :param toil.job.Job.Service parentService: Service that will be started before 'service' is started.\
+        Allows trees of services to be established. parentService must be a service of this job.
         :return: a promise that will be replaced with the return value from \
         :func:`toil.job.Job.Service.start` of service in any successor of the job.
-        :rtype: toil.job.PromisedJobReturnValue 
+        :rtype:toil.job.PromisedJobReturnValue
         """
-        if service._hasParent:
-            raise JobException("The service already has a parent service")
-        service._hasParent = True
-        jobService = ServiceJob(service)
-        self._services.append((service, jobService))
-        return jobService.rv()
+        if parentService != None:
+            # Do check to ensure that parentService is a service of this job
+            def check(services):
+                for s, jS in services:
+                    if s == parentService or check(s._childServices):
+                        return True
+                return False
+            if not check(self._services):
+                raise JobException("Parent service is not a service of the given job")
+            return parentService._addChild(service)
+        else:
+            if service._hasParent:
+                raise JobException("The service already has a parent service")
+            service._hasParent = True
+            jobService = ServiceJob(service)
+            self._services.append((service, jobService))
+            return jobService.rv()
 
     ##Convenience functions for creating jobs
 
@@ -919,9 +932,11 @@ class Job(object):
             """
             pass
         
-        def addChild(self, service):
+        def _addChild(self, service):
             """
-            Add a child service to start up after this service has started. 
+            Add a child service to start up after this service has started.
+            This should not be called by the user, instead use :func:`toil.job.Job.Service.addService`
+            with the "parentService" option.
             
             :raises toil.job.JobException: If service has already been made the child of a job or another service. 
             :param toil.job.Job.Service service: Service to add as a "child" of this service
