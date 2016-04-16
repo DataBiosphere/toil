@@ -195,9 +195,10 @@ class AbstractJobStore(object):
         :raise JobStoreCreationException:  if create == exists
         """
         if create and exists:
-            raise JobStoreCreationException("The job store '%s' already exists. "
-                                            "Use --restart or 'toil restart' to resume this jobStore, "
-                                            "else remove it to start from scratch" % jobStoreString)
+            raise JobStoreCreationException("The job store '%s' already exists. Use --restart or "
+                                            "'toil restart' to resume the workflow, or remove the "
+                                            "job store with 'toil clean' to start the workflow "
+                                            "from scratch" % jobStoreString)
         if not create and not exists:
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
                                             "is nothing to restart." % jobStoreString)
