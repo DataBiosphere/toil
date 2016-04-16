@@ -16,23 +16,22 @@
 The leader script (of the leader/worker pair) for running jobs.
 """
 from __future__ import absolute_import
+
+import cPickle
+import json
 import logging
 import time
-import json
-from multiprocessing import Process
-from multiprocessing import JoinableQueue as Queue
+from Queue import Queue, Empty
+from collections import namedtuple
 from multiprocessing import Event as ProcessEvent
-import cPickle
+from multiprocessing import Process
+from threading import Thread, Event
+
 from bd2k.util.expando import Expando
-from toil.provisioners.clusterScaler import ClusterScaler
 
 from toil import resolveEntryPoint
 from toil.lib.bioio import getTotalCpuTime, logStream
-from threading import Thread, Event
-from Queue import Queue, Empty
-from toil.provisioners.abstractProvisioner import ProvisioningException
 from toil.provisioners.clusterScaler import ClusterScaler
-from toil.batchSystems.jobDispatcher import JobDispatcher
 
 logger = logging.getLogger( __name__ )
 
@@ -120,6 +119,9 @@ class StatsAndLogging( object ):
 ##Following encapsulates interactions with the batch system class.
 ####################################################
 
+# Represents a job and its requirements as issued to the batch system
+IssuedJob = namedtuple("IssuedJob", "jobStoreID memory cores disk preemptable")
+
 class JobBatcher:
     """
     Class works with jobBatcherWorker to submit jobs to the batch system.
@@ -129,8 +131,11 @@ class JobBatcher:
         self.jobStore = jobStore
         self.jobStoreString = config.jobStore
         self.toilState = toilState
-        self.jobBatchSystemIDToJobStoreIDHash = {}
+        # Map of batch system IDs to IsseudJob tuples
+        self.jobBatchSystemIDToIssuedJob = {}
         self.batchSystem = batchSystem
+        # Optional parameter which may be set if doing autoscaling
+        self.clusterScaler = None
         self.jobsIssued = 0
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
         self.serviceManager = serviceManager
@@ -142,7 +147,7 @@ class JobBatcher:
         self.jobsIssued += 1
         jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreString, jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk, preemptable)
-        self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID] = jobStoreID
+        self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = IssuedJob(jobStoreID, memory, cores, disk, preemptable)
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cores: %i, disk: %i, and memory: %i",
                      jobStoreID, str(jobBatchSystemID), cores, disk, memory)
@@ -167,27 +172,27 @@ class JobBatcher:
         """
         Gets the job file associated the a given id
         """
-        return self.jobBatchSystemIDToJobStoreIDHash[jobBatchSystemID]
+        return self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
 
     def hasJob(self, jobBatchSystemID):
         """
         Returns true if the jobBatchSystemID is in the list of jobs.
         """
-        return self.jobBatchSystemIDToJobStoreIDHash.has_key(jobBatchSystemID)
+        return self.jobBatchSystemIDToIssuedJob.has_key(jobBatchSystemID)
 
     def getJobIDs(self):
         """
         Gets the set of jobs currently issued.
         """
-        return self.jobBatchSystemIDToJobStoreIDHash.keys()
+        return self.jobBatchSystemIDToIssuedJob.keys()
 
     def removeJobID(self, jobBatchSystemID):
         """
         Removes a job from the jobBatcher.
         """
-        assert jobBatchSystemID in self.jobBatchSystemIDToJobStoreIDHash
+        assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
         self.jobsIssued -= 1
-        jobStoreID = self.jobBatchSystemIDToJobStoreIDHash.pop(jobBatchSystemID)
+        jobStoreID = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID).jobStoreID
         return jobStoreID
 
     def killJobs(self, jobsToKill):
@@ -256,10 +261,13 @@ class JobBatcher:
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
-    def processFinishedJob(self, jobBatchSystemID, resultStatus):
+    def processFinishedJob(self, jobBatchSystemID, resultStatus, wallTime=None):
         """
         Function reads a processed jobWrapper file and updates it state.
         """
+        if wallTime is not None and self.clusterScaler is not None:
+            issuedJob = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
+            self.clusterScaler.addCompletedJob(issuedJob, wallTime)
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
             logger.debug("Job %s continues to exist (i.e. has more to do)" % jobStoreID)
@@ -641,7 +649,8 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
         if provisioner is None:
             clusterScaler = None
         else:
-            clusterScaler = ClusterScaler(provisioner, batchSystem, config)
+            clusterScaler = ClusterScaler(provisioner, jobBatcher, config)
+            jobBatcher.clusterScaler = clusterScaler
         try:
             innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging)
         finally:
@@ -857,8 +866,8 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
 
         # Gather any new, updated jobWrapper from the batch system
         updatedJob = batchSystem.getUpdatedBatchJob(2)
-        if updatedJob != None:
-            jobBatchSystemID, result = updatedJob
+        if updatedJob is not None:
+            jobBatchSystemID, result, wallTime = updatedJob
             if jobBatcher.hasJob(jobBatchSystemID):
                 if result == 0:
                     logger.debug("Batch system is reporting that the jobWrapper with "
@@ -868,7 +877,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     logger.warn("Batch system is reporting that the jobWrapper with "
                                 "batch system ID: %s and jobWrapper store ID: %s failed with exit value %i",
                                 jobBatchSystemID, jobBatcher.getJob(jobBatchSystemID), result)
-                jobBatcher.processFinishedJob(jobBatchSystemID, result)
+                jobBatcher.processFinishedJob(jobBatchSystemID, result. wallTime)
             else:
                 logger.warn("A result seems to already have been processed "
                             "for jobWrapper with batch system ID: %i", jobBatchSystemID)

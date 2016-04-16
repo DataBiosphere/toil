@@ -18,10 +18,10 @@ import time
 from threading import Thread, Event, Lock
 
 from toil.common import Config
-from toil.batchSystems.jobDispatcher import JobDispatcher
+from toil.leader import JobBatcher
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.abstractProvisioner import ProvisioningException
-from toil.batchSystems.jobDispatcher import IssuedJob
+from toil.leader import IssuedJob
 
 logger = logging.getLogger(__name__)
 
@@ -182,13 +182,13 @@ class RunningJobShapes(object):
 
 
 class ClusterScaler(object):
-    def __init__(self, provisioner, jobDispatcher, config):
+    def __init__(self, provisioner, jobBatcher, config):
         """
         Class manages automatically scaling the number of worker nodes. 
 
         :param AbstractProvisioner provisioner: The provisioner instance to scale.
 
-        :param JobDispatcher jobDispatcher: The class issuing jobs to the batch system.
+        :param JobBatcher jobBatcher: The class issuing jobs to the batch system.
 
         :param Config config: Config object from which to draw parameters.
         """
@@ -201,7 +201,7 @@ class ClusterScaler(object):
         # Create scaling process for preemptable nodes
         if config.maxPreemptableNodes > 0:
             self.preemptableRunningJobShape = RunningJobShapes(config, preemptable=True)
-            args = (provisioner, jobDispatcher,
+            args = (provisioner, jobBatcher,
                     config.minPreemptableNodes, config.maxPreemptableNodes,
                     self.preemptableRunningJobShape, config, config.preemptableNodeShape,
                     self.stop, self.error, True)
@@ -213,7 +213,7 @@ class ClusterScaler(object):
         # Create scaling process for non-preemptable nodes
         if config.maxNonPreemptableNodes > 0:
             self.nonPreemptableRunningJobShape = RunningJobShapes(config, preemptable=False)
-            args = (provisioner, jobDispatcher,
+            args = (provisioner, jobBatcher,
                     config.minNonPreemptableNodes, config.maxNonPreemptableNodes,
                     self.nonPreemptableRunningJobShape, config, config.nonPreemptableNodeShape,
                     self.stop, self.error, False)
@@ -249,7 +249,7 @@ class ClusterScaler(object):
             self.nonPreemptableRunningJobShape.add(s)
 
     @staticmethod
-    def scaler(provisioner, jobDispatcher,
+    def scaler(provisioner, jobBatcher,
                minNodes, maxNodes, runningJobShapes,
                config, nodeShape,
                stop, error, preemptable):
@@ -270,7 +270,7 @@ class ClusterScaler(object):
 
         :param AbstractProvisioner provisioner: Provisioner instance to scale.
 
-        :param JobDispatcher jobDispatcher: Class used to schedule jobs. This is monitored to
+        :param JobDispatcher jobBatcher: Class used to schedule jobs. This is monitored to
                make scaling decisions.
 
         :param int minNodes: the minimum nodes in the cluster
@@ -321,7 +321,7 @@ class ClusterScaler(object):
 
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
-                queueSize = jobDispatcher.getNumberOfJobsIssued()
+                queueSize = jobBatcher.getNumberOfJobsIssued()
                 recentJobShapes = runningJobShapes.getLastNJobShapes()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = runningJobShapes.binPacking(recentJobShapes, nodeShape)

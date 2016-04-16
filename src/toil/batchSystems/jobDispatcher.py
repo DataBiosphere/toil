@@ -1,3 +1,9 @@
+# This should be deleted. In the autoscaling branch B extracted this from JobBatcher in leader.py
+# but while reviving that branch I decided to undo the extraction. For one, JobBatcher and
+# leader.py in general had changed too much (e.g. services) and two, the this would derail the
+# caching branch as well. The main semantic changes to JobDispatcher were wall time and the
+# IssuedJob stuff.
+
 # Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
