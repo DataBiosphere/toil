@@ -21,6 +21,7 @@ import time
 import json
 from multiprocessing import Process
 from multiprocessing import JoinableQueue as Queue
+from multiprocessing import Event as ProcessEvent
 import cPickle
 from bd2k.util.expando import Expando
 from toil.provisioners.clusterScaler import ClusterScaler
