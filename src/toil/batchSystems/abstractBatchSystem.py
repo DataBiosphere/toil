@@ -30,7 +30,8 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
 
 
 class AbstractBatchSystem:
-    """An abstract (as far as python currently allows) base class
+    """
+    An abstract (as far as python currently allows) base class
     to represent the interface the batch system must provide to the toil.
     """
 
@@ -41,14 +42,28 @@ class AbstractBatchSystem:
         the __init__ method will have to accept two optional parameters in addition to the declared ones: userScript
         and toilDistribution. Both will be instances of toil.common.HotDeployedResource that represent the user
         script and a source tarball (sdist) of toil respectively.
+
+        :return: boolean indicating whether hot deployment is supported by the batch system
+        :rtype: bool
         """
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        """This method must be called.
-        The config object is setup by the toilSetup script and
-        has configuration parameters for the jobtree. You can add stuff
-        to that script to get parameters for your batch system.
+        """
+        Initializes initial state of the object
+
+        :param toil.common.Config config: object is setup by the toilSetup script and
+          has configuration parameters for the jobtree. You can add code
+          to that script to get parameters for your batch system.
+
+        :param float maxCores: the maximum number of cores the batch system can
+          request for any one job
+
+        :param int maxMemory: the maximum amount of memory the batch system can
+          request for any one job, in bytes
+
+        :param int maxDisk: the maximum amount of disk space the batch system can
+          request for any one job, in bytes
         """
         self.config = config
         self.maxCores = maxCores
@@ -56,14 +71,24 @@ class AbstractBatchSystem:
         self.maxDisk = maxDisk
         self.environment = {}
         """
-        :type dict[str,str]
+        :type: dict[str,str]
         """
         self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
 
     def checkResourceRequest(self, memory, cores, disk):
-        """Check resource request is not greater than that available.
+        """
+        Check resource request is not greater than that available or allowed.
+
+        :param int memory: amount of memory being requested, in bytes
+
+        :param float cores: number of cores being requested
+
+        :param int disk: amount of disk space being requested, in bytes
+
+        :raise InsufficientSystemResources: raised when a resource is requested in an amount
+          greater than allowed
         """
         assert memory is not None
         assert disk is not None
@@ -76,43 +101,70 @@ class AbstractBatchSystem:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
     def issueBatchJob(self, command, memory, cores, disk):
-        """Issues the following command returning a unique jobID. Command
-        is the string to run, memory is an int giving
-        the number of bytes the job needs to run in and cores is the number of cpu cores needed for
-        the job and error-file is the path of the file to place any std-err/std-out in.
+        """
+        Issues a job with the specified command to the batch system and returns a unique jobID.
+
+        :param str command: the string to run as a command,
+
+        :param int memory: int giving the number of bytes of memory the job needs to run
+
+        :param float cores: the number of cores needed for the job
+
+        :param int disk: int giving the number of bytes of disk space the job needs to run
+
+        :return: a unique jobID that can be used to reference the newly issued job
+        :rtype: str
         """
         raise NotImplementedError('Abstract method: issueBatchJob')
 
     def killBatchJobs(self, jobIDs):
-        """Kills the given job IDs.
+        """
+        Kills the given job IDs.
+
+        :param list[str] jobIDs: list of jobIDs to kill
         """
         raise NotImplementedError('Abstract method: killBatchJobs')
 
     # FIXME: Return value should be a set (then also fix the tests)
 
     def getIssuedBatchJobIDs(self):
-        """A list of jobs (as jobIDs) currently issued (may be running, or maybe
-        just waiting). Despite the result being a list, the ordering should not
-        be depended upon.
+        """
+        Gets all currently issued jobs
+
+        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
+          waiting to be run). Despite the result being a list, the ordering should not
+          be depended upon.
+        :rtype: list[str]
         """
         raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
 
     def getRunningBatchJobIDs(self):
-        """Gets a map of jobs (as jobIDs) currently running (not just waiting)
-        and a how long they have been running for (in seconds).
+        """
+        Gets a map of jobs as jobIDs that are currently running (not just waiting)
+        and how long they have been running, in seconds.
+
+        :return: dictionary with currently running jobID keys and how many seconds they have
+          been running as the value
+        :rtype: dict[str,float]
         """
         raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
 
     def getUpdatedBatchJob(self, maxWait):
-        """Gets a job that has updated its status,
-        according to the job manager. Max wait gives the number of seconds to pause
-        waiting for a result. If a result is available returns (jobID, exitValue)
-        else it returns None. Does not return anything for jobs that were killed.
+        """
+        Gets a job that has updated its status, according to the batch system.
+
+        :param int maxWait: gives the number of seconds to block
+          waiting to find an updated job.
+
+        :return: If a result is available returns tuple of form (jobID, exitValue)
+          else it returns None. Does not return jobs that were killed.
+        :rtype: (str, int)|None
         """
         raise NotImplementedError('Abstract method: getUpdatedBatchJob')
 
     def shutdown(self):
-        """Called at the completion of a toil invocation.
+        """
+        Called at the completion of a toil invocation.
         Should cleanly terminate all worker threads.
         """
         raise NotImplementedError('Abstract Method: shutdown')
@@ -132,6 +184,13 @@ class AbstractBatchSystem:
         NB: Only the Mesos and single-machine batch systems support passing environment
         variables. On other batch systems, this method has no effect. See
         https://github.com/BD2KGenomics/toil/issues/547.
+
+        :param str name: the environment variable to be set on the worker.
+
+        :param str value: if given, the environment variable given by name will be set to this value.
+          if None, the variable's current value will be used as the value on the worker
+
+        :raise RuntimeError: if value is None and the name cannot be found in the environment
         """
         if value is None:
             try:
@@ -142,13 +201,18 @@ class AbstractBatchSystem:
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        """Gets the period of time to wait (floating point, in seconds) between checking for 
+        """
+        Gets the period of time to wait (floating point, in seconds) between checking for
         missing/overlong jobs.
+
+        :return: time in seconds to wait in between checking for lost jobs
+        :rtype: int
         """
         raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
 
     def _getResultsFileName(self, toilPath):
-        """Get a path for the batch systems to store results. GridEngine
+        """
+        Get a path for the batch systems to store results. GridEngine
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
@@ -162,6 +226,9 @@ class AbstractBatchSystem:
         sequentially, and more than one concurrent worker process may exist on a worker node,
         for the same workflow. The batch system is said to *shut down* after the last worker
         process terminates.
+
+        :return: boolean indication whether the batch system supports worker cleanup
+        :rtype: bool
         """
         return False
 
@@ -181,11 +248,25 @@ class AbstractBatchSystem:
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, cores_or_mem, requested, available):
+    """
+    To be raised when a job requests more of a particular resource than is either currently allowed
+    or avaliable
+    """
+    def __init__(self, resource, requested, available):
+        """
+        Creates an instance of this exception that indicates which resource is insufficient for current
+        demands, as well as the amount requested and amount actually available.
+
+        :param str resource: string representing the resource type
+
+        :param int requested: the amount of the particular resource requested that resulted in this exception
+
+        :param int available: amount of the particular resource actually available
+        """
         self.requested = requested
         self.available = available
-        self.cores_or_mem = cores_or_mem
+        self.resource = resource
 
     def __str__(self):
         return 'Requesting more {} than available. Requested: {}, Available: {}' \
-               ''.format(self.cores_or_mem, self.requested, self.available)
+               ''.format(self.resource, self.requested, self.available)

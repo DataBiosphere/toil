@@ -1,16 +1,38 @@
 .. _tutorial-ref:
 
-User Tutorial
-=============
+Developing A Workflow
+=====================
 
-This tutorial will guide you through the features of Toil from a user perspective.
+This tutorial walks through the features of Toil necessary for developing a workflow 
+using the Toil Python API.
+
+Scripting Quick Start
+---------------------
+
+To begin, consider this short toil script which illustrates defining a workflow::
+
+    from toil.job import Job
+         
+    def helloWorld(message, memory="2G", cores=2, disk="3G"):
+        return "Hello, world!, here's a message: %s" % message
+            
+    j = Job.wrapFn(helloWorld, "woot")
+               
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflow")
+        print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
+
+The workflow consists of a single job. The resource
+requirements for that job are (optionally) specified by keyword arguments (memory, cores, disk).
+The script is run using :func:`toil.job.Job.Runner.getDefaultOptions`. 
+Below we explain the components of this code in detail.
       
 Job basics
 ----------
 
 The atomic unit of work in a Toil workflow is a *job* (:class:`toil.job.Job`). User
 scripts inherit from this base class to define units of work.
-For example::
+For example, here is a more long-winded class-based version of the job in the quick start example::
 
     from toil.job import Job
     
@@ -20,8 +42,7 @@ For example::
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s" % 
-                                  self.message)
+            return "Hello, world!, here's a message: %s" % self.message
             
 In the example a class, HelloWorld, is defined. 
 The constructor requests 2 gigabytes of memory, 2 cores and 3 gigabytes of local disk
@@ -34,27 +55,25 @@ will be registered in the log output of the leader process of the workflow.
 Invoking a workflow
 -------------------
 
-We can add to the previous example to turn it into a complete workflow by adding the necessary
-function calls to create an instance of HelloWorld and to run this as a workflow containing a
-single job. This uses the :class:`toil.job.Job.Runner` class, which is used to start and resume
-Toil workflows. For example::
+We can add to the previous example to turn it into a complete workflow by adding 
+the necessary function calls to create an instance of HelloWorld and to run this 
+as a workflow containing a single job. This uses the :class:`toil.job.Job.Runner` 
+class, which is used to start and resume Toil workflows. For example::
 
     from toil.job import Job
-
+    
     class HelloWorld(Job):
         def __init__(self, message):
             Job.__init__(self,  memory="2G", cores=2, disk="3G")
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s" 
-                                  % self.message)
-
-    if __name__=="__main__":
+            return "Hello, world!, here's a message: %s" % self.message
+    
+    if __name__=="__main__":   
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        Job.Runner.startToil(HelloWorld("woot"), options)
-
+        print Job.Runner.startToil(HelloWorld("woot"), options)
+    
 
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to run and resume
 workflows. It is used as a context manager and allows for preliminary setup, such as staging of
@@ -84,23 +103,24 @@ arguments. For example::
 
     
 The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of default
-options for the workflow. The only argument is a description of how to store the workflow's
-state in what we call a *job store*. Here the job store is contained in a directory within the current working directory
-called "toilWorkflowRun". Alternatively this string can encode an S3 bucket or Azure
-object store location. By default the job store is deleted if the workflow completes
+options for the workflow. The only argument is a description of how to store the 
+workflow's state in what we call a *job-store*. Here the job-store is contained 
+in a directory within the current working directory
+called "toilWorkflowRun". Alternatively this string can encode other ways to store the 
+necessary state, e.g. an S3 bucket or Azure
+object store location. By default the job-store is deleted if the workflow completes
 successfully. 
-
-On the next line we specify a single option, the log level for the workflow, to ensure the message 
-from the job is reported in the leader's log, which by default will be printed to standard error. 
 
 The workflow is executed in the final line, which creates an instance of HelloWorld and
 runs it as a workflow. Note all Toil workflows start from a single starting job, referred to as
-the *root* job.
+the *root* job. The return value of the root job is returned as the result of the completed
+workflow (see promises below to see how this is a useful feature!).
 
 Specifying arguments via the command line
 -----------------------------------------
 
-To allow command line control of the options we can use the :func:`toil.job.Job.Runner.getDefaultArgumentParser` 
+To allow command line control of the options we can use the 
+:func:`toil.job.Job.Runner.getDefaultArgumentParser` 
 method to create a :class:`argparse.ArgumentParser` object which can be used to 
 parse command line options for a Toil script. For example::
 
@@ -112,14 +132,12 @@ parse command line options for a Toil script. For example::
             self.message = message
     
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s" 
-                                  % self.message)
+            return "Hello, world!, here's a message: %s" % self.message
     
     if __name__=="__main__":   
         parser = Job.Runner.getDefaultArgumentParser()
         options = parser.parse_args()
-        options.logLevel = "INFO"
-        Job.Runner.startToil(HelloWorld("woot"), options)
+        print Job.Runner.startToil(HelloWorld("woot"), options)
 
 Creates a fully fledged script with all the options Toil exposed as command line
 arguments. Running this script with "--help" will print the full list of options.
@@ -133,8 +151,13 @@ Resuming a workflow
 
 In the event that a workflow fails, either because of programmatic error within
 the jobs being run, or because of node failure, the workflow can be resumed. Workflows
-can only not be reliably resumed if the job store itself becomes corrupt. To 
-resume a workflow specify the "restart" option in the options object passed to
+can only not be reliably resumed if the job-store itself becomes corrupt. 
+
+Critical to resumption is that jobs can be rerun, even if they have apparently completed successfully.
+Put succinctly, a user defined job should not corrupt its input arguments. That way, regardless of node, network
+or leader failure the job can be restarted and the workflow resumed.
+
+To resume a workflow specify the "restart" option in the options object passed to
 :func:`toil.job.Job.Runner.startToil`. If node failures are expected it can also be useful
 to use the integer "retryCount" option, which will attempt to rerun a job retryCount
 number of times before marking it fully failed. 
@@ -152,57 +175,59 @@ Defining jobs by creating class definitions generally involves the boilerplate o
 a constructor. To avoid this the classes :class:`toil.job.FunctionWrappingJob` and 
 :class:`toil.job.JobFunctionWrappingTarget` allow functions to be directly converted to 
 jobs. 
-For example::
+For example, the quick start example (repeated here)::
 
     from toil.job import Job
      
-    def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-        job.fileStore.logToMaster("Hello world, " 
-        "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+    def helloWorld(message, memory="2G", cores=2, disk="3G"):
+        return "Hello, world!, here's a message: %s" % message
         
-    j = Job.wrapJobFn(helloWorld, "woot")
+    j = Job.wrapFn(helloWorld, "woot")
     
     if __name__=="__main__":    
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        Job.Runner.startToil(j, options)
+        print Job.Runner.startToil(j, options)
 
-Is equivalent to the complete previous example. Here *helloWorld* is an example of a 
-*job function*, a function whose first argument is a reference to the wrapping job. 
-Just like a *self* argument in a class, this allows access to the methods of the wrapping
-job, see :class:`toil.job.JobFunctionWrappingTarget`. 
+Is equivalent to the previous example, but using a function to define the job. 
 
 The function 
 call::
 
-    Job.wrapJobFn(helloWorld, "woot")
+    Job.wrapFn(helloWorld, "woot")
 
-Creates the instance of the :class:`toil.job.JobFunctionWrappingTarget` that wraps the job
+Creates the instance of the :class:`toil.job.FunctionWrappingTarget` that wraps the 
 function. 
 
 The keyword arguments *memory*, *cores* and *disk* allow resource requirements to be specified as before. Even 
 if they are not included as keyword arguments within a function header 
-they can be passed to as arguments when wrapping a function as a job and will be used to specify resource requirements.
+they can be passed as arguments when wrapping a function as a job and will be used to specify resource requirements.
 
-Non-job functions can also be wrapped, 
-for example::
+We can also use the function wrapping syntax to a 
+*job function*, a function whose first argument is a reference to the wrapping job. 
+Just like a *self* argument in a class, this allows access to the methods of the wrapping
+job, see :class:`toil.job.JobFunctionWrappingTarget`. For example::
 
     from toil.job import Job
      
-    def helloWorld2(message):
-        return "Hello world, I have a message: %s" % message 
+    def helloWorld(job, message):
+        job.fileStore.logToMaster("Hello world, " 
+        "I have a message: %s" % message) # This uses a logging function 
+        # of the Job.FileStore class
         
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        print Job.Runner.startToil(Job.wrapFn(helloWorld2, "woot"), options)
-    
-Here the only major difference to note is the 
+        options.logLevel = "INFO"
+        print Job.Runner.startToil(Job.wrapJobFn(helloWorld, "woot"), options)
+
+Here helloWorld2 is a job function. It accesses the :class:`toil.job.Job.FileStore`
+attribute of the job to log a message that will be printed to the output console.
+Here the only subtle difference to note is the 
 line::
 
-    Job.Runner.startToil(Job.wrapFn(helloWorld, "woot"), options)
+    Job.Runner.startToil(Job.wrapJobFn(helloWorld, "woot"), options)
 
-Which uses the function :func:`toil.job.Job.wrapFn` to wrap an ordinary function
-instead of :func:`toil.job.Job.wrapJobFn` which wraps a job function.
+Which uses the function :func:`toil.job.Job.wrapJobFn` to wrap the job function
+instead of :func:`toil.job.Job.wrapFn` which wraps a vanilla function.
 
 Workflows with multiple jobs
 ----------------------------
@@ -239,6 +264,7 @@ a simple example that uses the earlier helloWorld job function::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(j1, options)
 
 In the example four jobs are created, first j1 is run, 
@@ -262,6 +288,7 @@ for example::
      
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(j1, options)
          
 Equivalently defines the workflow, where the functions :func:`toil.job.Job.addChildJobFn`
@@ -288,6 +315,7 @@ follows::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(j1, options)
          
 Note the use of an extra child edge to make j4 a child of both j2 and j3. 
@@ -310,6 +338,7 @@ For example::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(Job.wrapJobFn(binaryStringFn, depth=5), options)
 
 The binaryStringFn logs all possible binary strings of length n (here n=5), creating a total of 2^(n+2) - 1
@@ -322,8 +351,8 @@ Promises
 
 The previous example of dynamic job creation shows variables from a parent job
 being passed to a child job. Such forward variable passing is naturally specified
-by recursive invocation of successor jobs within parent jobs. However, it is often 
-desirable to return variables from jobs in a non-recursive or dynamic context. 
+by recursive invocation of successor jobs within parent jobs. This can also be 
+achieved statically by passing around references to the return variables of jobs.
 In Toil this is achieved with promises, as illustrated in the following 
 example::
 
@@ -339,6 +368,7 @@ example::
     
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
         Job.Runner.startToil(j1, options)
     
 Running this workflow results in three log messages from the jobs: "i is 1" from *j1*,
@@ -391,7 +421,7 @@ It is frequently the case that a workflow will want to create files, both persis
 during its run. The :class:`toil.job.Job.FileStore` class is used by jobs to manage these
 files in a manner that guarantees cleanup and resumption on failure. 
 
-The :func:`toil.job.Job.run` method has a file store instance as an argument. The following example
+The :func:`toil.job.Job.run` method has a file-store instance as an argument. The following example
 shows how this can be used to create temporary files that persist for the length of the job,
 be placed in a specified local disk of the node and that 
 will be cleaned up, regardless of failure, when the job 
@@ -416,7 +446,7 @@ finishes::
         #Run the workflow
         Job.Runner.startToil(j, options)  
 
-Job functions can also access the file store for the job. The equivalent of the LocalFileStoreJob
+Job functions can also access the file-store for the job. The equivalent of the LocalFileStoreJob
 class is 
 equivalently::
 
@@ -426,7 +456,7 @@ equivalently::
         
 Note that the fileStore attribute is accessed as an attribute of the job argument.
         
-In addition to temporary files that exist for the duration of a job, the file store allows the
+In addition to temporary files that exist for the duration of a job, the file-store allows the
 creation of files in a *global* store, which persists during the workflow and are globally
 accessible (hence the name) between jobs. 
 For example::
@@ -446,7 +476,7 @@ For example::
             # scratch file.
             fH.write("What a tangled web we weave")
         
-        # Write a copy of the file into the file store;
+        # Write a copy of the file into the file-store;
         # fileID is the key that can be used to retrieve the file.
         fileID = job.fileStore.writeGlobalFile(scratchFile) #This write 
         # is asynchronous by default
@@ -468,7 +498,7 @@ For example::
         with job.fileStore.readGlobalFileStream(fileID2) as fH:
             print fH.read() #This prints "Out brief candle"
         
-        # Delete the first file from the global file store.
+        # Delete the first file from the global file-store.
         job.fileStore.deleteGlobalFile(fileID)
         
         # It is unnecessary to delete the file keyed by fileID2 
@@ -479,11 +509,11 @@ For example::
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
         Job.Runner.startToil(Job.wrapJobFn(globalFileStoreJobFn), options)
               
-The example demonstrates the global read, write and delete functionality of the file store, using both
+The example demonstrates the global read, write and delete functionality of the file-store, using both
 local copies of the files and streams to read and write the files. It covers all the methods 
-provided by the file store interface. 
+provided by the file-store interface. 
 
-What is obvious is that the file store provides no functionality
+What is obvious is that the file-store provides no functionality
 to update an existing "global" file, meaning that files are, barring deletion, immutable. 
 Also worth noting is that there is no file system hierarchy for files in the global file 
 store. These limitations allow us to fairly easily support different object stores and to 
@@ -535,12 +565,17 @@ services work::
     
     class DemoService(Job.Service):
     
-        def start(self):
+        def start(self, fileStore):
             # Start up a database/service here
             return "loginCredentials" # Return a value that enables another 
             # process to connect to the database
+            
+        def check(self):
+            # A function that if it returns False causes the service to quit
+            # If it raises an exception the service is killed and an error is reported
+            return True
     
-        def stop(self):
+        def stop(self, fileStore):
             # Cleanup the database here
             pass
     
@@ -561,7 +596,8 @@ services work::
     
 In this example the DemoService starts a database in the start method,
 returning an object from the start method indicating how a client job would access the database. 
-The service's stop method cleans up the database.
+The service's stop method cleans up the database, while the service's check method is polled
+periodically to check the service is alive. 
 
 A DemoService instance is added as a service of the root job *j*, with resource requirements
 specified. The return value from :func:`toil.job.Job.addService` is a promise to the return
@@ -570,6 +606,33 @@ to connect to the database. The promise is passed to a child job of j, which
 uses it to make a database connection. The services of a job are started before any of 
 its successors have been run and stopped after all the successors of the job have completed
 successfully. 
+
+Multiple services can be created per job, all run in parallel. Additionally, services
+can define sub-services using :func:`toil.job.Job.Service.addChild`. This allows complex
+networks of services to be created, e.g. Apache Spark clusters, within a workflow.
+
+Checkpoints
+-----------
+
+Services complicate resuming a workflow after failure, because they can create complex dependencies between jobs.
+For example, consider a service that provides a database that multiple jobs update. If the database
+service fails and loses state, it is not clear that just restarting the service will allow
+the workflow to be resumed, because jobs that created that state may have already finished. 
+To get around this problem Toil supports "checkpoint" jobs, specified
+as the boolean keyword argument "checkpoint" to a job or wrapped function, e.g.::
+
+    j = Job(checkpoint=True)
+    
+A checkpoint job is rerun if one or more of its successors fails its retry attempts, until it itself
+has exhausted its retry attempts. Upon restarting a checkpoint job all its 
+existing successors are first deleted, and then the job is rerun to define new successors. 
+By checkpointing a job that defines a service, upon failure of the service the 
+database and the jobs that access the service can be redefined and rerun.
+
+To make the implementation of checkpoint jobs simple, a job can only be a checkpoint if 
+when first defined it has no successors, i.e. it can only define successors 
+within its run method. 
+
 
 Encapsulation
 -------------
@@ -626,8 +689,4 @@ write::
 Note the call to :func:`toil.job.Job.encapsulate` creates the \
 :class:`toil.job.Job.EncapsulatedJob`.
 
-Toil Utilities
---------------
 
-TODO: Cover clean, kill, restart, stats and status. Note these should have APIs
-to access them as well as the utilities.

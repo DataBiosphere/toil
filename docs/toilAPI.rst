@@ -70,7 +70,7 @@ Exceptions
 Toil specific exceptions.
 
 .. autoclass:: toil.job::JobException
-   :members:  
+   :members: 
    
 .. autoclass:: toil.job::JobGraphDeadlockException
    :members:
