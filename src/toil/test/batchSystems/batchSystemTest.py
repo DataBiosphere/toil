@@ -43,11 +43,9 @@ log = logging.getLogger(__name__)
 #
 numCores = 2
 
-defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=True)
-
-
-
 preemptable = True
+
+defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
 
 
 class hidden:
@@ -382,8 +380,10 @@ def job2(job, cmd):
     job.addChildFn(hello_world, cmd)
     subprocess.check_call(cmd, shell=True)
 
+
 def hello_world(cmd):
     subprocess.check_call(cmd, shell=True)
+
 
 class Service(Job.Service):
     def __init__(self, cmd):
@@ -392,7 +392,7 @@ class Service(Job.Service):
 
     def start(self, fileStore):
         subprocess.check_call(self.cmd + ' 1', shell=True)
-        
+
     def check(self):
         return True
 
