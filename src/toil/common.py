@@ -24,7 +24,6 @@ import tempfile
 from argparse import ArgumentParser
 
 from bd2k.util.humanize import bytes2human
-from toil.leader import mainLoop
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString
 from toil.realtimeLogger import RealtimeLogger
@@ -555,7 +554,14 @@ class Toil(object):
                     # This cleans up any half written jobs after a restart
                     rootJob = self.jobStore.clean(jobCache=self.jobCache)
 
-                return mainLoop(self.config, self.batchSystem, self.jobStore, rootJob, jobCache=self.jobCache)
+                # FIXME: common.py shouldn't import from leader.py
+                from toil.leader import mainLoop
+                return mainLoop(config=self.config,
+                                batchSystem=self.batchSystem,
+                                provisioner=None,
+                                jobStore=self.jobStore,
+                                rootJobWrapper=rootJob,
+                                jobCache=self.jobCache)
 
             finally:
                 startTime = time.time()
