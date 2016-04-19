@@ -13,21 +13,21 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-from contextlib import contextmanager
-import re
+
+import cPickle
 import logging
 import os
+import re
 import sys
-import cPickle
-import time
 import tempfile
+import time
 from argparse import ArgumentParser
 
 from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString
-from toil.realtimeLogger import RealtimeLogger
 from toil.provisioners.abstractProvisioner import Shape
+from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
 

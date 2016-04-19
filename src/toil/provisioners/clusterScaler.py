@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
 import logging
 import time
 from threading import Thread, Event, Lock
@@ -21,7 +22,6 @@ from toil.common import Config
 from toil.leader import JobBatcher
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.abstractProvisioner import ProvisioningException
-from toil.leader import IssuedJob
 
 logger = logging.getLogger(__name__)
 

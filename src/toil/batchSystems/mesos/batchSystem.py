@@ -31,8 +31,9 @@ from bd2k.util.expando import Expando
 from mesos.interface import mesos_pb2
 
 from toil import resolveEntryPoint
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, BatchSystemSupport, \
-    NodeInfo
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   BatchSystemSupport,
+                                                   NodeInfo)
 from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
 
 log = logging.getLogger(__name__)
