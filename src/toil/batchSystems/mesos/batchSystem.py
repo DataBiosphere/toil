@@ -25,6 +25,7 @@ from Queue import Queue, Empty
 from collections import defaultdict
 from struct import unpack
 
+import itertools
 import mesos.interface
 import mesos.native
 from bd2k.util.expando import Expando
@@ -112,7 +113,7 @@ class MesosBatchSystem(BatchSystemSupport,
 
         self.executor = self.buildExecutor()
 
-        self.nextJobID = 0
+        self.unusedJobID = itertools.count()
         self.lastReconciliation = time.time()
         self.reconciliationPeriod = 120
 
@@ -127,9 +128,7 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         # puts job into jobType_queue to be run by Mesos, AND puts jobID in current_job[]
         self.checkResourceRequest(memory, cores, disk)
-        jobID = self.nextJobID
-        self.nextJobID += 1
-
+        jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
                       resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
                       command=command,
