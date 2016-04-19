@@ -122,6 +122,8 @@ class StatsAndLogging( object ):
 # Represents a job and its requirements as issued to the batch system
 IssuedJob = namedtuple("IssuedJob", "jobStoreID memory cores disk preemptable")
 
+# TODO: extract into separate module
+
 class JobBatcher:
     """
     Class works with jobBatcherWorker to submit jobs to the batch system.

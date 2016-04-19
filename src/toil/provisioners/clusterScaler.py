@@ -19,7 +19,6 @@ import time
 from threading import Thread, Event, Lock
 
 from toil.common import Config
-from toil.leader import JobBatcher
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.abstractProvisioner import ProvisioningException
 
@@ -270,7 +269,7 @@ class ClusterScaler(object):
 
         :param AbstractProvisioner provisioner: Provisioner instance to scale.
 
-        :param JobDispatcher jobBatcher: Class used to schedule jobs. This is monitored to
+        :param JobBatcher jobBatcher: Class used to schedule jobs. This is monitored to
                make scaling decisions.
 
         :param int minNodes: the minimum nodes in the cluster
