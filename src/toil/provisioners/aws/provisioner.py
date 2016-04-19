@@ -64,7 +64,7 @@ class AWSProvisioner(AbstractProvisioner):
                 if instanceType.disks == 0:
                     raise RuntimeError("This provisioner only supports instance types with one or "
                                        "more ephemeral volumes. The requested type '%s' does not "
-                                       "have those." % instanceType.name)
+                                       "have any." % instanceType.name)
         self.spotBid = config.preemptableBidPrice
 
     def addNodes(self, numNodes=1, preemptable=False):
@@ -112,7 +112,8 @@ class AWSProvisioner(AbstractProvisioner):
 
     def removeNodes(self, numNodes=1, preemptable=False):
         # If the batch system is scalable, we can use the number of currently running workers on
-        # each node as the primary criterion to select which nodes to terminate. Otherwise, we terminate the oldest nodes. The reasoning is
+        # each node as the primary criterion to select which nodes to terminate. Otherwise,
+        # we terminate the oldest nodes.
         instances = self._getAllInstances()
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
             # Index instances by private IP address
