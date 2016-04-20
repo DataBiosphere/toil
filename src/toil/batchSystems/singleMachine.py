@@ -25,7 +25,7 @@ from threading import Lock, Condition
 from Queue import Queue, Empty
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, AbstractBatchSystem
 
 log = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             inputQueue.put(None)
         for thread in self.workerThreads:
             thread.join()
-        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
+        BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
         """
