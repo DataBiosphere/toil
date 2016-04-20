@@ -88,8 +88,8 @@ class AbstractBatchSystem(object):
         Gets all currently issued jobs
 
         :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
-          waiting to be run). Despite the result being a list, the ordering should not
-          be depended upon.
+                 waiting to be run). Despite the result being a list, the ordering should not
+                 be depended upon.
         :rtype: list[str]
         """
         raise NotImplementedError()
@@ -101,7 +101,7 @@ class AbstractBatchSystem(object):
         and how long they have been running, in seconds.
 
         :return: dictionary with currently running jobID keys and how many seconds they have
-          been running as the value
+                 been running as the value
         :rtype: dict[str,float]
         """
         raise NotImplementedError()
@@ -115,9 +115,9 @@ class AbstractBatchSystem(object):
 
         :rtype: (str, int)|None
         :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
-        Otherwise it returns None. wallTime is the number of seconds (a float) in wall-clock time
-        the job ran for or None if this batch system does not support tracking wall time. Returns
-        None for jobs that were killed.
+                 Otherwise it returns None. wallTime is the number of seconds (a float) in
+                 wall-clock time the job ran for or None if this batch system does not support
+                 tracking wall time. Returns None for jobs that were killed.
         """
         raise NotImplementedError()
 
@@ -178,6 +178,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param int maxDisk: the maximum amount of disk space the batch system can
           request for any one job, in bytes
         """
+        super(BatchSystemSupport, self).__init__()
         self.config = config
         self.maxCores = maxCores
         self.maxMemory = maxMemory
@@ -201,7 +202,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param int disk: amount of disk space being requested, in bytes
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
-          greater than allowed
+               greater than allowed
         """
         assert memory is not None
         assert disk is not None
@@ -233,7 +234,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param str name: the environment variable to be set on the worker.
 
         :param str value: if given, the environment variable given by name will be set to this value.
-          if None, the variable's current value will be used as the value on the worker
+               if None, the variable's current value will be used as the value on the worker
 
         :raise RuntimeError: if value is None and the name cannot be found in the environment
         """
@@ -338,9 +339,10 @@ class InsufficientSystemResources(Exception):
 
         :param str resource: string representing the resource type
 
-        :param int requested: the amount of the particular resource requested that resulted in this exception
+        :param int|float requested: the amount of the particular resource requested that resulted
+               in this exception
 
-        :param int available: amount of the particular resource actually available
+        :param int|float available: amount of the particular resource actually available
         """
         self.requested = requested
         self.available = available

@@ -156,13 +156,14 @@ class Job(object):
         
         :raises toil.job.JobException: If service has already been made the child of a job or another service.
         :param toil.job.Job.Service service: Service to add.
-        :param toil.job.Job.Service parentService: Service that will be started before 'service' is started.\
-        Allows trees of services to be established. parentService must be a service of this job.
-        :return: a promise that will be replaced with the return value from \
-        :func:`toil.job.Job.Service.start` of service in any successor of the job.
+        :param toil.job.Job.Service parentService: Service that will be started before 'service' is
+               started. Allows trees of services to be established. parentService must be a service
+               of this job.
+        :return: a promise that will be replaced with the return value from
+                 :func:`toil.job.Job.Service.start` of service in any successor of the job.
         :rtype:toil.job.PromisedJobReturnValue
         """
-        if parentService != None:
+        if parentService is not None:
             # Do check to ensure that parentService is a service of this job
             def check(services):
                 for s, jS in services:
@@ -938,9 +939,9 @@ class Job(object):
 
         def _addChild(self, service):
             """
-            Add a child service to start up after this service has started.
-            This should not be called by the user, instead use :func:`toil.job.Job.Service.addService`
-            with the "parentService" option.
+            Add a child service to start up after this service has started. This should not be
+            called by the user, instead use :func:`toil.job.Job.Service.addService` with the
+            ``parentService`` option.
 
             :raises toil.job.JobException: If service has already been made the child of a job or another service. 
             :param toil.job.Job.Service service: Service to add as a "child" of this service

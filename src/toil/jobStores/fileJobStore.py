@@ -317,8 +317,10 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFileName(self, jobStoreID):
         """
-        :rtype : string, string is the file containing the serialised JobWrapper instance
-        for the given job.
+        Return the path to the file containing the serialised JobWrapper instance for the given
+        job.
+
+        :rtype: str
         """
         return os.path.join(self._getAbsPath(jobStoreID), "job")
 
@@ -331,7 +333,7 @@ class FileJobStore(AbstractJobStore):
 
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
-        Raises NoSuchFileException if the jobStoreFileID does not exist or is not a file.
+        :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
         """
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)

@@ -22,7 +22,7 @@ from datetime import timedelta
 from uuid import uuid4
 from toil.job import JobException
 from bd2k.util import memoize
-from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
+from bd2k.util.objects import abstractclassmethod
 
 try:
     import cPickle
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 class NoSuchJobException(Exception):
     def __init__(self, jobStoreID):
         """
-        Indicates that the specified job does not exists
+        Indicates that the specified job does not exist
 
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
@@ -50,7 +50,7 @@ class ConcurrentFileModificationException(Exception):
         Indicates that the file was attempted to be modified by multiple processes at once.
 
         :param str jobStoreFileID: the ID of the file that was modified by multiple workers
-          or processes concurrently
+               or processes concurrently
         """
         super(ConcurrentFileModificationException, self).__init__(
             'Concurrent update to file %s detected.' % jobStoreFileID)
@@ -160,9 +160,8 @@ class AbstractJobStore(object):
     @property
     def config(self):
         """
-        A getter/setter for the jobStore's config object
+        The Toil configuration associated with this job store.
 
-        :return: the config object associated with the jobStore
         :rtype: toil.common.Config
         """
         return self.__config
@@ -215,11 +214,12 @@ class AbstractJobStore(object):
         """
         Consistency checks which will result in exceptions if we attempt to overwrite an existing
         job store. This method must be called by the constructor of a subclass before any
-        modification are made. Either create or exists must be true but not both.
+        modification are made. Either create or exists must be True but not both.
 
-        :param bool create: a boolean indicating if the config will try to create a new jobStore
+        :param bool create: a boolean indicating if the config will try to create a new job store
 
-        :param bool exists: a boolean indicating if the config will try to reconnect to an existing jobStore
+        :param bool exists: a boolean indicating if the config will try to reconnect to an existing
+               job store
 
         :raise JobStoreCreationException:  if create == exists
         """
@@ -352,7 +352,6 @@ class AbstractJobStore(object):
         Returns a dictionary of environment variables that this job store requires to be set in
         order to function properly on a worker.
 
-        :return: dictionary of environment variables that this job store requires
         :rtype: dict[str,str]
         """
         return {}
@@ -524,19 +523,22 @@ class AbstractJobStore(object):
     def create(self, command, memory, cores, disk, preemptable,
                predecessorNumber=0):
         """
-        Creates a jobWrapper with specified resources and command, adds it to the job store,
-        and returns it
+        Creates a jobWrapper with specified resources and command, adds it to the job store and
+        returns it.
         
         :param str command: argument to the job constructor. Specifies the job's command it will run
 
-        :param int memory: argument to the job constructor. Specifies the amount of memory the job needs to run
+        :param int memory: argument to the job constructor. Specifies the amount of memory the job
+               needs to run
 
-        :param float cores: argument to the job constructor. Specifies the number of cores the job needs to run
+        :param float cores: argument to the job constructor. Specifies the number of cores the job
+                needs to run
 
-        :param int disk: argument to the job constructor. Specifies the amount of disk the job needs to run
+        :param int disk: argument to the job constructor. Specifies the amount of disk the job
+               needs to run
 
-        :param int predecessorNumber: argument to the job constructor. Specifies the number of other jobWrappers
-          that specify this job in their stack
+        :param int predecessorNumber: argument to the job constructor. Specifies the number of
+               other jobWrappers that specify this job in their stack
 
         :return: the newly created jobWrapper object
         :rtype: toil.jobWrapper.JobWrapper
@@ -548,7 +550,6 @@ class AbstractJobStore(object):
         """
         Indicates whether the job with the specified jobStoreID exists in the job store
 
-        :return: true if the job is in the store, else false.
         :rtype: bool
         """
         raise NotImplementedError()
@@ -559,14 +560,14 @@ class AbstractJobStore(object):
     @abstractmethod
     def getPublicUrl(self, fileName):
         """
-        Returns a publicly accessible URL to the given file in the job store. The returned
-        URL may expire as early as 1h after its been returned. Throw an exception if the file does not exist.
+        Returns a publicly accessible URL to the given file in the job store. The returned URL may
+        expire as early as 1h after its been returned. Throw an exception if the file does not
+        exist.
 
-        :param str fileName: the jobStoreFileID of the file to generate a publically accessible url for.
+        :param str fileName: the jobStoreFileID of the file to generate a URL for
 
-        :raise NoSuchFileException: raised if the specified file does not exist in the store
+        :raise NoSuchFileException: if the specified file does not exist in this job store
 
-        :return: Properly formatted and publically available url starting with 'http:',  'https:' or 'file:'
         :rtype: str
         """
         raise NotImplementedError()
@@ -574,8 +575,8 @@ class AbstractJobStore(object):
     @abstractmethod
     def getSharedPublicUrl(self, sharedFileName):
         """
-        Differs from getPublicUrl in that this method is for generating urls for shared files written by
-        the writeSharedFileStream method.
+        Differs from :meth:`getPublicUrl` in that this method is for generating URLs for shared
+        files written by :meth:`writeSharedFileStream`.
 
         Returns a publicly accessible URL to the given file in the job store. The returned URL
         starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
@@ -585,7 +586,6 @@ class AbstractJobStore(object):
 
         :raise NoSuchFileException: raised if the specified file does not exist in the store
 
-        :return: Properly formatted and publically available url starting with 'http:',  'https:' or 'file:'
         :rtype: str
         """
         raise NotImplementedError()
@@ -593,13 +593,12 @@ class AbstractJobStore(object):
     @abstractmethod
     def load(self, jobStoreID):
         """
-        Loads the job referenced by the jobStoreID and returns it.
+        Loads the job referenced by the given ID and returns it.
 
-        :param str jobStoreID: the ID of the job to load from the job store
+        :param str jobStoreID: the ID of the job to load
 
-        :raise NoSuchJobException: if there is no job with the given jobStoreID
+        :raise NoSuchJobException: if there is no job with the given ID
 
-        :return: The jobWrapper referenced by the passed jobStoreID
         :rtype: toil.jobWrapper.JobWrapper
         """
         raise NotImplementedError()
@@ -609,7 +608,7 @@ class AbstractJobStore(object):
         """
         Persists the job in this store atomically.
 
-        :param toil.jobWrapper.JobWrapper job: the jobWrapper to write to the job store
+        :param toil.jobWrapper.JobWrapper job: the job to write to this job store
         """
         raise NotImplementedError()
 
@@ -622,19 +621,18 @@ class AbstractJobStore(object):
         This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
         will succeed silently.
 
-        :param str jobStoreID: the ID of the job to delete from the job store
+        :param str jobStoreID: the ID of the job to delete from this job store
         """
         raise NotImplementedError()
 
     def jobs(self):
         """
-        Gets all jobs in the jobStore as an iterator. All valid jobs will be returned, but not all returned jobs
-        are valid. Invalid jobs are jobs that have already finished running and should not be rerun.
-        To guarantee you only get jobs that can be run, instead construct a ToilState object
+        Return an iterator with all jobs in this job store as an iterator. All valid jobs will be
+        returned, but not all returned jobs are valid. Invalid jobs are jobs that have already
+        finished running and should not be rerun. To guarantee you only get jobs that can be run,
+        construct a ToilState object instead.
 
-        :return: Returns iterator on all jobs in the store. The iterator will contain all valid jobs, but may also
-          contain invalid jobs.
-        :rtype: iterator
+        :rtype: Iterator[toil.jobWrapper.JobWrapper]
         """
         raise NotImplementedError()
 
@@ -652,16 +650,18 @@ class AbstractJobStore(object):
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
         :param str|None jobStoreID: If specified the file will be associated with that job and when
-          jobStore.delete(job) is called all files written with the given job.jobStoreID will
-          be removed from the job store.
+               jobStore.delete(job) is called all files written with the given job.jobStoreID will
+               be removed from the job store.
 
-        :raise:
-          :ConcurrentFileModificationException: if the file was modified concurrently during
-           an invocation of this method
-          :NoSuchFileException: if the file specified does not exist
+        :raise ConcurrentFileModificationException: if the file was modified concurrently during
+               an invocation of this method
 
-        :return: a jobStoreFileID that references the newly created file and can be used to read the
-          file in the future.
+        :raise NoSuchJobException: if the job specified via jobStoreID does not exist
+
+        FIXME: some implementations may not raise this
+
+        :return: an ID referencing the newly created file and can be used to read the
+                 file in the future.
         :rtype: str
         """
         raise NotImplementedError()
@@ -675,17 +675,19 @@ class AbstractJobStore(object):
         file in the job store. The yielded file handle does not need to and 
         should not be closed explicitly.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
-          that job and when when jobStore.delete(job) is called all files written with the given
-          job.jobStoreID will be removed from the job store.
+        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated
+               with that job and when when jobStore.delete(job) is called all files written with the
+               given job.jobStoreID will be removed from the job store.
 
-        :raise:
-          :ConcurrentFileModificationException: if the file was modified concurrently during
-           an invocation of this method
-          :NoSuchFileException: if the file specified does not exist
+        :raise ConcurrentFileModificationException: if the file was modified concurrently during
+               an invocation of this method
 
-        :return: a jobStoreFileID that references the newly created file and can be used to read the
-          file in the future.
+        :raise NoSuchJobException: if the job specified via jobStoreID does not exist
+
+        FIXME: some implementations may not raise this
+
+        :return: an ID that references the newly created file and can be used to read the
+                 file in the future.
         :rtype: str
         """
         raise NotImplementedError()
@@ -694,14 +696,14 @@ class AbstractJobStore(object):
     def getEmptyFileStoreID(self, jobStoreID=None):
         """
         Creates an empty file in the job store and returns its ID.
-        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
-        
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
-          that job and when when jobStore.delete(job) is called all files written with the given
-          job.jobStoreID will be removed from the job store.
+
+        :param str jobStoreID: the ID of a job, or None. If specified, the file will be associated
+               with that job and when when jobStore.delete(job) is called all files associated with
+               the given job will be removed from the job store.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
-          file in the future.
+                 file in the future.
+
         :rtype: str
         """
         raise NotImplementedError()
@@ -732,22 +734,20 @@ class AbstractJobStore(object):
     @abstractmethod
     def deleteFile(self, jobStoreFileID):
         """
-        Deletes the file with the given ID from this job store.
-        This operation is idempotent, i.e. deleting a file twice or deleting a non-existent file
-        will succeed silently.
+        Deletes the file with the given ID from this job store. This operation is idempotent, i.e.
+        deleting a file twice or deleting a non-existent file will succeed silently.
 
-        :param str jobStoreFileID: ID of the file to get delete
+        :param str jobStoreFileID: ID of the file to delete
         """
         raise NotImplementedError()
 
     @abstractmethod
     def fileExists(self, jobStoreFileID):
         """
-        Indicates whether a file exists in the job store
+        Determine whether a file exists in this job store.
 
-        :param str jobStoreFileID: the ID that references the file to be checked for existance
+        :param str jobStoreFileID: an ID referencing the file to be checked
 
-        :return: True if the jobStoreFileID exists in the job store, else False
         :rtype: bool
         """
         raise NotImplementedError()
@@ -763,10 +763,10 @@ class AbstractJobStore(object):
         :param str localFilePath: the local path to a file that will overwrite the current version
           in the job store
 
-        :raise:
-          :ConcurrentFileModificationException: if the file was modified concurrently during
-           an invocation of this method
-          :NoSuchFileException: if the file specified does not exist
+        :raise ConcurrentFileModificationException: if the file was modified concurrently during
+               an invocation of this method
+
+        :raise NoSuchFileException: if the specified file does not exist
         """
         raise NotImplementedError()
 
@@ -779,10 +779,10 @@ class AbstractJobStore(object):
 
         :param str jobStoreFileID: the ID of the file in the job store to be updated
 
-        :raise:
-          :ConcurrentFileModificationException: if the file was modified concurrently during
-           an invocation of this method
-          :NoSuchFileException: if the file specified does not exist
+        :raise ConcurrentFileModificationException: if the file was modified concurrently during
+               an invocation of this method
+
+        :raise NoSuchFileException: if the specified file does not exist
         """
         raise NotImplementedError()
 
@@ -803,13 +803,13 @@ class AbstractJobStore(object):
         by the given name.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
-          this job store
+               this job store
 
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
-          False if it must be stored in the clear.
+               False if it must be stored in the clear.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
-          an invocation of this method
+               an invocation of this method
         """
         raise NotImplementedError()
 
@@ -821,7 +821,7 @@ class AbstractJobStore(object):
         by the given name.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
-          this job store
+               this job store
         """
         raise NotImplementedError()
 
@@ -833,7 +833,7 @@ class AbstractJobStore(object):
         :param str statsAndLoggingString: the string to be written to the stats file
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
-          an invocation of this method
+               an invocation of this method
         """
         raise NotImplementedError()
 
@@ -848,13 +848,13 @@ class AbstractJobStore(object):
         existing stats/logging strings, including the ones from a previous invocation of this
         method.
 
-        :param callable callback: a function to be applied to each of the stats file handles found
+        :param Callable callback: a function to be applied to each of the stats file handles found
 
         :param bool readAll: a boolean indicating whether to read the already processed stats files
-          in addition to the unread stats files
+               in addition to the unread stats files
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
-          an invocation of this method
+               an invocation of this method
 
         :return: the number of stats files processed
         :rtype: int
