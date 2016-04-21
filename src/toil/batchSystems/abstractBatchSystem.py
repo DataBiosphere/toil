@@ -87,7 +87,7 @@ class AbstractBatchSystem(object):
         :param booleam preemptable: True if the job can be run on a preemptable node
 
         :return: a unique jobID that can be used to reference the newly issued job
-        :rtype: str
+        :rtype: int
         """
         raise NotImplementedError()
 
@@ -96,7 +96,7 @@ class AbstractBatchSystem(object):
         """
         Kills the given job IDs.
 
-        :param list[str] jobIDs: list of jobIDs to kill
+        :param list[int] jobIDs: list of IDs of jobs to kill
         """
         raise NotImplementedError()
 
