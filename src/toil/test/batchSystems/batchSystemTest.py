@@ -32,7 +32,7 @@ from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources, AbstractBatchSystem
 from toil.job import Job
 from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine, needs_slurm
 
