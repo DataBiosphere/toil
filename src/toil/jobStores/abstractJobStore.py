@@ -166,46 +166,45 @@ class AbstractJobStore(object):
         """
         return self.__config
 
+    rootJobStoreIDFileName = 'rootJobStoreID'
+
     def setRootJob(self, rootJobStoreID):
         """
         Set the root job of the workflow backed by this job store
 
         :param str rootJobStoreID: The ID of the job to set as root
         """
-        with self.writeSharedFileStream('rootJobStoreID') as f:
+        with self.writeSharedFileStream(self.rootJobStoreIDFileName) as f:
             f.write(rootJobStoreID)
 
     def loadRootJob(self):
         """
         Loads the root job in the current job store.
 
-        :raises toil.job.JobException: If not root job is set or if the root job doesn't exist in
-                this jobstore
+        :raises toil.job.JobException: If no root job is set or if the root job doesn't exist in
+                this job store
         :return: The root job.
         :rtype: toil.jobWrapper.JobWrapper
         """
         try:
-            with self.readSharedFileStream('rootJobStoreID') as f:
-                rootJobID = f.read()
+            with self.readSharedFileStream(self.rootJobStoreIDFileName) as f:
+                rootJobStoreID = f.read()
         except NoSuchFileException:
             raise JobException('No job has been set as the root in this job store')
-
-        if not self.exists(rootJobID):
+        if not self.exists(rootJobStoreID):
             raise JobException("The root job '%s' doesn't exist. Either the Toil workflow "
-                               "is finished or has never been started" % rootJobID)
-        return self.load(rootJobID)
+                               "is finished or has never been started" % rootJobStoreID)
+        return self.load(rootJobStoreID)
 
-    def createRootJob(self, command, memory, cores, disk, predecessorNumber=0):
+    # FIXME: This is only used in tests, why do we have it?
+
+    def createRootJob(self, *args, **kwargs):
         """
         Create a new job and set it as the root job in this job store
 
         :rtype : toil.jobWrapper.JobWrapper
         """
-        rootJob = self.create(command=command,
-                              memory=memory,
-                              cores=cores,
-                              disk=disk,
-                              predecessorNumber=predecessorNumber)
+        rootJob = self.create(*args, **kwargs)
         self.setRootJob(rootJob.jobStoreID)
         return rootJob
 
@@ -520,22 +519,20 @@ class AbstractJobStore(object):
     ##########################################  
 
     @abstractmethod
-    def create(self, command, memory, cores, disk, preemptable,
-               predecessorNumber=0):
+    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
         """
         Creates a jobWrapper with specified resources and command, adds it to the job store and
         returns it.
         
-        :param str command: argument to the job constructor. Specifies the job's command it will run
+        :param str command: the shell command that will be executed when the job is being run
 
-        :param int memory: argument to the job constructor. Specifies the amount of memory the job
-               needs to run
+        :param int memory: the amount of RAM in bytes needed to run the job
 
-        :param float cores: argument to the job constructor. Specifies the number of cores the job
-                needs to run
+        :param float cores: the number of cores needed to run the job
 
-        :param int disk: argument to the job constructor. Specifies the amount of disk the job
-               needs to run
+        :param int disk: the amount of disk in bytes needed to run the job
+
+        :param bool preemptable: whether the job can be run on a preemptable node
 
         :param int predecessorNumber: argument to the job constructor. Specifies the number of
                other jobWrappers that specify this job in their stack
