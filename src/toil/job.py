@@ -1328,18 +1328,17 @@ class Job(object):
     def _serialiseFirstJob(self, jobStore):
         """
         Serialises the root job. Returns the wrapping job.
+
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
         """
-        #Create first jobWrapper
-        jobWrapper = self._createEmptyJobWrapperForJob(jobStore, None,
-                                                predecessorNumber=0)
-        #Write the graph of jobs to disk
+        # Create first jobWrapper
+        jobWrapper = self._createEmptyJobWrapperForJob(jobStore, None, predecessorNumber=0)
+        # Write the graph of jobs to disk
         self._serialiseJobGraph(jobWrapper, jobStore, None, True)
         jobStore.update(jobWrapper)
-        #Store the name of the first job in a file in case of restart
-        #Up to this point the root-job is not recoverable
-        with jobStore.writeSharedFileStream("rootJobStoreID") as f:
-            f.write(jobWrapper.jobStoreID)
-        #Return the first job wrapper
+        # Store the name of the first job in a file in case of restart. Up to this point the
+        # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
+        jobStore.setRootJob(jobWrapper.jobStoreID)
         return jobWrapper
 
     def _serialiseExistingJob(self, jobWrapper, jobStore, returnValues):
