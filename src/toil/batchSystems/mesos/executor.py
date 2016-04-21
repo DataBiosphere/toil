@@ -163,13 +163,14 @@ class MesosExecutor(mesos.interface.Executor):
                 return subprocess.Popen(job.command,
                                         shell=True, env=dict(os.environ, **job.environment))
 
-        def sendUpdate(taskState, wallTime, message=''):
+        def sendUpdate(taskState, wallTime=None, message=''):
             log.debug('Sending task status update ...')
             status = mesos_pb2.TaskStatus()
             status.task_id.value = task.task_id.value
             status.message = message
             status.state = taskState
-            status.data = pack('d', wallTime)
+            if wallTime is not None:
+                status.data = pack('d', wallTime)
             driver.sendStatusUpdate(status)
             log.debug('... done sending task status update.')
 
