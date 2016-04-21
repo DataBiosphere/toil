@@ -53,7 +53,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     requirement of minCores, meaning that we can never run more than numCores / minCores jobs
     concurrently.
     """
-
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):

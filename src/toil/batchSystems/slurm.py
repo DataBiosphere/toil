@@ -213,18 +213,12 @@ class Worker(Thread):
     def getJobExitCode(self, slurmJobID):
         logger.debug("Getting exit code for slurm job %d", slurmJobID)
         # SLURM job exit codes are obtained by running sacct.
-        # sacct returns
-        # -n : no header
-        # -j : job
-        # --format : specify output columns
-        # -P : separate columns with pipes
-        # -S 1970-01-01 override start time limit
         args = ['sacct',
-                '-n',
-                '-j', str(slurmJobID),
-                '--format', 'State,ExitCode',
-                '-P',
-                '-S', '1970-01-01']
+                '-n', # no header
+                '-j', str(slurmJobID), # job
+                '--format', 'State,ExitCode', # specify output columns
+                '-P', # separate columns with pipes
+                '-S', '1970-01-01'] # override start time limit
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             values = line.strip().split('|')
@@ -318,11 +312,11 @@ class SlurmBatchSystem(BatchSystemSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        jobID, retcode = i
+        logger.debug('UpdatedJobsQueue Item: %s', item)
+        jobID, retcode = item
         self.currentJobs.remove(jobID)
         return jobID, retcode, None
 
@@ -341,7 +335,7 @@ class SlurmBatchSystem(BatchSystemSupport):
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        return 1800  # Half an hour
+        return 30 * 60 # Half an hour
 
     @staticmethod
     def obtainSystemConstants():
