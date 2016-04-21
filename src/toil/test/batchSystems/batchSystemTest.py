@@ -74,6 +74,11 @@ class hidden:
         def _createDummyConfig(self):
             return Config()
 
+        @classmethod
+        def setUpClass(cls):
+            super(hidden.AbstractBatchSystemTest, cls).setUpClass()
+            logging.basicConfig(level=logging.DEBUG)
+
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
             self.config = self._createDummyConfig()
@@ -483,11 +488,6 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
 
-    @classmethod
-    def setUpClass(cls):
-        super(GridEngineBatchSystemTest, cls).setUpClass()
-        logging.basicConfig(level=logging.DEBUG)
-
 
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -505,11 +505,6 @@ class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
         from toil.batchSystems.slurm import SlurmBatchSystem
         return SlurmBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                 maxDisk=1e9)
-
-    @classmethod
-    def setUpClass(cls):
-        super(SlurmBatchSystemTest, cls).setUpClass()
-        logging.basicConfig(level=logging.DEBUG)
 
     def tearDown(self):
         super(SlurmBatchSystemTest, self).tearDown()
