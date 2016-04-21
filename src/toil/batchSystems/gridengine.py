@@ -22,8 +22,8 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchSystemSupport
 from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
