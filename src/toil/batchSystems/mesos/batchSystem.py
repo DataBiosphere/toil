@@ -182,7 +182,8 @@ class MesosBatchSystem(BatchSystemSupport,
             try:
                 self.intendedKill.remove(jobId)
             except KeyError:
-                log.debug('Job %s ended with status %i, took %is.', jobId, exitValue, wallTime)
+                log.debug('Job %s ended with status %i, took %s seconds.', jobId, exitValue,
+                          '???' if wallTime is None else str(wallTime))
                 return item
             else:
                 log.debug('Job %s ended naturally before it could be killed.', jobId)
