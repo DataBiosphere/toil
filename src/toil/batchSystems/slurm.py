@@ -325,7 +325,7 @@ class SlurmBatchSystem(BatchSystemSupport):
         jobID, retcode = i
         self.updatedJobsQueue.task_done()
         self.currentJobs.remove(jobID)
-        return i
+        return jobID, retcode, None
 
     def shutdown(self):
         """
