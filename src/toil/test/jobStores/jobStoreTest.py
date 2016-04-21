@@ -523,11 +523,11 @@ class hidden:
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35)
+            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
             # Create a bunch of child jobs
             for i in range(100):
-                child = master.create("child%s" % i, 23, 45, 46, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+                child = master.create("child%s" % i, 23, 45, 46, False, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
             master.update(rootJob)
 
             # See how long it takes to clean with no cache
@@ -559,12 +559,12 @@ class hidden:
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35)
+            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
 
             # Create a bunch of child jobs
             for i in range(3000):
-                child = master.create("child%s" % i, 23, 45, 46, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+                child = master.create("child%s" % i, 23, 45, 46, False, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
             master.update(rootJob)
 
             # Pull them all back out again
