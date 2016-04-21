@@ -25,39 +25,12 @@ from Queue import Queue, Empty
 from threading import Thread
 from datetime import date
 
+from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger( __name__ )
 
 
-class MemoryString:
-    def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G':
-            self.unit = string[-1]
-            self.val = float(string[:-1])
-        else:
-            self.unit = 'B'
-            self.val = float(string)
-        self.bytes = self.byteVal()
-
-    def __str__(self):
-        if self.unit != 'B':
-            return str(self.val) + self.unit
-        else:
-            return str(self.val)
-
-    def byteVal(self):
-        if self.unit == 'B':
-            return self.val
-        elif self.unit == 'K':
-            return self.val * 1000
-        elif self.unit == 'M':
-            return self.val * 1000000
-        elif self.unit == 'G':
-            return self.val * 1000000000
-
-    def __cmp__(self, other):
-        return cmp(self.bytes, other.bytes)
 
 def prepareBsub(cpu, mem):
     mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ 1000000)) + '000'
