@@ -127,9 +127,9 @@ class MesosExecutor(mesos.interface.Executor):
                 assert self.workerCleanupInfo == taskData.workerCleanupInfo
             else:
                 self.workerCleanupInfo = taskData.workerCleanupInfo
+            startTime = time()
             try:
                 popen = runJob(taskData)
-                startTime = time()
                 self.runningTasks[task.task_id.value] = popen.pid
                 try:
                     exitStatus = popen.wait()
