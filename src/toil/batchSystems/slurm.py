@@ -323,7 +323,6 @@ class SlurmBatchSystem(BatchSystemSupport):
             return None
         logger.debug('UpdatedJobsQueue Item: %s', i)
         jobID, retcode = i
-        self.updatedJobsQueue.task_done()
         self.currentJobs.remove(jobID)
         return jobID, retcode, None
 
