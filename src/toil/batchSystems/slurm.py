@@ -269,7 +269,7 @@ class SlurmBatchSystem(BatchSystemSupport):
         # Closes the file handle associated with the results file.
         self.slurmResultsFileHandle.close()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
