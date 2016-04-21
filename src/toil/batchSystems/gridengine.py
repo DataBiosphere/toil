@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 sleepSeconds = 1
 
+
 class Worker(Thread):
     def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
         Thread.__init__(self)
@@ -118,8 +119,8 @@ class Worker(Thread):
         if newJob is not None:
             self.waitingJobs.append(newJob)
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(
-                self.boss.maxCores):
+        while (len(self.waitingJobs) > 0
+               and sum(self.allocatedCpus.values()) < int(self.boss.maxCores)):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             qsubline = self.prepareQsub(cpu, memory, jobID) + [command]
@@ -188,7 +189,6 @@ class Worker(Thread):
         args = ["qacct", "-j", str(job)]
         if task is not None:
             args.extend(["-t", str(task)])
-
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             if line.startswith("failed") and int(line.split()[1]) == 1:
@@ -294,18 +294,11 @@ class GridengineBatchSystem(BatchSystemSupport):
         self.worker.join()
 
     def getWaitDuration(self):
-        """
-        We give parasol a second to catch its breath (in seconds)
-        """
         return 0.0
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        """
-        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
-        """
-        return 1800  # Half an hour
+        return 30 * 60 # Half an hour
 
     @staticmethod
     def obtainSystemConstants():
