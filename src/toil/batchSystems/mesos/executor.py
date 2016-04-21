@@ -48,13 +48,14 @@ class MesosExecutor(mesos.interface.Executor):
         self.runningTasks = {}
         self.workerCleanupInfo = None
         Resource.prepareSystem()
-        self.address = socket.gethostbyname(socket.gethostname())
+        self.address = None
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.info("Registered with framework")
+        self.address = socket.gethostbyname(slaveInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
         nodeInfoThread.daemon = True
         nodeInfoThread.start()
