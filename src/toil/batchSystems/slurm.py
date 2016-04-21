@@ -22,8 +22,8 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
@@ -238,13 +238,13 @@ class Worker(Thread):
         return None
 
 
-class SlurmBatchSystem(AbstractBatchSystem):
+class SlurmBatchSystem(BatchSystemSupport):
     """
     The interface for SLURM
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(SlurmBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.slurmResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.slurmResultsFileHandle = open(self.slurmResultsFile, 'w')
