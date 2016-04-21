@@ -50,16 +50,15 @@ class Worker(Thread):
         # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
         total_seconds = 0
         try:
-            elapsed = elapsed.replace('-',':').split(':')
+            elapsed = elapsed.replace('-', ':').split(':')
             elapsed.reverse()
             seconds_per_unit = [1, 60, 3600, 86400]
             for index, multiplier in enumerate(seconds_per_unit):
                 if index < len(elapsed):
                     total_seconds += multiplier * int(elapsed[index])
         except ValueError:
-            pass # slurm may return INVALID instead of a time
+            pass  # slurm may return INVALID instead of a time
         return total_seconds
-
 
     def getRunningJobIDs(self):
         # Should return a dictionary of Job IDs and number of seconds
@@ -139,8 +138,8 @@ class Worker(Thread):
         if newJob is not None:
             self.waitingJobs.append(newJob)
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(
-                self.boss.maxCores):
+        while (len(self.waitingJobs) > 0
+               and sum(self.allocatedCpus.values()) < int(self.boss.maxCores)):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             sbatch_line = self.prepareSbatch(cpu, memory, jobID) + ['--wrap={}'.format(command)]
@@ -190,7 +189,7 @@ class Worker(Thread):
 
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
-            sbatch_line.append('--mem={}'.format(int(mem)/2**20))
+            sbatch_line.append('--mem={}'.format(int(mem) / 2 ** 20))
         if cpu is not None:
             sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
@@ -220,19 +219,24 @@ class Worker(Thread):
         # --format : specify output columns
         # -P : separate columns with pipes
         # -S 1970-01-01 override start time limit
-        args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode', '-P', '-S', '1970-01-01']
+        args = ['sacct',
+                '-n',
+                '-j', str(slurmJobID),
+                '--format', 'State,ExitCode',
+                '-P',
+                '-S', '1970-01-01']
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             values = line.strip().split('|')
             if len(values) < 2:
                 continue
             state, exitcode = values
-            logger.debug("sacct Job state is %s", state)
+            logger.debug("sacct job state is %s", state)
             # If Job is in a running state, return None to indicate we don't have an update
-            if state in ('PENDING', 'RUNNING','CONFIGURING','COMPLETING','RESIZING','SUSPENDED'):
+            if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
                 return None
             status, _ = exitcode.split(':')
-            logger.debug("sacct exitcode is %s, returning status %s", exitcode, status )
+            logger.debug("sacct exit code is %s, returning status %s", exitcode, status)
             return int(status)
         logger.debug("Did not find exit code for job in sacct output")
         return None
@@ -350,17 +354,10 @@ class SlurmBatchSystem(BatchSystemSupport):
             mem, cpu = values
             max_cpu = max(max_cpu, int(cpu))
             max_mem = max(max_mem, MemoryString(mem + 'M'))
-        if max_cpu == 0 or max_mem.byteVal() ==  0:
+        if max_cpu == 0 or max_mem.byteVal() == 0:
             RuntimeError('sinfo did not return memory or cpu info')
         return max_cpu, max_mem
-
-
-    def setEnv(self, name, value=None):
-        # if value and ',' in value:
-        #     raise ValueError("GridEngine does not support commata in environment variable values")
-        return AbstractBatchSystem.setEnv(self, name, value)
 
     @staticmethod
     def supportsWorkerCleanup():
         return False
-
