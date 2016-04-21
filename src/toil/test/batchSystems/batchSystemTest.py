@@ -475,7 +475,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return batchInfo
 
     def _getBatchList(self):
-        exitStatus, batchLines = self.batchSystem.runParasol(['list', 'batches'])
+        # noinspection PyUnresolvedReferences
+        exitStatus, batchLines = self.batchSystem._runParasol(['list', 'batches'])
         self.assertEqual(exitStatus, 0)
         return [self._parseBatchString(line) for line in batchLines[1:] if line]
 

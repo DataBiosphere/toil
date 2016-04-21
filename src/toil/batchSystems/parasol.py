@@ -88,7 +88,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         #  removed in killBatchJobs.
         self.runningJobs = set()
 
-    def runParasol(self, command, autoRetry=True):
+    def _runParasol(self, command, autoRetry=True):
         """
         Issues a parasol command using popen to capture the output. If the command fails then it
         will try pinging parasol until it gets a response. When it gets a response it will
@@ -164,7 +164,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             assert self.usedCpus >= 0
         # Now keep going
         while True:
-            line = self.runParasol(parasolCommand)[1][0]
+            line = self._runParasol(parasolCommand)[1][0]
             match = self.parasolOutputPattern.match(line)
             if match is None:
                 # This is because parasol add job will return success, even if the job was not
@@ -194,8 +194,8 @@ class ParasolBatchSystem(BatchSystemSupport):
             for jobID in jobIDs:
                 if jobID in self.runningJobs:
                     self.runningJobs.remove(jobID)
-                exitValue = self.runParasol(['remove', 'job', str(jobID)],
-                                            autoRetry=False)[0]
+                exitValue = self._runParasol(['remove', 'job', str(jobID)],
+                                             autoRetry=False)[0]
                 logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
@@ -216,7 +216,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         Get all queued and running jobs for a results file.
         """
         jobIDs = []
-        for line in self.runParasol(['-results=' + resultsFile, 'pstat2'])[1]:
+        for line in self._runParasol(['-results=' + resultsFile, 'pstat2'])[1]:
             runningJobMatch = self.runningPattern.match(line)
             queuedJobMatch = self.queuePattern.match(line)
             if runningJobMatch:
@@ -248,7 +248,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         # r 5410324 benedictpaten worker 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedBatchJobIDs()
-        for line in self.runParasol(['pstat2'])[1]:
+        for line in self._runParasol(['pstat2'])[1]:
             if line != '':
                 match = self.runningPattern.match(line)
                 if match is not None:
@@ -353,12 +353,12 @@ class ParasolBatchSystem(BatchSystemSupport):
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
         for results in self.resultsFiles.itervalues():
-            exitValue = self.runParasol(['-results=' + results, 'clear', 'sick'],
-                                        autoRetry=False)[0]
+            exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
+                                         autoRetry=False)[0]
             if exitValue is not None:
                 logger.warn("Could not clear sick status of the parasol batch %s" % results)
-            exitValue = self.runParasol(['-results=' + results, 'flushResults'],
-                                        autoRetry=False)[0]
+            exitValue = self._runParasol(['-results=' + results, 'flushResults'],
+                                         autoRetry=False)[0]
             if exitValue is not None:
                 logger.warn("Could not flush the parasol batch %s" % results)
         self.running = False
