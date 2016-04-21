@@ -30,7 +30,7 @@ from bd2k.util.expando import Expando
 from mesos.interface import mesos_pb2
 import mesos.native
 from struct import pack
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, WorkerCleanupInfo
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class MesosExecutor(mesos.interface.Executor):
         for taskId in self.runningTasks.keys():
             self.killTask(driver, taskId)
         Resource.cleanSystem()
-        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
+        BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
         log.critical('... executor shut down.')
 
     def error(self, driver, message):
