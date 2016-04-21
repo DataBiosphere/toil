@@ -110,8 +110,7 @@ class MesosExecutor(mesos.interface.Executor):
                                         memory=float(psutil.virtual_memory().percent) * .01,
                                         workers=len(self.runningTasks))
             driver.sendFrameworkMessage(repr(message))
-            # Prevent workers launched together from hitting the leader at the same time,
-            # all the time.
+            # Prevent workers launched together from repeatedly hitting the leader at the same time
             sleep(random.randint(45, 75))
 
     def launchTask(self, driver, task):

@@ -410,7 +410,7 @@ class MesosBatchSystem(BatchSystemSupport,
         if toMiB(job.resources.disk) > 1:
             disk.scalar.value = toMiB(job.resources.disk)
         else:
-            log.warning("Job %s uses less disk than mesos requires. Rounding %s up to 1 MiB.",
+            log.warning("Job %s uses less disk than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.disk)
             disk.scalar.value = 1
         mem = task.resources.add()
