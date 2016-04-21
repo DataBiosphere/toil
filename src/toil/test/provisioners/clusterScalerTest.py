@@ -224,6 +224,14 @@ class ClusterScalerTest(ToilTest):
             def setEnv(self, name, value=None):
                 pass
 
+            @classmethod
+            def supportsWorkerCleanup(cls):
+                pass
+
+            @classmethod
+            def supportsHotDeployment(cls):
+                pass
+
         # First do simple test of creating 100 preemptable and non-premptable jobs
         # and check the jobs are completed okay, then print the amount of worker
         # time expended and the total number of worker nodes used.

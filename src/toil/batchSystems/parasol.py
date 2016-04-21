@@ -38,6 +38,14 @@ class ParasolBatchSystem(BatchSystemSupport):
     The interface for Parasol.
     """
 
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         if maxMemory != sys.maxint:

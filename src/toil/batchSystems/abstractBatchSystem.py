@@ -14,12 +14,15 @@
 
 
 from __future__ import absolute_import
-from collections import namedtuple
-from toil.common import Toil
-from abc import ABCMeta, abstractmethod
-from collections import namedtuple
+
 import os
 import shutil
+from abc import ABCMeta, abstractmethod
+from collections import namedtuple
+
+from bd2k.util.objects import abstractclassmethod
+
+from toil.common import Toil
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -39,17 +42,34 @@ class AbstractBatchSystem(object):
 
     __metaclass__ = ABCMeta
 
-    @staticmethod
-    def supportsHotDeployment():
+    # noinspection PyMethodParameters
+    @abstractclassmethod
+    def supportsHotDeployment(cls):
         """
-        Whether this batch system supports hot deployment of the user script and toil itself. If it does,
-        the __init__ method will have to accept two optional parameters in addition to the declared ones: userScript
-        and toilDistribution. Both will be instances of toil.common.HotDeployedResource that represent the user
-        script and a source tarball (sdist) of toil respectively.
+        Whether this batch system supports hot deployment of the user script and toil itself. If
+        it does, the __init__ method will have to accept two optional parameters in addition to
+        the declared ones: userScript and toilDistribution. Both will be instances of
+        toil.common.HotDeployedResource that represent the user script and a source tarball (
+        sdist) of toil respectively.
 
         :rtype: bool
         """
-        return False
+        raise NotImplementedError()
+
+    # noinspection PyMethodParameters
+    @abstractclassmethod
+    def supportsWorkerCleanup(cls):
+        """
+        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
+        a particular workflow invocation finishes. Note that the term *worker* refers to an
+        entire node, not just a worker process. A worker process may run more than one job
+        sequentially, and more than one concurrent worker process may exist on a worker node,
+        for the same workflow. The batch system is said to *shut down* after the last worker
+        process terminates.
+
+        :rtype: bool
+        """
+        raise NotImplementedError()
 
     @abstractmethod
     def issueBatchJob(self, command, memory, cores, disk, preemptable):
@@ -262,21 +282,6 @@ class BatchSystemSupport(AbstractBatchSystem):
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        """
-        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
-        a particular workflow invocation finishes. Note that the term *worker* refers to an
-        entire node, not just a worker process. A worker process may run more than one job
-        sequentially, and more than one concurrent worker process may exist on a worker node,
-        for the same workflow. The batch system is said to *shut down* after the last worker
-        process terminates.
-
-        :return: boolean indication whether the batch system supports worker cleanup
-        :rtype: bool
-        """
-        return False
 
     @staticmethod
     def workerCleanup(info):

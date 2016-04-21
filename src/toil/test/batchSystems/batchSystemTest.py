@@ -69,7 +69,7 @@ class hidden:
             raise NotImplementedError
 
         def supportsWallTime(self):
-            return True
+            return False
 
         def _createDummyConfig(self):
             return Config()
@@ -205,6 +205,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     Tests against the Mesos batch system
     """
 
+    def supportsWallTime(self):
+        return True
+
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
@@ -218,6 +221,12 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the single-machine batch system
+    """
+    def supportsWallTime(self):
+        return True
+
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=1001)
@@ -411,6 +420,9 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     Tests the Parasol batch system
     """
 
+    def supportsWallTime(self):
+        return True
+
     def _createDummyConfig(self):
         config = super(ParasolBatchSystemTest, self)._createDummyConfig()
         # can't use _getTestJobStorePath since that method removes the directory
@@ -473,9 +485,6 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the GridEngine batch system
     """
-
-    def supportsWallTime(self):
-        return False
 
     def _createDummyConfig(self):
         config = super(GridEngineBatchSystemTest, self)._createDummyConfig()

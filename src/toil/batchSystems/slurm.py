@@ -247,6 +247,14 @@ class SlurmBatchSystem(BatchSystemSupport):
     The interface for SLURM
     """
 
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(SlurmBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.slurmResultsFile = self._getResultsFileName(config.jobStore)
@@ -357,7 +365,3 @@ class SlurmBatchSystem(BatchSystemSupport):
         if max_cpu == 0 or max_mem.byteVal() == 0:
             RuntimeError('sinfo did not return memory or cpu info')
         return max_cpu, max_mem
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return False

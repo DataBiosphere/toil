@@ -127,6 +127,13 @@ class LSFBatchSystem(BatchSystemSupport):
     The interface for running jobs on lsf, runs all the jobs you give it as they come in,
     but in parallel.
     """
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)

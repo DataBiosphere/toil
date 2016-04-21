@@ -36,6 +36,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     come in, but in parallel.
     """
 
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return True
+
     numCores = multiprocessing.cpu_count()
 
     minCores = 0.1
@@ -224,11 +232,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """
         return 5400
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return True
-
 
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable

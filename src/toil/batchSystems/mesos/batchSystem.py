@@ -54,8 +54,12 @@ class MesosBatchSystem(BatchSystemSupport,
     node.
     """
 
-    @staticmethod
-    def supportsHotDeployment():
+    @classmethod
+    def supportsHotDeployment(cls):
+        return True
+
+    @classmethod
+    def supportsWorkerCleanup(cls):
         return True
 
     def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
@@ -505,10 +509,6 @@ class MesosBatchSystem(BatchSystemSupport,
         Invoked when an executor has exited/terminated.
         """
         log.warning("Executor '%s' lost.", executorId)
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return True
 
 
 def toMiB(n):
