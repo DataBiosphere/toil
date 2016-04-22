@@ -18,14 +18,15 @@
 from toil.job import Job
 from toil.common import Toil
 from toil.version import version
+from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
 import cwltool.main
 import cwltool.workflow
 import cwltool.expression
 import cwltool.builder
-from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary
-from cwltool.aslist import aslist
+from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary, fillInDefaults
+from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
 import os
@@ -36,6 +37,9 @@ import logging
 import copy
 import shutil
 import functools
+import urlparse
+
+cwllogger = logging.getLogger("cwltool")
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -150,13 +154,16 @@ def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, r
 
 def writeFile(writeFunc, index, x):
     if x not in index:
-        if not x.startswith("file://"):
+        if not urlparse.urlparse(x).scheme:
             rp = os.path.realpath(x)
         else:
             rp = x
-        index[x] = (writeFunc(rp), os.path.basename(x))
+        try:
+            index[x] = (writeFunc(rp), os.path.basename(x))
+        except Exception as e:
+            logging.error("Got exception '%s' while writing '%s'", e, x)
+            raise
     return index[x]
-
 
 class ResolveIndirect(Job):
     def __init__(self, cwljob):
@@ -188,6 +195,7 @@ class CWLJob(Job):
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
+        fillInDefaults(self.cwltool.tool["inputs"], cwljob)
 
         inpdir = os.path.join(fileStore.getLocalTempDir(), "inp")
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
@@ -197,12 +205,10 @@ class CWLJob(Job):
         os.mkdir(tmpdir)
 
         # Copy input files out of the global file store.
-
         index={}
         adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index))
 
-        logging.getLogger("cwltool").setLevel(logging.DEBUG)
-
+        # Run the tool
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                   os.getcwd(), None,
                                                   outdir=outdir,
@@ -504,7 +510,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--conformance-test", action="store_true")
     parser.add_argument("--no-container", action="store_true")
-    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=version)
@@ -521,10 +527,11 @@ def main(args=None, stdout=sys.stdout):
 
     options = parser.parse_args([workdir] + args)
 
-    if options.quiet:
-        options.logLevel = "WARNING"
+    setLoggingFromOptions(options)
+    if options.logLevel:
+        cwllogger.setLevel(options.logLevel)
 
-    uri = "file://" + os.path.abspath(options.cwljob)
+    uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
 
     try:
         t = cwltool.main.load_tool(options.cwltool, False, True,
@@ -546,16 +553,7 @@ def main(args=None, stdout=sys.stdout):
     if type(t) == int:
         return t
 
-    jobobj = {}
-    for inp in t.tool["inputs"]:
-        if shortname(inp["id"]) in job:
-            pass
-        elif shortname(inp["id"]) not in job and "default" in inp:
-            job[shortname(inp["id"])] = copy.copy(inp["default"])
-        elif shortname(inp["id"]) not in job and inp["type"][0] == "null":
-            pass
-        else:
-            raise validate.ValidationException("Missing inputs `%s`" % shortname(inp["id"]))
+    fillInDefaults(t.tool["inputs"], job)
 
     if options.conformance_test:
         adjustFiles(job, lambda x: x.replace("file://", ""))
@@ -571,14 +569,14 @@ def main(args=None, stdout=sys.stdout):
 
     with Toil(options) as toil:
         def importDefault(tool):
-            adjustFiles(tool, lambda x: "file://%s" % x if not x.startswith("file://") else x)
+            adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
             adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
             return tool
         t.visit(importDefault)
 
         builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
         (wf1, wf2) = makeJob(t, {})
-        adjustFiles(builder.job, lambda x: "file://%s" % x if not x.startswith("file://") else x)
+        adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
 
