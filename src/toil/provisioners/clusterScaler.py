@@ -30,16 +30,18 @@ class RunningJobShapes(object):
     Used to track the 'shapes' of the last N jobs run (see Shape).
     """
 
-    def __init__(self, config, preemptable=False, N=1000):
-        # As a prior we start of with 10 jobs each with the default memory, cores,
-        # and disk. To estimate the runtime we use the the default wall time of
-        # each node allocation, so that one job will fill the time per node.
-        wallTime = (config.preemptableNodeShape.wallTime if preemptable
-                    else config.nonPreemptableNodeShape.wallTime)
-        self.jobShapes = [Shape(wallTime, config.defaultMemory, config.defaultCores,
-                                config.defaultDisk)] * 10
-        self.jobShapesLock = Lock()  # Calls to add and getLastNJobShapes made be concurrent
-        self.N = N  # Number of jobs to avg. over
+    def __init__(self, config, nodeShape, N=1000):
+        # As a prior we start of with 10 jobs each with the default memory, cores, and disk. To
+        # estimate the running time we use the the default wall time of each node allocation,
+        # so that one job will fill the time per node.
+        self.jobShapes = [Shape(wallTime=nodeShape.wallTime,
+                                memory=config.defaultMemory,
+                                cores=config.defaultCores,
+                                disk=config.defaultDisk)] * 10
+        # Calls to add and getLastNJobShapes may be concurrent
+        self.lock = Lock()
+        # Number of jobs to average over
+        self.N = N
 
     def add(self, jobShape):
         """
@@ -47,17 +49,17 @@ class RunningJobShapes(object):
         
         :param Shape jobShape: The memory, core and disk requirements of the completed job
         """
-        with self.jobShapesLock:
+        with self.lock:
             self.jobShapes.append(jobShape)
-            if len(self.jobShapes) > 10 * self.N:  # Remove old jobs from the list,
-                # doing so infrequently to avoid too many list resizes
+            # Remove old jobs from the list, doing so infrequently to avoid too many list resizes
+            if len(self.jobShapes) > 10 * self.N:
                 self.jobShapes = self.jobShapes[-self.N:]
 
     def getLastNJobShapes(self):
         """
         Gets the last N job shapes added.
         """
-        with self.jobShapesLock:
+        with self.lock:
             self.jobShapes = self.jobShapes[-self.N:]
             return self.jobShapes[:]
 
@@ -194,15 +196,16 @@ class ClusterScaler(object):
         self.stop = Event()  # Event used to indicate that the scaling processes should shutdown
         self.error = Event()  # Event used by scaling processes to indicate failure
 
-        if config.maxPreemptableNodes + config.maxNonPreemptableNodes == 0:
+        if config.maxPreemptableNodes + config.maxNodes == 0:
             raise RuntimeError("Trying to create a cluster that can have no workers!")
 
         # Create scaling process for preemptable nodes
         if config.maxPreemptableNodes > 0:
-            self.preemptableRunningJobShape = RunningJobShapes(config, preemptable=True)
+            nodeShape = provisioner.getNodeShape(preemptable=True)
+            self.preemptableRunningJobShape = RunningJobShapes(config, nodeShape)
             args = (provisioner, jobBatcher,
                     config.minPreemptableNodes, config.maxPreemptableNodes,
-                    self.preemptableRunningJobShape, config, config.preemptableNodeShape,
+                    self.preemptableRunningJobShape, config, nodeShape,
                     self.stop, self.error, True)
             self.preemptableScaler = Thread(target=self.scaler, args=args)
             self.preemptableScaler.start()
@@ -210,11 +213,12 @@ class ClusterScaler(object):
             self.preemptableScaler = None
 
         # Create scaling process for non-preemptable nodes
-        if config.maxNonPreemptableNodes > 0:
-            self.nonPreemptableRunningJobShape = RunningJobShapes(config, preemptable=False)
+        if config.maxNodes > 0:
+            nodeShape = provisioner.getNodeShape(preemptable=False)
+            self.nonPreemptableRunningJobShape = RunningJobShapes(config, nodeShape)
             args = (provisioner, jobBatcher,
-                    config.minNonPreemptableNodes, config.maxNonPreemptableNodes,
-                    self.nonPreemptableRunningJobShape, config, config.nonPreemptableNodeShape,
+                    config.minNodes, config.maxNodes,
+                    self.nonPreemptableRunningJobShape, config, config.nodeType,
                     self.stop, self.error, False)
             self.nonPreemptableScaler = Thread(target=self.scaler, args=args)
             self.nonPreemptableScaler.start()
@@ -325,12 +329,12 @@ class ClusterScaler(object):
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = runningJobShapes.binPacking(recentJobShapes, nodeShape)
                 estimatedNodesRequired = 0 if queueSize == 0 else max(round(
-                        config.alphaPacking * nodesToRunRecentJobs * float(queueSize) / len(
-                                recentJobShapes)), 1)
+                    config.alphaPacking * nodesToRunRecentJobs * float(queueSize) / len(
+                        recentJobShapes)), 1)
                 nodesDelta = estimatedNodesRequired - totalNodes
 
                 fix_my_name = len(recentJobShapes) / float(
-                        nodesToRunRecentJobs) if nodesToRunRecentJobs > 0 else 0
+                    nodesToRunRecentJobs) if nodesToRunRecentJobs > 0 else 0
                 logger.debug("Estimating cluster needs %s, node shape: %s, current worker nodes: "
                              "%s, queue size: %s, jobs/node estimated required: %s, "
                              "alpha: %s", estimatedNodesRequired, nodeShape, totalNodes, queueSize,

@@ -17,18 +17,17 @@ from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 
 
-class Shape(namedtuple("_Shape", "wallTime memory cores disk")):
-    """
-    Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
-    wall-time allocation. All attributes are integers.
+Shape = namedtuple("_Shape", "wallTime memory cores disk")
+"""
+Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
+wall-time allocation. All attributes are integers.
 
-    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
-    or 60 for Azure. FIXME: and for jobs?
+The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
+or 60 for Azure. FIXME: and for jobs?
 
-    The memory and disk attributes store the number of bytes required by a job (or provided by a
-    node) in RAM or on disk (SSD or HDD), respectively.
-    """
-    pass
+The memory and disk attributes store the number of bytes required by a job (or provided by a
+node) in RAM or on disk (SSD or HDD), respectively.
+"""
 
 
 class ProvisioningException(Exception):

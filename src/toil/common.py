@@ -26,7 +26,6 @@ from argparse import ArgumentParser
 from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString
-from toil.provisioners.abstractProvisioner import Shape
 from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
@@ -65,15 +64,15 @@ class Config(object):
 
         #Autoscaling options
         self.provisioner = None
-        self.preemptableNodeShape = None
-        self.preemptableNodeName = None
+        self.preemptableNodeType = None
+        self.preemptableNodeOptions = None
         self.preemptableBidPrice = None
         self.minPreemptableNodes = 0
         self.maxPreemptableNodes = 10
-        self.nonPreemptableNodeShape = None
-        self.nonPreemptableNodeName = None
-        self.minNonPreemptableNodes = 0
-        self.maxNonPreemptableNodes = 10
+        self.nodeType = None
+        self.nodeOptions = None
+        self.minNodes = 0
+        self.maxNodes = 10
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 360
@@ -173,18 +172,12 @@ class Config(object):
 
         #Autoscaling options
         setOption("provisioner")
-        def parseShape(s):
-            memory, cores, disk, wallTime = s.split()
-            return Shape(human2bytes(memory), int(cores), human2bytes(disk), int(wallTime))
-        setOption("preemptableNodeShape", parseShape)
-        setOption("preemptableNodeName")
-        setOption("preemptableBidPrice")
+        setOption("preemptableNodeOptions")
         setOption("minPreemptableNodes", int)
         setOption("maxPreemptableNodes", int)
-        setOption("nonPreemptableNodeShape", parseShape)
-        setOption("nonPreemptableNodeName")
-        setOption("minNonPreemptableNodes", int)
-        setOption("maxNonPreemptableNodes", int)
+        setOption("nodeOptions")
+        setOption("minNodes", int)
+        setOption("maxNodes", int)
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
@@ -288,51 +281,43 @@ def _addOptions(addGroupFn, config):
     #Auto scaling options
     #
     addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes",
-                             "Allows the specification of the minimum and maximum number of nodes"
-                             " in an autoscaled cluster, as well as parameters to control the level of provisioning.")
+                             "Allows the specification of the minimum and maximum number of nodes "
+                             "in an autoscaled cluster, as well as parameters to control the "
+                             "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", default=None,
-                help=("The provisioner for cluster scaling, currently can be XXX"
-                      " default=%s" % config.provisioner))
-    addOptionFn("--preemptableNodeShape", dest="preemptableNodeShape", default=None,
-                help=("The 'shape' of the preemptable node type to provision, specified"
-                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
-                      " where each attribute specifies, respectively, the memory (bytes),"
-                      " cores, local disk (bytes) and the billing interval (seconds)."
-                      " default=%s"
-                      % config.preemptableNodeShape))
-    addOptionFn("--preemptableNodeName", dest="preemptableNodeName", default=None,
-                help=("The name of the preemptable node type to provision. default=%s"
-                      % config.preemptableNodeName))
-    addOptionFn("--preemptableBidPrice", dest="preemptableBidPrice", default=None,
-                help=("The bid price, where used (e.g. spot market) for the"
-                      " preemptable node type. default=%s"
-                      % config.preemptableBidPrice))
-    addOptionFn("--minPreemptableNodes", dest="minPreemptableNodes", default=None,
-                help=("Minimum number of preemptable nodes in cluster, if using"
-                      " auto-scaling. default=%s" % config.minPreemptableNodes))
-    addOptionFn("--maxPreemptableNodes", dest="maxPreemptableNodes", default=None,
-                help=("Maximum number of preemptable nodes in cluster, if using"
-                      " auto-scaling. default=%s" % config.maxPreemptableNodes))
+    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud'],
+                help="The provisioner for cluster auto-scaling. Currently only the cgcloud "
+                     "provisioner exists. The default is %s." % config.provisioner)
 
-    addOptionFn("--nonPreemptableNodeShape", dest="nonPreemptableNodeShape", default=None,
-                help=("The 'shape' of the non-preemptable node type to provision, specified"
-                      " as a comma separated sequence of the form 'memory,cores,disk,wall-time'"
-                      " where each attribute specifies, respectively, the memory (bytes),"
-                      " cores, local disk (bytes) and the billing interval (seconds)."
-                      " default=%s"
-                      % config.nonPreemptableNodeShape))
-    addOptionFn("--nonPreemptableNodeName", dest="nonPreemptableNodeName", default=None,
-                help=("The name of the preemptable node type to provision. default=%s"
-                      % config.nonPreemptableNodeName))
-    addOptionFn("--minNonPreemptableNodes", dest="minNonPreemptableNodes", default=None, 
-                help=("Minimum number of non-preemptable nodes in cluster, if "
-                      "using auto-scaling. default=%s" % config.minNonPreemptableNodes))
-    addOptionFn("--maxNonPreemptableNodes", dest="maxNonPreemptableNodes", default=None,
-                help=("Maximum number of non-preemptable nodes in cluster, if using"
-                      " auto-scaling. default=%s" % config.maxNonPreemptableNodes))
+    for preemptable in (False, True):
+        def _addOptionFn(*name, **kwargs):
+            name = list(name)
+            if preemptable:
+                name.insert(-1, 'preemptable' )
+            name = ''.join((s[0].upper() + s[1:]) if i else s for i, s in enumerate(name))
+            terms = re.compile(r'\{([^{}]+)\}')
+            _help = kwargs.pop('help')
+            _help = ''.join((term.split('|') * 2)[int(preemptable)] for term in terms.split(_help))
+            addOptionFn('--' + name, dest=name,
+                        help=_help + ' The default is %s.' % getattr(config, name),
+                        **kwargs)
 
-    #TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
+        _addOptionFn('nodeType', metavar='TYPE',
+                     help="Node type for {non-|}preemptable nodes. The syntax depends on the "
+                          "provisioner used. For the cgcloud provisioner this is the name of an "
+                          "EC2 instance type{|, followed by a colon and the price in dollar to "
+                          "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
+        _addOptionFn('nodeOptions', metavar='OPTIONS',
+                     help="Provisioning options for the {non-|}preemptable node type. The syntax "
+                          "depends on the provisioner used. For the cgcloud provisioner this is a "
+                          "space-separated list of options to cgcloud's grow-cluster command (run "
+                          "'cgcloud grow-cluster --help' for details.")
+        for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
+            _addOptionFn(p, 'nodes', default=None, metavar='NUM',
+                         help=q + " number of {non-|}preemptable nodes in the cluster, if using "
+                                  "auto-scaling.")
+
+    # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
                 help=(" default=%s" % config.alphaPacking))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
@@ -340,7 +325,6 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
-
 
     #
     #Resource requirements

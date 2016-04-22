@@ -50,8 +50,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
         super(AWSProvisioner, self).__init__()
         self.batchSystem = batchSystem
-        ami, instanceType = ':'.split(config.nonPreemptableNodeName)
-        preemptableAmi, preemptableInstanceType = ':'.split(config.preemptableNodeName)
+        ami, instanceType = ':'.split(config.nodeOptions)
+        preemptableAmi, preemptableInstanceType = ':'.split(config.preemptableNodeOptions)
         self.ami = switch(ami, preemptableAmi)
         self.instanceType = switch(instanceType, preemptableInstanceType)
         for instanceType in self.instanceType.values():

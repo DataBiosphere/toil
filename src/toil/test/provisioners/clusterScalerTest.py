@@ -64,10 +64,9 @@ class ClusterScalerTest(ToilTest):
 
     def clusterScalerTests(self, config, preemptableJobs, nonPreemptableJobs):
         """
-        Creates a simple, dummy scalable jobDispatcher interface / provisioner class and 
-        uses this to test the ClusterScaler class through a series of 
-        tests with different patterns of job creation. Tests ascertain that
-        autoscaling occurs and that all the 'jobs' are run.
+        Creates a simple, dummy scalable jobDispatcher interface / provisioner class and uses
+        this to test the ClusterScaler class through a series of tests with different patterns of
+        job creation. Tests ascertain that autoscaling occurs and that all the 'jobs' are run.
         """
 
         class Dummy(AbstractScalableBatchSystem, AbstractProvisioner):
@@ -104,9 +103,6 @@ class ClusterScalerTest(ToilTest):
 
                     def getNumberOfJobsIssued(self):
                         return self.jobQueue.qsize()
-
-                    def getNodeShape(self):
-                        raise NotImplementedError()  # TODO
 
                     def getNodes(self):
                         return {address: NodeInfo(cores=0,
@@ -178,7 +174,7 @@ class ClusterScalerTest(ToilTest):
                 return self._pick(preemptable).getNumberOfJobsIssued()
 
             def getNodeShape(self, preemptable=False):
-                return self._pick(preemptable).getNodeShape()
+                return config.preemptableNodeType if preemptable else config.nodeType
 
             def getNodes(self, preemptable=False):
                 return self._pick(preemptable).getNodes()
@@ -251,7 +247,7 @@ class ClusterScalerTest(ToilTest):
             if (preemptable and preemptableJobs > 0) or (
                         not preemptable and nonPreemptableJobs > 0):
                 for i in xrange(1000):  # Add a 1000 random jobs
-                    x = config.preemptableNodeShape if preemptable else config.nonPreemptableNodeShape
+                    x = dummy.getNodeShape(preemptable)
                     iJ = IssuedJob(1, memory=random.choice(range(1, x.memory)),
                                    cores=random.choice(range(1, x.cores)),
                                    disk=random.choice(range(1, x.disk)),
@@ -300,9 +296,9 @@ class ClusterScalerTest(ToilTest):
         config.maxPreemptableNodes = 0  # No preemptable nodes
 
         # Non-preemptable parameters
-        config.nonPreemptableNodeShape = Shape(20, 10, 10, 10)
-        config.minNonPreemptableNodes = 0
-        config.maxNonPreemptableNodes = 10
+        config.nodeType = Shape(20, 10, 10, 10)
+        config.minNodes = 0
+        config.maxNodes = 10
 
         # Algorithm parameters
         config.alphaPacking = 0.8
@@ -323,12 +319,12 @@ class ClusterScalerTest(ToilTest):
         config.defaultDisk = 1
 
         # Preemptable node parameters
-        config.nonPreemptableNodeShape = Shape(20, 10, 10, 10)
-        config.minNonPreemptableNodes = 0
-        config.maxNonPreemptableNodes = 10
+        config.nodeType = Shape(20, 10, 10, 10)
+        config.minNodes = 0
+        config.maxNodes = 10
 
         # Preemptable node parameters
-        config.preemptableNodeShape = Shape(20, 10, 10, 10)
+        config.preemptableNodeType = Shape(20, 10, 10, 10)
         config.minPreemptableNodes = 0
         config.maxPreemptableNodes = 10
 
