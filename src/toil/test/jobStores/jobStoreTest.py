@@ -277,20 +277,23 @@ class hidden:
             stats = set()
             self.assertEquals(0, master.readStatsAndLogging(callback))
             self.assertEquals(set(), stats)
-            master.writeStatsAndLogging('1')
+            worker.writeStatsAndLogging('1')
             self.assertEquals(1, master.readStatsAndLogging(callback))
             self.assertEquals({'1'}, stats)
             self.assertEquals(0, master.readStatsAndLogging(callback))
-            master.writeStatsAndLogging('1')
-            master.writeStatsAndLogging('2')
+            worker.writeStatsAndLogging('1')
+            worker.writeStatsAndLogging('2')
             stats = set()
             self.assertEquals(2, master.readStatsAndLogging(callback))
             self.assertEquals({'1', '2'}, stats)
             largeLogEntry = os.urandom(self._largeLogEntrySize())
             stats = set()
-            master.writeStatsAndLogging(largeLogEntry)
+            worker.writeStatsAndLogging(largeLogEntry)
             self.assertEquals(1, master.readStatsAndLogging(callback))
             self.assertEquals({largeLogEntry}, stats)
+
+            # test the readAll parameter
+            self.assertEqual(4, master.readStatsAndLogging(callback, readAll=True))
 
             # Delete parent
             #
