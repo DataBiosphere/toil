@@ -62,7 +62,7 @@ class ClusterScalerTest(ToilTest):
             logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds",
                         nodeShape, numberOfJobs, numberOfBins, time.time() - startTime)
 
-    def clusterScalerTests(self, config, preemptableJobs, nonPreemptableJobs):
+    def clusterScalerTests(self, config, numJobs, numPreemptableJobs):
         """
         Creates a simple, dummy scalable jobDispatcher interface / provisioner class and uses
         this to test the ClusterScaler class through a series of tests with different patterns of
@@ -239,13 +239,13 @@ class ClusterScalerTest(ToilTest):
 
         # Add 100 jobs to complete 
         logger.info("Creating test jobs")
-        map(lambda x: dummy.addJob(), range(nonPreemptableJobs))
-        map(lambda x: dummy.addJob(preemptable=True), range(preemptableJobs))
+        map(lambda x: dummy.addJob(), range(numJobs))
+        map(lambda x: dummy.addJob(preemptable=True), range(numPreemptableJobs))
 
         # Add some completed jobs
         for preemptable in (True, False):
-            if (preemptable and preemptableJobs > 0) or (
-                        not preemptable and nonPreemptableJobs > 0):
+            if (preemptable and numPreemptableJobs > 0) or (
+                        not preemptable and numJobs > 0):
                 for i in xrange(1000):  # Add a 1000 random jobs
                     x = dummy.getNodeShape(preemptable)
                     iJ = IssuedJob(1, memory=random.choice(range(1, x.memory)),
@@ -305,7 +305,7 @@ class ClusterScalerTest(ToilTest):
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
-        self.clusterScalerTests(config, preemptableJobs=0, nonPreemptableJobs=100)
+        self.clusterScalerTests(config, numJobs=100, numPreemptableJobs=0)
 
     def testClusterScaler_PreemptableAndNonPreemptableJobs(self):
         """
@@ -333,4 +333,4 @@ class ClusterScalerTest(ToilTest):
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
-        self.clusterScalerTests(config, preemptableJobs=100, nonPreemptableJobs=100)
+        self.clusterScalerTests(config, numJobs=100, numPreemptableJobs=100)

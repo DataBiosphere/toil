@@ -215,15 +215,15 @@ class ClusterScaler(object):
         # Create scaling process for non-preemptable nodes
         if config.maxNodes > 0:
             nodeShape = provisioner.getNodeShape(preemptable=False)
-            self.nonPreemptableRunningJobShape = RunningJobShapes(config, nodeShape)
+            self.runningJobShape = RunningJobShapes(config, nodeShape)
             args = (provisioner, jobBatcher,
                     config.minNodes, config.maxNodes,
-                    self.nonPreemptableRunningJobShape, config, config.nodeType,
+                    self.runningJobShape, config, config.nodeType,
                     self.stop, self.error, False)
-            self.nonPreemptableScaler = Thread(target=self.scaler, args=args)
-            self.nonPreemptableScaler.start()
+            self.scaler = Thread(target=self.scaler, args=args)
+            self.scaler.start()
         else:
-            self.nonPreemptableScaler = None
+            self.scaler = None
 
     def shutdown(self):
         """
@@ -232,8 +232,8 @@ class ClusterScaler(object):
         self.stop.set()
         if self.preemptableScaler is not None:
             self.preemptableScaler.join()
-        if self.nonPreemptableScaler is not None:
-            self.nonPreemptableScaler.join()
+        if self.scaler is not None:
+            self.scaler.join()
 
     def addCompletedJob(self, issuedJob, wallTime):
         """
@@ -249,7 +249,7 @@ class ClusterScaler(object):
         if issuedJob.preemptable:
             self.preemptableRunningJobShape.add(s)
         else:
-            self.nonPreemptableRunningJobShape.add(s)
+            self.runningJobShape.add(s)
 
     @staticmethod
     def scaler(provisioner, jobBatcher,
@@ -349,14 +349,14 @@ class ClusterScaler(object):
 
                 # Bound number using the max and min node parameters
                 if nodesDelta + totalNodes > maxNodes:
-                    logger.debug("The number of nodes estimated we need: %s is larger than the "
-                                 "max allowed: %s", nodesDelta + totalNodes, maxNodes)
+                    logger.debug("The number of nodes estimated we need (%s) is larger than the "
+                                 "max allowed (%s).", nodesDelta + totalNodes, maxNodes)
                     assert nodesDelta > 0
                     nodesDelta -= totalNodes + nodesDelta - maxNodes
                     assert nodesDelta >= 0
                 elif nodesDelta + totalNodes < minNodes:
-                    logger.debug("The number of nodes estimated we need: %s is smaller than the "
-                                 "min allowed: %s", nodesDelta + totalNodes, minNodes)
+                    logger.debug("The number of nodes estimated we need (%s) is smaller than the "
+                                 "min allowed (%s).", nodesDelta + totalNodes, minNodes)
                     assert nodesDelta < 0
                     nodesDelta += minNodes - totalNodes - nodesDelta
                     assert nodesDelta <= 0
