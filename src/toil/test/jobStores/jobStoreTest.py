@@ -38,6 +38,8 @@ from azure.storage.blob import BlobService
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
+from toil.jobStores.fileJobStore import FileJobStore
+from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, needs_google
 
 from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 from toil.jobStores.fileJobStore import FileJobStore
@@ -666,6 +668,64 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
         os.remove(localFilePath)
 
+@needs_google
+class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
+    projectID = 'cgc-05-0006'
+    headers = {"x-goog-project-id": projectID}
+
+    def _createJobStore(self, config=None):
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        return GoogleJobStore.createJobStore(self.namePrefix+":"+GoogleJobStoreTest.projectID, config=config)
+
+    @classmethod
+    def _getUrlForTestFile(cls, size=None):
+        fileName = 'testfile_%s' % uuid.uuid4()
+        bucket = cls._createExternalStore()
+        uri = 'gs://%s/%s' % (bucket.name, fileName)
+        if size:
+            with open('/dev/urandom', 'r') as readable:
+                boto.storage_uri(uri).set_contents_from_string(readable.read(size))
+        return uri
+
+    def _hashJobStoreFileID(self, jobStoreFileID):
+        with self.master.readFileStream(jobStoreFileID) as readable:
+            return hashlib.md5(readable.read()).hexdigest()
+
+    @staticmethod
+    def _hashUrl(url):
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
+        return hashlib.md5(boto.storage_uri(uri).get_contents_as_string(headers=GoogleJobStoreTest.headers)).hexdigest()
+
+    @staticmethod
+    def _createExternalStore():
+        uri = "gs://import-export-test-%s" % str(uuid.uuid4())
+        return boto.storage_uri(uri).create_bucket(headers=GoogleJobStoreTest.headers)
+
+    @staticmethod
+    def _cleanUpExternalStore(url):
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
+        uri = boto.storage_uri(uri)
+        headers = {"x-goog-project-id": projectID}
+        bucket = uri.get_bucket(headers=headers, validate=True)
+        if bucket is not None:
+            while True:
+                for key in bucket.list():
+                    try:
+                        key.delete()
+                    except boto.exception.GSResponseError as e:
+                        if e.status == 404:
+                            pass
+                        else:
+                            raise e
+                try:
+                    uri.delete_bucket()
+                except boto.exception.GSResponseError as e:
+                        if e.status == 404:
+                            break
+                        else:
+                            continue
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
