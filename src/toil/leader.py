@@ -421,7 +421,10 @@ class ToilState( object ):
 
         def getJob(jobId):
             if jobCache is not None:
-                return jobCache[jobId]
+                try:
+                    return jobCache[jobId]
+                except ValueError:
+                    return jobStore.load(jobId)
             else:
                 return jobStore.load(jobId)
 
