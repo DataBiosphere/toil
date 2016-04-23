@@ -20,7 +20,9 @@ import logging
 import random
 
 from toil.test import ToilTest
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   NodeInfo,
+                                                   AbstractBatchSystem)
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
 from toil.common import Config
@@ -84,8 +86,8 @@ class ClusterScalerTest(ToilTest):
                     This class implements the methods Provisioner/JobDispatcher class
                     needed for the ClusterScaler class, but omits the preemptable flag.
                     """
-
                     def __init__(self):
+                        super(DummyScalingBatchSystem, self).__init__()
                         self.jobQueue = Queue()
                         self.totalJobs = 0  # Count of total jobs processed
                         self.totalWorkerTime = 0.0  # Total time spent in worker threads
@@ -165,24 +167,28 @@ class ClusterScalerTest(ToilTest):
             def addJob(self, preemptable=False):
                 self._pick(preemptable).addJob()
 
-            # AbstractScalableBatchSystem methods
-
-            # FIXME: this isn't a method defined by the AbstractScalableBatchSystem yet the tests
-            # depend on it. It needs to be declared in AbstractScalableBatchSystem or removed here.
+            # JobBatcher methods
 
             def getNumberOfJobsIssued(self, preemptable=False):
                 return self._pick(preemptable).getNumberOfJobsIssued()
 
-            def getNodeShape(self, preemptable=False):
-                return config.preemptableNodeType if preemptable else config.nodeType
+            # Stub out AbstractBatchSystem methods since they are never called
+
+            for name, value in AbstractBatchSystem.__dict__.iteritems():
+                if getattr(value, '__isabstractmethod__', False):
+                    exec 'def %s(): pass' % name
+                del name
+                del value
+
+            # AbstractScalableBatchSystem methods
 
             def getNodes(self, preemptable=False):
                 return self._pick(preemptable).getNodes()
 
-            def getNumberOfIdleNodes(self, preemptable=False):
-                return self._pick(preemptable).getNumberOfIdleNodes()
-
             # AbstractProvisioner methods
+
+            def getNodeShape(self, preemptable=False):
+                return config.preemptableNodeType if preemptable else config.nodeType
 
             def addNodes(self, numNodes=1, preemptable=False):
                 self._pick(preemptable).addNodes(numNodes=numNodes)
@@ -193,44 +199,9 @@ class ClusterScalerTest(ToilTest):
             def getNumberOfNodes(self, preemptable=False):
                 return self._pick(preemptable).getNumberOfNodes()
 
-            # AbstractBatchSystem methods
-
-            def shutdown(self):
-                pass
-
-            def killBatchJobs(self, jobIDs):
-                pass
-
-            def issueBatchJob(self, command, memory, cores, disk, preemptable):
-                pass
-
-            def getUpdatedBatchJob(self, maxWait):
-                pass
-
-            def getRunningBatchJobIDs(self):
-                pass
-
-            @classmethod
-            def getRescueBatchJobFrequency(cls):
-                pass
-
-            def getIssuedBatchJobIDs(self):
-                pass
-
-            def setEnv(self, name, value=None):
-                pass
-
-            @classmethod
-            def supportsWorkerCleanup(cls):
-                pass
-
-            @classmethod
-            def supportsHotDeployment(cls):
-                pass
-
-        # First do simple test of creating 100 preemptable and non-premptable jobs
-        # and check the jobs are completed okay, then print the amount of worker
-        # time expended and the total number of worker nodes used.
+        # First do simple test of creating 100 preemptable and non-premptable jobs and check the
+        # jobs are completed okay, then print the amount of worker time expended and the total
+        # number of worker nodes used.
 
         logger.info("Creating dummy batch system and scalar")
 
@@ -244,9 +215,9 @@ class ClusterScalerTest(ToilTest):
 
         # Add some completed jobs
         for preemptable in (True, False):
-            if (preemptable and numPreemptableJobs > 0) or (
-                        not preemptable and numJobs > 0):
-                for i in xrange(1000):  # Add a 1000 random jobs
+            if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
+                # Add a 1000 random jobs
+                for i in xrange(1000):
                     x = dummy.getNodeShape(preemptable)
                     iJ = IssuedJob(1, memory=random.choice(range(1, x.memory)),
                                    cores=random.choice(range(1, x.cores)),
