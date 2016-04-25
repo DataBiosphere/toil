@@ -37,8 +37,7 @@ The job store will never be deleted with ``--stats``, as it overrides ``--clean`
 Restart
 -------
 In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
-python script. The entrypoint ``toil restart <jobStore>``, can also be used. Toil pipelines can even be
-edited and resumed which is useful for development or troubleshooting.
+python script. Toil pipelines can even be edited and resumed which is useful for development or troubleshooting.
 
 Clean
 -----

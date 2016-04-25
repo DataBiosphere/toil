@@ -74,8 +74,8 @@ class UtilsTest(ToilTest):
 
     def testUtilsSort(self):
         """
-        Tests the restart, status and stats commands of the toil command line utility using the
-        sort example.
+        Tests the status and stats commands of the toil command line utility using the
+        sort example with the --restart flag.
         """
         # Get the sort command to run
         toilCommand = [sys.executable,
