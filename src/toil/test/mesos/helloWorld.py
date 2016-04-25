@@ -17,7 +17,11 @@ A simple user script for Toil
 
 from __future__ import absolute_import
 import argparse
+import os
+from toil.common import Toil
 from toil.job import Job
+
+logToMasterMessage = "The child job is now running!"
 
 def hello_world(job):
 
@@ -27,6 +31,8 @@ def hello_world(job):
     # Assign FileStoreID to a given file
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
 
+    os.remove('foo_bam.txt')
+
     # Spawn child
     job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk="3G")
 
@@ -34,7 +40,7 @@ def hello_world(job):
 def hello_world_child(job, hw):
 
     path = job.fileStore.readGlobalFile(hw)
-
+    job.fileStore.logToMaster(logToMasterMessage)
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
     with open(path, 'r') as r:
@@ -46,20 +52,22 @@ def hello_world_child(job, hw):
     # can also use:  job.updateGlobalFile() given the FileStoreID instantiation.
     job.fileStore.writeGlobalFile('bar_bam.txt')
 
+    os.remove('bar_bam.txt')
+
 
 def main():
     # Boilerplate -- startToil requires options
 
     parser = argparse.ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    args = parser.parse_args()
+    options = parser.parse_args()
 
     # Create object that contains our FileStoreIDs
 
-    print args.jobStore
     # Launch first toil Job
     i = Job.wrapJobFn(hello_world, memory=100, cores=0.5, disk="3G")
-    Job.Runner.startToil(i, args)
+    with Toil(options) as toil:
+        toil.start(i)
 
 
 if __name__ == '__main__':
