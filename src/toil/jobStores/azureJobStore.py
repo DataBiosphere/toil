@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import os
 import uuid
 import logging
@@ -21,6 +22,8 @@ import bz2
 import cPickle
 import socket
 import httplib
+import time
+
 from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
@@ -715,14 +718,13 @@ def retryOnAzureTimeout(exception):
     return (isinstance(exception, AzureException) and
             (timeoutMsg in str(exception) or busyMsg in str(exception)))
 
-
-def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException, requests.ConnectionError),
+def retry_on_error(numTries=5, timeout=300, delays=(0, 1, 1, 4, 16, 64),
+                   retriable_exceptions=(socket.error, socket.gaierror,
+                                         httplib.HTTPException, requests.ConnectionError),
                    retriable_check=retryOnAzureTimeout):
     """
     Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
 
-    :param num_tries: number of times to try before giving up.
     :param retriable_exceptions: a tuple of exceptions that should always be retried.
     :param retriable_check: a function that takes an exception not in retriable_exceptions \
     and returns True if it should be retried, and False otherwise.
@@ -743,7 +745,7 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
 
     Give up and reraise on any unexpected exceptions
     >>> i = 0
-    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=()):
+    >>> for attempt in retry_on_error(numTries=5, retriable_exceptions=()):
     ...     with attempt:
     ...         i += 1
     ...         raise RuntimeError("foo")
@@ -755,8 +757,7 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
 
     Retriable check function works as expected
     >>> i = 0
-    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=(),
-    ...                               retriable_check=lambda x: str(x) == 'foo'):
+    >>> for attempt in retry_on_error(numTries=5, retriable_exceptions=(), retriable_check=lambda x: str(x) == 'foo'):
     ...     with attempt:
     ...         i += 1
     ...         if i == 3:
@@ -777,33 +778,49 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
     >>> i
     1
     """
-    go = [None]
 
     @contextmanager
     def attempt(last=False):
         try:
             yield
-        except retriable_exceptions as e:
-            # Any instance of these exceptions is automatically retriable.
-            if last:
-                raise
-            else:
-                logger.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
         except Exception as e:
-            # For other exceptions, the retriable_check function determines whether to retry
-            if retriable_check(e):
+            if expiration is None and last:
+                raise  # This is the single attempt case.
+
+            # Note that delay is set to the next delay not the one that preceded this attempt.
+            elif time.time() + delay > expiration:
+                logger.info('Retry timeout expired, giving up.')
+                raise
+            elif type(e) in retriable_exceptions and not last:
+                logger.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
+            elif retriable_check(e):
                 logger.info("Exception %s passed predicate, trying again" % e.__class__.__name__)
             else:
                 raise
         else:
+            # Terminates the while loop of the outer function.
             go.pop()
 
-    while go:
-        if num_tries == 1:
-            yield attempt(last=True)
-        else:
-            yield attempt()
-        # It's safe to do this, even with Python's weird default
-        # arguments behavior, since we are assigning to num_tries
-        # rather than mutating it.
-        num_tries -= 1
+    if timeout > 0:
+        delays = iter(delays)
+        delay = delays.next()
+        go = [None]
+        expiration = time.time() + timeout
+        while go:
+            # Recall that an empty list is False, and [None] is True.
+            # go is used so that it can be popped in the nested attempt
+            # function.
+            time.sleep(delay)
+            try:
+                delay = delays.next()
+            except StopIteration:
+                pass  # old value holds
+            yield attempt(last=numTries == 1)
+
+            # It's safe to do this, even with Python's weird default
+            # arguments behavior, since we are assigning to numTries
+            # rather than mutating it.
+            numTries -= 1
+    else:
+        expiration = None
+        yield attempt(last=True)
