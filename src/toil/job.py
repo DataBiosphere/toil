@@ -462,9 +462,9 @@ class Job(object):
         @staticmethod
         def startToil(job, options):
             """
-            Runs the toil workflow using the given options \
-            (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) \
-            starting with this job.
+            Deprecated by toil.common.Toil.run. Runs the toil workflow using the given options
+            (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
+            job.
             :param toil.job.Job job: root job of the workflow
             :raises: toil.leader.FailedJobsException if at the end of function \
             their remain failed jobs.
