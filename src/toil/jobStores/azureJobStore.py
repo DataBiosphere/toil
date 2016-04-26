@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import urlparse
 import re
 import os
 import uuid
@@ -23,6 +22,8 @@ import bz2
 import cPickle
 import socket
 import httplib
+import time
+
 from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
@@ -33,7 +34,7 @@ from azure.storage.table import TableService, EntityProperty
 from azure.storage.blob import BlobService, BlobSharedAccessPermissions
 
 import requests
-from bd2k.util import strict_bool, memoize
+from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
 
@@ -718,8 +719,9 @@ def retryOnAzureTimeout(exception):
             (timeoutMsg in str(exception) or busyMsg in str(exception)))
 
 
-def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException, requests.ConnectionError),
+def retry_on_error(num_tries=5, timeout=300, waitTimes=(0, 1, 1, 4, 16, 64),
+                   retriable_exceptions=(socket.error, socket.gaierror,
+                                         httplib.HTTPException, requests.ConnectionError),
                    retriable_check=retryOnAzureTimeout):
     """
     Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
@@ -800,12 +802,27 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
         else:
             go.pop()
 
+    total_tries = num_tries
+    totalDelay = 0
+    delay = 0
     while go:
-        if num_tries == 1:
-            yield attempt(last=True)
+        try:
+            delay = waitTimes[total_tries - num_tries]
+        except IndexError:
+            delay = waitTimes[-1]
+        finally:
+            totalDelay += delay
+
+        if totalDelay >= timeout:
+            break
         else:
-            yield attempt()
+            time.sleep(delay)
+            yield attempt(last=num_tries == 1)
+
         # It's safe to do this, even with Python's weird default
         # arguments behavior, since we are assigning to num_tries
         # rather than mutating it.
         num_tries -= 1
+
+        if totalDelay >= timeout:
+            break
