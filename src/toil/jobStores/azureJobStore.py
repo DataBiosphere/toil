@@ -34,7 +34,6 @@ from azure.storage import SharedAccessPolicy, AccessPolicy
 from azure.storage.table import TableService, EntityProperty
 from azure.storage.blob import BlobService, BlobSharedAccessPermissions
 
-import requests
 from bd2k.util import strict_bool, memoize
 
 from bd2k.util.threading import ExceptionalThread
@@ -717,8 +716,10 @@ class AzureJob(JobWrapper):
 
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
-    busyMsg = "Service Unavailable"
+    unavailableMsg = "Service Unavailable"
+    busyMsg = "The server is busy"
     return isinstance(exception, AzureException) and (timeoutMsg in str(exception)
+                                                      or unavailableMsg in str(exception)
                                                       or busyMsg in str(exception))
 
 retryPolicy = Enum('linear', 'exponential')
