@@ -23,6 +23,8 @@ import bz2
 import cPickle
 import socket
 import httplib
+import time
+
 from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
@@ -36,6 +38,7 @@ import requests
 from bd2k.util import strict_bool, memoize
 
 from bd2k.util.threading import ExceptionalThread
+from enum import Enum
 
 from toil.jobWrapper import JobWrapper
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
@@ -718,17 +721,22 @@ def retryOnAzureTimeout(exception):
     return isinstance(exception, AzureException) and (timeoutMsg in str(exception)
                                                       or busyMsg in str(exception))
 
+retryPolicy = Enum('linear', 'exponential')
 
-def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException, requests.ConnectionError),
+
+def retry_on_error(num_tries=5, policy=retryPolicy.exponential,
+                   retriable_exceptions=(socket.error, socket.gaierror, httplib.HTTPException),
                    retriable_check=retryOnAzureTimeout):
     """
-    Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
+    Retries on a set of allowable exceptions, retrying temporary Azure errors by default. A
+    retry policy may be specified. Currently supported retry policies are linear, and
+    exponential.
 
     :param num_tries: number of times to try before giving up.
     :param retriable_exceptions: a tuple of exceptions that should always be retried.
     :param retriable_check: a function that takes an exception not in retriable_exceptions \
     and returns True if it should be retried, and False otherwise.
+    :param enum.EnumValue policy: the specified retry policy.
 
     :return: a generator yielding contextmanagers
 
@@ -783,7 +791,8 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
     go = [None]
 
     @contextmanager
-    def attempt(last=False):
+    def attempt(last=False, wait=0):
+        time.sleep(wait)
         try:
             yield
         except retriable_exceptions as e:
@@ -801,11 +810,16 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
         else:
             go.pop()
 
+    total_tries = num_tries
     while go:
-        if num_tries == 1:
-            yield attempt(last=True)
+        if policy == retryPolicy.linear:
+            yield attempt(last=(num_tries == 1))
+        elif policy == retryPolicy.exponential:
+            yield attempt(last=(num_tries == 1),
+                          wait=2**(total_tries - num_tries))
         else:
-            yield attempt()
+            raise RuntimeError("'%s' is not a valid retry policy" % policy._key)
+
         # It's safe to do this, even with Python's weird default
         # arguments behavior, since we are assigning to num_tries
         # rather than mutating it.
