@@ -22,43 +22,12 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
 sleepSeconds = 1
-
-
-class MemoryString:
-    def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T':
-            self.unit = string[-1]
-            self.val = float(string[:-1])
-        else:
-            self.unit = 'B'
-            self.val = float(string)
-        self.bytes = self.byteVal()
-
-    def __str__(self):
-        if self.unit != 'B':
-            return str(self.val) + self.unit
-        else:
-            return str(self.val)
-
-    def byteVal(self):
-        if self.unit == 'B':
-            return self.val
-        elif self.unit == 'K':
-            return self.val * 1024
-        elif self.unit == 'M':
-            return self.val * 1048576
-        elif self.unit == 'G':
-            return self.val * 1073741824
-        elif self.unit == 'T':
-            return self.val * 1099511627776
-
-    def __cmp__(self, other):
-        return cmp(self.bytes, other.bytes)
 
 
 class Worker(Thread):
@@ -150,8 +119,8 @@ class Worker(Thread):
         if newJob is not None:
             self.waitingJobs.append(newJob)
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(
-                self.boss.maxCores):
+        while (len(self.waitingJobs) > 0
+               and sum(self.allocatedCpus.values()) < int(self.boss.maxCores)):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             qsubline = self.prepareQsub(cpu, memory, jobID) + [command]
@@ -220,7 +189,6 @@ class Worker(Thread):
         args = ["qacct", "-j", str(job)]
         if task is not None:
             args.extend(["-t", str(task)])
-
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             if line.startswith("failed") and int(line.split()[1]) == 1:
@@ -231,13 +199,21 @@ class Worker(Thread):
         return None
 
 
-class GridengineBatchSystem(AbstractBatchSystem):
+class GridengineBatchSystem(BatchSystemSupport):
     """
     The interface for SGE aka Sun GridEngine.
     """
 
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(GridengineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
@@ -258,7 +234,7 @@ class GridengineBatchSystem(AbstractBatchSystem):
         # Closes the file handle associated with the results file.
         self.gridengineResultsFileHandle.close()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -299,14 +275,13 @@ class GridengineBatchSystem(AbstractBatchSystem):
 
     def getUpdatedBatchJob(self, maxWait):
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        logger.debug('UpdatedJobsQueue Item: %s', item)
+        jobID, retcode = item
         self.currentJobs.remove(jobID)
-        return i
+        return jobID, retcode, None
 
     def shutdown(self):
         """
@@ -319,18 +294,11 @@ class GridengineBatchSystem(AbstractBatchSystem):
         self.worker.join()
 
     def getWaitDuration(self):
-        """
-        We give parasol a second to catch its breath (in seconds)
-        """
         return 0.0
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        """
-        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
-        """
-        return 1800  # Half an hour
+        return 30 * 60 # Half an hour
 
     @staticmethod
     def obtainSystemConstants():
@@ -364,4 +332,4 @@ class GridengineBatchSystem(AbstractBatchSystem):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError("GridEngine does not support commata in environment variable values")
-        return AbstractBatchSystem.setEnv(self, name, value)
+        return super(GridengineBatchSystem,self).setEnv(name, value)

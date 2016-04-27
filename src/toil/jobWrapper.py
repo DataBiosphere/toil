@@ -23,9 +23,8 @@ class JobWrapper( object ):
     scripts is persisted separately since it may be much bigger than the state managed by this
     class and should therefore only be held in memory for brief periods of time.
     """
-    def __init__( self, command, memory, cores, disk,
-                  jobStoreID, remainingRetryCount, 
-                  predecessorNumber,
+    def __init__( self, command, memory, cores, disk, preemptable,
+                  jobStoreID, remainingRetryCount, predecessorNumber,
                   filesToDelete=None, predecessorsFinished=None, 
                   stack=None, services=None, 
                   startJobStoreID=None, terminateJobStoreID=None,
@@ -33,60 +32,59 @@ class JobWrapper( object ):
                   logJobStoreFileID=None,
                   checkpoint=None,
                   checkpointFilesToDelete=None ): 
-        #The command to be executed and its memory and cores requirements.
+        # The command to be executed and its memory and cores requirements
         self.command = command
-        self.memory = memory #Max number of bytes used by the job
-        self.cores = cores #Number of cores to be used by the job
-        self.disk = disk #Max number of bytes on disk space used by the job
-        
-        #The jobStoreID of the job. JobStore.load(jobStoreID) will return
-        #the job
+        # Max number of bytes used by the job
+        self.memory = memory
+        # Number of cores to be used by the job
+        self.cores = cores
+        # Max number of bytes on disk space used by the job
+        self.disk = disk
+        # Can the job be run on a node that can be preempted
+        self.preemptable = preemptable
+        # The jobStoreID of the job. JobStore.load(jobStoreID) will return the job
         self.jobStoreID = jobStoreID
         
-        #The number of times the job should be retried if it fails
-        #This number is reduced by retries until it is zero
-        #and then no further retries are made
+        # The number of times the job should be retried if it fails This number is reduced by
+        # retries until it is zero and then no further retries are made
         self.remainingRetryCount = remainingRetryCount
         
-        #This variable is used in creating a graph of jobs.
-        #If a job crashes after an update to the jobWrapper but before the list of files to remove
-        #is deleted then this list can be used to clean them up.
+        # This variable is used in creating a graph of jobs. If a job crashes after an update to
+        # the jobWrapper but before the list of files to remove is deleted then this list can be
+        # used to clean them up.
         self.filesToDelete = filesToDelete or []
         
-        #The number of predecessor jobs of a given job.
-        #A predecessor is a job which references this job in its stack.
+        # The number of predecessor jobs of a given job. A predecessor is a job which references
+        # this job in its stack.
         self.predecessorNumber = predecessorNumber
-        #The IDs of predecessors that have finished. 
-        #When len(predecessorsFinished) == predecessorNumber then the
-        #job can be run.
+        # The IDs of predecessors that have finished. When len(predecessorsFinished) ==
+        # predecessorNumber then the job can be run.
         self.predecessorsFinished = predecessorsFinished or set()
         
-        #The list of successor jobs to run. Successor jobs are stored
-        #as 5-tuples of the form (jobStoreId, memory, cores, disk, predecessorNumber).
-        #Successor jobs are run in reverse order from the stack.
+        # The list of successor jobs to run. Successor jobs are stored as 5-tuples of the form (
+        # jobStoreId, memory, cores, disk, predecessorNumber). Successor jobs are run in reverse
+        # order from the stack.
         self.stack = stack or []
         
-        #A jobStoreFileID of the log file for a job.
-        #This will be none unless the job failed and the logging
-        #has been captured to be reported on the leader.
+        # A jobStoreFileID of the log file for a job. This will be none unless the job failed and
+        #  the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = logJobStoreFileID 
         
-        # A list of lists of service jobs to run. 
-        # Each sub list is a list of service jobs descriptions,
-        # each of which is stored as a 6-tuple of the form 
-        # (jobStoreId, memory, cores, disk, startJobStoreID, terminateJobStoreID). 
+        # A list of lists of service jobs to run. Each sub list is a list of service jobs
+        # descriptions, each of which is stored as a 6-tuple of the form (jobStoreId, memory,
+        # cores, disk, startJobStoreID, terminateJobStoreID).
         self.services = services or []
         
-        #An empty file in the jobStore which when deleted is used to signal
-        #that the service should cease.
+        # An empty file in the jobStore which when deleted is used to signal that the service
+        # should cease.
         self.terminateJobStoreID = terminateJobStoreID
         
-        #Similarly a empty file which when deleted is used to signal that the
-        #service is established
+        # Similarly a empty file which when deleted is used to signal that the service is
+        # established
         self.startJobStoreID = startJobStoreID
         
-        #An empty file in the jobStore which when deleted is used to signal
-        #that the service should terminate signaling an error.
+        # An empty file in the jobStore which when deleted is used to signal that the service
+        # should terminate signaling an error.
         self.errorJobStoreID = errorJobStoreID
         
         # None, or a copy of the original command string used to reestablish the job after failure.

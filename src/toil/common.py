@@ -13,23 +13,22 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-from contextlib import contextmanager
-import re
+
+import cPickle
 import logging
 import os
+import re
 import sys
-import cPickle
-import time
 import tempfile
+import time
 from argparse import ArgumentParser
+
 from bd2k.util.humanize import bytes2human
-from toil.leader import mainLoop
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString
 from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
-
 
 class Config(object):
     """
@@ -63,11 +62,27 @@ class Config(object):
         self.parasolMaxBatches = 10000
         self.environment = {}
 
+        #Autoscaling options
+        self.provisioner = None
+        self.preemptableNodeType = None
+        self.preemptableNodeOptions = None
+        self.preemptableBidPrice = None
+        self.minPreemptableNodes = 0
+        self.maxPreemptableNodes = 10
+        self.nodeType = None
+        self.nodeOptions = None
+        self.minNodes = 0
+        self.maxNodes = 10
+        self.alphaPacking = 0.8
+        self.betaInertia = 1.2
+        self.scaleInterval = 360
+        
         #Resource requirements
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
         self.defaultCache = self.defaultDisk
+        self.defaultPreemptable = False
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
         self.maxDisk = sys.maxint
@@ -155,6 +170,18 @@ class Config(object):
 
         setOption("environment", parseSetEnv)
 
+        #Autoscaling options
+        setOption("provisioner")
+        setOption("preemptableNodeOptions")
+        setOption("minPreemptableNodes", int)
+        setOption("maxPreemptableNodes", int)
+        setOption("nodeOptions")
+        setOption("minNodes", int)
+        setOption("maxNodes", int)
+        setOption("alphaPacking", float)
+        setOption("betaInertia", float)
+        setOption("scaleInterval", float)
+        
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
@@ -163,6 +190,7 @@ class Config(object):
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
+        setOption("defaultPreemptable")
 
         #Retrying/rescuing jobs
         setOption("retryCount", int, iC(0))
@@ -188,7 +216,7 @@ def _addOptions(addGroupFn, config):
     #Core options
     #
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
-    location of the toil and turn on stats collation about the performance of jobs.")
+    location of the toil workflow and turn on stats collation about the performance of jobs.")
     #TODO - specify how this works when path is AWS
     addOptionFn('jobStore', type=str,
                       help=("Store in which to place job management files \
@@ -230,6 +258,7 @@ def _addOptions(addGroupFn, config):
     #
     #Batch system options
     #
+
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
@@ -247,6 +276,55 @@ def _addOptions(addGroupFn, config):
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % config.parasolMaxBatches)
+
+    #
+    #Auto scaling options
+    #
+    addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes",
+                             "Allows the specification of the minimum and maximum number of nodes "
+                             "in an autoscaled cluster, as well as parameters to control the "
+                             "level of provisioning.")
+
+    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud'],
+                help="The provisioner for cluster auto-scaling. Currently only the cgcloud "
+                     "provisioner exists. The default is %s." % config.provisioner)
+
+    for preemptable in (False, True):
+        def _addOptionFn(*name, **kwargs):
+            name = list(name)
+            if preemptable:
+                name.insert(-1, 'preemptable' )
+            name = ''.join((s[0].upper() + s[1:]) if i else s for i, s in enumerate(name))
+            terms = re.compile(r'\{([^{}]+)\}')
+            _help = kwargs.pop('help')
+            _help = ''.join((term.split('|') * 2)[int(preemptable)] for term in terms.split(_help))
+            addOptionFn('--' + name, dest=name,
+                        help=_help + ' The default is %s.' % getattr(config, name),
+                        **kwargs)
+
+        _addOptionFn('nodeType', metavar='TYPE',
+                     help="Node type for {non-|}preemptable nodes. The syntax depends on the "
+                          "provisioner used. For the cgcloud provisioner this is the name of an "
+                          "EC2 instance type{|, followed by a colon and the price in dollar to "
+                          "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
+        _addOptionFn('nodeOptions', metavar='OPTIONS',
+                     help="Provisioning options for the {non-|}preemptable node type. The syntax "
+                          "depends on the provisioner used. For the cgcloud provisioner this is a "
+                          "space-separated list of options to cgcloud's grow-cluster command (run "
+                          "'cgcloud grow-cluster --help' for details.")
+        for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
+            _addOptionFn(p, 'nodes', default=None, metavar='NUM',
+                         help=q + " number of {non-|}preemptable nodes in the cluster, if using "
+                                  "auto-scaling.")
+
+    # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
+    addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
+                help=(" default=%s" % config.alphaPacking))
+    addOptionFn("--betaInertia", dest="betaInertia", default=None,
+                help=(" default=%s" % config.betaInertia))
+    addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
+                help=("The interval (seconds) between assessing if the scale of"
+                      " the cluster needs to change. default=%s" % config.scaleInterval))
 
     #
     #Resource requirements
@@ -460,7 +538,14 @@ class Toil(object):
                     # This cleans up any half written jobs after a restart
                     rootJob = self.jobStore.clean(jobCache=self.jobCache)
 
-                return mainLoop(self.config, self.batchSystem, self.jobStore, rootJob, jobCache=self.jobCache)
+                # FIXME: common.py shouldn't import from leader.py
+                from toil.leader import mainLoop
+                return mainLoop(config=self.config,
+                                batchSystem=self.batchSystem,
+                                provisioner=None,
+                                jobStore=self.jobStore,
+                                rootJobWrapper=rootJob,
+                                jobCache=self.jobCache)
 
             finally:
                 startTime = time.time()

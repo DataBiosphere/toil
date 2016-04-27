@@ -46,7 +46,6 @@ from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_t
 logger = logging.getLogger(__name__)
 
 
-
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
 
 class hidden:
@@ -100,12 +99,13 @@ class hidden:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create('master1', 12, 34, 35)
+            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
             self.assertEquals(jobOnMaster.memory, 12)
             self.assertEquals(jobOnMaster.cores, 34)
             self.assertEquals(jobOnMaster.disk, 35)
+            self.assertEquals(jobOnMaster.preemptable, True)
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
@@ -129,8 +129,8 @@ class hidden:
             # Check jobs to delete persisted
             self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
             # Create children    
-            child1 = worker.create('child1', 23, 45, 46, 1)
-            child2 = worker.create('child2', 34, 56, 57, 1)
+            child1 = worker.create('child1', 23, 45, 46, preemptable=True)
+            child2 = worker.create('child2', 34, 56, 57, preemptable=False)
             # Update parent
             jobOnWorker.stack.append((
                 (child1.jobStoreID, 23, 45, 46, 1),
@@ -215,7 +215,7 @@ class hidden:
             # Test per-job files: Create empty file on master, ...
             #
             # First recreate job
-            jobOnMaster = master.create('master1', 12, 34, 35, 'foo')
+            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
             self.assertTrue(worker.fileExists(fileOne))
@@ -385,7 +385,7 @@ class hidden:
             master = self.master
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
-                job = master.create('1', 2, 3, 4, 0)
+                job = master.create('1', 2, 3, 4, preemptable=True)
                 fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
@@ -402,7 +402,7 @@ class hidden:
             bufSize = 65536
             partSize = self._partSize()
             self.assertEquals(partSize % bufSize, 0)
-            job = self.master.create('1', 2, 3, 4, 0)
+            job = self.master.create('1', 2, 3, 4, preemptable=False)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -477,7 +477,7 @@ class hidden:
             self.master.delete(job.jobStoreID)
 
         def testZeroLengthFiles(self):
-            job = self.master.create('1', 2, 3, 4, 0)
+            job = self.master.create('1', 2, 3, 4, preemptable=True)
             nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
             with self.master.readFileStream(nullFile) as f:
                 self.assertEquals(f.read(), "")
@@ -496,7 +496,7 @@ class hidden:
                     buf = os.urandom(self._partSize())
                     f.write(buf)
                     hashIn.update(buf)
-            job = self.master.create('1', 2, 3, 4, 0)
+            job = self.master.create('1', 2, 3, 4, preemptable=False)
             jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
             os.unlink(filePath)
             self.master.readFile(jobStoreFileID, filePath)
@@ -517,59 +517,59 @@ class hidden:
                     urllib2.urlopen(urllib2.Request(url))
                 except:
                     self.fail()
-                    
+
         def testCleanCache(self):
             # Make a bunch of jobs
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35)
+            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
             # Create a bunch of child jobs
             for i in range(100):
-                child = master.create("child%s" % i, 23, 45, 46, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+                child = master.create("child%s" % i, 23, 45, 46, False, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
             master.update(rootJob)
 
             # See how long it takes to clean with no cache
             noCacheStart = time.time()
             master.clean()
             noCacheEnd = time.time()
-            
+
             noCacheTime = noCacheEnd - noCacheStart
-            
+
             # See how long it takes to clean with cache
             jobCache = {jobWrapper.jobStoreID: jobWrapper
                         for jobWrapper in master.jobs()}
             cacheStart = time.time()
             master.clean(jobCache)
             cacheEnd = time.time()
-            
+
             cacheTime = cacheEnd - cacheStart
 
             logger.info("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
 
             # Running with the cache should be faster.
             self.assertTrue(cacheTime <= noCacheTime)
-            
+
         @skip("too slow")  # This takes a long time on the remote JobStores
         def testManyJobs(self):
             # Make sure we can store large numbers of jobs
-            
+
             # Make a bunch of jobs
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35)
-            
+            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
+
             # Create a bunch of child jobs
             for i in range(3000):
-                child = master.create("child%s" % i, 23, 45, 46, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, 1),))
+                child = master.create("child%s" % i, 23, 45, 46, False, 1)
+                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
             master.update(rootJob)
-            
+
             # Pull them all back out again
             allJobs = list(master.jobs())
-            
+
             # Make sure we have the right number of jobs
             self.assertEquals(len(allJobs), 3001)
 
@@ -783,7 +783,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     def testLargeJob(self):
         from toil.jobStores.azureJobStore import maxAzureTablePropertySize
         command = os.urandom(maxAzureTablePropertySize * 2)
-        job1 = self.master.create(command=command, memory=0, cores=0, disk=0)
+        job1 = self.master.create(command=command, memory=0, cores=0, disk=0, preemptable=False)
         self.assertEqual(job1.command, command)
         job2 = self.master.load(job1.jobStoreID)
         self.assertIsNot(job1, job2)

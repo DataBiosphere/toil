@@ -22,13 +22,19 @@ TaskData = namedtuple('TaskData', (
     # Mesos' ID of the executor running the task
     'executorID'))
 
-ResourceRequirement = namedtuple('ResourceRequirement', (
+class ResourceRequirement( namedtuple('_ResourceRequirement', (
     # Number of bytes (!) needed for a task
     'memory',
     # Number of CPU cores needed for a task
     'cores',
     # Number of bytes (!) needed for task on disk
-    'disk'))
+    'disk'))):
+    def size(self):
+        """
+        The scalar size of an offer. Can be used to compare offers.
+        """
+        return self.cores
+
 
 ToilJob = namedtuple('ToilJob', (
     # A job ID specific to this batch system implementation

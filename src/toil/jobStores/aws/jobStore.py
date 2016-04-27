@@ -183,12 +183,12 @@ class AWSJobStore(AbstractJobStore):
 
         self.sseKeyPath = self.config.sseKey
 
-    def create(self, command, memory, cores, disk, predecessorNumber=0):
+    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if command is None else command)
-        job = AWSJob(jobStoreID=jobStoreID,
-                     command=command, memory=memory, cores=cores, disk=disk,
+        job = AWSJob(jobStoreID=jobStoreID, command=command,
+                     memory=memory, cores=cores, disk=disk, preemptable=preemptable,
                      remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
                      predecessorNumber=predecessorNumber)
         for attempt in retry_sdb():

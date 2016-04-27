@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 @needs_mesos
 class MesosTest(ToilTest, MesosTestSupport):
     """
-    FIXME: Describe what this test is supposed to do
+    FIXME: What's the point of this? Anything not covered by the generic batch system tests?
     """
 
     @classmethod

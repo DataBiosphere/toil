@@ -25,16 +25,24 @@ from threading import Lock, Condition
 from Queue import Queue, Empty
 
 import toil
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, AbstractBatchSystem
 
 log = logging.getLogger(__name__)
 
 
-class SingleMachineBatchSystem(AbstractBatchSystem):
+class SingleMachineBatchSystem(BatchSystemSupport):
     """
     The interface for running jobs on a single machine, runs all the jobs you give it as they
     come in, but in parallel.
     """
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return True
 
     numCores = multiprocessing.cpu_count()
 
@@ -45,7 +53,6 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
     requirement of minCores, meaning that we can never run more than numCores / minCores jobs
     concurrently.
     """
-
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
@@ -55,7 +62,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         if maxMemory > self.physicalMemory:
             log.warn('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
             maxMemory = self.physicalMemory
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
 
@@ -119,6 +126,7 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                               'request of %f cores', coreFractions, self.coreFractions, jobCores)
                     with self.coreFractions.acquisitionOf(coreFractions):
                         log.info("Executing command: '%s'.", jobCommand)
+                        startTime = time.time() #Time job is started
                         with self.popenLock:
                             popen = subprocess.Popen(jobCommand,
                                                      shell=True,
@@ -137,13 +145,13 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
                                 self.runningJobs.pop(jobID)
                         finally:
                             if statusCode is not None and not info.killIntended:
-                                self.outputQueue.put((jobID, statusCode))
+                                self.outputQueue.put((jobID, statusCode, time.time() - startTime))
             finally:
                 log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
                           self.coreFractions.value, self.memory.value)
         log.debug('Exiting worker thread normally.')
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         """
         Adds the command and resources to a queue to be run.
         """
@@ -202,21 +210,20 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
             inputQueue.put(None)
         for thread in self.workerThreads:
             thread.join()
-        AbstractBatchSystem.workerCleanup(self.workerCleanupInfo)
+        BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
         """
         Returns a map of the run jobs and the return value of their processes.
         """
         try:
-            i = self.outputQueue.get(timeout=maxWait)
+            item = self.outputQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, exitValue = i
+        jobID, exitValue, wallTime = item
         self.jobs.pop(jobID)
-        log.debug("Ran jobID: %s with exit value: %i" % (jobID, exitValue))
-        self.outputQueue.task_done()
-        return jobID, exitValue
+        log.debug("Ran jobID: %s with exit value: %i", jobID, exitValue)
+        return jobID, exitValue, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
@@ -224,11 +231,6 @@ class SingleMachineBatchSystem(AbstractBatchSystem):
         This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
         """
         return 5400
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return True
-
 
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable

@@ -14,10 +14,15 @@
 
 
 from __future__ import absolute_import
-from collections import namedtuple
-from toil.common import Toil
+
 import os
 import shutil
+from abc import ABCMeta, abstractmethod
+from collections import namedtuple
+
+from bd2k.util.objects import abstractclassmethod
+
+from toil.common import Toil
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -29,24 +34,152 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'cleanWorkDir'))
 
 
-class AbstractBatchSystem:
+class AbstractBatchSystem(object):
     """
-    An abstract (as far as python currently allows) base class
-    to represent the interface the batch system must provide to the toil.
+    An abstract (as far as Python currently allows) base class to represent the interface the batch
+    system must provide to Toil.
     """
 
-    @staticmethod
-    def supportsHotDeployment():
+    __metaclass__ = ABCMeta
+
+    # noinspection PyMethodParameters
+    @abstractclassmethod
+    def supportsHotDeployment(cls):
         """
-        Whether this batch system supports hot deployment of the user script and toil itself. If it does,
-        the __init__ method will have to accept two optional parameters in addition to the declared ones: userScript
-        and toilDistribution. Both will be instances of toil.common.HotDeployedResource that represent the user
-        script and a source tarball (sdist) of toil respectively.
+        Whether this batch system supports hot deployment of the user script and toil itself. If
+        it does, the __init__ method will have to accept two optional parameters in addition to
+        the declared ones: userScript and toilDistribution. Both will be instances of
+        toil.common.HotDeployedResource that represent the user script and a source tarball (
+        sdist) of toil respectively.
 
-        :return: boolean indicating whether hot deployment is supported by the batch system
         :rtype: bool
         """
-        return False
+        raise NotImplementedError()
+
+    # noinspection PyMethodParameters
+    @abstractclassmethod
+    def supportsWorkerCleanup(cls):
+        """
+        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
+        a particular workflow invocation finishes. Note that the term *worker* refers to an
+        entire node, not just a worker process. A worker process may run more than one job
+        sequentially, and more than one concurrent worker process may exist on a worker node,
+        for the same workflow. The batch system is said to *shut down* after the last worker
+        process terminates.
+
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+        """
+        Issues a job with the specified command to the batch system and returns a unique jobID.
+
+        :param str command: the string to run as a command,
+
+        :param int memory: int giving the number of bytes of memory the job needs to run
+
+        :param float cores: the number of cores needed for the job
+
+        :param int disk: int giving the number of bytes of disk space the job needs to run
+
+        :param booleam preemptable: True if the job can be run on a preemptable node
+
+        :return: a unique jobID that can be used to reference the newly issued job
+        :rtype: int
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def killBatchJobs(self, jobIDs):
+        """
+        Kills the given job IDs.
+
+        :param list[int] jobIDs: list of IDs of jobs to kill
+        """
+        raise NotImplementedError()
+
+    # FIXME: Return value should be a set (then also fix the tests)
+
+    @abstractmethod
+    def getIssuedBatchJobIDs(self):
+        """
+        Gets all currently issued jobs
+
+        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
+                 waiting to be run). Despite the result being a list, the ordering should not
+                 be depended upon.
+        :rtype: list[str]
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def getRunningBatchJobIDs(self):
+        """
+        Gets a map of jobs as jobIDs that are currently running (not just waiting)
+        and how long they have been running, in seconds.
+
+        :return: dictionary with currently running jobID keys and how many seconds they have
+                 been running as the value
+        :rtype: dict[str,float]
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def getUpdatedBatchJob(self, maxWait):
+        """
+        Returns a job that has updated its status.
+
+        :param float maxWait: the number of seconds to block, waiting for a result
+
+        :rtype: (str, int)|None
+        :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
+                 Otherwise it returns None. wallTime is the number of seconds (a float) in
+                 wall-clock time the job ran for or None if this batch system does not support
+                 tracking wall time. Returns None for jobs that were killed.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def shutdown(self):
+        """
+        Called at the completion of a toil invocation.
+        Should cleanly terminate all worker threads.
+        """
+        raise NotImplementedError()
+
+    def setEnv(self, name, value=None):
+        """
+        Set an environment variable for the worker process before it is launched. The worker
+        process will typically inherit the environment of the machine it is running on but this
+        method makes it possible to override specific variables in that inherited environment
+        before the worker is launched. Note that this mechanism is different to the one used by
+        the worker internally to set up the environment of a job. A call to this method affects
+        all jobs issued after this method returns. Note to implementors: This means that you
+        would typically need to copy the variables before enqueuing a job.
+
+        If no value is provided it will be looked up from the current environment.
+
+        NB: Only the Mesos and single-machine batch systems support passing environment
+        variables. On other batch systems, this method has no effect. See
+        https://github.com/BD2KGenomics/toil/issues/547.
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def getRescueBatchJobFrequency(cls):
+        """
+        Gets the period of time to wait (floating point, in seconds) between checking for
+        missing/overlong jobs.
+        """
+        raise NotImplementedError()
+
+
+class BatchSystemSupport(AbstractBatchSystem):
+    """
+    Partial implementation of AbstractBatchSystem, support methods.
+    """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         """
@@ -65,6 +198,7 @@ class AbstractBatchSystem:
         :param int maxDisk: the maximum amount of disk space the batch system can
           request for any one job, in bytes
         """
+        super(BatchSystemSupport, self).__init__()
         self.config = config
         self.maxCores = maxCores
         self.maxMemory = maxMemory
@@ -88,7 +222,7 @@ class AbstractBatchSystem:
         :param int disk: amount of disk space being requested, in bytes
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
-          greater than allowed
+               greater than allowed
         """
         assert memory is not None
         assert disk is not None
@@ -100,74 +234,6 @@ class AbstractBatchSystem:
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
-    def issueBatchJob(self, command, memory, cores, disk):
-        """
-        Issues a job with the specified command to the batch system and returns a unique jobID.
-
-        :param str command: the string to run as a command,
-
-        :param int memory: int giving the number of bytes of memory the job needs to run
-
-        :param float cores: the number of cores needed for the job
-
-        :param int disk: int giving the number of bytes of disk space the job needs to run
-
-        :return: a unique jobID that can be used to reference the newly issued job
-        :rtype: str
-        """
-        raise NotImplementedError('Abstract method: issueBatchJob')
-
-    def killBatchJobs(self, jobIDs):
-        """
-        Kills the given job IDs.
-
-        :param list[str] jobIDs: list of jobIDs to kill
-        """
-        raise NotImplementedError('Abstract method: killBatchJobs')
-
-    # FIXME: Return value should be a set (then also fix the tests)
-
-    def getIssuedBatchJobIDs(self):
-        """
-        Gets all currently issued jobs
-
-        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
-          waiting to be run). Despite the result being a list, the ordering should not
-          be depended upon.
-        :rtype: list[str]
-        """
-        raise NotImplementedError('Abstract method: getIssuedBatchJobIDs')
-
-    def getRunningBatchJobIDs(self):
-        """
-        Gets a map of jobs as jobIDs that are currently running (not just waiting)
-        and how long they have been running, in seconds.
-
-        :return: dictionary with currently running jobID keys and how many seconds they have
-          been running as the value
-        :rtype: dict[str,float]
-        """
-        raise NotImplementedError('Abstract method: getRunningBatchJobIDs')
-
-    def getUpdatedBatchJob(self, maxWait):
-        """
-        Gets a job that has updated its status, according to the batch system.
-
-        :param int maxWait: gives the number of seconds to block
-          waiting to find an updated job.
-
-        :return: If a result is available returns tuple of form (jobID, exitValue)
-          else it returns None. Does not return jobs that were killed.
-        :rtype: (str, int)|None
-        """
-        raise NotImplementedError('Abstract method: getUpdatedBatchJob')
-
-    def shutdown(self):
-        """
-        Called at the completion of a toil invocation.
-        Should cleanly terminate all worker threads.
-        """
-        raise NotImplementedError('Abstract Method: shutdown')
 
     def setEnv(self, name, value=None):
         """
@@ -188,7 +254,7 @@ class AbstractBatchSystem:
         :param str name: the environment variable to be set on the worker.
 
         :param str value: if given, the environment variable given by name will be set to this value.
-          if None, the variable's current value will be used as the value on the worker
+               if None, the variable's current value will be used as the value on the worker
 
         :raise RuntimeError: if value is None and the name cannot be found in the environment
         """
@@ -206,9 +272,9 @@ class AbstractBatchSystem:
         missing/overlong jobs.
 
         :return: time in seconds to wait in between checking for lost jobs
-        :rtype: int
+        :rtype: float
         """
-        raise NotImplementedError('Abstract method: getRescueBatchJobFrequency')
+        raise NotImplementedError()
 
     def _getResultsFileName(self, toilPath):
         """
@@ -216,21 +282,6 @@ class AbstractBatchSystem:
         and LSF currently use this.
         """
         return os.path.join(toilPath, "results.txt")
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        """
-        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
-        a particular workflow invocation finishes. Note that the term *worker* refers to an
-        entire node, not just a worker process. A worker process may run more than one job
-        sequentially, and more than one concurrent worker process may exist on a worker node,
-        for the same workflow. The batch system is said to *shut down* after the last worker
-        process terminates.
-
-        :return: boolean indication whether the batch system supports worker cleanup
-        :rtype: bool
-        """
-        return False
 
     @staticmethod
     def workerCleanup(info):
@@ -247,6 +298,40 @@ class AbstractBatchSystem:
             shutil.rmtree(workflowDir)
 
 
+class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
+    """
+    The cores attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
+    busy), reflecting the CPU load of the node.
+
+    The memory attribute is a floating point value between 0 (no memory used) and 1 (all memory
+    used), reflecting the memory pressure on the node.
+
+    The workers attribute is a integer reflecting the number workers currently active workers on
+    the node.
+    """
+
+
+class AbstractScalableBatchSystem(AbstractBatchSystem):
+    """
+    A batch system that supports a variable number of worker nodes. Used by :class:`toil.
+    provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in the cluster
+    up or down depending on overall load.
+    """
+
+    @abstractmethod
+    def getNodes(self, preemptable=False):
+        """
+        Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
+        NodeInfo objects, one for each node.
+
+        :param bool preemptable: If True only preemptable nodes will be returned. Otherwise
+        non-preemptable nodes will be returned.
+
+        :rtype: dict[str,NodeInfo]
+        """
+        raise NotImplementedError()
+
+
 class InsufficientSystemResources(Exception):
     """
     To be raised when a job requests more of a particular resource than is either currently allowed
@@ -259,9 +344,10 @@ class InsufficientSystemResources(Exception):
 
         :param str resource: string representing the resource type
 
-        :param int requested: the amount of the particular resource requested that resulted in this exception
+        :param int|float requested: the amount of the particular resource requested that resulted
+               in this exception
 
-        :param int available: amount of the particular resource actually available
+        :param int|float available: amount of the particular resource actually available
         """
         self.requested = requested
         self.available = available

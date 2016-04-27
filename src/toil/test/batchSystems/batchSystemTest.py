@@ -32,7 +32,9 @@ from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
+                                                   AbstractBatchSystem,
+                                                   BatchSystemSupport)
 from toil.job import Job
 from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine, needs_slurm
 
@@ -40,11 +42,12 @@ log = logging.getLogger(__name__)
 
 # How many cores should be utilized by this test. The test will fail if the running system
 # doesn't have at least that many cores.
-#
+
 numCores = 2
 
-defaultRequirements = dict(memory=100e6, cores=1, disk=1000)
+preemptable = True
 
+defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
 
 
 class hidden:
@@ -67,8 +70,16 @@ class hidden:
             """
             raise NotImplementedError
 
+        def supportsWallTime(self):
+            return False
+
         def _createDummyConfig(self):
             return Config()
+
+        @classmethod
+        def setUpClass(cls):
+            super(hidden.AbstractBatchSystemTest, cls).setUpClass()
+            logging.basicConfig(level=logging.DEBUG)
 
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
@@ -95,24 +106,27 @@ class hidden:
             runningJobIDs = self._waitForJobsToStart(2)
             self.assertEqual(set(runningJobIDs), {job1, job2})
 
-            # Killing the jobs instead of allowing them to complete means this
-            # test can run very quickly if the batch system issues and starts
-            # the jobs quickly.
+            # Killing the jobs instead of allowing them to complete means this test can run very
+            # quickly if the batch system issues and starts the jobs quickly.
             self.batchSystem.killBatchJobs([job1, job2])
             self.assertEqual({}, self.batchSystem.getRunningBatchJobIDs())
 
-            # Issue a job and then allow it to finish by itself, causing
-            # it to be added to the updated jobs queue.
+            # Issue a job and then allow it to finish by itself, causing it to be added to the
+            # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
             job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
 
-            updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
-            # Since the first two jobs were killed, the only job in the updated jobs
-            # queue should be job 3. If the first two jobs were (incorrectly) added
-            # to the queue, this will fail with updatedID being equal to job1 or job2.
+            # Since the first two jobs were killed, the only job in the updated jobs queue should
+            # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
+            # fail with updatedID being equal to job1 or job2.
             self.assertEqual(exitStatus, 0)
             self.assertEqual(updatedID, job3)
+            if self.supportsWallTime():
+                self.assertTrue(wallTime > 0)
+            else:
+                self.assertIsNone(wallTime)
             self.assertTrue(os.path.exists(testPath))
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
@@ -134,39 +148,39 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
                 self.assertEqual(updatedID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
                 self.assertEqual(updatedID, job5)
 
         def testCheckResourceRequest(self):
-            self.assertRaises(InsufficientSystemResources,
-                              self.batchSystem.checkResourceRequest,
-                              memory=1000, cores=200, disk=1e9)
-            self.assertRaises(InsufficientSystemResources,
-                              self.batchSystem.checkResourceRequest,
-                              memory=5, cores=200, disk=1e9)
-            self.assertRaises(InsufficientSystemResources,
-                              self.batchSystem.checkResourceRequest,
-                              memory=1001e9, cores=1, disk=1e9)
-            self.assertRaises(InsufficientSystemResources,
-                              self.batchSystem.checkResourceRequest,
-                              memory=5, cores=1, disk=2e9)
-            self.assertRaises(AssertionError,
-                              self.batchSystem.checkResourceRequest,
-                              memory=None, cores=1, disk=1000)
-            self.assertRaises(AssertionError,
-                              self.batchSystem.checkResourceRequest,
-                              memory=10, cores=None, disk=1000)
-            self.batchSystem.checkResourceRequest(memory=10, cores=1, disk=100)
+            if isinstance(self.batchSystem, BatchSystemSupport):
+                checkResourceRequest = self.batchSystem.checkResourceRequest
+                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
+                                  memory=1000, cores=200, disk=1e9)
+                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
+                                  memory=5, cores=200, disk=1e9)
+                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
+                                  memory=1001e9, cores=1, disk=1e9)
+                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
+                                  memory=5, cores=1, disk=2e9)
+                self.assertRaises(AssertionError, checkResourceRequest,
+                                  memory=None, cores=1, disk=1000)
+                self.assertRaises(AssertionError, checkResourceRequest,
+                                  memory=10, cores=None, disk=1000)
+                checkResourceRequest(memory=10, cores=1, disk=100)
 
         def testGetRescueJobFrequency(self):
             self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
+
+        def testScalableBatchSystem(self):
+            # If instance of scalable batch system
+            pass
 
         def _waitForJobsToIssue(self, numJobs):
             issuedIDs = []
@@ -188,6 +202,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     Tests against the Mesos batch system
     """
 
+    def supportsWallTime(self):
+        return True
+
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
@@ -201,6 +218,13 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the single-machine batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=1001)
@@ -305,12 +329,13 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                 jobIds.add(bs.issueBatchJob(command=self.scriptCommand(),
                                                             cores=float(coresPerJob),
                                                             memory=1,
-                                                            disk=1))
+                                                            disk=1,
+                                                            preemptable=preemptable))
                             self.assertEquals(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
                                 self.assertIsNotNone(job)
-                                jobId, status = job
+                                jobId, status, wallTime = job
                                 self.assertEquals(status, 0)
                                 # would raise KeyError on absence
                                 jobIds.remove(jobId)
@@ -343,7 +368,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         options.logDebug = True
         options.maxCores = 3
         self.assertTrue(options.maxCores <= SingleMachineBatchSystem.numCores)
-        Job.Runner.startToil(Job.wrapJobFn(initialize, self.scriptCommand()), options)
+        Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)
         with open(self.counterPath, 'r+') as f:
             s = f.read()
         log.info('Counter is %s', s)
@@ -352,23 +377,25 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
 
 # Toil can use only top-level functions so we have to add them here:
 
-def initialize(job, cmd):
-    job.addChildJobFn(job1, cmd)
+def parentJob(job, cmd):
+    job.addChildJobFn(childJob, cmd)
 
 
-def job1(job, cmd):
+def childJob(job, cmd):
     job.addService(Service(cmd))
-    job.addChildJobFn(job2, cmd)
+    job.addChildJobFn(grandChildJob, cmd)
     subprocess.check_call(cmd, shell=True)
 
 
-def job2(job, cmd):
+def grandChildJob(job, cmd):
     job.addService(Service(cmd))
-    job.addChildFn(hello_world, cmd)
+    job.addChildFn(greatGrandChild, cmd)
     subprocess.check_call(cmd, shell=True)
 
-def hello_world(cmd):
+
+def greatGrandChild(cmd):
     subprocess.check_call(cmd, shell=True)
+
 
 class Service(Job.Service):
     def __init__(self, cmd):
@@ -377,7 +404,7 @@ class Service(Job.Service):
 
     def start(self, fileStore):
         subprocess.check_call(self.cmd + ' 1', shell=True)
-        
+
     def check(self):
         return True
 
@@ -390,6 +417,9 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     """
     Tests the Parasol batch system
     """
+
+    def supportsWallTime(self):
+        return True
 
     def _createDummyConfig(self):
         config = super(ParasolBatchSystemTest, self)._createDummyConfig()
@@ -410,10 +440,12 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        # self.batchSystem.issueBatchJob("sleep 100", memory=1e9, cores=1, disk=1000)
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2e9, cores=1, disk=1000)
-
+        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
+                                              preemptable=preemptable)
+        self.assertIsNotNone(job1)
+        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2 << 30, cores=1, disk=1000,
+                                              preemptable=preemptable)
+        self.assertIsNotNone(job2)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
         # It would be better to directly check that the batches have the correct memory and cpu
@@ -421,7 +453,9 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1e9, cores=1, disk=1000)
+        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
+                                              preemptable=preemptable)
+        self.assertIsNotNone(job3)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
 
@@ -440,7 +474,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return batchInfo
 
     def _getBatchList(self):
-        exitStatus, batchLines = self.batchSystem.runParasol(['list', 'batches'])
+        # noinspection PyUnresolvedReferences
+        exitStatus, batchLines = self.batchSystem._runParasol(['list', 'batches'])
         self.assertEqual(exitStatus, 0)
         return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
@@ -462,11 +497,6 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
 
-    @classmethod
-    def setUpClass(cls):
-        super(GridEngineBatchSystemTest, cls).setUpClass()
-        logging.basicConfig(level=logging.DEBUG)
-
 
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -484,11 +514,6 @@ class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
         from toil.batchSystems.slurm import SlurmBatchSystem
         return SlurmBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                 maxDisk=1e9)
-
-    @classmethod
-    def setUpClass(cls):
-        super(SlurmBatchSystemTest, cls).setUpClass()
-        logging.basicConfig(level=logging.DEBUG)
 
     def tearDown(self):
         super(SlurmBatchSystemTest, self).tearDown()

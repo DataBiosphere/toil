@@ -25,40 +25,12 @@ from Queue import Queue, Empty
 from threading import Thread
 from datetime import date
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-
+from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger( __name__ )
 
 
-class MemoryString:
-    def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G':
-            self.unit = string[-1]
-            self.val = float(string[:-1])
-        else:
-            self.unit = 'B'
-            self.val = float(string)
-        self.bytes = self.byteVal()
-
-    def __str__(self):
-        if self.unit != 'B':
-            return str(self.val) + self.unit
-        else:
-            return str(self.val)
-
-    def byteVal(self):
-        if self.unit == 'B':
-            return self.val
-        elif self.unit == 'K':
-            return self.val * 1000
-        elif self.unit == 'M':
-            return self.val * 1000000
-        elif self.unit == 'G':
-            return self.val * 1000000000
-
-    def __cmp__(self, other):
-        return cmp(self.bytes, other.bytes)
 
 def prepareBsub(cpu, mem):
     mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ 1000000)) + '000'
@@ -76,7 +48,7 @@ def bsub(bsubline):
 
 def getjobexitcode(lsfJobID):
         job, task = lsfJobID
-        
+
         #first try bjobs to find out job state
         args = ["bjobs", "-l", str(job)]
         logger.info("Checking job exit code for job via bjobs: " + str(job))
@@ -97,14 +69,14 @@ def getjobexitcode(lsfJobID):
                 return None
             elif line.find("Started on ") > -1:
                 started = 1
-        
+
         if started == 1:
             logger.info("bjobs detected job started but not completed: " + str(job))
             return None
 
         #if not found in bjobs, then try bacct (slower than bjobs)
         logger.info("bjobs failed to detect job - trying bacct: " + str(job))
-        
+
         args = ["bacct", "-l", str(job)]
         logger.info("Checking job exit code for job via bacct:" + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
@@ -126,7 +98,7 @@ class Worker(Thread):
         self.currentjobs = list()
         self.runningjobs = set()
         self.boss = boss
-        
+
     def run(self):
         while True:
             # Load new job ids:
@@ -150,12 +122,21 @@ class Worker(Thread):
 
             time.sleep(10)
 
-class LSFBatchSystem(AbstractBatchSystem):
-    """The interface for running jobs on lsf, runs all the jobs you
-    give it as they come in, but in parallel.
+class LSFBatchSystem(BatchSystemSupport):
     """
-    def __init__(self, config, maxCores, maxMemory):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory) #Call the parent constructor
+    The interface for running jobs on lsf, runs all the jobs you give it as they come in,
+    but in parallel.
+    """
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.lsfResultsFile = self._getResultsFileName(config.jobStore)
         #Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
@@ -174,9 +155,9 @@ class LSFBatchSystem(AbstractBatchSystem):
 
     def __des__(self):
         #Closes the file handle associated with the results file.
-        self.lsfResultsFileHandle.close() #Close the results file, cos were done.        
-    
-    def issueBatchJob(self, command, memory, cores):
+        self.lsfResultsFileHandle.close() #Close the results file, cos were done.
+
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         jobID = self.nextJobID
         self.nextJobID += 1
         self.currentjobs.add(jobID)
@@ -184,7 +165,7 @@ class LSFBatchSystem(AbstractBatchSystem):
         self.newJobsQueue.put((jobID, bsubline))
         logger.info("Issued the job command: %s with job id: %s " % (command, str(jobID)))
         return jobID
-        
+
     def getLsfID(self, jobID):
         if not jobID in self.lsfJobIDs:
              RuntimeError("Unknown jobID, could not be converted")
@@ -194,7 +175,7 @@ class LSFBatchSystem(AbstractBatchSystem):
              return str(job)
         else:
              return str(job) + "." + str(task)
-    
+
     def killBatchJobs(self, jobIDs):
         """Kills the given job IDs.
         """
@@ -215,13 +196,13 @@ class LSFBatchSystem(AbstractBatchSystem):
                 logger.warn("Tried to kill some jobs, but something happened and they are still going, "
                              "so I'll try again")
                 time.sleep(5)
-    
+
     def getIssuedBatchJobIDs(self):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
         just waiting).
         """
         return self.currentjobs
-    
+
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
         and a how long they have been running for (in seconds).
@@ -229,8 +210,8 @@ class LSFBatchSystem(AbstractBatchSystem):
         times = {}
         currentjobs = set(self.lsfJobIDs[x] for x in self.getIssuedBatchJobIDs())
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
-        
-        for currline in process.stdout:
+
+        for curline in process.stdout:
             items = curline.strip().split()
             if (len(items) > 9 and (items[0]) in currentjobs) and items[2] == 'RUN':
                 jobstart = "/".join(items[7:9]) + '/' + str(date.today().year)
@@ -239,19 +220,19 @@ class LSFBatchSystem(AbstractBatchSystem):
                 jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
                 times[self.jobIDs[(items[0])]] = time.time() - jobstart
         return times
-    
+
     def getUpdatedBatchJob(self, maxWait):
         i = None
         try:
             sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
             self.updatedJobsQueue.task_done()
             i = (self.jobIDs[sgeJobID], retcode)
-            self.currentjobs -= set([self.jobIDs[sgeJobID]])
+            self.currentjobs -= {self.jobIDs[sgeJobID]}
         except Empty:
             pass
 
         return i
-    
+
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)
         """
@@ -272,8 +253,8 @@ class LSFBatchSystem(AbstractBatchSystem):
         items = line.strip().split()
         num_columns = len(items)
         cpu_index = None
-        mem_index = None        
-        for i in range(num_columns): 
+        mem_index = None
+        for i in range(num_columns):
                 if items[i] == 'ncpus':
                         cpu_index = i
                 elif items[i] == 'maxmem':

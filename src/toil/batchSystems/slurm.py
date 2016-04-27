@@ -22,43 +22,12 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
 sleepSeconds = 1
-
-
-class MemoryString:
-    def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T':
-            self.unit = string[-1]
-            self.val = float(string[:-1])
-        else:
-            self.unit = 'B'
-            self.val = float(string)
-        self.bytes = self.byteVal()
-
-    def __str__(self):
-        if self.unit != 'B':
-            return str(self.val) + self.unit
-        else:
-            return str(self.val)
-
-    def byteVal(self):
-        if self.unit == 'B':
-            return self.val
-        elif self.unit == 'K':
-            return self.val * 1024
-        elif self.unit == 'M':
-            return self.val * 1048576
-        elif self.unit == 'G':
-            return self.val * 1073741824
-        elif self.unit == 'T':
-            return self.val * 1099511627776
-
-    def __cmp__(self, other):
-        return cmp(self.bytes, other.bytes)
 
 
 class Worker(Thread):
@@ -81,16 +50,15 @@ class Worker(Thread):
         # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
         total_seconds = 0
         try:
-            elapsed = elapsed.replace('-',':').split(':')
+            elapsed = elapsed.replace('-', ':').split(':')
             elapsed.reverse()
             seconds_per_unit = [1, 60, 3600, 86400]
             for index, multiplier in enumerate(seconds_per_unit):
                 if index < len(elapsed):
                     total_seconds += multiplier * int(elapsed[index])
         except ValueError:
-            pass # slurm may return INVALID instead of a time
+            pass  # slurm may return INVALID instead of a time
         return total_seconds
-
 
     def getRunningJobIDs(self):
         # Should return a dictionary of Job IDs and number of seconds
@@ -170,8 +138,8 @@ class Worker(Thread):
         if newJob is not None:
             self.waitingJobs.append(newJob)
         # Launch jobs as necessary:
-        while len(self.waitingJobs) > 0 and sum(self.allocatedCpus.values()) < int(
-                self.boss.maxCores):
+        while (len(self.waitingJobs) > 0
+               and sum(self.allocatedCpus.values()) < int(self.boss.maxCores)):
             activity = True
             jobID, cpu, memory, command = self.waitingJobs.pop(0)
             sbatch_line = self.prepareSbatch(cpu, memory, jobID) + ['--wrap={}'.format(command)]
@@ -221,7 +189,7 @@ class Worker(Thread):
 
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
-            sbatch_line.append('--mem={}'.format(int(mem)/2**20))
+            sbatch_line.append('--mem={}'.format(int(mem) / 2 ** 20))
         if cpu is not None:
             sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
@@ -245,37 +213,44 @@ class Worker(Thread):
     def getJobExitCode(self, slurmJobID):
         logger.debug("Getting exit code for slurm job %d", slurmJobID)
         # SLURM job exit codes are obtained by running sacct.
-        # sacct returns
-        # -n : no header
-        # -j : job
-        # --format : specify output columns
-        # -P : separate columns with pipes
-        # -S 1970-01-01 override start time limit
-        args = ['sacct', '-n', '-j', str(slurmJobID), '--format','State,ExitCode', '-P', '-S', '1970-01-01']
+        args = ['sacct',
+                '-n', # no header
+                '-j', str(slurmJobID), # job
+                '--format', 'State,ExitCode', # specify output columns
+                '-P', # separate columns with pipes
+                '-S', '1970-01-01'] # override start time limit
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             values = line.strip().split('|')
             if len(values) < 2:
                 continue
             state, exitcode = values
-            logger.debug("sacct Job state is %s", state)
+            logger.debug("sacct job state is %s", state)
             # If Job is in a running state, return None to indicate we don't have an update
-            if state in ('PENDING', 'RUNNING','CONFIGURING','COMPLETING','RESIZING','SUSPENDED'):
+            if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
                 return None
             status, _ = exitcode.split(':')
-            logger.debug("sacct exitcode is %s, returning status %s", exitcode, status )
+            logger.debug("sacct exit code is %s, returning status %s", exitcode, status)
             return int(status)
         logger.debug("Did not find exit code for job in sacct output")
         return None
 
 
-class SlurmBatchSystem(AbstractBatchSystem):
+class SlurmBatchSystem(BatchSystemSupport):
     """
     The interface for SLURM
     """
 
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return False
+
+    @classmethod
+    def supportsHotDeployment(cls):
+        return False
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+        super(SlurmBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.slurmResultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.slurmResultsFileHandle = open(self.slurmResultsFile, 'w')
@@ -296,7 +271,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
         # Closes the file handle associated with the results file.
         self.slurmResultsFileHandle.close()
 
-    def issueBatchJob(self, command, memory, cores, disk):
+    def issueBatchJob(self, command, memory, cores, disk, preemptable):
         self.checkResourceRequest(memory, cores, disk)
         jobID = self.nextJobID
         self.nextJobID += 1
@@ -337,14 +312,13 @@ class SlurmBatchSystem(AbstractBatchSystem):
 
     def getUpdatedBatchJob(self, maxWait):
         try:
-            i = self.updatedJobsQueue.get(timeout=maxWait)
+            item = self.updatedJobsQueue.get(timeout=maxWait)
         except Empty:
             return None
-        logger.debug('UpdatedJobsQueue Item: %s', i)
-        jobID, retcode = i
-        self.updatedJobsQueue.task_done()
+        logger.debug('UpdatedJobsQueue Item: %s', item)
+        jobID, retcode = item
         self.currentJobs.remove(jobID)
-        return i
+        return jobID, retcode, None
 
     def shutdown(self):
         """
@@ -361,7 +335,7 @@ class SlurmBatchSystem(AbstractBatchSystem):
 
     @classmethod
     def getRescueBatchJobFrequency(cls):
-        return 1800  # Half an hour
+        return 30 * 60 # Half an hour
 
     @staticmethod
     def obtainSystemConstants():
@@ -381,17 +355,6 @@ class SlurmBatchSystem(AbstractBatchSystem):
             mem, cpu = values
             max_cpu = max(max_cpu, int(cpu))
             max_mem = max(max_mem, MemoryString(mem + 'M'))
-        if max_cpu == 0 or max_mem.byteVal() ==  0:
+        if max_cpu == 0 or max_mem.byteVal() == 0:
             RuntimeError('sinfo did not return memory or cpu info')
         return max_cpu, max_mem
-
-
-    def setEnv(self, name, value=None):
-        # if value and ',' in value:
-        #     raise ValueError("GridEngine does not support commata in environment variable values")
-        return AbstractBatchSystem.setEnv(self, name, value)
-
-    @staticmethod
-    def supportsWorkerCleanup():
-        return False
-
