@@ -76,7 +76,7 @@ class Config(object):
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 360
-        
+
         #Resource requirements
         self.defaultMemory = 2147483648
         self.defaultCores = 1
@@ -181,7 +181,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-        
+
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
@@ -513,8 +513,6 @@ class Toil(object):
             rootJobReturnValueID = self._jobStore.getEmptyFileStoreID()
 
             # Add the root job return value as a promise
-            if None not in rootJob._rvs:
-                rootJob._rvs[None] = []
             rootJob._rvs[None].append(rootJobReturnValueID)
 
             # Write the name of the promise file in a shared file
