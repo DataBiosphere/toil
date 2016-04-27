@@ -1642,6 +1642,8 @@ class Promise(object):
     """
     Caches the job store instance used during unpickling to prevent it from being instantiated
     for each promise
+
+    :type: toil.jobStores.abstractJobStore.AbstractJobStore
     """
 
     filesToDelete = set()
@@ -1682,7 +1684,9 @@ class Promise(object):
 
     @classmethod
     def _resolve(cls, jobStoreString, jobStoreFileID):
-        if cls._jobstore is None:
+        # Initialize the cached job store if it was never initialized in the current process or
+        # if it belongs to a different workflow that was run earlier in the current process.
+        if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreString:
             cls._jobstore = Toil.loadOrCreateJobStore(jobStoreString)
         cls.filesToDelete.add(jobStoreFileID)
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
