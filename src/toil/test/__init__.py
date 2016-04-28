@@ -317,37 +317,37 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
 
     >>> b = Bar()
 
-    >>> assert b.test_has__num_One__letter_A() == b.has(1, 'a')
+    >>> assert b.test_has__num_one__letter_a() == b.has(1, 'a')
 
-    >>> assert b.test_has__num_One__letter_B() == b.has(1, 'b')
+    >>> assert b.test_has__num_one__letter_b() == b.has(1, 'b')
 
-    >>> assert b.test_has__num_Two__letter_A() == b.has(2, 'a')
+    >>> assert b.test_has__num_two__letter_a() == b.has(2, 'a')
 
-    >>> assert b.test_has__num_Two__letter_B() == b.has(2, 'b')
+    >>> assert b.test_has__num_two__letter_b() == b.has(2, 'b')
 
     >>> f = Foo()
 
-    >>> hasattr(f, 'test_has__num_One__letter_A')  # should be false because Foo has no test methods
+    >>> hasattr(f, 'test_has__num_one__letter_a')  # should be false because Foo has no test methods
     False
 
     >>> make_tests(Foo.has, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
 
-    >>> hasattr(f, 'test_has__num_One__letter_A')
+    >>> hasattr(f, 'test_has__num_one__letter_a')
     True
 
-    >>> assert f.test_has__num_One__letter_A() == f.has(1, 'a')
+    >>> assert f.test_has__num_one__letter_a() == f.has(1, 'a')
 
-    >>> assert f.test_has__num_One__letter_B() == f.has(1, 'b')
+    >>> assert f.test_has__num_one__letter_b() == f.has(1, 'b')
 
-    >>> assert f.test_has__num_Two__letter_A() == f.has(2, 'a')
+    >>> assert f.test_has__num_two__letter_a() == f.has(2, 'a')
 
-    >>> assert f.test_has__num_Two__letter_B() == f.has(2, 'b')
+    >>> assert f.test_has__num_two__letter_b() == f.has(2, 'b')
 
     >>> make_tests(Foo.hasOne, num={'one':1, 'two':2})
 
-    >>> assert f.test_hasOne__num_One() == f.hasOne(1)
+    >>> assert f.test_hasOne__num_one() == f.hasOne(1)
 
-    >>> assert f.test_hasOne__num_Two() == f.hasOne(2)
+    >>> assert f.test_hasOne__num_two() == f.hasOne(2)
 
     """
     def pop(d):
@@ -381,7 +381,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
         """
         for prmValName, lDict in left.items():
             for rValName, rVal in right.items():
-                nextPrmVal = ('__%s_%s' % (rPrmName, rValName.title()))
+                nextPrmVal = ('__%s_%s' % (rPrmName, rValName.lower()))
                 if methodNamePartRegex.match(nextPrmVal) is None:
                     raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
                 aggDict = dict(lDict)
@@ -401,7 +401,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     left = {}
     prmName, vals = pop(kwargs)
     for valName, val in vals.items():
-        pvName = '__%s_%s' % (prmName, valName.title())
+        pvName = '__%s_%s' % (prmName, valName.lower())
         if methodNamePartRegex.match(pvName) is None:
             raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
         left[pvName] = {prmName: val}
