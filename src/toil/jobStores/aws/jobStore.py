@@ -71,7 +71,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
     totalSize = srcKey.size
 
     # initiate copy
-    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName)
+    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName, headers=headers)
     try:
         start = 0
         partIndex = itertools.count()
