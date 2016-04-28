@@ -34,7 +34,7 @@ import boto
 import codecs
 
 from unittest import skip
-from azure.storage import BlobService
+from azure.storage.blob import BlobService
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
