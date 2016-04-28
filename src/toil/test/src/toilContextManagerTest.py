@@ -23,13 +23,13 @@ class ToilContextManagerTest(ToilTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
         with Toil(options) as toil:
-            toil.run(HelloWorld())
+            toil.start(HelloWorld())
 
     def testNoContextManger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
         toil = Toil(options)
-        self.assertRaises(ToilContextManagerMisuseException, toil.run, HelloWorld())
+        self.assertRaises(ToilContextManagerMisuseException, toil.start, HelloWorld())
 
 
 class HelloWorld(Job):

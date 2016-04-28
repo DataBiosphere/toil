@@ -91,7 +91,7 @@ Toil is a workflow engine entirely written in Python. It features:
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    installation
    running

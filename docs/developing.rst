@@ -78,9 +78,12 @@ class, which is used to start and resume Toil workflows. For example::
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to run and resume
 workflows. It is used as a context manager and allows for preliminary setup, such as staging of
 files into the job store on the leader node. An instance of the class is initialized by specifying
-an options object. The actual workflow is then invoked by calling the :func:`toil.common.Toil.run`
-method, passing the root job of the workflow, or, if a workflow is being restarted, without any
-arguments. For example::
+an options object. The actual workflow is then invoked by calling the :func:`toil.common.Toil.start`
+method, passing the root job of the workflow, or, if a workflow is being restarted, :func:`toil.common.Toil.restart`
+should be used. Note that the context manager should have explicit if else branches addressing restart and
+non restart cases. The boolean value for these if else blocks is toil.options.restart.
+
+For example::
 
     from toil.job import Job
     from toil.common import Toil
@@ -98,8 +101,11 @@ arguments. For example::
         options.logLevel = "INFO"
 
         with Toil(options) as toil:
-            job = HelloWorld("Smitty Werbenmanjensen, he was #1")
-            toil.run(job)
+            if not toil.options.restart:
+                job = HelloWorld("Smitty Werbenmanjensen, he was #1")
+                toil.start(job)
+            else:
+                toil.restart()
 
     
 The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of default
@@ -414,8 +420,8 @@ The return value *l* of the workflow is a list of all binary strings of length 1
 computed recursively. Although a toy example, it demonstrates how closely Toil workflows
 can mimic typical programming patterns. 
 
-Job.FileStore: Managing files within a workflow
------------------------------------------------
+Managing files within a workflow
+--------------------------------
 
 It is frequently the case that a workflow will want to create files, both persistent and temporary,
 during its run. The :class:`toil.job.Job.FileStore` class is used by jobs to manage these
@@ -519,14 +525,18 @@ Also worth noting is that there is no file system hierarchy for files in the glo
 store. These limitations allow us to fairly easily support different object stores and to 
 use caching to limit the amount of network file transfer between jobs.
 
-File Staging
-~~~~~~~~~~~~
-Files can be imported or exported from the current job store prior to running the workflow
-when the :class:`toil.common.Toil` context manager is used. The context manager has methods
-:func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` which import
-files into and export files out of a job store respectively. The destination and source
-locations of such files are described with urls passed to the two methods a list of the
-currently supported urls can be found at :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`
+Staging of files into the job store
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Files can be imported into or exported out of the job store prior to running a workflow
+when the :class:`toil.common.Toil` context manager is used on the leader. The context manager
+provides methods :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` for
+this purpose. The destination and source locations of such files are described with URLs passed
+to the two methods. A list of the currently supported urls can be found at
+:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. If a workflow fails for any
+reason an imported file acts as any other file in the job store. If the workflow was configured such
+that it not be cleaned up on a failed run the file will persist in the job store and needs not be
+re-staged. Files can be restaged by calling the relevant methods inside the restart branch of the
+Toil context manager.
 
 
 Example::
@@ -535,21 +545,29 @@ Example::
     from toil.job import Job
 
     class HelloWorld(Job):
-        def __init__(self, message):
+        def __init__(self, inputFileID):
             Job.__init__(self,  memory="2G", cores=2, disk="3G")
-            self.message = message
+            self.inputFileID = inputFileID
 
-        def run(self, fileStore):
-            return "Hello, world!, here's a message: %s" % self.message
+        with fileStore.readGlobalFileStream(self.inputFileID) as fi:
+            with fileStore.writeGlobalFileStream() as (fo, outputFileID):
+                fo.write(fi.read() + 'World!')
+            return outputFileID
+
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
         options.logLevel = "INFO"
-        job = HelloWorld("enter the void empty and become wind")
+
+
         with Toil(options) as toil:
-            jobStoreFileID = toil.fileStore(job).importFile('s3://somebucketname/anditskey')
-            toil.exportFile(jobStoreFileID, 'file:///some/local/path')
-            toil.run(job)
+            if not toil.options.restart:
+                inputFileID = toil.importFile('file:///some/local/path')
+                outputFileID = toil.start(HelloWorld(inputFileID))
+            else:
+                outputFileID = toil.restart()
+
+            toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
 Services
 --------

@@ -452,9 +452,10 @@ class Toil(object):
         super(Toil, self).__init__()
         self.options = options
         self.config = None
-        self.jobStore = None
-        self.batchSystem = None
-        self.jobCache = dict()
+        self._jobStore = None
+        self._batchSystem = None
+        self._jobCache = dict()
+        self._inContextManager = False
 
     def __enter__(self):
         """
@@ -462,15 +463,16 @@ class Toil(object):
         consolidate the derived configuration with the one from the previous invocation of the
         workflow.
         """
+        self._inContextManager = True
         self.config = Config()
         self.config.setOptions(self.options)
-        self.jobStore = self.loadOrCreateJobStore(self.config.jobStore,
-                                                  config=None if self.config.restart else self.config)
+        self._jobStore = self.loadOrCreateJobStore(self.config.jobStore,
+                                                   config=None if self.config.restart else self.config)
         if self.config.restart:
             # Reload configuration from job store
-            self.config = self.jobStore.config
+            self.config = self._jobStore.config
             self.config.setOptions(self.options)
-            self.jobStore.writeConfigToStore()
+            self._jobStore.writeConfigToStore()
 
         return self
 
@@ -478,81 +480,78 @@ class Toil(object):
         """
         Clean up after a workflow invocaton. Depending on the configuration, delete the job store.
         """
+        self._inContextManager = False
         if (exc_type is not None and self.config.clean == "onError" or
             exc_type is None and self.config.clean == "onSuccess" or
-            self.config.clean == "always"):
-            self.jobStore.deleteJobStore()
+             self.config.clean == "always"):
+
+            self._jobStore.deleteJobStore()
         return False  # let exceptions through
 
-    def run(self, job=None):
+    def start(self, rootJob):
         """
-        Invoke a Toil workflow with the given job as the root. The job argument may be omitted if
-        the invocaton is a restart in which case the previous invocation's root job will be used.
-        This method must be called in the body of a ``with Toil(...):`` statement.
+        Invoke a Toil workflow with the given job as the root for an initial run. This method must
+        be called in the body of a ``with Toil(...) as toil:`` statement. This method should not be called
+        more than once for a workflow that has not finished.
 
-        :param toil.job.Job job: The root job for the workflow
+        :param toil.job.Job rootJob: The root job for the workflow
         :return: The return value of the root job
         :rtype: Any
         """
-        self._assertContextManagerIsUsed()
+        self._assertContextManagerUsed()
+        if self.config.restart:
+            raise ToilConfigException('A workflow can only be started once. Use restart() to resume it.')
 
-        userScript = None if job is None else job.getUserScript()
-        self.batchSystem = self.createBatchSystem(self.config,
-                                                  jobStore=self.jobStore,
-                                                  userScript=userScript)
+        try:
+            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore,
+                                                       userScript=rootJob.getUserScript())
+            self._setBatchSystemEnvVars()
+            self._serialiseEnv()
+            self._cacheAllJobs()
 
-        realtimeLogLevel = self.options.logLevel if self.options.realTimeLogging else None
-        with RealtimeLogger(self.batchSystem, level=realtimeLogLevel):
-            try:
-                self._setBatchSystemEnvVars()
-                self._serialiseEnvironment()
+            # Make a file to store the root job's return value in
+            rootJobReturnValueID = self._jobStore.getEmptyFileStoreID()
 
-                logger.info('Caching all jobs in job store')
-                self._cacheJobs()
-                logger.info('{} jobs downloaded.'.format(len(self.jobCache)))
+            # Add the root job return value as a promise
+            if None not in rootJob._rvs:
+                rootJob._rvs[None] = []
+            rootJob._rvs[None].append(rootJobReturnValueID)
 
-                if job is not None:
-                    if self.config.restart:
-                        raise ToilConfigException('Cannot override root job on restart')
+            # Write the name of the promise file in a shared file
+            with self._jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
+                fH.write(rootJobReturnValueID)
 
-                    # Make a file to store the root job's return value in
-                    jobStoreFileID = self.jobStore.getEmptyFileStoreID()
+            # Setup the first wrapper and cache it
+            job = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(job)
 
-                    # Add the root job return value as a promise
-                    if None not in job._rvs:
-                        job._rvs[None] = []
-                    job._rvs[None].append(jobStoreFileID)
+            return self._runMainLoop(job)
 
-                    # Write the name of the promise file in a shared file
-                    with self.jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
-                        fH.write(jobStoreFileID)
+        finally:
+            self._shutdownBatchSystem()
 
-                    # Setup the first wrapper and cache it
-                    rootJob = job._serialiseFirstJob(self.jobStore)
-                    self._cacheJob(rootJob)
+    def restart(self):
+        """
+        Restarts a workflow that has been interrupted. This method should be called if and only if a workflow
+        has previously been started and has not finished.
 
-                else:  # restarting
-                    if not self.config.restart:
-                        raise ToilConfigException('Need root job on first invocation')
+        :return: The return value of the root job
+        :rtype: Any
+        """
+        self._assertContextManagerUsed()
+        if not self.config.restart:
+            raise ToilConfigException('Cannot call restart on initial run of workflow')
 
-                    # This cleans up any half written jobs after a restart
-                    rootJob = self.jobStore.clean(jobCache=self.jobCache)
+        try:
+            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
+            self._setBatchSystemEnvVars()
+            self._serialiseEnv()
+            self._cacheAllJobs()
 
-                # FIXME: common.py shouldn't import from leader.py
-                from toil.leader import mainLoop
-                return mainLoop(config=self.config,
-                                batchSystem=self.batchSystem,
-                                provisioner=None,
-                                jobStore=self.jobStore,
-                                rootJobWrapper=rootJob,
-                                jobCache=self.jobCache)
-
-            finally:
-                startTime = time.time()
-                logger.debug('Shutting down batch system')
-                self.batchSystem.shutdown()
-                logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
-
+            rootJob = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJob)
+        finally:
+            self._shutdownBatchSystem()
 
     @staticmethod
     def loadOrCreateJobStore(jobStoreString, config=None):
@@ -651,43 +650,45 @@ class Toil(object):
         return batchSystemClass(**kwargs)
 
     def importFile(self, srcUrl):
-        self._assertContextManagerIsUsed()
-        return self.jobStore.importFile(srcUrl)
+        self._assertContextManagerUsed()
+        return self._jobStore.importFile(srcUrl)
 
     def exportFile(self, jobStoreFileID, dstUrl):
-        self._assertContextManagerIsUsed()
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+        self._assertContextManagerUsed()
+        self._jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def _setBatchSystemEnvVars(self):
         """
         Sets the environment variables required by the job store and those passed on command line.
         """
-        for envDict in (self.jobStore.getEnv(), self.config.environment):
+        for envDict in (self._jobStore.getEnv(), self.config.environment):
             for k, v in envDict.iteritems():
-                self.batchSystem.setEnv(k, v)
+                self._batchSystem.setEnv(k, v)
 
-    def _serialiseEnvironment(self):
+    def _serialiseEnv(self):
         """
         Puts the environment in a globally accessible pickle file.
         """
         # Dump out the environment of this process in the environment pickle file.
-        with self.jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
+        with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
             cPickle.dump(os.environ, fileHandle, cPickle.HIGHEST_PROTOCOL)
         logger.info("Written the environment for the jobs to the environment file")
 
-    def _cacheJobs(self):
+    def _cacheAllJobs(self):
         """
         Downloads all jobs in the current job store into self.jobCache.
         """
-        self.jobCache = {jobWrapper.jobStoreID: jobWrapper for jobWrapper in self.jobStore.jobs()}
+        logger.info('Caching all jobs in job store')
+        self._jobCache = {jobWrapper.jobStoreID: jobWrapper for jobWrapper in self._jobStore.jobs()}
+        logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
-        Adds given job to curent jobCache.
+        Adds given job to current job cache.
 
         :param toil.jobWrapper.JobWrapper job: job to be added to current job cache
         """
-        self.jobCache[job.jobStoreID] = job
+        self._jobCache[job.jobStoreID] = job
 
     @staticmethod
     def getWorkflowDir(workflowID, configWorkDir=None):
@@ -717,11 +718,36 @@ class Toil(object):
             logger.info('Created the workflow directory at %s' % workflowDir)
         return workflowDir
 
-    def _assertContextManagerIsUsed(self):
-        # Assert that we are inside the context manager
-        if self.jobStore is None:
-            # __enter__() sets self.jobStore
-            raise ToilContextManagerMisuseException("Toil class cannot be instantiated outside of a context manager")
+    def _runMainLoop(self, rootJob):
+        """
+        Runs the main loop with the given job.
+        :param toil.job.Job rootJob: The root job for the workflow.
+        :rtype: Any
+        """
+        with RealtimeLogger(self._batchSystem, level=self.options.logLevel if self.options.realTimeLogging else None):
+            # FIXME: common should not import from leader
+            from toil.leader import mainLoop
+            return mainLoop(config=self.config,
+                            batchSystem=self._batchSystem,
+                            provisioner=None,
+                            jobStore=self._jobStore,
+                            rootJobWrapper=rootJob,
+                            jobCache=self._jobCache)
+
+    def _shutdownBatchSystem(self):
+        """
+        Shuts down current batch system if it has been created.
+        """
+        assert self._batchSystem is not None
+
+        startTime = time.time()
+        logger.debug('Shutting down batch system')
+        self._batchSystem.shutdown()
+        logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
+
+    def _assertContextManagerUsed(self):
+        if not self._inContextManager:
+            raise ToilContextManagerMisuseException("This method cannot be called outside of Toil context manager.")
 
 
 class ToilConfigException(Exception):
@@ -742,6 +768,7 @@ class ToilContextManagerMisuseException(Exception):
         super(ToilContextManagerMisuseException, self).__init__(message)
 
 # Nested functions can't have doctests so we have to make this global
+
 
 def parseSetEnv(l):
     """
