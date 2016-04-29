@@ -25,7 +25,15 @@ class RegularLogTest(ToilTest):
                                               './toilTest',
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert helloWorld.logToMasterMessage in toilOutput
+        assert helloWorld.childMessage in toilOutput
+
+    def testMultipleLogToMaster(self):
+        toilOutput = subprocess.check_output([sys.executable,
+                                              '-m', helloWorld.__name__,
+                                              './toilTest',
+                                              '--clean=always',
+                                              '--logLevel=info'], stderr=subprocess.STDOUT)
+        assert helloWorld.parentMessage in toilOutput
 
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,

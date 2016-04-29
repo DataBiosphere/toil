@@ -21,10 +21,12 @@ import os
 from toil.common import Toil
 from toil.job import Job
 
-logToMasterMessage = "The child job is now running!"
+childMessage = "The child job is now running!"
+parentMessage = "The parent job is now running!"
 
 def hello_world(job):
 
+    job.fileStore.logToMaster(parentMessage)
     with open('foo_bam.txt', 'w') as handle:
         handle.write('\nThis is a triumph...\n')
 
@@ -40,7 +42,7 @@ def hello_world(job):
 def hello_world_child(job, hw):
 
     path = job.fileStore.readGlobalFile(hw)
-    job.fileStore.logToMaster(logToMasterMessage)
+    job.fileStore.logToMaster(childMessage)
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
     with open(path, 'r') as r:
