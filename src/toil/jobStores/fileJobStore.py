@@ -150,12 +150,20 @@ class FileJobStore(AbstractJobStore):
     # Functions that deal with temporary files associated with jobs
     ##########################################
 
-    def _importFile(self, otherCls, url):
+    def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
-            fd, absPath = self._getTempFile()
-            shutil.copyfile(self._extractPathFromUrl(url), absPath)
-            os.close(fd)
-            return self._getRelativePath(absPath)
+            if sharedFileName is None:
+                fd, absPath = self._getTempFile()
+                shutil.copyfile(self._extractPathFromUrl(url), absPath)
+                os.close(fd)
+                return self._getRelativePath(absPath)
+            else:
+                if not self._validateSharedFileName(sharedFileName):
+                    raise ValueError("The name '%s' if not a valud shared file name." % sharedFileName)
+                with self.writeSharedFileStream(sharedFileName) as writable:
+                    with open(self._extractPathFromUrl(url), 'r') as readable:
+                        writable.write(readable.read())
+                return sharedFileName
         else:
             return super(FileJobStore, self)._importFile(otherCls, url)
 

@@ -282,10 +282,17 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url):
+    def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, AWSJobStore):
             srcBucket, srcKey = self._extractKeyInfoFromUrl(url, existing=True)
-            info = self.FileInfo.create(srcKey.name)
+
+            if sharedFileName is None:
+                info = self.FileInfo.create(srcKey.name)
+            else:
+                if not self._validateSharedFileName(sharedFileName):
+                    raise ValueError("The name '%s' if not a valud shared file name." % sharedFileName)
+                info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
+                                                  ownerID=str(self.sharedFileOwnerID))
             info.copyFrom(srcKey)
             info.save()
             return info.fileID

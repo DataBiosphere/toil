@@ -532,11 +532,12 @@ when the :class:`toil.common.Toil` context manager is used on the leader. The co
 provides methods :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` for
 this purpose. The destination and source locations of such files are described with URLs passed
 to the two methods. A list of the currently supported urls can be found at
-:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. If a workflow fails for any
-reason an imported file acts as any other file in the job store. If the workflow was configured such
-that it not be cleaned up on a failed run the file will persist in the job store and needs not be
-re-staged. Files can be restaged by calling the relevant methods inside the restart branch of the
-Toil context manager.
+:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. Also note that the imported file
+can be a shared file if a name is provided for the optional ``sharedFileName`` parameter.
+
+If a workflow fails for any reason an imported file acts as any other file in the job store. If the
+workflow was configured such that it not be cleaned up on a failed run, the file will persist in the
+job store and needs not be staged again when the workflow is resumed.
 
 
 Example::
