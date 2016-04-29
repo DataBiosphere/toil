@@ -40,6 +40,10 @@ class FileJobStore(AbstractJobStore):
     AbstractJobStore.
     """
 
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
+        return cls(jobStoreString, config=config, **kwargs)
+
     def __init__(self, jobStoreDir, config=None):
         """
         :param jobStoreDir: Place to create jobStore

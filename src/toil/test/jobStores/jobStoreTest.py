@@ -617,7 +617,7 @@ class hidden:
 
 class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
-        return FileJobStore(self.namePrefix, config=config)
+        return FileJobStore.loadOrCreateJobStore(self.namePrefix, config=config)
 
     @classmethod
     def _getUrlForTestFile(cls, size=None):
