@@ -187,7 +187,7 @@ def main():
     workerFailed = False
     statsDict = MagicExpando()
     statsDict.jobs = []
-    messages = []
+    statsDict.workers.logsToMaster = []
     blockFn = lambda : True
     cleanCacheFn = lambda x : True
     try:
@@ -319,13 +319,15 @@ def main():
                                               blockFn)
                     #Get the next block function and list that will contain any messages
                     blockFn = fileStore._blockFn
-                    messages = fileStore.loggingMessages
 
                     job._execute(jobWrapper=jobWrapper,
                                            stats=statsDict if config.stats else None,
                                            localTempDir=localTempDir,
                                            jobStore=jobStore,
                                            fileStore=fileStore)
+
+                    # Accumulate messages from this job & any subsequent chained jobs
+                    statsDict.workers.logsToMaster += fileStore.loggingMessages
 
                     #Set the clean cache function
                     cleanCacheFn = fileStore._cleanLocalTempDir
@@ -452,9 +454,6 @@ def main():
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
 
-        # logToMaster messages should be always be passed
-        statsDict.workers.logsToMaster = messages
-
         # log the worker log path here so that if the file is truncated the path can still be found
         logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localTempDir)
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
@@ -528,7 +527,7 @@ def main():
             logMessages = logFile.read().splitlines()
         statsDict.logs = [Expando(jobStoreID=jobStoreID, text=logMessage) for logMessage in logMessages]
 
-    if (debugging or config.stats or messages) and not workerFailed:  # We have stats/logging to report back
+    if (debugging or config.stats or statsDict.workers.logsToMaster) and not workerFailed:  # We have stats/logging to report back
         jobStore.writeStatsAndLogging(json.dumps(statsDict))
 
     #Remove the temp dir
