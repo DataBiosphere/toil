@@ -207,7 +207,7 @@ class ClusterScaler(object):
                     config.minPreemptableNodes, config.maxPreemptableNodes,
                     self.preemptableRunningJobShape, config, nodeShape,
                     self.stop, self.error, True)
-            self.preemptableScaler = Thread(target=self.scaler, args=args)
+            self.preemptableScaler = Thread(target=self._scaler, args=args)
             self.preemptableScaler.start()
         else:
             self.preemptableScaler = None
@@ -218,9 +218,9 @@ class ClusterScaler(object):
             self.runningJobShape = RunningJobShapes(config, nodeShape)
             args = (provisioner, jobBatcher,
                     config.minNodes, config.maxNodes,
-                    self.runningJobShape, config, config.nodeType,
+                    self.runningJobShape, config, nodeShape,
                     self.stop, self.error, False)
-            self.scaler = Thread(target=self.scaler, args=args)
+            self.scaler = Thread(target=self._scaler, args=args)
             self.scaler.start()
         else:
             self.scaler = None
@@ -244,15 +244,17 @@ class ClusterScaler(object):
 
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
-        s = Shape(wallTime=wallTime, memory=issuedJob.memory,
-                  cores=issuedJob.cores, disk=issuedJob.disk)
+        s = Shape(wallTime=wallTime,
+                  memory=issuedJob.memory,
+                  cores=issuedJob.cores,
+                  disk=issuedJob.disk)
         if issuedJob.preemptable:
             self.preemptableRunningJobShape.add(s)
         else:
             self.runningJobShape.add(s)
 
     @staticmethod
-    def scaler(provisioner, jobBatcher,
+    def _scaler(provisioner, jobBatcher,
                minNodes, maxNodes, runningJobShapes,
                config, nodeShape,
                stop, error, preemptable):

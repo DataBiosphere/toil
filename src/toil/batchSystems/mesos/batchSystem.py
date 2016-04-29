@@ -480,8 +480,8 @@ class MesosBatchSystem(BatchSystemSupport,
         # Handle the mandatory fields of a message
         nodeAddress = message.pop('address')
         executor = self.executors.get(nodeAddress)
-        if executor is None or executor.slaveId != slaveId:
-            executor = Expando(nodeAddress=nodeAddress, slaveId=slaveId, nodeInfo=None)
+        if executor is None or executor.slaveId != slaveId.value:
+            executor = Expando(nodeAddress=nodeAddress, slaveId=slaveId.value, nodeInfo=None)
             self.executors[nodeAddress] = executor
         executor.lastSeen = time.time()
         # Handle optional message fields
@@ -494,7 +494,7 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def getNodes(self, preemptable=False):
         return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors
+                for nodeAddress, executor in self.executors.iteritems()
                 if time.time() - executor.lastSeen < 600
                 and preemptable == (executor.slaveId not in self.nonPreemptibleNodes)}
 

@@ -66,15 +66,14 @@ class Config(object):
 
         #Autoscaling options
         self.provisioner = None
-        self.preemptableNodeType = None
-        self.preemptableNodeOptions = None
-        self.preemptableBidPrice = None
-        self.minPreemptableNodes = 0
-        self.maxPreemptableNodes = 10
         self.nodeType = None
         self.nodeOptions = None
         self.minNodes = 0
         self.maxNodes = 10
+        self.preemptableNodeType = None
+        self.preemptableNodeOptions = None
+        self.minPreemptableNodes = 0
+        self.maxPreemptableNodes = 0
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 360
@@ -177,12 +176,14 @@ class Config(object):
 
         #Autoscaling options
         setOption("provisioner")
-        setOption("preemptableNodeOptions")
-        setOption("minPreemptableNodes", int)
-        setOption("maxPreemptableNodes", int)
+        setOption("nodeType")
         setOption("nodeOptions")
         setOption("minNodes", int)
         setOption("maxNodes", int)
+        setOption("preemptableNodeType")
+        setOption("preemptableNodeOptions")
+        setOption("minPreemptableNodes", int)
+        setOption("maxPreemptableNodes", int)
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
@@ -324,14 +325,13 @@ def _addOptions(addGroupFn, config):
 
         _addOptionFn('nodeType', metavar='TYPE',
                      help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                          "provisioner used. For the cgcloud provisioner this is the name of an "
+                          "provisioner used. For the CGCloud provisioner this is the name of an "
                           "EC2 instance type{|, followed by a colon and the price in dollar to "
                           "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
         _addOptionFn('nodeOptions', metavar='OPTIONS',
                      help="Provisioning options for the {non-|}preemptable node type. The syntax "
-                          "depends on the provisioner used. For the cgcloud provisioner this is a "
-                          "space-separated list of options to cgcloud's grow-cluster command (run "
-                          "'cgcloud grow-cluster --help' for details.")
+                          "depends on the provisioner used. The CGCloud provisioner doesn't "
+                          "currently support any node options.")
         for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
             _addOptionFn(p, 'nodes', default=None, metavar='NUM',
                          help=q + " number of {non-|}preemptable nodes in the cluster, if using "
@@ -480,6 +480,7 @@ class Toil(object):
         self.config = None
         self._jobStore = None
         self._batchSystem = None
+        self._provisioner = None
         self._jobCache = dict()
         self._inContextManager = False
 
@@ -530,19 +531,19 @@ class Toil(object):
 
     def start(self, rootJob):
         """
-        Invoke a Toil workflow with the given job as the root for an initial run. This method 
-        must be called in the body of a ``with Toil(...) as toil:`` statement. This method should 
-        not be called more than once for a workflow that has not finished. 
+        Invoke a Toil workflow with the given job as the root for an initial run. This method
+        must be called in the body of a ``with Toil(...) as toil:`` statement. This method should
+        not be called more than once for a workflow that has not finished.
 
         :param toil.job.Job rootJob: The root job of the workflow
-        :return: The root job's return value 
+        :return: The root job's return value
         """
         self._assertContextManagerUsed()
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
 
-        self._batchSystem = self.createBatchSystem(self.config, 
+        self._batchSystem = self.createBatchSystem(self.config,
                                                    jobStore=self._jobStore,
                                                    userScript=rootJob.getUserScript())
         try:
@@ -563,15 +564,25 @@ class Toil(object):
             # Setup the first wrapper and cache it
             job = rootJob._serialiseFirstJob(self._jobStore)
             self._cacheJob(job)
-            
+
+            if self.config.provisioner is None:
+                self._provisioner = None
+            if self.config.provisioner == 'cgcloud':
+                logger.info('Using cgcloud provisioner.')
+                from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
+                self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
+            else:
+                # Command line parser shold have checked argument validity already
+                assert False, self.config.provisioner
+
             return self._runMainLoop(job)
         finally:
             self._shutdownBatchSystem()
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only 
-        if a workflow has previously been started and has not finished. 
+        Restarts a workflow that has been interrupted. This method should be called if and only
+        if a workflow has previously been started and has not finished.
 
         :return: The root job's return value
         """
@@ -621,7 +632,7 @@ class Toil(object):
             from toil.jobStores.azureJobStore import AzureJobStore
             account, namePrefix = rest.split(':', 1)
             return AzureJobStore(account, namePrefix, config=config)
-        
+
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
             projectID, namePrefix = rest.split(':', 1)
@@ -638,8 +649,8 @@ class Toil(object):
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):
         """
-        Creates an instance of the batch system specified in the given config. If a job store and 
-        a user script are given then the user script can be hot deployed into the workflow. 
+        Creates an instance of the batch system specified in the given config. If a job store and
+        a user script are given then the user script can be hot deployed into the workflow.
 
         :param toil.common.Config config: the current configuration
         :param jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
@@ -738,8 +749,8 @@ class Toil(object):
     @staticmethod
     def getWorkflowDir(workflowID, configWorkDir=None):
         """
-        Returns a path to the directory where worker directories and the cache will be located 
-        for this workflow. 
+        Returns a path to the directory where worker directories and the cache will be located
+        for this workflow.
 
         :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
@@ -769,13 +780,13 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        with RealtimeLogger(self._batchSystem, 
+        with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
             from toil.leader import mainLoop
             return mainLoop(config=self.config,
                             batchSystem=self._batchSystem,
-                            provisioner=None,
+                            provisioner=self._provisioner,
                             jobStore=self._jobStore,
                             rootJobWrapper=rootJob,
                             jobCache=self._jobCache)
@@ -789,7 +800,7 @@ class Toil(object):
         startTime = time.time()
         logger.debug('Shutting down batch system ...')
         self._batchSystem.shutdown()
-        logger.debug('... finished shutting down the batch system in %s seconds.' 
+        logger.debug('... finished shutting down the batch system in %s seconds.'
                      % (time.time() - startTime))
 
     def _assertContextManagerUsed(self):
