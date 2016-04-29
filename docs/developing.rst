@@ -527,16 +527,18 @@ use caching to limit the amount of network file transfer between jobs.
 
 Staging of files into the job store
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Files can be imported into or exported out of the job store prior to running a workflow
+External files can be imported into or exported out of the job store prior to running a workflow
 when the :class:`toil.common.Toil` context manager is used on the leader. The context manager
 provides methods :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` for
 this purpose. The destination and source locations of such files are described with URLs passed
-to the two methods. A list of the currently supported urls can be found at
-:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. If a workflow fails for any
-reason an imported file acts as any other file in the job store. If the workflow was configured such
-that it not be cleaned up on a failed run the file will persist in the job store and needs not be
-re-staged. Files can be restaged by calling the relevant methods inside the restart branch of the
-Toil context manager.
+to the two methods. A list of the currently supported URLs can be found at
+:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. To import an external file
+into the job store as a shared file, pass the optional ``sharedFileName`` parameter to that
+method.
+
+If a workflow fails for any reason an imported file acts as any other file in the job store. If the
+workflow was configured such that it not be cleaned up on a failed run, the file will persist in the
+job store and needs not be staged again when the workflow is resumed.
 
 
 Example::

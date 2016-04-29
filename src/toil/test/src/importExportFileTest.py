@@ -42,7 +42,7 @@ class ImportExportFileTest(ToilTest):
                     self.failFileID = failFileID
                     f.write(str(fail))
 
-                outputFileID = toil.start(HelloWorld(inputFileID, self.failFileID))
+                outputFileID = toil.start(RestartingJob(inputFileID, self.failFileID))
             else:
                 # Set up job for failure
                 with toil._jobStore.updateFileStream(self.failFileID) as f:
@@ -72,8 +72,21 @@ class ImportExportFileTest(ToilTest):
     def testImportExportRestartFalse(self):
         self._importExport(restart=False)
 
+    def testImportSharedFileName(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "INFO"
 
-class HelloWorld(Job):
+        sharedFileName = 'someSharedFile'
+        with Toil(options) as toil:
+            srcFile = '%s/%s%s' % (self._tempDir, 'in', uuid.uuid4())
+            with open(srcFile, 'w') as f:
+                f.write('some data')
+            toil.importFile('file://' + srcFile, sharedFileName=sharedFileName)
+            with toil._jobStore.readSharedFileStream(sharedFileName) as f:
+                self.assertEquals(f.read(), 'some data')
+
+
+class RestartingJob(Job):
     def __init__(self, inputFileID, failFileID):
         Job.__init__(self,  memory=100000, cores=1, disk="1M")
         self.inputFileID = inputFileID
@@ -88,3 +101,4 @@ class HelloWorld(Job):
                     with fileStore.writeGlobalFileStream() as (fo, outputFileID):
                         fo.write(fi.read() + 'World!')
                         return outputFileID
+

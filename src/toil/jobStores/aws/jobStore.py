@@ -290,18 +290,26 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url):
+    def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, AWSJobStore):
             srcKey = self._getKeyForUrl(url, existing=True)
             try:
-                info = self.FileInfo.create(srcKey.name)
+                if sharedFileName is None:
+                    info = self.FileInfo.create(srcKey.name)
+                else:
+                    self._requireValidSharedFileName(sharedFileName)
+                    jobStoreFileID = self._sharedFileID(sharedFileName)
+                    info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
+                                                      ownerID=str(self.sharedFileOwnerID),
+                                                      encrypted=None)
                 info.copyFrom(srcKey)
                 info.save()
             finally:
                 srcKey.bucket.connection.close()
-            return info.fileID
+            return info.fileID if sharedFileName is None else None
         else:
-            return super(AWSJobStore, self)._importFile(otherCls, url)
+            return super(AWSJobStore, self)._importFile(otherCls, url,
+                                                        sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):

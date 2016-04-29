@@ -235,10 +235,11 @@ class AbstractJobStore(object):
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
                                             "is nothing to restart." % jobStoreString)
 
-    def importFile(self, srcUrl):
+    def importFile(self, srcUrl, sharedFileName=None):
         """
-        Imports the file pointed at by sourceUrl into job store. The jobStoreFileId of the new
-        file is returned.
+        Imports the file at the given URL into job store. The jobStoreFileId of the new
+        file is returned. If a shared file name is given, the file will be imported as a shared
+        file and None is returned.
 
         Note that the helper method _importFile is used to read from the source and write to
         destination (which is the current job store in this case). To implement any optimizations that
@@ -259,24 +260,42 @@ class AbstractJobStore(object):
 
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
-        :return The jobStoreFileId of imported file.
-        :rtype: str
+
+        :param str sharedFileName: Optional name to assign to the imported file within the job store
+
+        :return The jobStoreFileId of the imported file or None if sharedFileName was given
+        :rtype: str|None
         """
         url = urlparse.urlparse(srcUrl)
-        return self._importFile(findJobStoreForUrl(url), url)
+        otherCls = findJobStoreForUrl(url)
+        return self._importFile(otherCls, url, sharedFileName=sharedFileName)
 
-    def _importFile(self, otherCls, url):
+    def _importFile(self, otherCls, url, sharedFileName=None):
         """
-        Refer to importFile docstring for information about this method.
+        Import the file at the given URL using the given job store class to retrieve that file.
+        See also :meth:`importFile`. This method applies a generic approach to importing: it asks
+        the other job store class for a stream and writes that stream as eiher a regular or a
+        shared file.
 
-        :param type otherCls: The concrete subclass of AbstractJobStore that supports exporting to the given URL.
-        :param urlparse.ParseResult url: The parsed url given to importFile.
-        :return: The job store file ID of the imported file
-        :rtype: str
+        :param AbstractJobStore  otherCls: The concrete subclass of AbstractJobStore that supports
+               reading from the given URL.
+
+        :param urlparse.ParseResult url: The location of the file to import.
+
+        :param str sharedFileName: Optional name to assign to the imported file within the job store
+
+        :return The jobStoreFileId of imported file or None if sharedFileName was given
+        :rtype: str|None
         """
-        with self.writeFileStream() as (writable, jobStoreFileID):
-            otherCls._readFromUrl(url, writable)
-            return jobStoreFileID
+        if sharedFileName is None:
+            with self.writeFileStream() as (writable, jobStoreFileID):
+                otherCls._readFromUrl(url, writable)
+                return jobStoreFileID
+        else:
+            self._requireValidSharedFileName(sharedFileName)
+            with self.writeSharedFileStream(sharedFileName) as writable:
+                otherCls._readFromUrl(url, writable)
+                return None
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
@@ -898,8 +917,15 @@ class AbstractJobStore(object):
     def _validateSharedFileName(cls, sharedFileName):
         return bool(cls.sharedFileNameRegex.match(sharedFileName))
 
+    @classmethod
+    def _requireValidSharedFileName(cls, sharedFileName):
+        if not cls._validateSharedFileName(sharedFileName):
+            raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
+
 
 class JobStoreSupport(AbstractJobStore):
+
+    __metaclass__ = ABCMeta
 
     @classmethod
     def _supportsUrl(cls, url, export=False):

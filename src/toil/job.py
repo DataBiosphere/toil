@@ -823,8 +823,8 @@ class Job(object):
                 #This will result in the files removal from the cache at the end of the current job
                 self._jobStoreFileIDToCacheLocation.pop(fileStoreID)
 
-        def importFile(self, srcUrl):
-            return self.jobStore.importFile(srcUrl)
+        def importFile(self, srcUrl, sharedFileName=None):
+            return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
         def exportFile(self, jobStoreFileID, dstUrl):
             self.jobStore.exportFile(jobStoreFileID, dstUrl)
