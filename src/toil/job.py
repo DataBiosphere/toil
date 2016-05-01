@@ -298,7 +298,8 @@ class Job(object):
             #Returns the jobStoreFileID and jobStore string
             if self._promiseJobStore == None:
                 raise RuntimeError("Trying to pass a promise from a promising job "
-                                   "that is not predecessor of the job receiving the promise")
+                                   "that is not predecessor of the job receiving the promise. Receiving job"
+                                   "has function name {fname}".format(fname=self.userFunctionName))
             jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
             self._rvs[argIndex].append(jobStoreFileID)
             return jobStoreFileID, self._promiseJobStore.config.jobStore
