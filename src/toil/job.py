@@ -21,12 +21,12 @@ from abc import ABCMeta, abstractmethod
 import tempfile
 import uuid
 import time
-import copy_reg
 import cPickle
 import logging
 import shutil
 import stat
 import inspect
+from collections import defaultdict
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
 from bd2k.util.expando import Expando
@@ -89,8 +89,10 @@ class Job(object):
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
-        #See Job.rv()
-        self._rvs = {}
+        # Maps indices into composite return values to lists of IDs of files containing promised
+        # values for those return value items. The special key None represents the entire return
+        # value.
+        self._rvs = defaultdict(list)
         self._promiseJobStore = None
 
 
@@ -161,7 +163,7 @@ class Job(object):
                of this job.
         :return: a promise that will be replaced with the return value from
                  :func:`toil.job.Job.Service.start` of service in any successor of the job.
-        :rtype:toil.job.PromisedJobReturnValue
+        :rtype:toil.job.Promise
         """
         if parentService is not None:
             # Do check to ensure that parentService is a service of this job
@@ -276,33 +278,30 @@ class Job(object):
     #job run functions
     ####################################################
 
-    def rv(self, argIndex=None):
+    def rv(self, index=None):
         """
-        Gets a *promise* (:class:`toil.job.PromisedJobReturnValue`) representing \
-        a return value of the job's run function.
+        Creates a *promise* (:class:`toil.job.Promise`) representing a return value of the job's
+        run method, or, in case of a function-wrapping job, the wrapped function's return value.
         
-        :param argIndex: If None the complete return value will be returned, \
-        if argIndex is an integer it is used to refer to the return value as indexable \
-        (tuple/list/dictionary, or in general an object that implements __getitem__), \
-        hence rv(i) would refer to the ith (indexed from 0) member of the return value.
-        :type argIndex: int or None
-        
-        :return: A promise representing the return value of the :func:`toil.job.Job.run` function. 
-        
-        :rtype: toil.job.PromisedJobReturnValue, referred to as a "promise"
+        :param int|None index: If None the complete return value will be used, otherwise an
+               index to select an individual item from the return value in which case the return
+               value must be of a type that implements the __getitem__ magic method, e.g. dict,
+               list or tuple.
+
+        :return: A promise representing the return value of this jobs :meth:`toil.job.Job.run`
+                 method.
+
+        :rtype: toil.job.Promise
         """
-        if argIndex not in self._rvs:
-            self._rvs[argIndex] = [] #This will be a list of jobStoreFileIDs for promises which will
-            #be added to when the PromisedJobReturnValue instances are serialised in a lazy fashion
-        def registerPromiseCallBack():
-            #Returns the jobStoreFileID and jobStore string
-            if self._promiseJobStore == None:
-                raise RuntimeError("Trying to pass a promise from a promising job "
-                                   "that is not predecessor of the job receiving the promise")
-            jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
-            self._rvs[argIndex].append(jobStoreFileID)
-            return jobStoreFileID, self._promiseJobStore.config.jobStore
-        return PromisedJobReturnValue(registerPromiseCallBack)
+        return Promise(self, index)
+
+    def allocatePromiseFile(self, index):
+        if self._promiseJobStore is None:
+            raise RuntimeError('Trying to pass a promise from a promising job that is not a '
+                               'predecessor of the job receiving the promise')
+        jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
+        self._rvs[index].append(jobStoreFileID)
+        return self._promiseJobStore.config.jobStore, jobStoreFileID
 
     ####################################################
     #Cycle/connectivity checking
@@ -947,7 +946,7 @@ class Job(object):
             :param toil.job.Job.Service service: Service to add as a "child" of this service
             :return: a promise that will be replaced with the return value from \
             :func:`toil.job.Job.Service.start` of service after the service has started.
-            :rtype: toil.job.PromisedJobReturnValue
+            :rtype: toil.job.Promise
             """
             if service._hasParent:
                 raise JobException("The service already has a parent service")
@@ -1048,15 +1047,14 @@ class Job(object):
         """
         Sets the values for promises using the return values from the job's run function.
         """
-        for i in self._rvs.keys():
-            if i == None:
-                argToStore = returnValues
-            else:
-                argToStore = returnValues[i]
-            for promiseFileStoreID in self._rvs[i]:
-                if jobStore.fileExists(promiseFileStoreID): # File can be gone if the job is a service being re-run and the accessing job is already complete
+        for index, promiseFileStoreIDs in self._rvs.iteritems():
+            promisedValue = returnValues if index is None else returnValues[index]
+            for promiseFileStoreID in promiseFileStoreIDs:
+                # File may be gone if the job is a service being re-run and the accessing job is
+                # already complete
+                if jobStore.fileExists(promiseFileStoreID):
                     with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
-                        cPickle.dump(argToStore, fileHandle, cPickle.HIGHEST_PROTOCOL)
+                        cPickle.dump(promisedValue, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
     ####################################################
     #Functions associated with Job.checkJobGraphAcyclic to establish
@@ -1383,12 +1381,12 @@ class Job(object):
         # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete
         if not self.checkpoint:
-            for jobStoreFileID in promiseFilesToDelete:
+            for jobStoreFileID in Promise.filesToDelete:
                 fileStore.deleteGlobalFile(jobStoreFileID)
         else:
             # Else copy them to the job wrapper to delete later
-            jobWrapper.checkpointFilesToDelete = list(promiseFilesToDelete)
-        promiseFilesToDelete.clear()
+            jobWrapper.checkpointFilesToDelete = list(Promise.filesToDelete)
+        Promise.filesToDelete.clear()
         #Now indicate the asynchronous update of the job can happen
         fileStore._updateJobWhenDone()
         #Change dir back to cwd dir, if changed by job (this is a safety issue)
@@ -1528,8 +1526,8 @@ class EncapsulatedJob(Job):
     def addFollowOn(self, followOnJob):
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
-    def rv(self, argIndex=None):
-        return self.encapsulatedJob.rv(argIndex)
+    def rv(self, index=None):
+        return self.encapsulatedJob.rv(index)
 
 class ServiceJob(Job):
     """
@@ -1627,53 +1625,72 @@ class ServiceJob(Job):
     def getUserScript(self):
         return self.serviceModule
 
-class PromisedJobReturnValue(object):
+
+class Promise(object):
     """
-    References a return value from a :func:`toil.job.Job.run` or \
-    :func:`toil.job.Job.Service.start` method as a *promise* before the method \
-    itself is run. 
+    References a return value from a :meth:`toil.job.Job.run` or
+    :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
     
-    Let T be a job. Instances of PromisedJobReturnValue (termed a *promise*) are returned by \
-    T.rv(), which is used to reference the return value of T's run function. \
-    When the promise is passed to the constructor (or as an argument to a wrapped function) \
-    of a different, successor job \
-    the promise will be replaced by the actual referenced return value. \
-    This mechanism allows a return values from one job's run method to be input \
-    argument to job before the former job's run function has been executed.
+    Let T be a job. Instances of :class:`Promise` (termed a *promise*) are returned by T.rv(),
+    which is used to reference the return value of T's run function. When the promise is passed
+    to the constructor (or as an argument to a wrapped function) of a different, successor job
+    the promise will be replaced by the actual referenced return value. This mechanism allows a
+    return values from one job's run method to be input argument to job before the former job's
+    run function has been executed.
     """
-    def __init__(self, promiseCallBackFunction):
-        self.promiseCallBackFunction = promiseCallBackFunction
+    _jobstore = None
+    """
+    Caches the job store instance used during unpickling to prevent it from being instantiated
+    for each promise
 
-def promisedJobReturnValuePickleFunction(promise):
+    :type: toil.jobStores.abstractJobStore.AbstractJobStore
     """
-    This function and promisedJobReturnValueUnpickleFunction are used as custom \
-    pickle/unpickle functions to ensure that when the PromisedJobReturnValue instance \
-    p is unpickled it is replaced with the object pickled in p.jobStoreFileID
-    """
-    #The creation of the jobStoreFileID is intentionally lazy, we only
-    #create a fileID if the promise is being pickled. This is done so
-    #that we do not create fileIDs that are discarded/never used.
-    jobStoreFileID, jobStoreString = promise.promiseCallBackFunction()
-    return promisedJobReturnValueUnpickleFunction, (jobStoreString, jobStoreFileID)
 
-#These promise files must be deleted when we know we don't need the promise again.
-promiseFilesToDelete = set()
-promisedJobReturnValueUnpickleFunction_jobStore = None #This is a jobStore instance
-#used to unpickle promises
-
-def promisedJobReturnValueUnpickleFunction(jobStoreString, jobStoreFileID):
+    filesToDelete = set()
     """
-    The PromisedJobReturnValue custom unpickle function.
+    A set of IDs of files containing promised values when we know we won't need them anymore
     """
-    global promisedJobReturnValueUnpickleFunction_jobStore
-    if promisedJobReturnValueUnpickleFunction_jobStore == None:
-        promisedJobReturnValueUnpickleFunction_jobStore = Toil.loadOrCreateJobStore(jobStoreString)
-    promiseFilesToDelete.add(jobStoreFileID)
-    with promisedJobReturnValueUnpickleFunction_jobStore.readFileStream(jobStoreFileID) as fileHandle:
-        value = cPickle.load(fileHandle) #If this doesn't work then the file containing the promise may not exist or be corrupted.
-        return value
+    def __init__(self, job, index):
+        """
+        :param Job job: the job whose return value this promise references
+        """
+        self.job = job
+        self.index = index
 
-#This sets up the custom magic for pickling/unpickling a PromisedJobReturnValue
-copy_reg.pickle(PromisedJobReturnValue,
-                promisedJobReturnValuePickleFunction,
-                promisedJobReturnValueUnpickleFunction)
+    def __reduce__(self):
+        """
+        Called during pickling when a promise of this class is about to be be pickled. Returns
+        the Promise class and construction arguments that will be evaluated during unpickling,
+        namely the job store coordinates of a file that will hold the promised return value. By
+        the time the promise is about to be unpickled, that file should be populated.
+        """
+        # The allocation of the file in the job store is intentionally lazy, we only allocate an
+        # empty file in the job store if the promise is actually being pickled. This is done so
+        # that we do not allocate files for promises that are never used.
+        jobStoreString, jobStoreFileID = self.job.allocatePromiseFile(self.index)
+        # Returning a class object here causes the pickling machinery to attempt to instantiate
+        # the class. We will catch that with __new__ and return an the actual return value instead.
+        return self.__class__, (jobStoreString, jobStoreFileID)
+
+    @staticmethod
+    def __new__(cls, *args):
+        assert len(args) == 2
+        if isinstance(args[0], Job):
+            # Regular instantiation when promise is created, before it is being pickled
+            return super(Promise, cls).__new__(cls, *args)
+        else:
+            # Attempted instantiation during unpickling, return promised value instead
+            return cls._resolve(*args)
+
+    @classmethod
+    def _resolve(cls, jobStoreString, jobStoreFileID):
+        # Initialize the cached job store if it was never initialized in the current process or
+        # if it belongs to a different workflow that was run earlier in the current process.
+        if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreString:
+            cls._jobstore = Toil.loadOrCreateJobStore(jobStoreString)
+        cls.filesToDelete.add(jobStoreFileID)
+        with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
+            # If this doesn't work then the file containing the promise may not exist or be
+            # corrupted
+            value = cPickle.load(fileHandle)
+            return value

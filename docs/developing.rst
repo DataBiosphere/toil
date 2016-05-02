@@ -388,7 +388,7 @@ line::
     
 The value of *j1.rv()* is a *promise*, rather than the actual return value of the function, 
 because j1 for the given input has at that point not been evaluated. A promise
-(:class:`toil.job.PromisedJobReturnValue`) is essentially a pointer to the return value
+(:class:`toil.job.Promise`) is essentially a pointer to the return value
 that is replaced by the actual return value once it has been evaluated. Therefore when j2
 is run the promise becomes 2.
     
