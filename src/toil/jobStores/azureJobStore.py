@@ -84,6 +84,44 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
+        account, namePrefix = jobStoreString.split(':', 1)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        if not cls.containerNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > cls.maxContainerNameLen - cls.maxNameLen - len(cls.nameSeparator):
+            raise ValueError(("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                              "characters." % namePrefix))
+
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        return cls(account, namePrefix, config=config, **kwargs)
+
+    # Dots in container names should be avoided because container names are used in HTTPS bucket
+    # URLs where the may interfere with the certificate common name. We use a double
+    # underscore as a separator instead.
+    #
+    containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
+
+    # See https://msdn.microsoft.com/en-us/library/azure/dd135715.aspx
+    #
+    minContainerNameLen = 3
+    maxContainerNameLen = 63
+    maxNameLen = 10
+    nameSeparator = 'xx'  # Table names must be alphanumeric
+
+    # Do not invoke the constructor, use the factory method above.
+
     def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
@@ -122,9 +160,6 @@ class AzureJobStore(AbstractJobStore):
 
         if self.config.cseKey is not None:
             self.keyPath = self.config.cseKey
-
-    # Table names must be alphanumeric
-    nameSeparator = 'xx'
 
     # Length of a jobID - used to test if a stats file has been read already or not
     jobIDLength = len(str(uuid.uuid4()))

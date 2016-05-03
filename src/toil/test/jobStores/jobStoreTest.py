@@ -828,6 +828,20 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
         blobService.delete_container(containerName)
 
+@needs_azure
+class InvalidAzureJobStoreTest(ToilTest):
+    def testInvalidJobStoreName(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:a--b')
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:' + ('a' * 100))
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:a_b')
+
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
     pass
