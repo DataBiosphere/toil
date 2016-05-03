@@ -749,9 +749,12 @@ class AzureJob(JobWrapper):
 
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
-    busyMsg = "Service Unavailable"
+    unavailMsg = "Service Unavailable"
+    busyMsg = "The server is busy"
+
     return (isinstance(exception, AzureException) and
-            (timeoutMsg in str(exception) or busyMsg in str(exception)))
+            ((timeoutMsg in str(exception) or unavailMsg in str(exception) or busyMsg in str(exception))))
+
 
 
 def retry_on_error(num_tries=5, timeout=300, waitTimes=(0, 1, 1, 4, 16, 64),
