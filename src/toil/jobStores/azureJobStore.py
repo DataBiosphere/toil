@@ -343,12 +343,14 @@ class AzureJobStore(AbstractJobStore):
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         with self._uploadStream(sharedFileID, self.files, encrypted=isProtected) as fd:
             yield fd
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         if not self.fileExists(sharedFileID):
             raise NoSuchFileException(sharedFileID)
