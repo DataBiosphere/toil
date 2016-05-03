@@ -30,7 +30,22 @@ class JobServiceTest(ToilTest):
     """
     Tests testing the Job.Service class
     """
-
+    
+    def testServiceSerialization(self):
+        """
+        Tests that a service can receive a promise without producing a serialization
+        error.
+        """
+        job = Job()
+        service = TestServiceSerialization("woot")
+        startValue = job.addService(service) # Add a first service to job
+        subService = TestServiceSerialization(startValue) # Now create a child of 
+        # that service that takes the start value promise from the parent service
+        job.addService(subService, parentService=service) # This should work if
+        # serialization on services is working correctly.
+        
+        self.runToil(job)
+        
     def testService(self, checkpoint=False):
         """
         Tests the creation of a Job.Service with random failures of the worker.
@@ -274,3 +289,20 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
             return
 
     assert 0 # Job failed to get info from the service
+    
+class TestServiceSerialization(Job.Service):
+    def __init__(self, messageInt, *args, **kwargs):
+        """
+        Trivial service for testing serialization.
+        """
+        Job.Service.__init__(self, *args, **kwargs)
+        self.messageInt = messageInt
+
+    def start(self, fileStore):
+        return self.messageInt
+
+    def stop(self, fileStore):
+        pass
+
+    def check(self):
+        return True
