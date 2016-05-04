@@ -168,8 +168,8 @@ class Job(object):
         if parentService is not None:
             # Do check to ensure that parentService is a service of this job
             def check(services):
-                for s, jS in services:
-                    if s == parentService or check(s._childServices):
+                for jS in services:
+                    if jS.service == parentService or check(jS.service._childServices):
                         return True
                 return False
             if not check(self._services):
@@ -180,7 +180,7 @@ class Job(object):
                 raise JobException("The service already has a parent service")
             service._hasParent = True
             jobService = ServiceJob(service)
-            self._services.append((service, jobService))
+            self._services.append(jobService)
             return jobService.rv()
 
     ##Convenience functions for creating jobs
@@ -952,7 +952,7 @@ class Job(object):
                 raise JobException("The service already has a parent service")
             service._parent = True
             jobService = ServiceJob(service)
-            self._childServices.append((service, jobService))
+            self._childServices.append(jobService)
             return jobService.rv()
 
     ####################################################
@@ -1228,14 +1228,14 @@ class Job(object):
         """
         Serialises the services for a job.
         """
-        def processService(service, serviceJob, depth):
+        def processService(serviceJob, depth):
             # Extend the depth of the services if necessary
             if depth == len(jobWrapper.services):
                 jobWrapper.services.append([])
 
             # Recursively call to process child services
-            for childService, childServiceJob in service._childServices:
-                processService(childService, childServiceJob, depth+1)
+            for childServiceJob in serviceJob.service._childServices:
+                processService(childServiceJob, depth+1)
 
             # Make a job wrapper
             serviceJobWrapper = serviceJob._createEmptyJobWrapperForJob(jobStore, predecessorNumber=1)
@@ -1258,18 +1258,24 @@ class Job(object):
             jobWrapper.services[depth].append(j)
 
             # Break the links between the services to stop them being serialised together
-            childServices = service._childServices
-            service._childServices = None
+            #childServices = serviceJob.service._childServices
+            serviceJob.service._childServices = None
             assert serviceJob._services == []
+            #service = serviceJob.service
+            
+            # Pickle the job
+            serviceJob.pickledService = cPickle.dumps(serviceJob.service)
+            serviceJob.service = None
 
             # Serialise the service job and job wrapper
             serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobWrapper }, rootJobWrapper)
 
             # Restore values
-            service._childServices = childServices
+            #serviceJob.service = service
+            #serviceJob.service._childServices = childServices
 
-        for service, serviceJob in self._services:
-            processService(service, serviceJob, 0)
+        for serviceJob in self._services:
+            processService(serviceJob, 0)
 
         self._services = []
 
@@ -1293,12 +1299,12 @@ class Job(object):
         # Temporarily set the jobStore strings for the promise call back functions
         for job in ordering:
             job._promiseJobStore = jobStore
-            def setForServices(service, serviceJob):
+            def setForServices(serviceJob):
                 serviceJob._promiseJobStore = jobStore
-                for (childService, childJobService) in service._childServices:
-                    setForServices(childService, childJobService)
-            for service, serviceJob in self._services:
-                setForServices(service, serviceJob)
+                for childServiceJob in serviceJob.service._childServices:
+                    setForServices(childServiceJob)
+            for serviceJob in self._services:
+                setForServices(serviceJob)
 
         ordering.reverse()
         assert self == ordering[-1]
@@ -1545,11 +1551,9 @@ class ServiceJob(Job):
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
 
-        #The service to run, pickled
-        childServices = service._childServices
-        service._childServices = [] #Ensure we don't pickle the children
-        self.pickledService = cPickle.dumps(service)
-        service._childServices = childServices
+        #The service to run - this will be replace before serialization with a pickled version
+        self.service = service
+        self.pickledService = None
 
         # This references the parent job wrapper. It is initialised just before
         # the job is run. It is used to access the start and terminate flags.
