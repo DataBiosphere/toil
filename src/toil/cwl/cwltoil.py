@@ -25,7 +25,7 @@ import cwltool.workflow
 import cwltool.expression
 import cwltool.builder
 from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary
-from cwltool.aslist import aslist
+from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
 import os
