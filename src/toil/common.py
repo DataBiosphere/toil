@@ -25,7 +25,7 @@ from argparse import ArgumentParser
 
 from bd2k.util.humanize import bytes2human
 
-from toil.lib.bioio import addLoggingOptions, getLogLevelString
+from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
@@ -463,6 +463,7 @@ class Toil(object):
         consolidate the derived configuration with the one from the previous invocation of the
         workflow.
         """
+        setLoggingFromOptions(self.options)
         self._inContextManager = True
         self.config = Config()
         self.config.setOptions(self.options)
