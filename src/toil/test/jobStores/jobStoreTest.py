@@ -723,7 +723,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
     @staticmethod
     def _hashUrl(url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        bucket, key = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url))
+        bucket, key = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url), existing=True)
         return hashlib.md5(key.get_contents_as_string()).hexdigest()
 
     @staticmethod

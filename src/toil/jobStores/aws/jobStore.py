@@ -71,7 +71,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
     totalSize = srcKey.size
 
     # initiate copy
-    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName)
+    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName, headers=headers)
     try:
         start = 0
         partIndex = itertools.count()
@@ -274,7 +274,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _importFile(self, otherCls, url):
         if issubclass(otherCls, AWSJobStore):
-            srcBucket, srcKey = self._extractKeyInfoFromUrl(url)
+            srcBucket, srcKey = self._extractKeyInfoFromUrl(url, existing=True)
             info = self.FileInfo.create(srcKey.name)
             info.copyFrom(srcKey)
             info.save()
@@ -292,7 +292,7 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        srcBucket, srcKey = cls._extractKeyInfoFromUrl(url)
+        srcBucket, srcKey = cls._extractKeyInfoFromUrl(url, existing=True)
         srcKey.get_contents_to_file(writable)
 
     @classmethod
@@ -301,13 +301,33 @@ class AWSJobStore(AbstractJobStore):
         dstKey.set_contents_from_string(readable.read())
 
     @staticmethod
-    def _extractKeyInfoFromUrl(url):
+    def _extractKeyInfoFromUrl(url, existing=None):
         """
+        Extracts bucket and key from URL. The existing parameter determines if a
+        particular state of existence should be enforced. Note also that if existing
+        is not True and the key does not exist.
+
+        :param existing: determines what the state
         :return: (bucket, key)
         """
         s3 = boto.connect_s3()
         bucket = s3.get_bucket(url.netloc)
-        key = bucket.new_key(url.path[1:])
+        key = bucket.get_key(url.path[1:])
+
+        if existing is True:
+            if key is None:
+                raise RuntimeError('Key does not exist.')
+        elif existing is False:
+            if key is not None:
+                raise RuntimeError('Key exists.')
+        elif existing is None:
+            pass
+        else:
+            assert False
+
+        if key is None:
+            key = bucket.new_key(url.path[1:])
+
         return bucket, key
 
     @classmethod
