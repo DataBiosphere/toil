@@ -39,6 +39,8 @@ kwargs = dict(
             'azure==1.0.3'],
         'encryption': [
             'pynacl==0.3.0'],
+        'wdl': [
+            'wdl==1.0.14'],
         'cwl': [
             'cwltool==1.0.20160425140546']},
     package_dir={'': 'src'},
@@ -49,6 +51,8 @@ kwargs = dict(
             '_toil_worker = toil.worker:main',
             'cwltoil = toil.cwl.cwltoil:main [cwl]',
             'cwl-runner = toil.cwl.cwltoil:main [cwl]',
+            'wdltoil = toil.wdl.wdltoil:main [wdl]',
+            'wdl-runner = toil.wdl.wdltoil:main [wdl]',
             '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 from setuptools.command.test import test as TestCommand
