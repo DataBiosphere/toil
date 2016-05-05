@@ -160,10 +160,6 @@ class AbstractBatchSystem(object):
         would typically need to copy the variables before enqueuing a job.
 
         If no value is provided it will be looked up from the current environment.
-
-        NB: Only the Mesos and single-machine batch systems support passing environment
-        variables. On other batch systems, this method has no effect. See
-        https://github.com/BD2KGenomics/toil/issues/547.
         """
         raise NotImplementedError()
 
