@@ -772,7 +772,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName, self.namePrefix, config=config)
+        return AzureJobStore.loadOrCreateJobStore(self.accountName + ':' + self.namePrefix, config=config)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
