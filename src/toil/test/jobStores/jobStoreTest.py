@@ -16,6 +16,8 @@ from __future__ import absolute_import
 
 import hashlib
 import logging
+from contextlib import closing
+
 import os
 import shutil
 import tempfile
@@ -812,6 +814,20 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     f.write(s)
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
+
+    def testInaccessableLocation(self):
+        import boto
+        url = urlparse.urlparse('s3://1000genomes/phase3/data/HG01977/sequence_read/SRR360135_1.fil'
+                                't.fastq.gz')
+        with closing(boto.connect_s3()) as s3:
+            bucket = s3.get_bucket(url.netloc)
+            try:
+                bucket.get_location()
+            except boto.exception.S3ResponseError as e:
+                self.assertEqual(e.error_code, 'AccessDenied')
+            else:
+                self.fail('Location was accessible.')
+
 
     def _prepareTestFile(self, bucket, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()

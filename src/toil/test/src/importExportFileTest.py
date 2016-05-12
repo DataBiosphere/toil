@@ -19,7 +19,7 @@ import uuid
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, make_tests
+from toil.test import ToilTest
 
 
 class ImportExportFileTest(ToilTest):
