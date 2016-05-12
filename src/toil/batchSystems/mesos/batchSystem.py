@@ -355,7 +355,7 @@ class MesosBatchSystem(BatchSystemSupport,
                              task.task_id.value, offer.id.value)
                     remainingCores -= jobType.cores
                     remainingMemory -= toMiB(jobType.memory)
-                    remainingDisk -= jobType.disk
+                    remainingDisk -= toMiB(jobType.disk)
                     nextToLaunchIndex += 1
                 if self.jobQueues[jobType] and not runnableTasksOfType:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '

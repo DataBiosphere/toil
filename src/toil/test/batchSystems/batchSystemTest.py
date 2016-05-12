@@ -19,6 +19,7 @@ from fractions import Fraction
 from inspect import getsource
 import logging
 import os
+import fcntl
 import tempfile
 from textwrap import dedent
 import time
@@ -194,6 +195,58 @@ class hidden:
                 time.sleep(0.1)
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
             return runningIDs
+
+    class AbstractBatchSystemJobTest(ToilTest):
+        """
+        An abstract base class for batch system tests that use a full Toil workflow rather
+        than using the batch system directly.
+        """
+
+        __metaclass__ = ABCMeta
+
+        cpu_count = multiprocessing.cpu_count()
+        allocated_cores = sorted({1, 2, cpu_count})
+        sleep_time = 5
+
+        @abstractmethod
+        def getBatchSystemName(self):
+            """
+            :rtype: (str, AbstractBatchSystem)
+            """
+            raise NotImplementedError
+
+        def setUp(self):
+            self.batchSystemName = self.getBatchSystemName()
+            super(hidden.AbstractBatchSystemJobTest, self).setUp()
+
+        def tearDown(self):
+            super(hidden.AbstractBatchSystemJobTest, self).tearDown()
+
+        def testJobConcurrency(self):
+            """
+            Tests that the batch system is allocating core resources properly for concurrent tasks.
+            """
+            for cores_per_job in self.allocated_cores:
+                temp_dir = self._createTempDir('testFiles')
+
+                options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+                options.workDir = temp_dir
+                options.maxCores = self.cpu_count
+                options.batchSystem = self.batchSystemName
+
+                counter_path = os.path.join(temp_dir, 'counter')
+                resetCounters(counter_path)
+                value, max_value = getCounters(counter_path)
+                assert (value, max_value) == (0, 0)
+
+                root = Job()
+                for _ in range(self.cpu_count):
+                    root.addFollowOn(Job.wrapFn(measureConcurrency, counter_path, self.sleep_time,
+                                                cores=cores_per_job, memory='1M', disk='1Mi'))
+                Job.Runner.startToil(root, options)
+
+                _, max_value = getCounters(counter_path)
+                self.assertEqual(max_value, self.cpu_count / cores_per_job)
 
 
 @needs_mesos
@@ -536,3 +589,82 @@ def tempFileContaining(content):
         yield path
     finally:
         os.unlink(path)
+
+
+class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
+    """
+    Tests Toil workflow against the SingleMachine batch system
+    """
+
+    def getBatchSystemName(self):
+        return "singleMachine"
+
+
+@needs_mesos
+class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSupport):
+    """
+    Tests Toil workflow against the Mesos batch system
+    """
+
+    def getBatchSystemName(self):
+        self._startMesos(self.cpu_count)
+        return "mesos"
+
+    def tearDown(self):
+        self._stopMesos()
+
+
+def measureConcurrency(filepath, sleep_time=5):
+    """
+    Run in parallel to determine the number of concurrent tasks.
+    This code was copied from toil.batchSystemTestMaxCoresSingleMachineBatchSystemTest
+    :param str filepath: path to counter file
+    :param int sleep_time: number of seconds to sleep before counting down
+    :return int max concurrency value:
+    """
+    count(1, filepath)
+    try:
+        time.sleep(sleep_time)
+    finally:
+        return count(-1, filepath)
+
+
+def count(delta, file_path):
+    """
+    Increments counter file and returns the max number of times the file
+    has been modified. Counter data must be in the form:
+     concurrent tasks, max concurrent tasks (counter should be initialized to 0,0)
+
+    :param int delta: increment value
+    :param str file_path: path to shared counter file
+    :return int max concurrent tasks:
+    """
+    fd = os.open(file_path, os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            s = os.read(fd, 10)
+            value, maxValue = map(int, s.split(','))
+            value += delta
+            if value > maxValue: maxValue = value
+            os.lseek(fd, 0, 0)
+            os.ftruncate(fd, 0)
+            os.write(fd, ','.join(map(str, (value, maxValue))))
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    return maxValue
+
+
+def getCounters(path):
+    with open(path, 'r+') as f:
+        s = f.read()
+        concurrentTasks, maxConcurrentTasks = map(int, s.split(','))
+    return concurrentTasks, maxConcurrentTasks
+
+
+def resetCounters(path):
+    with open(path, "w") as f:
+        f.write("0,0")
+        f.close()
