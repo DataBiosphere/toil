@@ -33,8 +33,8 @@ def setup(job, inputFile, N, downCheckpoints):
     #Write the input file to the file store
     inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
     job.fileStore.logToMaster(" Starting the merge sort ")
-    job.addFollowOnJobFn(cleanup, job.addChildJobFn(down,
-                        inputFileStoreID, N, downCheckpoints,
+    job.addFollowOnJobFn(cleanup, job.addChildJobFn(down, 
+                        inputFileStoreID, N, downCheckpoints, 
                         checkpoint=downCheckpoints).rv(), inputFile)
 
 def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
@@ -61,10 +61,10 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
             copySubRangeOfFile(inputFile, midPoint+1, length, fH)
         #Call down recursively
         return job.addFollowOnJobFn(up,
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N,
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, 
                               downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv(),
-            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N,
-                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()
+            job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, 
+                              downCheckpoints, checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()          
     else:
         #We can sort this bit of the file
         job.fileStore.logToMaster( "Sorting file: %s of size: %s"
