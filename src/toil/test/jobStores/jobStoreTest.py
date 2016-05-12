@@ -246,6 +246,9 @@ class hidden:
                 master.updateFile(fileOne, path)
                 with worker.readFileStream(fileOne) as f:
                     self.assertEquals(f.read(), 'two')
+            except shutil.Error as err:
+                if str(err).endswith('are the same file'):
+                    pass
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.

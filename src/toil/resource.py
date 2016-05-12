@@ -28,6 +28,7 @@ from zipfile import ZipFile, PyZipFile
 import sys
 import shutil
 from bd2k.util.iterables import concat
+import tempfile
 
 log = logging.getLogger(__name__)
 

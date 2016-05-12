@@ -89,7 +89,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
             #Read the file for the fileStoreID, randomly picking a way to invoke readGlobalFile
             if random.random() > 0.5:
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, 
-                                                        job.fileStore.getLocalTempFile() if 
+                                                        job.fileStore.getLocalTempFileName() if
                                                         random.random() > 0.5 else None,
                                                         cache=random.random() > 0.5)
                 with open(tempFile, 'r') as fH:
