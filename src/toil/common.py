@@ -835,3 +835,10 @@ def parseSetEnv(l):
             raise ValueError('Empty name')
         d[k] = v
     return d
+
+
+def cacheDirName(workflowID):
+    """
+    :return: Name of the cache directory.
+    """
+    return 'cache-' + workflowID

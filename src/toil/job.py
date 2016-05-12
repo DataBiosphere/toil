@@ -43,7 +43,7 @@ from threading import Thread, Semaphore, Event
 
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, cacheDirName
 from toil.leader import mainLoop
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
@@ -2729,9 +2729,3 @@ class Promise(object):
             # corrupted
             value = cPickle.load(fileHandle)
             return value
-
-def cacheDirName(workflowID):
-    """
-    :return: Name of the cache directory.
-    """
-    return 'cache-' + workflowID
