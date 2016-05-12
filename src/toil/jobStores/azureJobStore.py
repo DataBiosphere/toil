@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import urlparse
 import re
 import os
 import uuid
@@ -23,6 +22,8 @@ import bz2
 import cPickle
 import socket
 import httplib
+import time
+
 from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
@@ -33,7 +34,7 @@ from azure.storage.table import TableService, EntityProperty
 from azure.storage.blob import BlobService, BlobSharedAccessPermissions
 
 import requests
-from bd2k.util import strict_bool, memoize
+from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
 
@@ -83,6 +84,44 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
+        account, namePrefix = jobStoreString.split(':', 1)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        if not cls.containerNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > cls.maxContainerNameLen - cls.maxNameLen - len(cls.nameSeparator):
+            raise ValueError(("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                              "characters." % namePrefix))
+
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        return cls(account, namePrefix, config=config, **kwargs)
+
+    # Dots in container names should be avoided because container names are used in HTTPS bucket
+    # URLs where the may interfere with the certificate common name. We use a double
+    # underscore as a separator instead.
+    #
+    containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
+
+    # See https://msdn.microsoft.com/en-us/library/azure/dd135715.aspx
+    #
+    minContainerNameLen = 3
+    maxContainerNameLen = 63
+    maxNameLen = 10
+    nameSeparator = 'xx'  # Table names must be alphanumeric
+
+    # Do not invoke the constructor, use the factory method above.
+
     def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
@@ -121,9 +160,6 @@ class AzureJobStore(AbstractJobStore):
 
         if self.config.cseKey is not None:
             self.keyPath = self.config.cseKey
-
-    # Table names must be alphanumeric
-    nameSeparator = 'xx'
 
     # Length of a jobID - used to test if a stats file has been read already or not
     jobIDLength = len(str(uuid.uuid4()))
@@ -307,12 +343,14 @@ class AzureJobStore(AbstractJobStore):
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         with self._uploadStream(sharedFileID, self.files, encrypted=isProtected) as fd:
             yield fd
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         if not self.fileExists(sharedFileID):
             raise NoSuchFileException(sharedFileID)
@@ -713,13 +751,17 @@ class AzureJob(JobWrapper):
 
 def retryOnAzureTimeout(exception):
     timeoutMsg = "could not be completed within the specified time"
-    busyMsg = "Service Unavailable"
+    unavailMsg = "Service Unavailable"
+    busyMsg = "The server is busy"
+
     return (isinstance(exception, AzureException) and
-            (timeoutMsg in str(exception) or busyMsg in str(exception)))
+            ((timeoutMsg in str(exception) or unavailMsg in str(exception) or busyMsg in str(exception))))
 
 
-def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException, requests.ConnectionError),
+
+def retry_on_error(num_tries=5, timeout=300, waitTimes=(0, 1, 1, 4, 16, 64),
+                   retriable_exceptions=(socket.error, socket.gaierror,
+                                         httplib.HTTPException, requests.ConnectionError),
                    retriable_check=retryOnAzureTimeout):
     """
     Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
@@ -800,12 +842,27 @@ def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaier
         else:
             go.pop()
 
+    total_tries = num_tries
+    totalDelay = 0
+    delay = 0
     while go:
-        if num_tries == 1:
-            yield attempt(last=True)
+        try:
+            delay = waitTimes[total_tries - num_tries]
+        except IndexError:
+            delay = waitTimes[-1]
+        finally:
+            totalDelay += delay
+
+        if totalDelay >= timeout:
+            break
         else:
-            yield attempt()
+            time.sleep(delay)
+            yield attempt(last=num_tries == 1)
+
         # It's safe to do this, even with Python's weird default
         # arguments behavior, since we are assigning to num_tries
         # rather than mutating it.
         num_tries -= 1
+
+        if totalDelay >= timeout:
+            break

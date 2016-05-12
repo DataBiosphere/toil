@@ -31,14 +31,12 @@ import shutil
 import time
 import itertools
 import boto
-import codecs
 
 from unittest import skip
 from azure.storage.blob import BlobService
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
-
 from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib import encryption
@@ -774,7 +772,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName, self.namePrefix, config=config)
+        return AzureJobStore.loadOrCreateJobStore(self.accountName + ':' + self.namePrefix, config=config)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -828,6 +826,20 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         from toil.jobStores.azureJobStore import AzureJobStore
         blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
         blobService.delete_container(containerName)
+
+@needs_azure
+class InvalidAzureJobStoreTest(ToilTest):
+    def testInvalidJobStoreName(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:a--b')
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:' + ('a' * 100))
+        self.assertRaises(ValueError,
+                          AzureJobStore.loadOrCreateJobStore,
+                          'toiltest:a_b')
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
