@@ -211,15 +211,25 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        if os.stat(self._getAbsPath(jobStoreFileID)).st_dev == \
-                os.stat(os.path.dirname(localFilePath)).st_dev:
-            # The destination could exist hence we should delete before linking. Mirroring behaviour
-            # of shutil.copyfile
-            if os.path.exists(localFilePath):
-                os.remove(localFilePath)
-            os.link(self._getAbsPath(jobStoreFileID), localFilePath)
+        jobStoreFilePath = self._getAbsPath(jobStoreFileID)
+        localDirPath = os.path.dirname(localFilePath)
+        # If local file would end up on same file system as the one hosting this job store ...
+        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+            # ... we can hard-link the file, ...
+            try:
+                os.link(jobStoreFilePath, localFilePath)
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    # Overwrite existing file, emulating shutil.copyfile().
+                    os.unlink(localFilePath)
+                    # It would be very unlikely to fail again for same reason but possible
+                    # nonetheless in which case we should just give up.
+                    os.link(jobStoreFilePath, localFilePath)
+                else:
+                    raise
         else:
-            shutil.copyfile(self._getAbsPath(jobStoreFileID), localFilePath)
+            # ... otherwise we have to copy it.
+            shutil.copyfile(jobStoreFilePath, localFilePath)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
