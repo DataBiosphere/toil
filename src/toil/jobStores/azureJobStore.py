@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import urlparse
-import re
 import os
 import uuid
 import logging
@@ -33,7 +31,7 @@ from azure.storage.table import TableService, EntityProperty
 from azure.storage.blob import BlobService, BlobSharedAccessPermissions
 
 import requests
-from bd2k.util import strict_bool, memoize
+from bd2k.util import strict_bool
 
 from bd2k.util.threading import ExceptionalThread
 
@@ -230,7 +228,7 @@ class AzureJobStore(AbstractJobStore):
         return blobService, containerName, blobName
 
     @classmethod
-    def _supportsUrl(cls, url):
+    def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'wasb' or url.scheme.lower() == 'wasbs'
 
     def writeFile(self, localFilePath, jobStoreID=None):

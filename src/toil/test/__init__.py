@@ -394,23 +394,31 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
         Generates and inserts test methods.
         """
         def fx(self, prms=prms):
-            return generalMethod(self, **prms)
+            if prms is not None:
+                return generalMethod(self, **prms)
+            else:
+                return generalMethod(self)
         setattr(targetClass, 'test_%s%s' % (generalMethod.__name__, prmNames), fx)
 
-    # create first left dict
-    left = {}
-    prmName, vals = pop(kwargs)
-    for valName, val in vals.items():
-        pvName = '__%s_%s' % (prmName, valName.lower())
-        if methodNamePartRegex.match(pvName) is None:
-            raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
-        left[pvName] = {prmName: val}
+    if len(kwargs) > 0:
+        # create first left dict
+        left = {}
+        prmName, vals = pop(kwargs)
+        for valName, val in vals.items():
+            pvName = '__%s_%s' % (prmName, valName.lower())
+            if methodNamePartRegex.match(pvName) is None:
+                raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+            left[pvName] = {prmName: val}
 
-    # get cartesian product
-    while len(kwargs) > 0:
-        permuteIntoLeft(left, *pop(kwargs))
+        # get cartesian product
+        while len(kwargs) > 0:
+            permuteIntoLeft(left, *pop(kwargs))
 
-    # set class attributes
-    targetClass = targetClass or generalMethod.im_class
-    for prmNames, prms in left.items():
+        # set class attributes
+        targetClass = targetClass or generalMethod.im_class
+        for prmNames, prms in left.items():
+            insertMethodToClass()
+    else:
+        prms = None
+        prmNames = ""
         insertMethodToClass()

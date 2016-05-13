@@ -14,8 +14,6 @@
 
 from __future__ import absolute_import
 
-import urlparse
-import re
 from contextlib import contextmanager
 import logging
 import marshal as pickler
@@ -25,7 +23,6 @@ import os
 import tempfile
 import stat
 import errno
-from bd2k.util import memoize
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
@@ -188,7 +185,7 @@ class FileJobStore(AbstractJobStore):
         return url.netloc + url.path
 
     @classmethod
-    def _supportsUrl(cls, url):
+    def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
     def writeFile(self, localFilePath, jobStoreID=None):
