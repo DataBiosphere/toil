@@ -42,6 +42,7 @@ from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 from toil.jobStores.fileJobStore import FileJobStore
 
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_tests
+
 logger = logging.getLogger(__name__)
 
 
