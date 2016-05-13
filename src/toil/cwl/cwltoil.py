@@ -177,7 +177,7 @@ class ResolveIndirect(Job):
 class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
-    def __init__(self, tool, cwljob):
+    def __init__(self, tool, cwljob, **kwargs):
         builder = cwltool.builder.Builder()
         builder.job = {}
         builder.requirements = []
@@ -192,6 +192,7 @@ class CWLJob(Job):
         #super(CWLJob, self).__init__()
         self.cwltool = tool
         self.cwljob = cwljob
+        self.use_container = kwargs.get('use_container', True)
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -213,7 +214,7 @@ class CWLJob(Job):
                                                   os.getcwd(), None,
                                                   outdir=outdir,
                                                   tmpdir=tmpdir,
-                                                  use_container=True)
+                                                  use_container=self.use_container)
 
         # Copy output files into the global file store.
         adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
@@ -221,23 +222,24 @@ class CWLJob(Job):
         return output
 
 
-def makeJob(tool, jobobj):
+def makeJob(tool, jobobj, **kwargs):
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj)
+        wfjob = CWLWorkflow(tool, jobobj, **kwargs)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
     else:
-        job = CWLJob(tool, jobobj)
+        job = CWLJob(tool, jobobj, **kwargs)
         return (job, job)
 
 
 class CWLScatter(Job):
-    def __init__(self, step, cwljob):
+    def __init__(self, step, cwljob, **kwargs):
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
         self.valueFrom = {shortname(i["id"]): i["valueFrom"] for i in step.tool["inputs"] if "valueFrom" in i}
+        self.use_container = kwargs.get('use_container', True)
 
     def valueFromFunc(self, k, v):
         if k in self.valueFrom:
@@ -253,7 +255,7 @@ class CWLScatter(Job):
             jo = copy.copy(joborder)
             jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
             if len(scatter_keys) == 1:
-                (subjob, followOn) = makeJob(self.step.embedded_tool, jo)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, use_container=self.use_container)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -267,7 +269,7 @@ class CWLScatter(Job):
             jo = copy.copy(joborder)
             jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
             if len(scatter_keys) == 1:
-                (subjob, followOn) = makeJob(self.step.embedded_tool, jo)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, use_container=self.use_container)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -299,7 +301,7 @@ class CWLScatter(Job):
                 for sc in scatter:
                     scatter_key = shortname(sc)
                     copyjob[scatter_key] = self.valueFromFunc(scatter_key, cwljob[scatter_key][i])
-                (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob, use_container=self.use_container)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
         elif scatterMethod == "nested_crossproduct":
@@ -371,10 +373,11 @@ class SelfJob(object):
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and schedule a Toil job graph."""
 
-    def __init__(self, cwlwf, cwljob):
+    def __init__(self, cwlwf, cwljob, **kwargs):
         super(CWLWorkflow, self).__init__()
         self.cwlwf = cwlwf
         self.cwljob = cwljob
+        self.use_container = kwargs.get('use_container', True)
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -446,11 +449,12 @@ class CWLWorkflow(Job):
                                                                 self.cwlwf.requirements)
 
                         if "scatter" in step.tool:
-                            wfjob = CWLScatter(step, IndirectDict(jobobj))
+                            wfjob = CWLScatter(step, IndirectDict(jobobj), use_container=self.use_container)
                             followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                         else:
-                            (wfjob, followOn) = makeJob(step.embedded_tool, IndirectDict(jobobj))
+                            (wfjob, followOn) = makeJob(step.embedded_tool, IndirectDict(jobobj),
+                                                        use_container=self.use_container)
 
                         jobs[step.tool["id"]] = followOn
 
@@ -527,6 +531,8 @@ def main(args=None, stdout=sys.stdout):
 
     options = parser.parse_args([workdir] + args)
 
+    use_container = not options.no_container
+
     setLoggingFromOptions(options)
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
@@ -559,7 +565,8 @@ def main(args=None, stdout=sys.stdout):
         adjustFiles(job, lambda x: x.replace("file://", ""))
         stdout.write(json.dumps(
             cwltool.main.single_job_executor(t, job, options.basedir, options,
-                                             conformance_test=True), indent=4))
+                                             conformance_test=True, use_container=use_container),
+                                             indent=4))
         return 0
 
     if not options.basedir:
@@ -575,7 +582,7 @@ def main(args=None, stdout=sys.stdout):
         t.visit(importDefault)
 
         builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
-        (wf1, wf2) = makeJob(t, {})
+        (wf1, wf2) = makeJob(t, {}, use_container=use_container)
         adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
