@@ -228,7 +228,12 @@ class hidden:
             fh, path = tempfile.mkstemp()
             try:
                 os.close(fh)
-                master.readFile(fileOne, path)
+                tmpPath = path + '.read-only'
+                master.readFile(fileOne, tmpPath)
+                try:
+                    shutil.copyfile(tmpPath, path)
+                finally:
+                    os.unlink(tmpPath)
                 with open(path, 'r+') as f:
                     self.assertEquals(f.read(), 'one')
                     # Write a different string to the local file ...
@@ -243,9 +248,6 @@ class hidden:
                 master.updateFile(fileOne, path)
                 with worker.readFileStream(fileOne) as f:
                     self.assertEquals(f.read(), 'two')
-            except shutil.Error as err:
-                if str(err).endswith('are the same file'):
-                    pass
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
