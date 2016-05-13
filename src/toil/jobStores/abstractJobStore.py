@@ -728,12 +728,15 @@ class AbstractJobStore(object):
     @abstractmethod
     def readFile(self, jobStoreFileID, localFilePath):
         """
-        Copies the file referenced by jobStoreFileID to the given local file path. The version
-        will be consistent with the last copy of the file written/updated.
+        Copies the file referenced by jobStoreFileID to the given local file path. The version 
+        will be consistent with the last copy of the file written/updated. 
+        
+        The file at the given local path may not be modified after this method returns! 
 
         :param str jobStoreFileID: ID of the file to be copied
 
-        :param str localFilePath: the local path indicating where to copy the downloaded file
+        :param str localFilePath: the local path indicating where to place the contents of the 
+               given file in the job store 
         """
         raise NotImplementedError()
 
