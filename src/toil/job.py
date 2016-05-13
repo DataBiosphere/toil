@@ -748,15 +748,16 @@ class Job(object):
                 #desired location
                 localFilePath = userPath if userPath != None else self.getLocalTempFile()
                 self.jobStore.readFile(fileStoreID, localFilePath)
-                os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-                # If hthe nlink threshold is 2, then the file was probably linked thereby making it
-                # immutable. We need to fix that.
-                #FIXME Can't do this at the top because of loopy (circular) import errors
-                from toil.jobStores.fileJobStore import FileJobStore
-                if mutable and isinstance(self.jobStore, FileJobStore):
-                    if os.stat(localFilePath).st_nlink==2:
-                        shutil.copyfile(localFilePath, localFilePath+'.tmp')
-                        os.rename(localFilePath+'.tmp', localFilePath)
+                if mutable:
+                    # FIXME Can't do this at the top because of loopy (circular) import errors
+                    from toil.jobStores.fileJobStore import FileJobStore
+                    if isinstance(self.jobStore, FileJobStore):
+                        # If readFile created a hard-link, we need to undo the link and copy. 
+                        if os.stat(localFilePath).st_nlink==2:
+                            shutil.copyfile(localFilePath, localFilePath+'.tmp')
+                            os.rename(localFilePath+'.tmp', localFilePath)
+                else:
+                    os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                 #If caching is enabled and the file is in local temp dir then
                 #add to cache and make read only
                 if cache:
