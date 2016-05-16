@@ -192,7 +192,7 @@ class CWLJob(Job):
         #super(CWLJob, self).__init__()
         self.cwltool = tool
         self.cwljob = cwljob
-        self.use_container = kwargs.get('use_container', True)
+        self.executor_options = kwargs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -214,7 +214,7 @@ class CWLJob(Job):
                                                   os.getcwd(), None,
                                                   outdir=outdir,
                                                   tmpdir=tmpdir,
-                                                  use_container=self.use_container)
+                                                  **self.executor_options)
 
         # Copy output files into the global file store.
         adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
@@ -239,7 +239,7 @@ class CWLScatter(Job):
         self.step = step
         self.cwljob = cwljob
         self.valueFrom = {shortname(i["id"]): i["valueFrom"] for i in step.tool["inputs"] if "valueFrom" in i}
-        self.use_container = kwargs.get('use_container', True)
+        self.executor_options = kwargs
 
     def valueFromFunc(self, k, v):
         if k in self.valueFrom:
@@ -255,7 +255,7 @@ class CWLScatter(Job):
             jo = copy.copy(joborder)
             jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
             if len(scatter_keys) == 1:
-                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, use_container=self.use_container)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -269,7 +269,7 @@ class CWLScatter(Job):
             jo = copy.copy(joborder)
             jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
             if len(scatter_keys) == 1:
-                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, use_container=self.use_container)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, jo, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -301,7 +301,7 @@ class CWLScatter(Job):
                 for sc in scatter:
                     scatter_key = shortname(sc)
                     copyjob[scatter_key] = self.valueFromFunc(scatter_key, cwljob[scatter_key][i])
-                (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob, use_container=self.use_container)
+                (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
         elif scatterMethod == "nested_crossproduct":
@@ -377,7 +377,7 @@ class CWLWorkflow(Job):
         super(CWLWorkflow, self).__init__()
         self.cwlwf = cwlwf
         self.cwljob = cwljob
-        self.use_container = kwargs.get('use_container', True)
+        self.executor_options = kwargs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
@@ -449,12 +449,12 @@ class CWLWorkflow(Job):
                                                                 self.cwlwf.requirements)
 
                         if "scatter" in step.tool:
-                            wfjob = CWLScatter(step, IndirectDict(jobobj), use_container=self.use_container)
+                            wfjob = CWLScatter(step, IndirectDict(jobobj), **self.executor_options)
                             followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                         else:
                             (wfjob, followOn) = makeJob(step.embedded_tool, IndirectDict(jobobj),
-                                                        use_container=self.use_container)
+                                                        **self.executor_options)
 
                         jobs[step.tool["id"]] = followOn
 
