@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
+import socket
 import sys
 import os
 import logging
@@ -29,11 +31,6 @@ import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
 
 defaultLogLevel = logging.INFO
-
-# TODO: looks like this can be removed
-
-loggingFormatter = logging.Formatter('%(asctime)s %(levelname)s %(lineno)s %(message)s')
-
 logger = logging.getLogger(__name__)
 rootLogger = logging.getLogger()
 
@@ -134,7 +131,8 @@ def setLoggingFromOptions(options):
     """
     Sets the logging from a dictionary of name/value options.
     """
-    logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s: %(message)s")
+    formatStr = socket.gethostname() + ': %(asctime)s %(levelname)s: %(name)s: %(message)s'
+    logging.basicConfig(format=formatStr)
     rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:
         setLogLevel(options.logLevel)

@@ -485,8 +485,10 @@ class Toil(object):
         if (exc_type is not None and self.config.clean == "onError" or
             exc_type is None and self.config.clean == "onSuccess" or
              self.config.clean == "always"):
-
+            
+            logger.info("Attempting to delete the job store")
             self._jobStore.deleteJobStore()
+            logger.info("Successfully deleted the job store")
         return False  # let exceptions through
 
     def start(self, rootJob):

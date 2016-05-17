@@ -55,8 +55,9 @@ def main():
         logger.info("The specified JobStore does not exist, it may have already been deleted")
         sys.exit(0)
 
-    logger.info("Deleting the JobStore")
+    logger.info("Attempting to delete the job store")
     jobStore.deleteJobStore()
+    logger.info("Successfully deleted the job store")
 
 
 def _test():
