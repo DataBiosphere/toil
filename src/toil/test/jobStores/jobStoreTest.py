@@ -30,18 +30,15 @@ import uuid
 import shutil
 import time
 import itertools
-import boto
-import codecs
 
 from unittest import skip
-from azure.storage.blob import BlobService
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException)
 
 from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib import encryption
+
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_tests
 logger = logging.getLogger(__name__)
 
@@ -742,12 +739,14 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
 
     @staticmethod
     def _createExternalStore():
+        import boto
         s3 = boto.connect_s3()
         return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
 
     @staticmethod
     def _cleanUpExternalStore(url):
         from toil.jobStores.aws.jobStore import AWSJobStore
+        import boto
         try:
             bucket, _ = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url))
         except boto.exception.S3ResponseError as ex:
@@ -806,6 +805,8 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     @classmethod
     def _getUrlForTestFile(cls, size=None):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+        from azure.storage.blob import BlobService
+
         fileName = 'testfile_%s' % uuid.uuid4()
         containerName = cls._externalStore()
         url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, cls.accountName, fileName)
@@ -831,6 +832,8 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     @staticmethod
     def _createExternalStore():
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+        from azure.storage.blob import BlobService
+
         blobService = BlobService(account_key=_fetchAzureAccountKey(AzureJobStoreTest.accountName),
                                   account_name=AzureJobStoreTest.accountName)
         containerName = 'import-export-test-%s' % uuid.uuid4()
