@@ -2,7 +2,6 @@ import base64
 from contextlib import contextmanager
 import hashlib
 import os
-import random
 import uuid
 from StringIO import StringIO
 from bd2k.util.threading import ExceptionalThread
@@ -79,14 +78,12 @@ class GoogleJobStore(AbstractJobStore):
 
         super(GoogleJobStore, self).__init__(config=config)
         self.sseKeyPath = self.config.sseKey
-        # functionally equivalent to dictionary1.update(dictionary2) but preserves immutability
+        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
         self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders())
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
-        self.start = 0  # tracks the starting index of available statsFileIDs
-        self.statsIDRange = 30
 
     def deleteJobStore(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
@@ -269,133 +266,54 @@ class GoogleJobStore(AbstractJobStore):
         uri.set_contents_from_file(readable, headers=headers)
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # eventually consistent listing necessitates a more complex stats and logging mechanism
-        # All stats and logging fileIDs are in the form prefix+integer (stats0, stats1, etc)
-        # To get a free fileID we walk over the namespace until we reach a free ID at index x
-        # then write at a random index from x-(x+self.statsRange)
-        # We get the following invariants with this methodology:
-        # the first n indices are all written to. n may be 0, but will only increase
-        # the len(self.statsRange) indices following the first n may or may not be written to
-        # at indexes > n+ len(self.statsRange) no indices may be written to
-
-        # when a stats file is read it is renamed with a specified index. The beenRead kwarg
-        # indicates we should generate an ID with the read prefix
-        while (self.fileExists(self._getPrimaryStatsID(self.start))
-               or self.fileExists(self._getSecondaryStatsID(self.start))):
-            self.start += 1
-        # start now points to the (n+1)th file
-        freeIndex = self.start + random.randrange(0, self.statsIDRange)
-        freeID = self._getPrimaryStatsID(freeIndex)
-        key = self._newKey(freeID)
-        try:
-            with self._uploadStream(key, encrypt=False, update=False) as f:
-                f.write(statsAndLoggingString)
-            log.debug("writing stats file: %s", key.name)
-        except ConcurrentFileModificationException:
-            # try again until we get a freeID
-            self.writeStatsAndLogging(statsAndLoggingString)
+        statsID = self.statsBaseID + str(uuid.uuid4())
+        key = self._newKey(statsID)
+        log.debug("Writing stats file: %s", key.name)
+        with self._uploadStream(key, encrypt=False, update=False) as f:
+            f.write(statsAndLoggingString)
 
     def readStatsAndLogging(self, callback, readAll=False):
-        read = 0
-        if readAll:
-            self.start = 0
+        prefix = self.readStatsBaseID if readAll else self.statsBaseID
+        filesRead = 0
+        lastTry = False
+
         while True:
-            currRead = self._readStats(callback, readAll)
-            read += currRead
-            if readAll or 0 == currRead:
-                break
-        return read
-
-    def _readStats(self, callback, readall):
-
-        def readPrimaryIDs(index, fn, copy=True):
-            # reads unread files and optionally renames them afterwards
-            # Raises NoSuchFileException
-            primaryID = self._getPrimaryStatsID(index)
-            with self.readSharedFileStream(primaryID, isProtected=False) as f:
-                contents = f.read()
-                fn(StringIO(contents))
-                log.debug("reading stats file: %s", primaryID)
-            if copy:
-                secondaryID = self._getSecondaryStatsID(index)
-                with self.writeSharedFileStream(secondaryID, isProtected=False) as writable:
-                    writable.write(contents)
-
-        def readAllIDs(index, fn):
-            # Raises NoSuchFileException
-            try:
-                readPrimaryIDs(index, fn, copy=False)
-            except NoSuchFileException:
-                secondaryID = self._getSecondaryStatsID(index)
-                with self.readSharedFileStream(secondaryID, isProtected=False) as f:
-                    contents = f.read()
-                    fn(StringIO(contents))
-                    log.debug("reading stats file: %s", secondaryID)
-
-        readFn = readAllIDs if readall else readPrimaryIDs
-        beenRead = set()  # set of indices from start - start+self.statsRange that have been read
-
-        if not readall:
-            self.skipAlreadyReadFiles()
-
-        read = self.readSequentialExistingFiles(beenRead, callback, readFn, readall)
-
-        beenRead = {x for x in beenRead if x > self.start}  # filter indexes we have passed.
-
-        # start now points to an index not yet written to. Files up to start+range may still exist
-        read += self.readIDsInRange(beenRead, callback, readFn, readall)
-        return read
-
-    def skipAlreadyReadFiles(self):
-        secondaryID = self._getSecondaryStatsID(self.start)
-        while self.fileExists(secondaryID):
-            self.start += 1
-
-    def readSequentialExistingFiles(self, beenRead, callback, readFn, readall):
-        read = 0
-        while True:
-            if self.start not in beenRead:
-                secondaryID = self._getSecondaryStatsID(self.start)
-                if not readall and self.fileExists(secondaryID):
-                    # if secondary file exists we don't want to reread the ID unless readall==True
-                    self.start += 1
-                    continue
+            filesReadThisLoop = 0
+            for key in list(self.files.list(prefix=prefix)):
                 try:
-                    readFn(str(self.start), callback)
-                    read += 1
-                    self.start += 1
+                    with self.readSharedFileStream(key.name) as readable:
+                        log.debug("Reading stats file: %s", key.name)
+                        callback(readable)
+                        filesReadThisLoop += 1
+                    if not readAll:
+                        # rename this file by copying it and deleting the old version to avoid
+                        # rereading it
+                        newID = self.readStatsBaseID + key.name[len(self.statsBaseID):]
+                        self.files.copy_key(newID, self.files.name, key.name)
+                        key.delete()
                 except NoSuchFileException:
+                    log.debug("Stats file not found: %s", key.name)
+            if readAll:
+                # The readAll parameter is only by the toil stats util after the completion of the
+                # pipeline. Assume that this means the bucket is in a consistent state when readAll
+                # is passed.
+                return filesReadThisLoop
+            if filesReadThisLoop == 0:
+                # Listing is unfortunately eventually consistent so we can't be 100% sure there
+                # really aren't any stats files left to read
+                if lastTry:
+                    # this was our second try, we are reasonably sure there aren't any stats
+                    # left to gather
                         break
-            else:
-                self.start += 1
-        return read
-
-    def readIDsInRange(self, beenRead, callback, readFn, readAll):
-        read = 0
-        for possible in [x for x in range(0, self.statsIDRange) if x not in beenRead]:
-            indexToTry = self.start + possible
-            checkID = self._getPrimaryStatsID(indexToTry, beenRead=True)
-            if not readAll and self.fileExists(checkID):
+                # Try one more time in a couple seconds
+                time.sleep(5)
+                lastTry = True
                 continue
-            try:
-                readFn(str(indexToTry), callback)
-                read += 1
-                beenRead.add(indexToTry)
-            except NoSuchFileException:
-                # these are just possible indexes, OK if we don't find a file there
-                pass
-        return read
+            else:
+                lastTry = False
+                filesRead += filesReadThisLoop
 
-    def _getPrimaryStatsID(self, index, beenRead=False):
-        newID = self.readStatsBaseID if beenRead else self.statsBaseID
-        newID += str(index)
-        return newID
-
-    def _getSecondaryStatsID(self, index):
-        return self._getPrimaryStatsID(index, beenRead=True)
-
-    def _getStatsIDPair(self, index):
-        return self._getPrimaryStatsID(index), self._getSecondaryStatsID(index)
+        return filesRead
 
     @staticmethod
     def _newID(isFile=False, jobStoreID=None):
