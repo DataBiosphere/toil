@@ -20,7 +20,7 @@ The 'develop' target creates an editable install (aka develop mode). Set the 'ex
 ensure that develop mode installs support for extras. Consult setup.py for a list of supported
 extras. To install Toil in develop mode with all extras, run
 
-	make develop extras=[mesos,aws,azure,cwl,encryption]
+	make develop extras=[mesos,aws,google,azure,cwl,encryption]
 
 The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
 implemented yet).
