@@ -63,7 +63,10 @@ Promise
 The class used to reference return values of jobs/services not yet run/started.
 
 .. autoclass:: toil.job::Promise
-   :members:  
+   :members:
+
+.. autoclass:: toil.job::PromisedRequirement
+   :members:
 
 Exceptions
 ----------

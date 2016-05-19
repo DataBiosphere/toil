@@ -204,9 +204,9 @@ class hidden:
 
         __metaclass__ = ABCMeta
 
-        cpu_count = multiprocessing.cpu_count()
-        allocated_cores = sorted({1, 2, cpu_count})
-        sleep_time = 5
+        cpuCount = multiprocessing.cpu_count()
+        allocatedCores = sorted({1, 2, cpuCount})
+        sleepTime = 5
 
         @abstractmethod
         def getBatchSystemName(self):
@@ -226,27 +226,26 @@ class hidden:
             """
             Tests that the batch system is allocating core resources properly for concurrent tasks.
             """
-            for cores_per_job in self.allocated_cores:
-                temp_dir = self._createTempDir('testFiles')
+            for coresPerJob in self.allocatedCores:
+                tempDir = self._createTempDir('testFiles')
 
                 options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-                options.workDir = temp_dir
-                options.maxCores = self.cpu_count
+                options.workDir = tempDir
+                options.maxCores = self.cpuCount
                 options.batchSystem = self.batchSystemName
 
-                counter_path = os.path.join(temp_dir, 'counter')
-                resetCounters(counter_path)
-                value, max_value = getCounters(counter_path)
-                assert (value, max_value) == (0, 0)
+                counterPath = os.path.join(tempDir, 'counter')
+                resetCounters(counterPath)
+                value, maxValue = getCounters(counterPath)
+                assert (value, maxValue) == (0, 0)
 
                 root = Job()
-                for _ in range(self.cpu_count):
-                    root.addFollowOn(Job.wrapFn(measureConcurrency, counter_path, self.sleep_time,
-                                                cores=cores_per_job, memory='1M', disk='1Mi'))
+                for _ in range(self.cpuCount):
+                    root.addFollowOn(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime,
+                                                cores=coresPerJob, memory='1M', disk='1Mi'))
                 Job.Runner.startToil(root, options)
-
-                _, max_value = getCounters(counter_path)
-                self.assertEqual(max_value, self.cpu_count / cores_per_job)
+                _, maxValue = getCounters(counterPath)
+                self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
 
 @needs_mesos
@@ -394,7 +393,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                 jobIds.remove(jobId)
                         finally:
                             bs.shutdown()
-                        concurrentTasks, maxConcurrentTasks = self.getCounters()
+                        concurrentTasks, maxConcurrentTasks = getCounters(self.counterPath)
                         self.assertEquals(concurrentTasks, 0)
                         log.info('maxCores: {maxCores}, '
                                  'coresPerJob: {coresPerJob}, '
@@ -402,18 +401,8 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         # This is the key assertion:
                         expectedMaxConcurrentTasks = min(maxCores / coresPerJob, jobs)
                         self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
-                        self.resetCounters()
+                        resetCounters(self.counterPath)
 
-    def getCounters(self):
-        with open(self.counterPath, 'r+') as f:
-            s = f.read()
-            log.info('Counter is %s', s)
-            concurrentTasks, maxConcurrentTasks = map(int, s.split(','))
-        return concurrentTasks, maxConcurrentTasks
-
-    def resetCounters(self):
-        with open(self.counterPath, 'w') as f:
-            f.write('0,0')
 
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
     def testServices(self):
@@ -425,7 +414,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         with open(self.counterPath, 'r+') as f:
             s = f.read()
         log.info('Counter is %s', s)
-        self.assertEqual(self.getCounters(), (0, 3))
+        self.assertEqual(getCounters(self.counterPath), (0, 3))
 
 
 # Toil can use only top-level functions so we have to add them here:
@@ -607,7 +596,7 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
     """
 
     def getBatchSystemName(self):
-        self._startMesos(self.cpu_count)
+        self._startMesos(self.cpuCount)
         return "mesos"
 
     def tearDown(self):
