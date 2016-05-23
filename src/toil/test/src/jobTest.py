@@ -250,6 +250,78 @@ class JobTest(ToilTest):
                 print "ADJACENCY LIST", adjacencyList
             self.assertTrue(self.isAcyclic(adjacencyList))
 
+    def testLambdaFunction(self):
+        """
+        Repeats :func:toil.test.src.jobTest.testStatic test using a lambda function.
+        """
+        outFile = getTempFile(rootDir=os.getcwd())
+        try:
+            # Test function
+            g = lambda s: s + chr(ord(s[-1]) + 1)
+
+            # Create the jobs
+            A = Job.wrapFn(g, "A")
+            B = Job.wrapFn(g, A.rv())
+            C = Job.wrapFn(g, B.rv())
+            D = Job.wrapFn(g, C.rv())
+            E = Job.wrapFn(g, D.rv())
+            F = Job.wrapFn(self.f, E.rv(), outFile)
+
+            # Connect them into a workflow
+            A.addChild(B)
+            A.addChild(C)
+            B.addChild(C)
+            B.addFollowOn(E)
+            C.addFollowOn(D)
+            A.addFollowOn(F)
+
+            # Create the runner for the workflow.
+            jobStore = self._getTestJobStorePath()
+            options = Job.Runner.getDefaultOptions(jobStore)
+            options.jobStore = jobStore
+            options.logLevel = "INFO"
+            Job.Runner.startToil(A, options)
+
+            # Check output
+            self.assertEquals(open(outFile, 'r').readline(), "ABCDEF")
+        finally:
+            os.remove(outFile)
+
+    def testNestedFunction(self):
+        """
+        Tests using a nested function in a Toil workflow.
+        """
+        outFile = getTempFile(rootDir=os.getcwd())
+        try:
+            A = Job.wrapFn(nestedFunction, 'SNHK')
+            B = Job.wrapFn(self.f, A.rv(), outFile)
+            A.addFollowOn(B)
+
+            # Create the runner for the workflow.
+            jobStore = self._getTestJobStorePath()
+            options = Job.Runner.getDefaultOptions(jobStore)
+            options.jobStore = jobStore
+            options.logLevel = "INFO"
+            Job.Runner.startToil(A, options)
+            # Check output
+            self.assertEquals(open(outFile, 'r').readline(), "TOIL")
+        finally:
+            os.remove(outFile)
+
+    @staticmethod
+    def f(string, outFile):
+        """
+        Used to test the pickling of class methods.
+
+        Function appends string to output file, then returns the
+        next ascii character of the first character in the string, e.g.
+        if string is "AA" returns "B"
+        """
+        fH = open(outFile, 'a')
+        fH.write(string)
+        fH.close()
+        return chr(ord(string[0]) + 1)
+
     @staticmethod
     def getRandomEdge(nodeNumber):
         assert nodeNumber > 1
@@ -447,6 +519,16 @@ def fn2Test(pStrings, s, outputFile):
     with open(outputFile, 'w') as fH:
         fH.write(" ".join(pStrings) + " " + s)
     return s
+
+def nestedFunction(string):
+    """
+    Returns a string where each character is incremented by one.
+    :param string: python string
+    :return: str
+    """
+    def nextLetter(char):
+        return chr(ord(char) + 1)
+    return ''.join(nextLetter(s) for s in string)
 
 if __name__ == '__main__':
     unittest.main()
