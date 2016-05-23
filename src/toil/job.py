@@ -609,7 +609,22 @@ class Job(object):
                 fileHandle = open(absLocalFileName, 'r')
                 if os.stat(absLocalFileName).st_uid == os.getuid():
                     #Chmod if permitted to make file read only to try to prevent accidental user modification
-                    os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                    try:
+                        os.chmod(absLocalFileName, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+                    except OSError:
+                        success = True
+                        try:
+                            alfStat = os.stat(absLocalFileName)
+                            log.warning("Chmod of %s failed. File is owned by user %s with projection bits %o." % (
+                                    absLocalFileName,
+                                    alfStats.st_uid,
+                                    alfStats.st_mode))
+                        except:
+                            success = False
+
+                        if not success:
+                            raise
+
                 with self._lockFilesLock:
                     self._lockFiles.add(jobStoreFileID)
                 # A file handle added to the queue allows the asyncWrite threads to remove their jobID from _lockFiles.
@@ -683,7 +698,35 @@ class Job(object):
                     #Chmod to make file read only
                     if os.path.exists(userPath):
                         os.remove(userPath)
-                    os.link(cachedAbsFilePath, userPath)
+
+                    try:
+                        os.link(cachedAbsFilePath, userPath)
+                    except OSError:
+                        errors = []
+
+                        # check ownership of user file
+                        try:
+                            upStat = os.stat(userPath)
+
+                            if upStat.st_uid == 0:
+                                errors.append("userPath (%s) is owned by root" % userPath)
+
+                        except OSError:
+                            pass
+
+                        # check ownership of cached file path
+                        try:
+                            cpStat = os.stat(cachedAbsFilePath)
+                            
+                            if cpStat.st_uid == 0:
+                                errors.append("cachedAbsFilePath (%s) is owned by root" % cachedAbsFilePath)
+
+                        except OSError:
+                            errors.append("cachedAbsFilePath (%s) does not exist" % cachedAbsFilePath)
+
+                        # create error
+                        raise RuntimeError("Experienced error when linking %s to %s: %s" % (cachedAbsFilePath, userPath, ", ".join(errors)))
+                        
                     return userPath
                 else:
                     #If caching is not true then make a copy of the file
