@@ -384,13 +384,19 @@ class AbstractJobStore(object):
 
         def getJob(jobId):
             if jobCache is not None:
-                return jobCache[jobId]
+                try:
+                    return jobCache[jobId]
+                except KeyError:
+                    self.load(jobId)
             else:
                 return self.load(jobId)
 
         def haveJob(jobId):
             if jobCache is not None:
-                return jobCache.has_key(jobId)
+                if jobCache.has_key(jobId):
+                    return True
+                else:
+                    return self.exists(jobId)
             else:
                 return self.exists(jobId)
 
@@ -419,11 +425,23 @@ class AbstractJobStore(object):
         getConnectedJobs(self.loadRootJob())
         logger.info("%d jobs reachable from root." % len(reachableFromRoot))
 
-        # Cleanup the state of each jobWrapper
-        for jobWrapper in getJobs():
-            changed = [False]  # Flag to indicate if we need to update the jobWrapper
-            # on disk
+        # Cleanup invalid jobs
+        for jobWrapper in (x for x in getJobs() if x not in reachableFromRoot):
+            # clean up any associated files before deletion
+            for fileID in jobWrapper.filesToDelete:
+                # Delete any files that should already be deleted
+                logger.critical(
+                    "Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
+                self.deleteFile(fileID)
+            jobWrapper.filesToDelete = []
 
+        # clean up valid jobs
+        for jobWrapper in (getJob(x) for x in reachableFromRoot):
+            changed = [False]
+            # jobWrappers here are necessarily in reachable from root.
+            # While jobs at the end of the stack are already deleted remove
+            # those jobs from the stack (this cleans up the case that the jobWrapper
+            # had successors to run, but had not been updated to reflect this)
             if len(jobWrapper.filesToDelete) != 0:
                 # Delete any files that should already be deleted
                 for fileID in jobWrapper.filesToDelete:
@@ -433,14 +451,7 @@ class AbstractJobStore(object):
                 jobWrapper.filesToDelete = []
                 changed[0] = True
 
-            # Delete a jobWrapper if it is not reachable from the rootJob
-            if jobWrapper.jobStoreID not in reachableFromRoot:
-                logger.critical(
-                    "Removing job: %s that is not a successor of the root job in cleanup" % jobWrapper.jobStoreID)
-                self.delete(jobWrapper.jobStoreID)
-                continue
-
-            # For a job whose command is already execute, remove jobs from the 
+            # For a job whose command is already execute, remove jobs from the
             # stack that are already deleted. 
             # This cleans up the case that the jobWrapper
             # had successors to run, but had not been updated to reflect this
@@ -631,11 +642,13 @@ class AbstractJobStore(object):
 
     def jobs(self):
         """
-        Return an iterator with all jobs in this job store as an iterator. All valid jobs will be
-        returned, but not all returned jobs are valid. Invalid jobs are jobs that have already
-        finished running and should not be rerun. To guarantee you only get jobs that can be run,
-        construct a ToilState object instead.
+        Best effort attempt to return iterator on all jobs in the store. The iterator may not
+        return all jobs and may also contain orphaned jobs that have already finished succesfully
+        and should not be rerun. To guarantee you get any and all jobs that can be run instead
+        construct a more expensive ToilState object
 
+        :return: Returns iterator on jobs in the store. The iterator may or may not contain all jobs and may contain
+                 invalid jobs
         :rtype: Iterator[toil.jobWrapper.JobWrapper]
         """
         raise NotImplementedError()
@@ -700,14 +713,14 @@ class AbstractJobStore(object):
     def getEmptyFileStoreID(self, jobStoreID=None):
         """
         Creates an empty file in the job store and returns its ID.
-
-        :param str jobStoreID: the ID of a job, or None. If specified, the file will be associated
-               with that job and when when jobStore.delete(job) is called all files associated with
-               the given job will be removed from the job store.
+        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
+        
+        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
+               that job and when jobStore.delete(job) is called a best effort attempt is made to delete
+               all files written with the given job.jobStoreID
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
-
         :rtype: str
         """
         raise NotImplementedError()

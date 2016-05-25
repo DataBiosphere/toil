@@ -723,7 +723,8 @@ class AWSJobStore(AbstractJobStore):
                         assert self.outer.filesDomain.put_attributes(item_name=self.fileID,
                                                                      attributes=attributes,
                                                                      expected_value=expected)
-                if self.previousVersion:
+                # clean up the old version of the file if necessary and safe
+                if self.previousVersion and (self.previousVersion != self.version):
                     self.outer.filesBucket.delete_key(self.fileID, version_id=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:

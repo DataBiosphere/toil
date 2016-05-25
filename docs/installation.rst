@@ -26,7 +26,7 @@ like support for Mesos or AWS. To install Toil with all bells and whistles use
 
 ::
 
-   pip install toil[aws,mesos,azure,encryption,cwl]
+   pip install toil[aws,mesos,azure,google,encryption,cwl]
 
 .. _extras: https://pythonhosted.org/setuptools/setuptools.html#declaring-extras-optional-features-with-their-own-dependencies
 
@@ -34,6 +34,9 @@ Here's what each extra provides:
 
 * The ``aws`` extra provides support for storing workflow state in Amazon AWS.
   This extra has no native dependencies.
+
+* The ``google`` extra is experimental and stores workflow state in
+  Google Cloud Storage. This extra has no native dependencies.
 
 * The ``azure`` extra stores workflow state in Microsoft Azure Storage. This
   extra has no native dependencies.
@@ -135,7 +138,7 @@ after installing any native dependencies listed in :ref:`installation-ref`.
 
 ::
 
-   make develop extras=[aws,mesos,azure,encryption]
+   make develop extras=[aws,mesos,azure,google,encryption]
 
 .. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
 

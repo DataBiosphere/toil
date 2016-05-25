@@ -16,6 +16,8 @@ import sys
 from version import version
 from setuptools import find_packages, setup
 
+botoVersionRequired = 'boto==2.38.0'
+
 kwargs = dict(
     name='toil',
     version=version,
@@ -33,12 +35,15 @@ kwargs = dict(
         'mesos': [
             'psutil==3.0.1'],
         'aws': [
-            'boto==2.38.0',
+            botoVersionRequired,
             'cgcloud-lib==1.4a1.dev195' ],
         'azure': [
             'azure==1.0.3'],
         'encryption': [
             'pynacl==0.3.0'],
+        'google': [
+            'gcs_oauth2_boto_plugin==1.9',
+            botoVersionRequired],
         'cwl': [
             'cwltool==1.0.20160425140546']},
     package_dir={'': 'src'},

@@ -28,7 +28,7 @@ from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test.sort.sort import setup, sortMemory
-from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure, needs_parasol, needs_gridengine
+from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure, needs_parasol, needs_gridengine, needs_google
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 from toil.leader import FailedJobsException
 
@@ -185,7 +185,20 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._toilSort(jobStore=self._azureJobStore(), batchSystem="mesos")
         finally:
             self._stopMesos()
-            
+
+    @needs_google
+    def testGoogleSingle(self):
+        self._toilSort(jobStore=self._googleJobStore(), batchSystem="singleMachine")
+
+    @needs_google
+    @needs_mesos
+    def testGoogleMesos(self):
+        self._startMesos()
+        try:
+            self._toilSort(jobStore=self._googleJobStore(), batchSystem="mesos")
+        finally:
+            self._stopMesos()
+
     def testFileSingle(self):
         self._toilSort(jobStore=self._getTestJobStorePath(), batchSystem='singleMachine')
 
@@ -278,6 +291,9 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def _azureJobStore(self):
         return "azure:toiltest:sort-test-%s" % uuid4()
+
+    def _googleJobStore(self):
+        return "google:cgc-05-0006:sort-test-%s" % uuid4()
 
     def _loadFile(self, path):
         with open(path, 'r') as f:
