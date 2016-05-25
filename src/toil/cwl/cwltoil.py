@@ -518,6 +518,11 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--preserve-environment", type=str, nargs='+',
+                    help="Preserve specified environment variables when running CommandLineTools",
+                    metavar=("VAR1,VAR2"),
+                    default=("PATH",),
+                    dest="preserve_environment")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -566,7 +571,7 @@ def main(args=None, stdout=sys.stdout):
         stdout.write(json.dumps(
             cwltool.main.single_job_executor(t, job, options.basedir, options,
                                              conformance_test=True, use_container=use_container),
-                                             indent=4))
+                                             preserve_environment=options.preserve_environment, indent=4))
         return 0
 
     if not options.basedir:
@@ -582,7 +587,7 @@ def main(args=None, stdout=sys.stdout):
         t.visit(importDefault)
 
         builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
-        (wf1, wf2) = makeJob(t, {}, use_container=use_container)
+        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
         adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
