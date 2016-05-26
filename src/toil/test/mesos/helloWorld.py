@@ -33,7 +33,6 @@ def hello_world(job):
     # Assign FileStoreID to a given file
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
 
-    os.remove('foo_bam.txt')
 
     # Spawn child
     job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk="3G")
@@ -53,8 +52,6 @@ def hello_world_child(job, hw):
     # Assign FileStoreID to a given file
     # can also use:  job.updateGlobalFile() given the FileStoreID instantiation.
     job.fileStore.writeGlobalFile('bar_bam.txt')
-
-    os.remove('bar_bam.txt')
 
 
 def main():

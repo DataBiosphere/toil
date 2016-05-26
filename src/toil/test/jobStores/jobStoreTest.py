@@ -42,6 +42,7 @@ from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
 from toil.jobStores.fileJobStore import FileJobStore
 
 from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_tests
+
 logger = logging.getLogger(__name__)
 
 
@@ -227,7 +228,12 @@ class hidden:
             fh, path = tempfile.mkstemp()
             try:
                 os.close(fh)
-                master.readFile(fileOne, path)
+                tmpPath = path + '.read-only'
+                master.readFile(fileOne, tmpPath)
+                try:
+                    shutil.copyfile(tmpPath, path)
+                finally:
+                    os.unlink(tmpPath)
                 with open(path, 'r+') as f:
                     self.assertEquals(f.read(), 'one')
                     # Write a different string to the local file ...
