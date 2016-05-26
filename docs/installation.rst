@@ -298,3 +298,13 @@ Installation on OpenStack
 Our group is working to expand distributed cluster support to OpenStack by providing
 convenient Docker containers to launch Mesos from. Currently, OpenStack nodes can be setup
 to run Toil in **singleMachine** mode following the basic installation instructions: :ref:`installation-ref`
+
+.. _installationGoogleComputeEngine:
+
+Installation on Google Compute Engine
+-------------------------------------
+
+Support for running on Google Cloud is experimental, and our group is working to expand
+distributed cluster support to Google Compute by writing a cluster provisioning tool based around
+a Dockerized Mesos setup. Currently, Google Compute Engine nodes can be configured to
+run Toil in **singleMachine** mode following the basic installation instructions: :ref:`installation-ref`
