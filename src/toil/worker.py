@@ -102,7 +102,14 @@ def main():
             os.kill(os.getpid(), signal.SIGKILL) #signal.SIGINT)
             #TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
         t = Thread(target=badWorker)
-        t.daemon = True
+        # Ideally this would be a daemon thread but that causes an intermittent (but benign)
+        # exception similar to the one described here:
+        # http://stackoverflow.com/questions/20596918/python-exception-in-thread-thread-1-most-likely-raised-during-interpreter-shutd
+        # Our exception is:
+        #    Exception in thread Thread-1 (most likely raised during interpreter shutdown):
+        #    <type 'exceptions.AttributeError'>: 'NoneType' object has no attribute 'kill'
+        # This attribute error is caused by the call os.kill() and apparently unavoidable with a
+        # daemon
         t.start()
 
     ##########################################
