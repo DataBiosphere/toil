@@ -26,6 +26,8 @@ import logging
 import shutil
 import stat
 import inspect
+import dill
+import types
 from collections import defaultdict
 from threading import Thread, Semaphore, Event
 from Queue import Queue, Empty
@@ -1457,17 +1459,28 @@ class FunctionWrappingJob(Job):
                      disk=argFn("disk"), cache=argFn("cache"),
                      preemptable=argFn("preemptable"),
                      checkpoint=kwargs.pop("checkpoint") if "checkpoint" in kwargs else False)
-        #If dill is installed pickle the user function directly
-        #TODO: Add dill support
-        #else use indirect method
+
+        self.pickledUserFunction = None
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self._args=args
-        self._kwargs=kwargs
+        try:
+            getattr(self.userFunctionModule, self.userFunctionName)
+        except AttributeError:
+            self.pickledUserFunction = dill.dumps(userFunction)
+            pickledLen = len(self.pickledUserFunction)
+            if len(self.pickledUserFunction) > 16000:
+                raise ValueError('User function {} is too large to pickle: {}'.format(self.userFunctionName, pickledLen))
+            logger.info('{} pickled size: {}'.format(userFunction.__name__,
+                                                     pickledLen))
+        self._args = args
+        self._kwargs = kwargs
 
     def _getUserFunction(self):
-        userFunctionModule = self._loadUserModule(self.userFunctionModule)
-        return getattr(userFunctionModule, self.userFunctionName)
+        if self.pickledUserFunction is None:
+            userFunctionModule = self._loadUserModule(self.userFunctionModule)
+            return getattr(userFunctionModule, self.userFunctionName)
+        else:
+            return dill.loads(self.pickledUserFunction)
 
     def run(self,fileStore):
         userFunction = self._getUserFunction( )
