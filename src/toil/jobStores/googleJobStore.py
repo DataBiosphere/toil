@@ -63,6 +63,7 @@ class GoogleJobStore(AbstractJobStore):
         self._encryptedHeaders = self.headerValues
 
         self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
+        self.files = None
 
         exists = True
         try:
@@ -74,7 +75,7 @@ class GoogleJobStore(AbstractJobStore):
         self._checkJobStoreCreation(create, exists, projectID+':'+namePrefix)
 
         if not exists:
-            self.files = self.uri.create_bucket(headers=self.headerValues)
+            self.files = self._retryCreateBucket(self.uri, self.headerValues)
 
         super(GoogleJobStore, self).__init__(config=config)
         self.sseKeyPath = self.config.sseKey
@@ -314,6 +315,19 @@ class GoogleJobStore(AbstractJobStore):
                 filesRead += filesReadThisLoop
 
         return filesRead
+
+    @staticmethod
+    def _retryCreateBucket(uri, headers):
+        bucket = None
+        while not bucket:
+            try:
+                bucket = uri.create_bucket(headers=headers)
+            except boto.exception.GSResponseError as e:
+                if e.status == 429:
+                    time.sleep(10)
+                else:
+                    raise
+        return bucket
 
     @staticmethod
     def _newID(isFile=False, jobStoreID=None):
