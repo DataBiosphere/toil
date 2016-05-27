@@ -30,7 +30,7 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job, CacheError
-from toil.test import ToilTest, needs_aws, needs_azure
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
@@ -205,7 +205,7 @@ class Hidden:
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
             # by the job store and are not reflected in the cache hence this test is redundant.
-            if (not self.options.jobStore.startswith(('aws', 'azure')) and
+            if (not self.options.jobStore.startswith(('aws', 'azure', 'google')) and
                     os.stat(self.options.workDir).st_dev ==
                         os.stat(os.path.dirname(self.options.jobStore)).st_dev):
                 self.skipTest('jobStore and workdir are on the same filesystem.')
@@ -702,16 +702,16 @@ class Hidden:
             self._deleteLocallyReadFilesFn(readAsMutable=False)
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
-            self.options.retryCount = 1
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True)
-            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable)
+            self.options.retryCount = 0
+            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, memory='10M')
+            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable, memory='20M')
             A.addChild(B)
             try:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 1)
+                self.assertEqual(err.numberOfFailedJobs, 2)
                 errMsg = self._parseAssertionError(self.options.logFile)
-                if not 'explicitly' in errMsg:
+                if 'explicitly' not in errMsg:
                     self.fail('Shouldn\'t see this')
 
         @staticmethod
@@ -739,7 +739,7 @@ class Hidden:
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except CacheError as err:
-                    if not err.message.contains('explicitly'):
+                    if 'explicitly' not in err.message:
                         raise
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
@@ -759,7 +759,7 @@ class Hidden:
             """
             Test the deletion capabilities of deleteLocalFile
             """
-            self.options.retryCount = 1
+            self.options.retryCount = 0
             workdir = self._createTempDir(purpose='nonLocalDir')
             A = Job.wrapJobFn(self._deleteLocalFileFn, nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
@@ -826,6 +826,18 @@ class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
     @unittest.skipIf(testingIsAutomatic, "To save time")
     def testExtremeCacheSetup(self):
         super(AzureJobStoreCacheTest, self).testExtremeCacheSetup()
+
+
+@needs_google
+class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
+    def _getTestJobStorePath(self):
+        projectID = 'cgc-05-0006'
+        super(GoogleJobStoreCacheTest, self)._getTestJobStorePath()
+        return 'google:' + projectID + ':cache-tests-' + str(uuid4())
+
+    @unittest.skipIf(testingIsAutomatic, "To save time")
+    def testExtremeCacheSetup(self):
+        super(GoogleJobStoreCacheTest, self).testExtremeCacheSetup()
 
 ################################################################################
 # Define utility functions because toil can't pickle static methods
