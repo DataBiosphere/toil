@@ -145,6 +145,23 @@ class AbstractJobStore(object):
                 config = cPickle.load(fileHandle)
                 assert config.workflowID is not None
                 self.__config = config
+    @abstractmethod
+    def jobStoreString(self):
+        """
+        Returns the job store string of the current job store.
+
+        :rtype: str
+        """
+        raise NotImplementedError()
+
+    @abstractclassmethod
+    def _extractArgsFromString(cls, jobStoreStr):
+        """
+        Extracts args necessary for job store creation from the given job store string.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        """
+        raise NotImplementedError()
         else:
             assert config.workflowID is None
             config.workflowID = str(uuid4())
@@ -159,6 +176,19 @@ class AbstractJobStore(object):
         """
         with self.writeSharedFileStream("config.pickle", isProtected=False) as fileHandle:
             cPickle.dump(self.__config, fileHandle, cPickle.HIGHEST_PROTOCOL)
+
+    @classmethod
+    def cleanJobStore(cls, jobStoreStr):
+        """
+        Removes the job store represented by the jobStoreStr from the disk/store. Careful!
+        """
+        cls._deleteJobStore(jobStoreStr)
+
+    def deleteJobStore(self):
+        """
+        Removes the job store from the disk/store. Careful!
+        """
+        self._deleteJobStore(self.jobStoreString())
 
     @property
     def config(self):
@@ -343,13 +373,6 @@ class AbstractJobStore(object):
         :param bool export: Determines if the url is supported for exported
         :param urlparse.ParseResult url: a parsed URL that may be supported
         :return bool: returns true if the cls supports the URL
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def deleteJobStore(self):
-        """
-        Removes the job store from the disk/store. Careful!
         """
         raise NotImplementedError()
 

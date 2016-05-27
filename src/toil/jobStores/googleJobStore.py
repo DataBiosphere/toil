@@ -21,16 +21,27 @@ GOOGLE_STORAGE = 'gs'
 
 class GoogleJobStore(AbstractJobStore):
 
+    def jobStoreString(self):
+        return self.namePrefix + ':' + self.projectID
+
     @classmethod
-    def createJobStore(cls, jobStoreString, config=None):
+    def _extractArgsFromString(cls, jobStoreStr):
         try:
-            namePrefix, projectID = jobStoreString.split(":", 1)
+            prefix, projectID = jobStoreStr.split(":", 1)
             # jobstorestring = gs:project_id:bucket
         except ValueError:
             # we don't have a specified projectID
-            namePrefix = jobStoreString
+            prefix = jobStoreStr
             projectID = None
-        return cls(namePrefix, projectID, config)
+
+        headerValues = {"x-goog-project-id": projectID} if projectID else {}
+        uri = boto.storage_uri("gs://" + prefix + "--toil", GOOGLE_STORAGE)
+        return prefix, projectID, headerValues, uri
+
+    statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
+    statsReadPrefix = '_'
+    readStatsBaseID = statsReadPrefix + statsBaseID
+
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
     # this, we use getters that return copies of our original dictionaries. reported:
@@ -85,14 +96,17 @@ class GoogleJobStore(AbstractJobStore):
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
+    @classmethod
+    def _deleteJobStore(cls, jobStoreStr):
+        prefix, projectID, headerValues, uri = cls._extractArgsFromString(jobStoreStr)
+        files = cls._createBucket(uri, headers=headerValues)
 
-    def deleteJobStore(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
         while True:
             try:
-                self.uri.delete_bucket()
+                uri.delete_bucket()
             except boto.exception.GSResponseError as e:
                 if e.status == 404:
                     return  # the bucket doesn't exist so we are done
@@ -104,7 +118,7 @@ class GoogleJobStore(AbstractJobStore):
                 return
 
             # object could have been deleted already
-            for obj in self.files.list():
+            for obj in files.list():
                 try:
                     obj.delete()
                 except boto.exception.GSResponseError:
@@ -316,12 +330,30 @@ class GoogleJobStore(AbstractJobStore):
 
         return filesRead
 
+    @classmethod
+    def _getOrCreateBucket(cls, uri, headers):
+        try:
+            return cls._getBucket(uri, headers)
+        except:
+            return cls._createBucket(uri, headers)
+
+    @classmethod
+    def _getBucket(cls, uri, headers):
+        return cls._retryBucket(create=False, uri=uri, headers=headers)
+
+    @classmethod
+    def _createBucket(cls, uri, headers):
+        return cls._retryBucket(create=True, uri=uri, headers=headers)
+
     @staticmethod
-    def _retryCreateBucket(uri, headers):
+    def _retryBucket(create, uri, headers):
         bucket = None
         while not bucket:
             try:
-                bucket = uri.create_bucket(headers=headers)
+                if create:
+                    bucket = uri.create_bucket(headers=headers)
+                else:
+                    bucket = uri.get_bucket(headers=headers, validate=True)
             except boto.exception.GSResponseError as e:
                 if e.status == 429:
                     time.sleep(10)

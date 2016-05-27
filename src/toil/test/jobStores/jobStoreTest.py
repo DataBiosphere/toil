@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import urlparse
 from Queue import Queue
+
 from abc import abstractmethod, ABCMeta
 import hashlib
 from itertools import chain, islice
@@ -567,6 +568,32 @@ class hidden:
             # Running with the cache should be faster.
             self.assertTrue(cacheTime <= noCacheTime)
 
+        def testClean(self):
+            jobStore = self._createJobStore(self._createConfig())
+            jobStoreStr = jobStore.jobStoreString()
+            jobStore.cleanJobStore(jobStoreStr)
+            self.assertFalse(jobStore.jobStoreExists(jobStoreStr))
+
+        def testPartialClean(self):
+            """
+            Tests job store cleaning when part of the job store is corrupted or deleted.
+            """
+            try:
+                jobStore = self._createJobStore(self._createConfig())
+                jobStoreStr = jobStore.jobStoreString()
+
+                self._corruptJobStore(jobStoreStr)
+            finally:
+                jobStore.cleanJobStore(jobStoreStr)
+            self.assertFalse(jobStore.jobStoreExists(jobStoreStr))
+
+        @abstractstaticmethod
+        def _corruptJobStore(jobStoreStr):
+            """
+            Deletes some part of a job store.
+            """
+            raise NotImplementedError()
+
         @skip("too slow")  # This takes a long time on the remote JobStores
         def testManyJobs(self):
             # Make sure we can store large numbers of jobs
@@ -634,7 +661,7 @@ class hidden:
 
 class FileJobStoreTest(hidden.AbstractJobStoreTest):
     def _createJobStore(self, config=None):
-        return FileJobStore(self.namePrefix, config=config)
+        return FileJobStore.loadOrCreateJobStore(self.namePrefix, config=config)
 
     @classmethod
     def _getUrlForTestFile(cls, size=None):
@@ -669,6 +696,11 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
         os.remove(localFilePath)
 
+    @staticmethod
+    def _corruptJobStore(jobStoreStr):
+        shutil.rmtree(jobStoreStr)
+
+
 @needs_google
 class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
     projectID = 'cgc-05-0006'
@@ -676,10 +708,11 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.createJobStore(self.namePrefix+":"+GoogleJobStoreTest.projectID, config=config)
+        return GoogleJobStore.createJobStore(self.namePrefix + ":" + GoogleJobStoreTest.projectID, config=config)
 
     @classmethod
     def _getUrlForTestFile(cls, size=None):
+        import boto
         fileName = 'testfile_%s' % uuid.uuid4()
         bucket = cls._createExternalStore()
         uri = 'gs://%s/%s' % (bucket.name, fileName)
@@ -695,19 +728,22 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
     @staticmethod
     def _hashUrl(url):
         from toil.jobStores.googleJobStore import GoogleJobStore
+        import boto
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         return hashlib.md5(boto.storage_uri(uri).get_contents_as_string(headers=GoogleJobStoreTest.headers)).hexdigest()
 
     @staticmethod
     def _createExternalStore():
         from toil.jobStores.googleJobStore import GoogleJobStore
+        import boto
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
-        return GoogleJobStore._retryCreateBucket(uri=uri, headers=GoogleJobStoreTest.headers)
+        return GoogleJobStore._createBucket(uri=uri, headers=GoogleJobStoreTest.headers)
 
     @staticmethod
     def _cleanUpExternalStore(url):
         from toil.jobStores.googleJobStore import GoogleJobStore
+        import boto
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         uri = boto.storage_uri(uri)
         headers = {"x-goog-project-id": projectID}
@@ -729,6 +765,25 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
                             break
                         else:
                             continue
+
+    @staticmethod
+    def _corruptJobStore(jobStoreStr):
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        import boto
+        uri = GoogleJobStore.loadJobStore(jobStoreStr).uri
+        while True:
+            try:
+                uri.delete_bucket()
+            except boto.exception.GSResponseError as e:
+                if e.status == 404:
+                    return  # the bucket doesn't exist so we are done
+                else:
+                    # bucket could still have objects, or contain ghost objects
+                    time.sleep(0.5)
+            else:
+                # we have succesfully deleted bucket
+                return
+
 
 @needs_aws
 class AWSJobStoreTest(hidden.AbstractJobStoreTest):
@@ -832,6 +887,12 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         from toil.jobStores.aws.jobStore import AWSJobStore
         return AWSJobStore.itemsPerBatchDelete
 
+    @staticmethod
+    def _corruptJobStore(jobStoreStr):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        AWSJobStore.loadJobStore(jobStoreStr).filesBucket.delete()
+
+
 @needs_aws
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
@@ -853,7 +914,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName, self.namePrefix, config=config)
+        return AzureJobStore.loadOrCreateJobStore(self.accountName + ':' + self.namePrefix, config=config)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -911,6 +972,13 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         from toil.jobStores.azureJobStore import AzureJobStore
         blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
         blobService.delete_container(containerName)
+
+    @staticmethod
+    def _corruptJobStore(jobStoreStr):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        jobStore = AzureJobStore.loadJobStore(jobStoreStr)
+        tableName = jobStore._qualify('jobFileIDs', jobStore.namePrefix)
+        jobStore.tableService.delete_table(tableName)
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):

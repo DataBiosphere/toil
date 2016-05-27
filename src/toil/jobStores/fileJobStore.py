@@ -36,8 +36,15 @@ class FileJobStore(AbstractJobStore):
     Represents the toil using a network file system. For doc-strings of functions see
     AbstractJobStore.
     """
+    def jobStoreString(self):
+        return self.jobStoreDir
 
     def __init__(self, jobStoreDir, config=None):
+    @classmethod
+    def _extractArgsFromString(cls, jobStoreStr):
+        jobStoreDir = absSymPath(jobStoreStr)
+        tempFilesDir = os.path.join(jobStoreDir, "tmp")
+        return jobStoreDir, tempFilesDir
         """
         :param jobStoreDir: Place to create jobStore
         :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
@@ -62,9 +69,12 @@ class FileJobStore(AbstractJobStore):
         self.levels = 2
         super(FileJobStore, self).__init__(config=config)
 
-    def deleteJobStore(self):
-        if os.path.exists(self.jobStoreDir):
-            shutil.rmtree(self.jobStoreDir)
+    @classmethod
+    def _deleteJobStore(cls, jobStoreStr):
+        try:
+            shutil.rmtree(jobStoreStr)
+        except OSError:
+            pass
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the

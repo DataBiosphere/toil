@@ -572,21 +572,15 @@ class Toil(object):
             self._shutdownBatchSystem()
 
     @staticmethod
-    def loadOrCreateJobStore(jobStoreString, config=None):
+    def _extractJobStoreFromString(jobStoreStr):
         """
-        Loads an existing jobStore if it already exists. Otherwise a new instance of a jobStore is
-        created and returned.
-
-        :param str jobStoreString: see exception message below
-        :param toil.common.Config config: see AbstractJobStore.__init__
-        :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        Extracts and returns the class of the job store represented by the jobStoreStr, as well as the
+        remainder of the jobStoreStr.
         """
-        if jobStoreString[0] in '/.':
-            jobStoreString = 'file:' + jobStoreString
-
+        if jobStoreStr[0] in '/.':
+            jobStoreStr = 'file:' + jobStoreStr
         try:
-            jobStoreName, jobStoreArgs = jobStoreString.split(':', 1)
+            jobStoreName, jobStoreArgs = jobStoreStr.split(':', 1)
         except ValueError:
             raise RuntimeError(
                 'Job store string must either be a path starting in . or / or a contain at least one '
@@ -596,23 +590,26 @@ class Toil(object):
 
         if jobStoreName == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
-            return FileJobStore(jobStoreArgs, config=config)
+            return FileJobStore, jobStoreArgs
 
         elif jobStoreName == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
-            return AWSJobStore.loadOrCreateJobStore(jobStoreArgs, config=config)
+            return AWSJobStore, jobStoreArgs
 
         elif jobStoreName == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
-            account, namePrefix = jobStoreArgs.split(':', 1)
-            return AzureJobStore(account, namePrefix, config=config)
-        
+            return AzureJobStore, jobStoreArgs
+
         elif jobStoreName == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
-            projectID, namePrefix = jobStoreArgs.split(':', 1)
-            return GoogleJobStore(namePrefix, projectID, config=config)
+            return GoogleJobStore, jobStoreArgs
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % jobStoreName)
+
+    @classmethod
+    def clean(cls, jobStoreStr):
+        jobStoreCls, jobStoreArgs = cls._extractJobStoreFromString(jobStoreStr)
+        jobStoreCls.cleanJobstore(jobStoreArgs)
 
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):
