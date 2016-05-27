@@ -700,8 +700,10 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
     @staticmethod
     def _createExternalStore():
-        uri = "gs://import-export-test-%s" % str(uuid.uuid4())
-        return boto.storage_uri(uri).create_bucket(headers=GoogleJobStoreTest.headers)
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
+        uri = boto.storage_uri(uriString)
+        return GoogleJobStore._retryCreateBucket(uri=uri, headers=GoogleJobStoreTest.headers)
 
     @staticmethod
     def _cleanUpExternalStore(url):
