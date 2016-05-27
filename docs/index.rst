@@ -27,6 +27,7 @@ Toil is a workflow engine entirely written in Python. It features:
   - Commercial clouds:
     - `Amazon Web Services`_ (including the `spot market`_)
     - `Microsoft Azure`_
+    - `Google Compute Engine`_
   - Private clouds:
     - `OpenStack`_
   - High Performance Computing Environments:
@@ -82,6 +83,7 @@ Toil is a workflow engine entirely written in Python. It features:
 .. _spot market: https://aws.amazon.com/ec2/spot/
 .. _Microsoft Azure: https://azure.microsoft.com
 .. _Amazon Web Services: https://aws.amazon.com/
+.. _Google Compute Engine: https://cloud.google.com/compute/
 .. _OpenStack: https://www.openstack.org/
 .. _CWL: http://commonwl.org
 .. _Common Workflow Language: http://commonwl.org
