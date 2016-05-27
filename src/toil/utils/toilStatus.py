@@ -76,7 +76,7 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = Toil.loadJobStore(options.jobStore)
     try:
         rootJob = jobStore.loadRootJob()
     except JobException:

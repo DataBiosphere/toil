@@ -80,25 +80,37 @@ def _sanitizeTableName(tableName):
 
     This will never cause a collision if uuids are used, but
     otherwise may not be safe.
+
+    :param str tableName: String representing name of the table.
+    :rtype: str
     """
     return sanitizeChar + filter(lambda x: x.isalnum(), tableName)
 
 maxAzureTablePropertySize = 64 * 1024
 sanitizeChar = 'a'
 
+
 class AzureJobStore(AbstractJobStore):
     """
     A job store that uses Azure's blob store for file storage and
-    Table Service to store job info with strong consistency."""
+    Table Service to store job info with strong consistency.
+    """
 
-    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
-        self.jobChunkSize = jobChunkSize
-        self.keyPath = None
     def jobStoreString(self):
         return self.accountName + ':' + self.namePrefix
 
     @classmethod
     def _extractArgsFromString(cls, jobStoreStr):
+        """
+        Extracts args from the given job store string and returns a tuple containing
+        the account name as a string, account key as a string, name prefix as a string, the table
+        service object, and blob service object. If the prefix is invalid an error is raised.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        :return: A tuple of the form (account, accountKey, prefix, tableService, blobService).
+        :rtype: Tuple
+        :raises: ValueError
+        """
         account, prefix = jobStoreStr.split(':', 1)
         if '--' in prefix:
             raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
@@ -119,11 +131,10 @@ class AzureJobStore(AbstractJobStore):
                              "%s." % (prefix, cls.nameSeparator))
 
         accountKey = _fetchAzureAccountKey(account)
-
         tableService = TableService(account_key=accountKey, account_name=account)
         blobService = BlobService(account_key=accountKey, account_name=account)
 
-        if not prefix.statsWith(sanitizeChar):  # prevent re-sanitization
+        if not prefix.startswith(sanitizeChar):  # prevent re-sanitization
             prefix = _sanitizeTableName(prefix)
 
         return account, accountKey, prefix, tableService, blobService
@@ -148,9 +159,109 @@ class AzureJobStore(AbstractJobStore):
     jobIDLength = len(str(uuid.uuid4()))
 
     @classmethod
+    def createJobStore(cls, jobStoreStr, config, **kwargs):
+        cls._checkJobStoreCreation(create=True, jobStoreStr=jobStoreStr)
+        account, accountKey, prefix, tableService, blobService = cls._extractArgsFromString(jobStoreStr)
+
+        jobStore = cls(accountName=account, accountKey=accountKey, namePrefix=prefix,
+                       tableService=tableService, blobService=blobService,
+                       jobItems=cls._createTable(tableService, cls._qualify('jobs', prefix)),
+                       jobFileIDs=cls._createTable(tableService, cls._qualify('jobFileIDs', prefix)),
+                       files=cls._createBlobContainer(blobService, cls._qualify('files', prefix)),
+                       statsFiles=cls._createBlobContainer(blobService, cls._qualify('statsfiles', prefix)),
+                       statsFileIDs=cls._createTable(tableService, cls._qualify('statsFileIDs', prefix)),
+                       config=config, **kwargs)
+
+        jobStore._createJobStore(config)
+        if jobStore.config.cseKey is not None:
+            jobStore.keyPath = jobStore.config.cseKey
+        return jobStore
+
+    @classmethod
+    def loadJobStore(cls, jobStoreStr, **kwargs):
+        cls._checkJobStoreCreation(create=False, jobStoreStr=jobStoreStr)
+        account, accountKey, prefix, tableService, blobService = cls._extractArgsFromString(jobStoreStr)
+
+        jobStore = cls(accountName=account, accountKey=accountKey, namePrefix=prefix,
+                       tableService=tableService, blobService=blobService,
+                       jobItems=cls._getTable(tableService, cls._qualify('jobs', prefix)),
+                       jobFileIDs=cls._getTable(tableService, cls._qualify('jobFileIDs', prefix)),
+                       files=cls._getBlobContainer(blobService, cls._qualify('files', prefix)),
+                       statsFiles=cls._getBlobContainer(blobService, cls._qualify('statsfiles', prefix)),
+                       statsFileIDs=cls._getTable(tableService, cls._qualify('statsFileIDs', prefix)),
+                       config=None, **kwargs)
+
+        jobStore._loadJobStore()
+        if jobStore.config.cseKey is not None:
+            jobStore.keyPath = jobStore.config.cseKey
+        return jobStore
+
+    # Do not invoke the constructor, use the factory method above.
+
+    def __init__(self, accountName, accountKey, namePrefix, tableService, blobService, jobItems, jobFileIDs, files,
+                 statsFiles, statsFileIDs, config=None, jobChunkSize=maxAzureTablePropertySize):
+        """
+        Creates a new AzureJobStore instance with the given components.
+
+        :param str accountName: Name of Azure account.
+        :param str accountKey: The key that corresponds with the given account name.
+        :param str namePrefix: Job store components will be prefixed with this.
+        :param azure.storage.table.tableservice.TableService tableService: Table service that corresponds
+            with the given account.
+        :param azure.storage.blob.blobservice.BlobService blobService: Blob service that corresponds with
+            the given account.
+        :param azure.storage.table.Table jobItems: Table of serialized jobs.
+        :param azure.storage.table.Table jobFileIDs: Table that maps files to jobs.
+        :param azure.storage.blob.Container files: Container for all shared and unshared files.
+        :param azure.storage.blob.Container statsFiles: Container for stats and logging strings.
+        :param azure.storage.table.Table statsFileIDs: Table of file IDs that contain stats and logging
+            strings.
+        :param toil.common.Config config: the config object to written to this job store.
+            Must be None for existing job stores. Must not be None for new job stores.
+        :param int jobChunkSize: Size of a chunk for splitting up the serialized job into chunks
+            that each fit into a property value of the an Azure table entity.
+        """
+
+        self.jobChunkSize = jobChunkSize
+        self.keyPath = None
+        self.account_key = accountKey
+        self.accountName = accountName
+        self.namePrefix = namePrefix
+        logger.debug("Creating job store with name prefix '%s'" % self.namePrefix)
+
+        # These are the main API entrypoints.
+        self.tableService = tableService
+        self.blobService = blobService
+
+        # containers
+        self.files = files
+        self.statsFiles = statsFiles
+
+        # tables
+        self.jobItems = jobItems
+        self.jobFileIDs = jobFileIDs
+        self.statsFileIDs = statsFileIDs
+
+        self.updateRegistry(self.namePrefix, self.tableService, exists=True)
+        super(AzureJobStore, self).__init__()
+
+    @classmethod
+    def jobStoreExists(cls, jobStoreStr):
+        account, accountKey, prefix, tableService, _ = cls._extractArgsFromString(jobStoreStr)
+        registryTable = cls._getOrCreateTable(tableService, 'toilRegistry')
+        for attempt in retry_on_error():
+            with attempt:
+                return registryTable.get_entity(row_key=prefix) is not None
+
+    @classmethod
     def updateRegistry(cls, namePrefix, tableService, exists):
         """
         Writes the value of exist to the registry.
+
+        :param str namePrefix: see __init__
+        :param azure.storage.table.tableservice.TableService tableService: Table service corresponds with
+            the job store.
+        :param bool exists: True if the job store exists False otherwise.
         """
         registryTable = cls._getOrCreateTable(tableService, 'toilRegistry')
         if exists:

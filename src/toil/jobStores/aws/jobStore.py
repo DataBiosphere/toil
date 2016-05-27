@@ -104,6 +104,15 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _extractArgsFromString(cls, jobStoreStr):
+        """
+        Extracts region and prefix from given job store string. If any of these components are
+        invalid an error is raised.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        :return: A tuple of the form (region, prefix).
+        :rtype: Tuple
+        :raises: ValueError
+        """
         region, prefix = jobStoreStr.split(':')
         if not cls.bucketNameRe.match(prefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
@@ -136,61 +145,83 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = '--'
 
-    # Do not invoke the constructor, use the factory method above.
+    @classmethod
+    def createJobStore(cls, jobStoreStr, config, **kwargs):
+        cls._checkJobStoreCreation(create=True, jobStoreStr=jobStoreStr)
+        region, prefix = cls._extractArgsFromString(jobStoreStr)
 
-    def __init__(self, region, namePrefix, config=None, partSize=defaultPartSize):
+        jobStore = cls(region=region, namePrefix=prefix,
+                       filesBucket=cls._createBucket(cls._qualify(prefix, 'files'), region, versioning=True),
+                       filesDomain=cls._createDomain(cls._qualify(prefix, 'files'), region),
+                       jobsDomain=cls._createDomain(cls._qualify(prefix, 'jobs'), region),
+                       config=config, **kwargs)
+
+        jobStore._createJobStore(config)
+        jobStore.sseKeyPath = jobStore.config.sseKey
+        return jobStore
+
+    @classmethod
+    def loadJobStore(cls, jobStoreStr, **kwargs):
+        cls._checkJobStoreCreation(create=False, jobStoreStr=jobStoreStr)
+        region, prefix = cls._extractArgsFromString(jobStoreStr)
+
+        jobStore = cls(region=region, namePrefix=prefix,
+                       filesBucket=cls._getBucket(cls._qualify(prefix, 'files'), region, versioning=True),
+                       filesDomain=cls._getDomain(cls._qualify(prefix, 'files'), region),
+                       jobsDomain=cls._getDomain(cls._qualify(prefix, 'jobs'), region),
+                       config=None, **kwargs)
+
+        jobStore._loadJobStore()
+        jobStore.sseKeyPath = jobStore.config.sseKey
+        return jobStore
+
+    # Do not invoke the constructor, use the factory methods above.
+
+    def __init__(self, region, namePrefix, filesBucket, filesDomain, jobsDomain, config=None, partSize=defaultPartSize):
         """
-        Create a new job store in AWS or load an existing one from there.
+        Creates a new AWSJobStore instance with the given components.
 
-        :param region: the AWS region to create the job store in, e.g. 'us-west-2'
-
-        :param namePrefix: S3 bucket names and SDB tables will be prefixed with this
-
-        :param config: the config object to written to this job store. Must be None for existing
-        job stores. Must not be None for new job stores.
+        :param str region: the AWS region to create the job store in, e.g. 'us-west-2'
+        :param str namePrefix: S3 bucket names and SDB tables will be prefixed with this
+        :param boto.s3.bucket.Bucket filesBucket: S3 bucket for file storage.
+        :param boto.sdb.domain.Domain filesDomain: Simple db domain for file storage.
+        :param boto.sdb.domain.Domain jobsDomain: Simple db domain for job info.
+        :param toil.common.Config config: the config object to written to this job store.
+            Must be None for existing job stores. Must not be None for new job stores.
+        :param int partSize: Determines part size of multipart transfers in S3.
         """
-        log.debug("Instantiating %s for region %s and name prefix '%s'",
-                  self.__class__, region, namePrefix)
+        log.debug("Instantiating %s for region %s and name prefix '%s'", self.__class__, region, namePrefix)
         self.region = region
         self.namePrefix = namePrefix
-        self.jobsDomain = None
-        self.filesDomain = None
-        self.filesBucket = None
-        self.db = self._connectSimpleDB()
-        self.s3 = self._connectS3()
         self.partSize = partSize
+        self.filesBucket = filesBucket
+        self.filesDomain = filesDomain
+        self.jobsDomain = jobsDomain
 
-        # Check global registry domain for existence of this job store. The first time this is
-        # being executed in an AWS account, the registry domain will be created on the fly.
-        create = config is not None
-        self.registry_domain = self._getOrCreateDomain('toil-registry')
+        self.db = self._connectSimpleDB(region)
+        self.s3 = self._connectS3(region)
+        self.updateRegistry(region, namePrefix, exists=True)
+        super(AWSJobStore, self).__init__()
+
+    @classmethod
+    def jobStoreExists(cls, jobStoreStr):
+        region, prefix = cls._extractArgsFromString(jobStoreStr)
+        registry_domain = cls._getOrCreateDomain('toil-registry', region)
         for attempt in retry_sdb():
             with attempt:
-                attributes = self.registry_domain.get_attributes(item_name=namePrefix,
-                                                                 attribute_name='exists',
-                                                                 consistent_read=True)
-                exists = strict_bool(attributes.get('exists', str(False)))
-                self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
+                attributes = registry_domain.get_attributes(item_name=prefix,
+                                                            attribute_name='exists',
+                                                            consistent_read=True)
+                return strict_bool(attributes.get('exists', str(False)))
 
-        def qualify(name):
-            assert len(name) <= self.maxNameLen
-            return self.namePrefix + self.nameSeparator + name
-
-        self.jobsDomain = self._getOrCreateDomain(qualify('jobs'))
-        self.filesDomain = self._getOrCreateDomain(qualify('files'))
-        self.filesBucket = self._getOrCreateBucket(qualify('files'), versioning=True)
-
-        # Now register this job store
-        for attempt in retry_sdb():
-            with attempt:
-                self.registry_domain.put_attributes(item_name=namePrefix,
-                                                    attributes=dict(exists='True'))
-
-        super(AWSJobStore, self).__init__(config=config)
     @classmethod
     def updateRegistry(cls, region, namePrefix, exists):
         """
-        Writes the value of exist to the registry.
+        Writes the value of exists to the registry.
+
+        :param str region: the AWS region to create the job store in, e.g. 'us-west-2'
+        :param str namePrefix: S3 bucket names and SDB tables will be prefixed with this
+        :param bool exists: True if the job store exists False otherwise.
         """
         registry_domain = cls._getOrCreateDomain('toil-registry', region)
 

@@ -39,35 +39,64 @@ class FileJobStore(AbstractJobStore):
     def jobStoreString(self):
         return self.jobStoreDir
 
-    def __init__(self, jobStoreDir, config=None):
     @classmethod
     def _extractArgsFromString(cls, jobStoreStr):
+        """
+        Extracts args from the given job store string and returns a tuple containing the
+        absolute job store directory path and the absolute temp file directory path.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        :return: A tuple of the form (jobStoreDir, tempFilesDir).
+        :rtype: Tuple
+        """
         jobStoreDir = absSymPath(jobStoreStr)
         tempFilesDir = os.path.join(jobStoreDir, "tmp")
         return jobStoreDir, tempFilesDir
+
+    # Parameters for creating temporary files
+    validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    levels = 2
+
+    @classmethod
+    def createJobStore(cls, jobStoreStr, config, **kwargs):
+        cls._checkJobStoreCreation(create=True, jobStoreStr=jobStoreStr)
+        jobStoreDir, tempFilesDir = cls._extractArgsFromString(jobStoreStr)
+
+        os.mkdir(jobStoreDir)
+        os.mkdir(tempFilesDir)
+
+        jobStore = cls(jobStoreDir, tempFilesDir, config=config, **kwargs)
+        jobStore._createJobStore(config)
+        return jobStore
+
+    @classmethod
+    def loadJobStore(cls, jobStoreStr, **kwargs):
+        cls._checkJobStoreCreation(create=False, jobStoreStr=jobStoreStr)
+        jobStoreDir, tempFilesDir = cls._extractArgsFromString(jobStoreStr)
+        jobStore = cls(jobStoreDir, tempFilesDir, **kwargs)
+        jobStore._loadJobStore()
+        return jobStore
+
+    # Do not invoke the constructor, use the factory method above.
+
+    def __init__(self, jobStoreDir, tempFilesDir, config=None):
         """
-        :param jobStoreDir: Place to create jobStore
-        :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
-        :raise RuntimeError: if config != None and the jobStore already exists or
-        config == None and the jobStore does not already exists. 
+        Creates a new FileJobStore instance with the given components.
+
+        :param str jobStoreDir: Place to create the jobStore.
+        :param str tempFilesDir: Place to create temporary files for the job store.
+        :param toil.common.Config config: the config object to written to this job store.
         """
-        # This is root directory in which everything in the store is kept
-        self.jobStoreDir = absSymPath(jobStoreDir)
+        self.jobStoreDir = jobStoreDir
         logger.info("Jobstore directory is: %s", self.jobStoreDir)
-        # Safety checks for existing jobStore
-        self._checkJobStoreCreation(create=config is not None,
-                                    exists=os.path.exists(self.jobStoreDir),
-                                    jobStoreString=self.jobStoreDir)
-        # Directory where temporary files go
-        self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
-        # Creation of jobStore, if necessary
-        if config is not None:
-            os.mkdir(self.jobStoreDir)
-            os.mkdir(self.tempFilesDir)
-        # Parameters for creating temporary files
-        self.validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        self.levels = 2
-        super(FileJobStore, self).__init__(config=config)
+        self.tempFilesDir = tempFilesDir
+
+        super(FileJobStore, self).__init__()
+
+    @classmethod
+    def jobStoreExists(cls, jobStoreStr):
+        jobStoreDir, _ = cls._extractArgsFromString(jobStoreStr)
+        return os.path.exists(jobStoreDir)
 
     @classmethod
     def _deleteJobStore(cls, jobStoreStr):

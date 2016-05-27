@@ -483,9 +483,10 @@ class Toil(object):
         self._inContextManager = True
         self.config = Config()
         self.config.setOptions(self.options)
-        self._jobStore = self.loadOrCreateJobStore(self.config.jobStore,
-                                                   config=None if self.config.restart else self.config)
-        if self.config.restart:
+        if not self.config.restart:
+            self._jobStore = self.createJobStore(self.config.jobStore, self.config)
+        else:
+            self._jobStore = self.loadJobStore(self.config.jobStore)
             # Reload configuration from job store
             self.config = self._jobStore.config
             self.config.setOptions(self.options)
@@ -574,8 +575,11 @@ class Toil(object):
     @staticmethod
     def _extractJobStoreFromString(jobStoreStr):
         """
-        Extracts and returns the class of the job store represented by the jobStoreStr, as well as the
-        remainder of the jobStoreStr.
+        Determines the class of the job store represented by the job store string. Imports and returns
+        the class along with the rest of the job store string as a tuple. If the class name is not
+        recognized a runtime error is raised.
+
+        :param str jobStoreStr: A string describing a job store.
         """
         if jobStoreStr[0] in '/.':
             jobStoreStr = 'file:' + jobStoreStr
@@ -607,9 +611,59 @@ class Toil(object):
             raise RuntimeError("Unknown job store implementation '%s'" % jobStoreName)
 
     @classmethod
+    def createJobStore(cls, jobStoreStr, config):
+        """
+        Creates a new job store described by the job store string. If the described job store
+        already exists a job store creation error is raised.
+
+        :param str jobStoreStr:  A string describing a job store.
+        :param toil.common.Config config: If config is not None then the given configuration object will be written
+               to the shared file "config.pickle" which can later be retrieved using the
+               readSharedFileStream. See writeConfigToStore. If this file already exists it will be
+               overwritten. If config is None, the shared file "config.pickle" is assumed to exist
+               and is retrieved. See loadConfigFromStore.
+        :return: An instance of a concrete job store.
+        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        """
+        jobStore, args = cls._extractJobStoreFromString(jobStoreStr)
+        return jobStore.createJobStore(args, config=config)
+
+    @classmethod
+    def loadJobStore(cls, jobStoreStr):
+        """
+        Loads the job store represented by the job store string if it exists. A job store creation
+        error is raised if the job store does not exist.
+
+        :param str jobStoreStr:  A string describing a job store.
+        :return: An instance of a concrete job store.
+        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :raises: JobStoreCreationException
+        """
+        jobStore, args = cls._extractJobStoreFromString(jobStoreStr)
+        return jobStore.loadJobStore(args)
+
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreStr, config=None):
+        """
+        Loads an existing jobStore if it already exists. Otherwise a new instance of a jobStore is
+        created and returned.
+
+        :param str jobStoreStr: A string describing a job store.
+        :param toil.common.Config config: see createJobStore
+        :return: An instance of a concrete job store.
+        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :raises: JobStoreCreationException
+        """
+        return cls.loadOrCreateJobStore(jobStoreStr, config=config)
+
+    @classmethod
     def clean(cls, jobStoreStr):
+        """
+        Cleans up the job store represented by the job store string.
+        :param str jobStoreStr: A string describing a job store.
+        """
         jobStoreCls, jobStoreArgs = cls._extractJobStoreFromString(jobStoreStr)
-        jobStoreCls.cleanJobstore(jobStoreArgs)
+        jobStoreCls.cleanJobStore(jobStoreArgs)
 
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):

@@ -131,48 +131,98 @@ class AbstractJobStore(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, config=None):
-        """
-        :param toil.common.Config config: If config is not None then the given configuration object will be written
-               to the shared file "config.pickle" which can later be retrieved using the
-               readSharedFileStream. See writeConfigToStore. If this file already exists it will be
-               overwritten. If config is None, the shared file "config.pickle" is assumed to exist
-               and is retrieved. See loadConfigFromStore.
-        """
-        # Now get on with reading or writing the config
-        if config is None:
-            with self.readSharedFileStream("config.pickle") as fileHandle:
-                config = cPickle.load(fileHandle)
-                assert config.workflowID is not None
-                self.__config = config
     @abstractmethod
     def jobStoreString(self):
         """
-        Returns the job store string of the current job store.
+        Returns the job store string representing the current job store.
 
         :rtype: str
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
-    def _extractArgsFromString(cls, jobStoreStr):
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreStr, config=None, **kwargs):
         """
-        Extracts args necessary for job store creation from the given job store string.
+        Factory method that constructs and returns an instance of a concrete job store regardless
+        of the state of its existence. Note that a non existent job store always requires a config.
 
         :param str jobStoreStr: A string that uniquely identifies a job store.
+        :param toil.common.Config config: see common.Toil.createJobStore
+        :return: An instance of a concrete job store.
+        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :raises: JobStoreCreationException
+        """
+        if config is None:
+            return cls.loadJobStore(jobStoreStr, **kwargs)
+        else:
+            return cls.createJobStore(jobStoreStr, config, **kwargs)
+
+    @abstractclassmethod
+    def loadJobStore(cls, jobStoreStr, **kwargs):
+        """
+        Factory method that loads the job store represented by the given jobStoreStr if it exists. If the
+        job store does not exist a JobStoreCreationException is raised.
+
+        :param str jobStoreStr:  A string that uniquely identifies a job store.
+        :return: An instance of a concrete job store.
+        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :raises: JobStoreCreationException
         """
         raise NotImplementedError()
+
+    def _loadJobStore(self):
+        """
+        Performs necessary set up for a job store that has been constructed with a loadJobStore factory
+        method.
+        """
+        self.readConfigFromStore()
+
+    def readConfigFromStore(self):
+        """
+        Reads the config attribute from the job store.
+        """
+        try:
+            self.__config
+        except AttributeError:
+            pass
         else:
-            assert config.workflowID is None
-            config.workflowID = str(uuid4())
-            logger.info("The workflow ID is: '%s'" % config.workflowID)
+            raise RuntimeError("This method can only be called if self.__config has not been set.")
+
+        with self.readSharedFileStream("config.pickle") as fileHandle:
+            config = cPickle.load(fileHandle)
+            assert config.workflowID is not None
             self.__config = config
-            self.writeConfigToStore()
+
+    @abstractclassmethod
+    def createJobStore(cls, jobStoreStr, config, **kwargs):
+        """
+        Factory method that creates the job store represented by the given jobStoreStr if it does not exist.
+        If the job store does exist a JobStoreCreationException is raised.
+
+        :param str jobStoreStr:  A string that uniquely identifies a job store.
+        :param toil.common.Config config: see common.Toil.createJobStore
+        :return: Concrete job store instance.
+        :raises: JobStoreCreationException
+        """
+        raise NotImplementedError()
+
+    def _createJobStore(self, config):
+        """
+        Performs necessary set up for a job store that has been constructed with a createJobStore factory
+        method.
+
+        :param toil.common.Config config: see common.Toil.createJobStore
+        """
+        assert config.workflowID is None
+        config.workflowID = str(uuid4())
+        logger.info("The workflow ID is: '%s'" % config.workflowID)
+        self.__config = config
+        self.writeConfigToStore()
 
     def writeConfigToStore(self):
         """
         Re-writes the config attribute to the job store, so that its values can be retrieved
-        by a seperate JobStore instance. No value is returned from this method.
+        by a separate JobStore instance. No value is returned from this method.
         """
         with self.writeSharedFileStream("config.pickle", isProtected=False) as fileHandle:
             cPickle.dump(self.__config, fileHandle, cPickle.HIGHEST_PROTOCOL)
@@ -181,14 +231,25 @@ class AbstractJobStore(object):
     def cleanJobStore(cls, jobStoreStr):
         """
         Removes the job store represented by the jobStoreStr from the disk/store. Careful!
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
         """
         cls._deleteJobStore(jobStoreStr)
 
     def deleteJobStore(self):
         """
-        Removes the job store from the disk/store. Careful!
+        Removes the current job store from the disk/store. Careful!
         """
-        self._deleteJobStore(self.jobStoreString())
+        self.cleanJobStore(self.jobStoreString())
+
+    @abstractclassmethod
+    def _deleteJobStore(cls, jobStoreStr):
+        """
+        Deletes all remaining components of the job store represented by the job store string.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        """
+        raise NotImplementedError()
 
     @property
     def config(self):
@@ -241,28 +302,36 @@ class AbstractJobStore(object):
         self.setRootJob(rootJob.jobStoreID)
         return rootJob
 
-    @staticmethod
-    def _checkJobStoreCreation(create, exists, jobStoreString):
+    @abstractclassmethod
+    def jobStoreExists(cls, jobStoreStr):
+        """
+        Returns True if and only if the job store represented by the job store string exists.
+        Otherwise False is returned.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    def _checkJobStoreCreation(cls, create, jobStoreStr):
         """
         Consistency checks which will result in exceptions if we attempt to overwrite an existing
         job store. This method must be called by the constructor of a subclass before any
         modification are made. Either create or exists must be True but not both.
 
         :param bool create: a boolean indicating if the config will try to create a new job store
-
-        :param bool exists: a boolean indicating if the config will try to reconnect to an existing
-               job store
-
         :raise JobStoreCreationException:  if create == exists
         """
+        exists = cls.jobStoreExists(jobStoreStr)
         if create and exists:
             raise JobStoreCreationException("The job store '%s' already exists. Use --restart to "
                                             "resume the workflow, or remove the job store with "
                                             "'toil clean' to start the workflow from scratch" %
-                                            jobStoreString) 
+                                            jobStoreStr)
         if not create and not exists:
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
-                                            "is nothing to restart." % jobStoreString)
+                                            "is nothing to restart." % jobStoreStr)
 
     def importFile(self, srcUrl):
         """
