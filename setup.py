@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 from version import version
 from setuptools import find_packages, setup
 
-botoVersionRequired = 'boto==2.38.0'
+botoRequirement = 'boto==2.38.0'
 
-kwargs = dict(
+setup(
     name='toil',
     version=version,
     description='Pipeline management software for clusters.',
@@ -27,15 +26,11 @@ kwargs = dict(
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
         'bd2k-python-lib==1.13.dev14'],
-    tests_require=[
-        'mock==1.0.1',
-        'pytest==2.8.3'],
-    test_suite='toil',
     extras_require={
         'mesos': [
             'psutil==3.0.1'],
         'aws': [
-            botoVersionRequired,
+            botoRequirement,
             'cgcloud-lib==1.4a1.dev195' ],
         'azure': [
             'azure==1.0.3'],
@@ -43,7 +38,7 @@ kwargs = dict(
             'pynacl==0.3.0'],
         'google': [
             'gcs_oauth2_boto_plugin==1.9',
-            botoVersionRequired],
+            botoRequirement],
         'cwl': [
             'cwltool==1.0.20160425140546']},
     package_dir={'': 'src'},
@@ -55,30 +50,3 @@ kwargs = dict(
             'cwltoil = toil.cwl.cwltoil:main [cwl]',
             'cwl-runner = toil.cwl.cwltoil:main [cwl]',
             '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
-
-from setuptools.command.test import test as TestCommand
-
-
-class PyTest(TestCommand):
-    user_options = [('pytest-args=', 'a', "Arguments to pass to py.test")]
-
-    def initialize_options(self):
-        TestCommand.initialize_options(self)
-        self.pytest_args = []
-
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = []
-        self.test_suite = True
-
-    def run_tests(self):
-        import pytest
-        # Sanitize command line arguments to avoid confusing Toil code attempting to parse them
-        sys.argv[1:] = []
-        errno = pytest.main(self.pytest_args)
-        sys.exit(errno)
-
-
-kwargs['cmdclass'] = {'test': PyTest}
-
-setup(**kwargs)

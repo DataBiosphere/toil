@@ -6,6 +6,6 @@
 __pycache__
 .eggs/
 .cache/
-test-report.xml
-venv/
+/test-report.xml
+/venv/
 /src/toil/test/cwl/spec

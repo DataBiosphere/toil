@@ -68,8 +68,8 @@ clean_sdist:
 	- rm -rf dist
 
 
-test: check_venv
-	$(python) setup.py test --pytest-args "-vv $(tests)"
+test: check_venv check_build_reqs
+	$(python) run_tests.py $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
@@ -85,7 +85,7 @@ clean_pypi:
 
 
 docs: check_venv
-	# strange but seemingly benign sphinx warning floods stderr if not filtered
+	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && make html 2>&1 | grep -v "WARNING: duplicate object description of"
 clean_docs: check_venv
 	- cd docs && make clean
@@ -97,6 +97,11 @@ clean: clean_develop clean_sdist clean_pypi clean_docs
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
 		|| ( echo "$(red)A virtualenv must be active.$(normal)" ; false )
+
+
+check_build_reqs:
+	@$(python) -c 'import mock; import pytest' \
+		|| ( echo "$(red)Build requirements are missing. See jenkins.sh for what those are.$(normal)" ; false )
 
 
 check_clean_working_copy:
