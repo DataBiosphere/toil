@@ -596,7 +596,7 @@ class Toil(object):
 
         if jobStoreName == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
-            return FileJobStore(jobStoreArgs, config=config)
+            return FileJobStore.loadOrCreateJobStore(jobStoreArgs, config=config)
 
         elif jobStoreName == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
