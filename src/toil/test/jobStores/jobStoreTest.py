@@ -680,6 +680,7 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
     @classmethod
     def _getUrlForTestFile(cls, size=None):
+        import boto
         fileName = 'testfile_%s' % uuid.uuid4()
         bucket = cls._createExternalStore()
         uri = 'gs://%s/%s' % (bucket.name, fileName)
@@ -694,12 +695,14 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
     @staticmethod
     def _hashUrl(url):
+        import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         return hashlib.md5(boto.storage_uri(uri).get_contents_as_string(headers=GoogleJobStoreTest.headers)).hexdigest()
 
     @staticmethod
     def _createExternalStore():
+        import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
@@ -707,6 +710,7 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
     @staticmethod
     def _cleanUpExternalStore(url):
+        import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         uri = boto.storage_uri(uri)
