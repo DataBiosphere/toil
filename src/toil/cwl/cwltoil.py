@@ -570,8 +570,8 @@ def main(args=None, stdout=sys.stdout):
         adjustFiles(job, lambda x: x.replace("file://", ""))
         stdout.write(json.dumps(
             cwltool.main.single_job_executor(t, job, options.basedir, options,
-                                             conformance_test=True, use_container=use_container),
-                                             preserve_environment=options.preserve_environment, indent=4))
+                                             conformance_test=True, use_container=use_container,
+                                             preserve_environment=options.preserve_environment), indent=4))
         return 0
 
     if not options.basedir:
