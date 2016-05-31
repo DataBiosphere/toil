@@ -30,7 +30,7 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job, CacheError
-from toil.test import ToilTest, needs_aws, needs_azure
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
@@ -205,7 +205,7 @@ class Hidden:
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
             # by the job store and are not reflected in the cache hence this test is redundant.
-            if (not self.options.jobStore.startswith(('aws', 'azure')) and
+            if (not self.options.jobStore.startswith(('aws', 'azure', 'google')) and
                     os.stat(self.options.workDir).st_dev ==
                         os.stat(os.path.dirname(self.options.jobStore)).st_dev):
                 self.skipTest('jobStore and workdir are on the same filesystem.')
@@ -826,6 +826,18 @@ class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
     @unittest.skipIf(testingIsAutomatic, "To save time")
     def testExtremeCacheSetup(self):
         super(AzureJobStoreCacheTest, self).testExtremeCacheSetup()
+
+
+@needs_google
+class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
+    def _getTestJobStorePath(self):
+        projectID = 'cgc-05-0006'
+        super(GoogleJobStoreCacheTest, self)._getTestJobStorePath()
+        return 'google:' + projectID + ':cache-tests-' + str(uuid4())
+
+    @unittest.skipIf(testingIsAutomatic, "To save time")
+    def testExtremeCacheSetup(self):
+        super(GoogleJobStoreCacheTest, self).testExtremeCacheSetup()
 
 ################################################################################
 # Define utility functions because toil can't pickle static methods
