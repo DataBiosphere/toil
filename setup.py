@@ -45,7 +45,7 @@ kwargs = dict(
             'gcs_oauth2_boto_plugin==1.9',
             botoVersionRequired],
         'cwl': [
-            'cwltool==1.0.20160425140546']},
+            'cwltool==1.0.20160427142240']},
     package_dir={'': 'src'},
     packages=find_packages('src', exclude=['*.test']),
     entry_points={

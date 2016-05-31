@@ -762,12 +762,11 @@ class Toil(object):
         """
         Shuts down current batch system if it has been created.
         """
-        assert self._batchSystem is not None
-
-        startTime = time.time()
-        logger.debug('Shutting down batch system')
-        self._batchSystem.shutdown()
-        logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
+        if self._batchSystem is not None:
+            startTime = time.time()
+            logger.debug('Shutting down batch system')
+            self._batchSystem.shutdown()
+            logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
 
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
