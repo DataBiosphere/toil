@@ -702,16 +702,16 @@ class Hidden:
             self._deleteLocallyReadFilesFn(readAsMutable=False)
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
-            self.options.retryCount = 1
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True)
-            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable)
+            self.options.retryCount = 0
+            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, memory='10M')
+            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable, memory='20M')
             A.addChild(B)
             try:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 1)
+                self.assertEqual(err.numberOfFailedJobs, 2)
                 errMsg = self._parseAssertionError(self.options.logFile)
-                if not 'explicitly' in errMsg:
+                if 'explicitly' not in errMsg:
                     self.fail('Shouldn\'t see this')
 
         @staticmethod
@@ -739,7 +739,7 @@ class Hidden:
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except CacheError as err:
-                    if not err.message.contains('explicitly'):
+                    if 'explicitly' not in err.message:
                         raise
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
@@ -759,7 +759,7 @@ class Hidden:
             """
             Test the deletion capabilities of deleteLocalFile
             """
-            self.options.retryCount = 1
+            self.options.retryCount = 0
             workdir = self._createTempDir(purpose='nonLocalDir')
             A = Job.wrapJobFn(self._deleteLocalFileFn, nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
