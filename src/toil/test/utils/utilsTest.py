@@ -178,7 +178,7 @@ class UtilsTest(ToilTest):
         options.stats = True
         Job.Runner.startToil(RunTwoJobsPerWorker(), options)
 
-        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+        jobStore = Toil.loadJobStore(options.jobStore)
         stats = getStats(options)
         collatedStats =  processData(jobStore.config, stats, options)
         self.assertTrue(len(collatedStats.job_types)==2,"Some jobs are not represented in the stats")

@@ -21,16 +21,64 @@ GOOGLE_STORAGE = 'gs'
 
 class GoogleJobStore(AbstractJobStore):
 
+    def jobStoreString(self):
+        return self.namePrefix + ':' + self.projectID
+
     @classmethod
-    def createJobStore(cls, jobStoreString, config=None):
+    def _extractArgsFromString(cls, jobStoreStr):
+        """
+        Extracts args from the given job store string and returns a tuple containing
+        the name prefix as a string, project ID if one is present, header values as a dict, and
+        a uri object. If the prefix is invalid an error is raised.
+
+        :param str jobStoreStr: A string that uniquely identifies a job store.
+        :return: A tuple of the form (prefix, projectID, headerValues, uri).
+        :rtype: Tuple
+        :raises: ValueError
+        """
         try:
-            namePrefix, projectID = jobStoreString.split(":", 1)
+            prefix, projectID = jobStoreStr.split(":", 1)
             # jobstorestring = gs:project_id:bucket
         except ValueError:
             # we don't have a specified projectID
-            namePrefix = jobStoreString
+            prefix = jobStoreStr
             projectID = None
-        return cls(namePrefix, projectID, config)
+
+        headerValues = {"x-goog-project-id": projectID} if projectID else {}
+        uri = boto.storage_uri("gs://" + prefix + "--toil", GOOGLE_STORAGE)
+        return prefix, projectID, headerValues, uri
+
+    statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
+    statsReadPrefix = '_'
+    readStatsBaseID = statsReadPrefix + statsBaseID
+
+    @classmethod
+    def createJobStore(cls, jobStoreStr, config=None, **kwargs):
+        cls._checkJobStoreCreation(create=True, jobStoreStr=jobStoreStr)
+        prefix, projectID, headerValues, uri = cls._extractArgsFromString(jobStoreStr)
+
+        log.debug("Instantiating google jobStore with name: %s--toil", prefix)
+        jobStore = cls(prefix, uri, files=cls._createBucket(uri, headers=headerValues),
+                       headerValues=headerValues,
+                       projectID=projectID,
+                       config=config, **kwargs)
+        jobStore._createJobStore(config)
+        jobStore._setHeaders()
+        return jobStore
+
+    @classmethod
+    def loadJobStore(cls, jobStoreStr, **kwargs):
+        cls._checkJobStoreCreation(create=False, jobStoreStr=jobStoreStr)
+        prefix, projectID, headerValues, uri = cls._extractArgsFromString(jobStoreStr)
+
+        log.debug("Instantiating google jobStore with name: %s--toil", prefix)
+        jobStore = cls(prefix, uri, files=cls._getBucket(uri, headers=headerValues),
+                       headerValues=headerValues,
+                       projectID=projectID,
+                       config=None, **kwargs)
+        jobStore._loadJobStore()
+        jobStore._setHeaders()
+        return jobStore
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
     # this, we use getters that return copies of our original dictionaries. reported:
@@ -51,48 +99,55 @@ class GoogleJobStore(AbstractJobStore):
     def headerValues(self, value):
         self._headerValues = value
 
-    def __init__(self, namePrefix, projectID=None, config=None):
-        #  create 2 buckets
-        self.projectID = projectID
-
-        self.bucketName = namePrefix+"--toil"
-        log.debug("Instantiating google jobStore with name: %s", self.bucketName)
-        self.gsBucketURL = "gs://"+self.bucketName
-
-        self._headerValues = {"x-goog-project-id": projectID} if projectID else {}
-        self._encryptedHeaders = self.headerValues
-
-        self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
-        self.files = None
-
-        exists = True
-        try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except boto.exception.GSResponseError:
-            exists = False
-
-        create = config is not None
-        self._checkJobStoreCreation(create, exists, projectID+':'+namePrefix)
-
-        if not exists:
-            self.files = self._retryCreateBucket(self.uri, self.headerValues)
-
-        super(GoogleJobStore, self).__init__(config=config)
+    def _setHeaders(self):
         self.sseKeyPath = self.config.sseKey
         # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
         self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders())
 
-        self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
-        self.statsReadPrefix = '_'
-        self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
+    # Do not invoke the constructor, use the factory method above.
 
-    def deleteJobStore(self):
+    def __init__(self, namePrefix, uri, files, headerValues, projectID=None, config=None):
+        """
+        Creates a new GoogleJobStore instance with the given components.
+
+        :param str namePrefix: Components of the job store will be prefixed with this.
+        :param boto.storage_uri uri: The uri for managing files bucket.
+        :param files: Bucket containing files.
+        :param dict headerValues: Dict containing header values.
+        :param str projectID: The project ID for the job store.
+        :param toil.common.Config config: the config object to written to this job store.
+            Must be None for existing job stores. Must not be None for new job stores.
+        """
+        self.namePrefix = namePrefix
+        self.projectID = projectID
+        self.uri = uri
+        self._headerValues = headerValues
+        self._encryptedHeaders = self.headerValues
+        self.files = files
+
+        super(GoogleJobStore, self).__init__()
+
+    @classmethod
+    def jobStoreExists(cls, jobStoreStr):
+        prefix, projectID, headerValues, uri = cls._extractArgsFromString(jobStoreStr)
+        try:
+            uri.get_bucket(headers=headerValues, validate=True)
+        except boto.exception.GSResponseError:
+            return False
+        else:
+            return True
+
+    @classmethod
+    def _deleteJobStore(cls, jobStoreStr):
+        prefix, projectID, headerValues, uri = cls._extractArgsFromString(jobStoreStr)
+        files = cls._createBucket(uri, headers=headerValues)
+
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
         while True:
             try:
-                self.uri.delete_bucket()
+                uri.delete_bucket()
             except boto.exception.GSResponseError as e:
                 if e.status == 404:
                     return  # the bucket doesn't exist so we are done
@@ -104,7 +159,7 @@ class GoogleJobStore(AbstractJobStore):
                 return
 
             # object could have been deleted already
-            for obj in self.files.list():
+            for obj in files.list():
                 try:
                     obj.delete()
                 except boto.exception.GSResponseError:
@@ -316,8 +371,19 @@ class GoogleJobStore(AbstractJobStore):
 
         return filesRead
 
-    @staticmethod
-    def _retryCreateBucket(uri, headers):
+    @classmethod
+    def _getOrCreateBucket(cls, uri, headers):
+        try:
+            return cls._getBucket(uri, headers)
+        except:
+            return cls._createBucket(uri, headers)
+
+    @classmethod
+    def _getBucket(cls, uri, headers):
+        return uri.get_bucket(headers=headers, validate=True)
+
+    @classmethod
+    def _createBucket(cls, uri, headers):
         bucket = None
         while not bucket:
             try:

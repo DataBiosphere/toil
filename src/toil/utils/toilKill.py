@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--version", action='version', version=version)
     options = parseBasicOptions(parser)
 
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = Toil.loadJobStore(options.jobStore)
     
     logger.info("Starting routine to kill running jobs in the toil workflow: %s" % options.jobStore)
     ####This behaviour is now broken

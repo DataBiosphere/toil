@@ -88,7 +88,7 @@ def main():
     #Load the jobStore/config file
     ##########################################
     
-    jobStore = Toil.loadOrCreateJobStore(jobStoreString)
+    jobStore = Toil.loadJobStore(jobStoreString)
     config = jobStore.config
     
     ##########################################

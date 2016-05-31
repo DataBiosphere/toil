@@ -530,7 +530,7 @@ def getStats(options):
             logger.critical("File %s contains corrupted json. Skipping file." % fileHandle)
             pass  # The file is corrupted.
 
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = Toil.loadJobStore(options.jobStore)
     aggregateObject = Expando()
     callBack = partial(aggregateStats, aggregateObject=aggregateObject)
     jobStore.readStatsAndLogging(callBack, readAll=True)
@@ -601,7 +601,7 @@ def main():
     initializeOptions(parser)
     options = parseBasicOptions(parser)
     checkOptions(options, parser)
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = Toil.loadJobStore(options.jobStore)
     stats = getStats(options)
     collatedStatsTag = processData(jobStore.config, stats, options)
     reportData(collatedStatsTag, options)

@@ -45,18 +45,8 @@ def main():
     options = parseBasicOptions(parser)
     logger.info("Parsed arguments")
 
-    ##########################################
-    #Survey the status of the job and report.
-    ##########################################
-    logger.info("Checking if we have files for toil")
-    try:
-        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
-    except JobStoreCreationException:
-        logger.info("The specified JobStore does not exist, it may have already been deleted")
-        sys.exit(0)
-
     logger.info("Attempting to delete the job store")
-    jobStore.deleteJobStore()
+    Toil.clean(options.jobStore)
     logger.info("Successfully deleted the job store")
 
 
