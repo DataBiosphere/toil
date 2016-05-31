@@ -29,7 +29,7 @@ import unittest
 from struct import pack, unpack
 from uuid import uuid4
 
-from toil.job import Job, CacheError
+from toil.job import Job, IllegalDeletionCacheError
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
@@ -244,11 +244,12 @@ class Hidden:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
-                errMsg = self._parseAssertionError(self.options.logFile)
-                if errMsg == 'Unable to free up enough space for caching.':
+                errType, errMsg = self._parseAssertionError(self.options.logFile)
+                if (errType == 'AssertionError' and
+                        errMsg == 'Unable to free up enough space for caching.'):
                     self.assertEqual(expectedResult, 'Fail')
                 else:
-                    self.fail('Shouldn\'t see this')
+                    self.fail('An AssertionError was not thrown by Toil')
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -334,7 +335,7 @@ class Hidden:
             Parse the assertion error message from a failed toil logfile
 
             :param logFile: path to the logfile
-            :return: Str of the error message
+            :return: tuple of (error type, string) of the error
             """
             workerLogName = None
             with open(logFile, 'r') as logFileHandle:
@@ -348,9 +349,9 @@ class Hidden:
                         continue
                     else:
                         fields = line.split()
-                        if fields[1] == 'AssertionError:' or fields[1] == 'CacheError:':
-                            return ' '.join(fields[2:])
-            raise RuntimeError('This shouldn\'t Happen')
+                        if fields[1].endswith('Error:'):
+                            return fields[1][:-1], ' '.join(fields[2:])
+            raise RuntimeError('An error was not found in the error log.')
 
         # writeGlobalFile tests
         def testWriteNonLocalFileToJobStore(self):
@@ -704,15 +705,15 @@ class Hidden:
         def _deleteLocallyReadFilesFn(self, readAsMutable):
             self.options.retryCount = 0
             A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, memory='10M')
-            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable, memory='20M')
+            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
+                              memory='20M')
             A.addChild(B)
             try:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 2)
-                errMsg = self._parseAssertionError(self.options.logFile)
-                if 'explicitly' not in errMsg:
-                    self.fail('Shouldn\'t see this')
+                errType, errMsg = self._parseAssertionError(self.options.logFile)
+                self.assertEqual(errType, 'IllegalDeletionCacheError')
 
         @staticmethod
         def _removeReadFileFn(job, fileToDelete, readAsMutable):
@@ -738,9 +739,8 @@ class Hidden:
                 os.remove(outfile)
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
-                except CacheError as err:
-                    if 'explicitly' not in err.message:
-                        raise
+                except IllegalDeletionCacheError:
+                    pass
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
                     # file, we should not reach here.
