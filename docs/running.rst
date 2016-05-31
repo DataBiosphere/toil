@@ -242,6 +242,15 @@ that performs merge-sort on a temporary file.
 2. Run with default settings: ``python toil-sort-example.py file:jobStore``.
 3. Run with options: ``python toil-sort-example.py file:jobStore --num-lines 5000 --line-length 10 --workDir /tmp/``
 
+The ``if __name__ == '__main__'`` boilerplate is required to enable Toil to import the job
+functions defined in the script into the context of a Toil *worker* process. By invoking the script
+you created the *leader process*. A worker process is a separate process whose sole purpose is to
+host the execution of one or more jobs defined in that script. When using the single-machine batch
+system (the default), the worker processes will be running on the same machine as the leader
+process. With full-fledged batch systems like Mesos the worker processes will typically be started
+on separate machines. The boilerplate ensures that the pipeline is only started once–on the
+leader–but not when its job functions are imported and executed on the individual workers.
+
 Typing ``python toil-sort-example.py --help`` will show the complete list of arguments for the workflow which includes
 both Toil's and ones defined inside **toil-sort-example.py**.  A complete explanation of Toil's arguments can be found
 in :ref:`commandRef`.
