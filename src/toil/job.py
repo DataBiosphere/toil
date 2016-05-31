@@ -2044,7 +2044,13 @@ class Job(object):
                 return getattr(importlib.import_module(module_name), class_name)
 
         unpickler.find_global = filter_main
-        return unpickler.load()
+        try:
+            return unpickler.load()
+        except EOFError:
+            raise RuntimeError('EOFError encountered while unpickling a promise. Is the job '
+                               'attempting to receive a promise from a non-encapsulated parent?')
+
+
 
     def getUserScript(self):
         return self.userModule
