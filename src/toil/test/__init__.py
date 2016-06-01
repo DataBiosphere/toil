@@ -19,9 +19,9 @@ import tempfile
 import unittest
 import shutil
 import re
-import subprocess
 
 from bd2k.util.files import mkdir_p
+from bd2k.util.processes import which
 
 from toil import toilPackageDirPath
 
@@ -198,15 +198,11 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     test_item = _mark_test('gridengine', test_item)
-    try:
-        with open(os.devnull, 'r+') as devnull:
-            subprocess.Popen('qsub', stdout=devnull, stderr=devnull, stdin=devnull)
-    except OSError:
-        return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
-    except:
-        raise
-    else:
+    if next(which('qsub'), None):
         return test_item
+    else:
+        return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
+        
 
 
 def needs_mesos(test_item):
@@ -232,15 +228,10 @@ def needs_parasol(test_item):
     Use as decorator so tests are only run if Parasol is installed.
     """
     test_item = _mark_test('parasol', test_item)
-    try:
-        with open(os.devnull, 'r+') as devnull:
-            subprocess.Popen('parasol', stdout=devnull, stderr=devnull, stdin=devnull)
-    except OSError:
-        return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
-    except:
-        raise
-    else:
+    if next(which('parasol'), None):
         return test_item
+    else:
+        return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
 
 
 def needs_slurm(test_item):
@@ -248,15 +239,10 @@ def needs_slurm(test_item):
     Use as a decorator before test classes or methods to only run them if Slurm is installed.
     """
     test_item = _mark_test('slurm', test_item)
-    try:
-        with open(os.devnull, 'r+') as devnull:
-            subprocess.Popen('squeue', stdout=devnull, stderr=devnull, stdin=devnull)
-    except OSError:
-        return unittest.skip("Skipping test. Install Slurm to include this test.")(test_item)
-    except:
-        raise
-    else:
+    if next(which('squeue'), None):
         return test_item
+    else:
+        return unittest.skip("Skipping test. Install Slurm to include this test.")(test_item)
 
 
 def needs_encryption(test_item):
