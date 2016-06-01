@@ -14,9 +14,12 @@
 
 from __future__ import absolute_import
 
+import threading
 from StringIO import StringIO
 from contextlib import contextmanager
 import logging
+from multiprocessing import cpu_count
+
 import os
 import re
 import uuid
@@ -37,6 +40,7 @@ from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError
+from concurrent.futures import ThreadPoolExecutor
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -49,46 +53,6 @@ import toil.lib.encryption as encryption
 log = logging.getLogger(__name__)
 
 defaultPartSize = 2 ** 20 * 50
-
-
-def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
-    """
-    Copies a key from a source key to a destination key in multiple parts. Note that if the
-    destination key exists it will be overwritten implicitly, and if it does not exist a new
-    key will be created.
-
-    :param boto.s3.key.Key srcKey: The source key to be copied from.
-    :param str dstBucketName: The name of the destination bucket for the copy.
-    :param str dstKeyName: The name of the destination key that will be created or overwritten.
-    :param dict headers: Any headers that should be passed.
-
-    :rtype: boto.s3.multipart.CompletedMultiPartUpload
-    :return: An object representing the completed upload.
-    """
-    partSize = defaultPartSize
-    s3 = boto.connect_s3()
-    headers = headers or {}
-    totalSize = srcKey.size
-
-    # initiate copy
-    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName, headers=headers)
-    try:
-        start = 0
-        partIndex = itertools.count()
-        while start < totalSize:
-            end = min(start + partSize, totalSize)
-            upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                      src_key_name=srcKey.name,
-                                      part_num=next(partIndex)+1,
-                                      start=start,
-                                      end=end-1,
-                                      headers=headers)
-            start += partSize
-    except:
-        upload.cancel_upload()
-        raise
-    else:
-        return upload.complete_upload()
 
 
 class AWSJobStore(AbstractJobStore):
@@ -755,26 +719,25 @@ class AWSJobStore(AbstractJobStore):
                     self.version = key.version_id
                 else:
                     with open(localFilePath, 'rb') as f:
-                        upload = self.outer.filesBucket.initiate_multipart_upload(
-                            key_name=self.fileID,
-                            headers=headers)
-                        try:
-                            start = 0
-                            part_num = itertools.count()
-                            while start < file_size:
-                                end = min(start + self.outer.partSize, file_size)
-                                assert f.tell() == start
-                                upload.upload_part_from_file(fp=f,
-                                                             part_num=next(part_num) + 1,
-                                                             size=end - start,
-                                                             headers=headers)
-                                start = end
-                            assert f.tell() == file_size == start
-                        except:
-                            upload.cancel_upload()
-                            raise
-                        else:
-                            self.version = upload.complete_upload().version_id
+                        def _uploadPart(upload, srcObj, partIndex, partSize, totalSize, startByte, headers=None):
+                            assert srcObj.tell() == startByte
+                            part = upload.upload_part_from_file(fp=srcObj,
+                                                                part_num=partIndex+1,
+                                                                size=min(startByte + partSize, totalSize) - startByte,
+                                                                headers=headers or {})
+                            log.debug("Uploaded part %d" % partSize)
+                            return part
+
+                        log.info("Initiated multipart upload of %s to 's3://%s/%s'." %
+                                 (localFilePath, self.outer.filesBucket.name, self.fileID))
+                        self.version = awsMultipartTransfer(partFn=_uploadPart,
+                                                            dstBucketName=self.outer.filesBucket.name,
+                                                            dstKeyName=self.fileID,
+                                                            partSize=defaultPartSize,
+                                                            totalSize=os.stat(localFilePath).st_size,
+                                                            headers=headers).version_id
+                        log.info("Multipart upload completed.")
+
                 key = self.outer.filesBucket.get_key(self.fileID,
                                                      headers=headers,
                                                      version_id=self.version)
@@ -838,8 +801,7 @@ class AWSJobStore(AbstractJobStore):
 
             :param srcKey: The key that will be copied from
             """
-            size = srcKey.bucket.get_key(srcKey.name).size
-            if size <= self._maxInlinedSize():
+            if srcKey.size <= self._maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
                 self.version = self._copyKey(srcKey=srcKey,
@@ -1048,3 +1010,80 @@ class AWSJob(JobWrapper, SDBHelper):
         :return: a str for the item's name and a dictionary for the item's attributes
         """
         return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self))
+
+
+def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
+    """
+    Copies a key from a source key to a destination key in multiple parts. Note that if the
+    destination key exists it will be overwritten implicitly, and if it does not exist a new
+    key will be created. If the destination bucket does not exist an error will be raised.
+
+    :param boto.s3.key.Key srcKey: The source key to be copied from.
+    :param str dstBucketName: The name of the destination bucket for the copy.
+    :param str dstKeyName: The name of the destination key that will be created or overwritten.
+    :param dict headers: Any headers that should be passed.
+
+    :rtype: boto.s3.multipart.CompletedMultiPartUpload
+    :return: An object representing the completed upload.
+    """
+    def _copyPart(upload, srcKey, partIndex, partSize, totalSize, startByte, headers=None):
+        part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
+                                         src_key_name=srcKey.name,
+                                         part_num=partIndex + 1,
+                                         start=startByte,
+                                         end=min(startByte + partSize, totalSize) - 1,
+                                         headers=headers or {})
+
+        log.debug("copying part %d" % partIndex)
+        return part
+
+    log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'." %
+             (srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName))
+    copy = awsMultipartTransfer(partFn=_copyPart,
+                                dstBucketName=dstBucketName,
+                                dstKeyName=dstKeyName,
+                                partSize=defaultPartSize,
+                                totalSize=srcKey.size,
+                                headers=headers)
+    log.info("Multipart copy completed.")
+    return copy
+
+
+def awsMultipartTransfer(partFn, dstBucketName, dstKeyName, partSize, totalSize, headers=None, **kwargs):
+    upload = boto.connect_s3().get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName, headers=headers or {})
+
+    failureEvent = threading.Event()
+    totalParts = (totalSize / partSize) + 1 if totalSize % partSize else (totalSize / partSize)
+
+    def _outerPartFn(partIndex):
+        if failureEvent.isSet():
+            return None
+        else:
+            try:
+                if partIndex * partSize <= totalSize:
+                    startByte = partIndex * partSize
+                else:
+                    startByte = totalSize - ((partIndex - 1) * partSize)
+
+                return partFn(upload=upload,
+                              srcObj=kwargs['srcObj'],
+                              partIndex=partIndex,
+                              partSize=partSize,
+                              totalSize=totalSize,
+                              startByte=startByte,
+                              headers=headers or {})
+            except:
+                failureEvent.set()
+                return None
+
+    try:
+        with ThreadPoolExecutor(max_workers=min(cpu_count() * 2**4, totalParts)) as executor:
+            finishedParts = set(executor.map(_outerPartFn, range(0, totalParts)))
+            if failureEvent.isSet():
+                raise RuntimeError()
+            assert len(finishedParts) == totalParts
+    except:
+        upload.cancel_upload()
+        raise
+    else:
+        return upload.complete_upload()
