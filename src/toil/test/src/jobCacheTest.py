@@ -218,6 +218,7 @@ class Hidden:
             or results in an error due to lack of space, respectively.  Ensure that the behavior is
             as expected.
             """
+            self.options.retryCount = 0
             if diskRequestMB > 50:
                 # This can be non int as it will never reach _probeJobReqs
                 expectedResult = 'Fail'
@@ -231,7 +232,7 @@ class Hidden:
                 C = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, fileMB=file2MB)
                 D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
-                # Set it to > 2GB such that the cleanup jobs don't die
+                # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
                 F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
                 G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
                                   disk='100M')
@@ -673,19 +674,21 @@ class Hidden:
         @staticmethod
         def _controlledFailTestFn(job, jobDisk, testDir):
             """
-            This is the aux function for the controlled failed worker test.  It does a couple of cache
-            operations, fails, then checks whether the new worker starts with the expected value, and
-            whether it exits with zero for sigmaJob.
-            :param jobDisk: Disk space supplied for this job
+            This is the aux function for the controlled failed worker test.  It does a couple of
+            cache operations, fails, then checks whether the new worker starts with the expected
+            value, and whether it exits with zero for sigmaJob.
+
+            :param float jobDisk: Disk space supplied for this job
+            :param str testDir: T3sting directory
             """
+            HACT = Hidden.AbstractCacheTest
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
                 with open(os.path.join(testDir, 'testfile.test'), 'r') as fH:
                     cached = unpack('d', fH.read())[0]
-                Hidden.AbstractCacheTest._requirementsConcur(job, jobDisk, cached)
-                Hidden.AbstractCacheTest._returnFileTestFn(job, jobDisk, cached, testDir, 20)
+                HACT._requirementsConcur(job, jobDisk, cached)
+                HACT._returnFileTestFn(job, jobDisk, cached, testDir, 20)
             else:
-                modifiedJobReqs, cached = Hidden.AbstractCacheTest._returnFileTestFn(job, jobDisk, 0,
-                                                                                     testDir, 20)
+                modifiedJobReqs, cached = HACT._returnFileTestFn(job, jobDisk, 0, testDir, 20)
                 with open(os.path.join(testDir, 'testfile.test'), 'w') as fH:
                     fH.write(pack('d', cached))
                 os.kill(os.getpid(), signal.SIGKILL)
@@ -708,12 +711,7 @@ class Hidden:
             B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
                               memory='20M')
             A.addChild(B)
-            try:
-                Job.Runner.startToil(A, self.options)
-            except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 2)
-                errType, errMsg = self._parseAssertionError(self.options.logFile)
-                self.assertEqual(errType, 'IllegalDeletionCacheError')
+            Job.Runner.startToil(A, self.options)
 
         @staticmethod
         def _removeReadFileFn(job, fileToDelete, readAsMutable):
@@ -731,16 +729,18 @@ class Hidden:
             # Read in the file
             outfile = job.fileStore.readGlobalFile(fileToDelete, os.path.join(work_dir, 'temp'),
                                                    mutable=readAsMutable)
+            tempfile = os.path.join(work_dir, 'tmp.tmp')
             # The first time we run this loop, processsingReadFile is True and fileToDelete is the
             # file read from the job store.  The second time, processsingReadFile is False and
             # fileToDelete is one that was just written in to the job store. Ensure the correct
             # behaviour is seen in both conditions.
             while True:
-                os.remove(outfile)
+                os.rename(outfile, tempfile)
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except IllegalDeletionCacheError:
-                    pass
+                    job.fileStore.logToMaster('Detected a deleted file %s.' % fileToDelete)
+                    os.rename(tempfile, outfile)
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
                     # file, we should not reach here.
@@ -842,6 +842,7 @@ class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
 ################################################################################
 # Define utility functions because toil can't pickle static methods
 ################################################################################
+
 _writeFileToJobStore = Hidden.AbstractCacheTest._writeFileToJobStore
 _sleepy = Hidden.AbstractCacheTest._sleepy
 _readFromJobStore = Hidden.AbstractCacheTest._readFromJobStore
