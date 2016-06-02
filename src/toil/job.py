@@ -1288,9 +1288,7 @@ class Job(object):
                                     logger.debug(fileToDelete,  'was read mutably and deleted by '
                                                  'the user')
                                 else:
-                                    raise CacheError('Illegal operation detected. Cache tracked'
-                                                     'file deleted explicitly by user. Use'
-                                                     'deleteLocalFile to delete such files.')
+                                    raise IllegalDeletionCacheError(fileToDelete)
                         allOwnedFiles[fileToDelete].remove(fileStoreID)
                         filesToDelete.pop(fileToDelete)
                         cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
@@ -1300,9 +1298,7 @@ class Job(object):
                     # Get the size of the file to be deleted, and the number of jobs using the file
                     # at the moment.
                     if not os.path.exists(fileToDelete):
-                        raise CacheError('Illegal operation detected. Cache tracked file deleted '
-                                         'explicitly by user. Use deleteLocalFile to delete such '
-                                         'files.')
+                        raise IllegalDeletionCacheError(fileToDelete)
                     fileStats = os.stat(fileToDelete)
                     if fileSize != fileStats.st_size:
                         logger.warn("the size on record differed from the real size by " +
@@ -1511,11 +1507,11 @@ class Job(object):
                 # The file to be cached MUST originate in the environment of the TOIL temp directory
                 if (os.stat(self.localCacheDir).st_dev !=
                         os.stat(os.path.dirname(localFilePath)).st_dev):
-                    raise CacheInvalidSrcError('Attempting to cache a file across file systems '
+                    raise InvalidSourceCacheError('Attempting to cache a file across file systems '
                                                'cachedir = %s, file = %s.' % (self.localCacheDir,
                                                                               localFilePath))
                 if not localFilePath.startswith(self.localTempDir):
-                    raise CacheInvalidSrcError('Attempting a cache operation on a non-local file '
+                    raise InvalidSourceCacheError('Attempting a cache operation on a non-local file '
                                                '%s.' % localFilePath)
                 if callingFunc == 'read' and mutable:
                     shutil.copyfile(cachedFile, localFilePath)
@@ -2454,13 +2450,24 @@ class CacheError(Exception):
         super(CacheError, self).__init__(message)
 
 
-class CacheInvalidSrcError(Exception):
+class IllegalDeletionCacheError(CacheError):
+    '''
+    Error Raised if the Toil detects the user deletes a cached file
+    '''
+
+    def __init__(self, deletedFile):
+        message = 'Cache tracked file (%s) deleted explicitly by user. Use deleteLocalFile to ' \
+                  'delete such files.' % deletedFile
+        super(IllegalDeletionCacheError, self).__init__(message)
+
+
+class InvalidSourceCacheError(CacheError):
     '''
     Error Raised if the user attempts to add a non-local file to cache
     '''
 
     def __init__(self, message):
-        super(CacheInvalidSrcError, self).__init__(message)
+        super(InvalidSourceCacheError, self).__init__(message)
 
 
 class FunctionWrappingJob(Job):
