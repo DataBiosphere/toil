@@ -1,11 +1,11 @@
 .. _running:
 
-Running A Workflow
+Running a workflow
 ==================
 
 .. _quickstart:
 
-Running Quick Start
+Running quick start
 -------------------
 
 Starting with Python, a Toil workflow can be run with just three steps.
@@ -36,7 +36,7 @@ Run ``python HelloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a hello world example, refer to :ref:`runningDetail`
 
-Running CWL Workflows
+Running CWL workflows
 ---------------------
 
 The `Common Workflow Language`_ (CWL) is an emerging standard for writing
@@ -61,7 +61,7 @@ Consult the appropriate sections.
 
 .. _runningDetail:
 
-Running a Toil Pipeline in Detail
+Running a Toil pipeline in detail
 ---------------------------------
 
 For a detailed example and explanation, we'll walk through running a pipeline
@@ -285,7 +285,7 @@ get back information about total runtime and stats pertaining to each job functi
 
 We can then cleanup our jobStore by running ``toil clean file:jobStore``
 
-Running in the Cloud
+Running in the cloud
 ====================
 
 There are several recommended ways to run Toil jobs in the cloud. Of these, running on Amazon Web Services (AWS) is currently the best-supported solution.

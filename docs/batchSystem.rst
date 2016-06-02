@@ -1,6 +1,6 @@
 .. _batchsysteminterface:
 
-The Batch System Interface
+The batch system interface
 ==========================
 
 The batch system interface is used by Toil to abstract over different ways of running

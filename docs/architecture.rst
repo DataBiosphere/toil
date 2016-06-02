@@ -1,4 +1,4 @@
-Toil Architecture
+Toil architecture
 *****************
 
 The following diagram layouts out the software architecture of Toil. 
@@ -55,7 +55,7 @@ Optimizations
 Toil implements lots of optimizations designed for scalability.
 Here we detail some of the key optimizations.
 
-Read-only Leader
+Read-only leader
 ~~~~~~~~~~~~~~~~
 
 The leader process is currently implemented as a single thread. Most of the leader's
@@ -69,7 +69,7 @@ only has to check for the existence of the file when it receives a signal from t
 to know that the job is complete. This off-loading of state management is orthogonal to
 future parallelization of the leader. 
 
-Job Chaining
+Job chaining
 ~~~~~~~~~~~~
 
 The scheduling of successor jobs is partially managed by the worker, reducing the 
@@ -81,7 +81,7 @@ of this strategy are possible, but for many workflows which define a series of s
 (e.g. map sequencing reads, post-process mapped reads, etc.) this pattern is very effective
 at reducing leader workload. 
 
-Preemptable Node Support
+Preemptable node support
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Critical to running at large-scale is dealing with intermittent node failures. Toil is
