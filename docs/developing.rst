@@ -1,12 +1,12 @@
 .. _tutorial-ref:
 
-Developing A Workflow
+Developing a workflow
 =====================
 
 This tutorial walks through the features of Toil necessary for developing a workflow 
 using the Toil Python API.
 
-Scripting Quick Start
+Scripting quick start
 ---------------------
 
 To begin, consider this short toil script which illustrates defining a workflow::
@@ -326,7 +326,7 @@ follows::
          
 Note the use of an extra child edge to make j4 a child of both j2 and j3. 
 
-Dynamic Job Creation
+Dynamic job creation
 --------------------
 
 The previous examples show a workflow being defined outside of a job. 

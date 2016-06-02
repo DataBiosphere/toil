@@ -12,7 +12,7 @@ Prerequisites
 
 .. _installation-ref:
 
-Basic Installation
+Basic installation
 ------------------
 
 To setup a basic Toil installation use
@@ -106,7 +106,7 @@ Here's what each extra provides:
 
 .. _Common Workflow Language: http://commonwl.org
 
-Building & Testing
+Building & testing
 ------------------
 
 For developers and people interested in building the project from source the following
@@ -178,7 +178,7 @@ Azure extra, the following can be used::
 
    make test tests="-m 'not azure and not parasol' src"
 
-Running Mesos Tests
+Running mesos tests
 ~~~~~~~~~~~~~~~~~~~
 
 See :ref:`Apache Mesos <mesos>`. Be sure to create the virtualenv with
@@ -188,12 +188,12 @@ this may come up empty. To fix it, run the following::
 
     for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
 
-Cloud Installation
+Cloud installation
 ==================
 
 .. _installationAWS:
 
-Installation on AWS for Distributed Computing
+Installation on AWS for distributed computing
 ---------------------------------------------
 We use CGCloud_ to provision instances and clusters in AWS. Thorough documentation of CGCloud_ can be found
 in the CGCloud-core_ and CGCloud-toil_ documentation. Brief steps will be provided to those
@@ -203,7 +203,7 @@ interested in using CGCloud_ for provisioning.
 .. _CGCloud-core: https://github.com/BD2KGenomics/cgcloud/blob/master/core/README.rst
 .. _CGCloud-toil: https://github.com/BD2KGenomics/cgcloud/blob/master/toil/README.rst
 
-CGCloud in a Nutshell
+CGCloud in a nutshell
 ~~~~~~~~~~~~~~~~~~~~~
 Setting up clusters with CGCloud_ has the benefit of coming pre-packaged with Toil and Mesos, our preferred
 batch system for running on AWS. If you encounter any issues following these steps, check official documentation

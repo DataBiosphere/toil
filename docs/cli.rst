@@ -1,6 +1,6 @@
 .. _commandRef:
 
-Command Line Interface and Arguments
+Command line interface and arguments
 ====================================
 
 Toil provides many command line options when running a toil script (see :ref:`running`), 
@@ -53,14 +53,14 @@ the same options as ``--clean``.  This option should only be run when debugging,
 disk space.
 
 
-BatchSystem
------------
+Batch system
+------------
 
 Toil supports several different batch systems using the ``--batchSystem`` argument.
 More information in the :ref:`batchsysteminterface`.
 
 
-Default Cores, Disk, and Memory
+Default cores, disk, and memory
 -------------------------------
 
 Toil uses resource requirements to intelligently schedule jobs. The defaults for cores (1), disk (2G), and memory (2G),
@@ -68,7 +68,7 @@ can all be changed using ``--defaultCores``, ``--defaultDisk``, and ``--defaultM
 like K, Ki, M, Mi, G or Gi are supported.
 
 
-Job Store
+Job store
 ---------
 
 Running toil scripts has one required positional argument: the job store.  The default job store is just a path
