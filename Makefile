@@ -14,11 +14,17 @@
 
 define help
 
-Supported targets: 'develop', 'docs', 'sdist', 'clean', 'test', 'pypi', or 'pypi_stable'.
+Supported targets: prepare, develop, docs, sdist, clean, test, pypi.
 
-The 'develop' target creates an editable install (aka develop mode). Set the 'extras' variable to
-ensure that develop mode installs support for extras. Consult setup.py for a list of supported
-extras. To install Toil in develop mode with all extras, run
+Please note that all build targets require a virtualenv to be active. 
+
+The 'prepare' target installs Toil's build requirements into the current virtualenv.
+
+The 'develop' target creates an editable install of Toil and its runtime requirements in the 
+current virtualenv. The install is called 'editable' because changes to the source code 
+immediately affect the virtualenv. Set the 'extras' variable to ensure that the 'develop' target 
+installs support for extras. Consult setup.py for the list of supported extras. To install Toil 
+in develop mode with all extras, run 
 
 	make develop extras=[mesos,aws,google,azure,cwl,encryption]
 
@@ -35,9 +41,6 @@ The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a part
 
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
-
-The 'pypi_stable' target is like 'pypi' except that it doesn't tag the build as an unstable build.
-IOW, it publishes a stable release.
 
 endef
 export help
@@ -84,7 +87,7 @@ clean_pypi:
 	- rm -rf build/
 
 
-docs: check_venv
+docs: check_venv check_build_reqs
 	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && make html 2>&1 | grep -v "WARNING: duplicate object description of"
 clean_docs: check_venv
@@ -94,14 +97,18 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_pypi clean_docs
 
 
+check_build_reqs:
+	@$(python) -c 'import mock; import pytest' \
+		|| ( echo "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)" ; false )
+
+
+prepare: check_venv
+	$(pip) install sphinx==1.4.1 mock==1.0.1 pytest==2.8.3
+
+
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
 		|| ( echo "$(red)A virtualenv must be active.$(normal)" ; false )
-
-
-check_build_reqs:
-	@$(python) -c 'import mock; import pytest' \
-		|| ( echo "$(red)Build requirements are missing. See jenkins.sh for what those are.$(normal)" ; false )
 
 
 check_clean_working_copy:
@@ -122,6 +129,15 @@ check_running_on_jenkins:
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
 
-.PHONY: help develop clean_develop sdist clean_sdist test \
-		pypi pypi_stable clean_pypi docs clean_docs clean \
-		check_venv check_clean_working_copy check_running_on_jenkins
+.PHONY: help \
+		prepare \
+		develop clean_develop \
+		sdist clean_sdist \
+		test \
+		pypi clean_pypi \
+		docs clean_docs \
+		clean \
+		check_venv \
+		check_clean_working_copy \
+		check_running_on_jenkins \
+		check_build_reqs

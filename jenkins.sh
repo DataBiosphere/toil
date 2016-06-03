@@ -7,8 +7,8 @@
 virtualenv --system-site-packages venv
 . venv/bin/activate
 
-# Install build requirements (Note to maintainer: keep consistent with check_build_reqs in Makefile)
-pip install sphinx==1.4.1 mock==1.0.1 pytest==2.8.3
+# Install build requirements 
+make prepare
 
 # Install Toil and its runtime requirements
 make develop extras=[aws,mesos,azure,encryption,cwl]

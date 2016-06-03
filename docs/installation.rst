@@ -56,7 +56,8 @@ Here's what each extra provides:
   * :ref:`Python headers and static libraries <python-dev>`
   * :ref:`Libffi headers and library <libffi-dev>`
 
-* The ``cwl`` extra provides support for running workflows written using the `Common Workflow Language`_.
+* The ``cwl`` extra provides support for running workflows written using the
+  `Common Workflow Language`_.
 
 .. _mesos:
 .. topic:: Apache Mesos
@@ -77,6 +78,15 @@ Here's what each extra provides:
    ``easy_install -a <path_to_egg>``. Note that on Ubuntu Trusty you may need
    to upgrade ``protobuf`` via ``pip install --upgrade protobuf`` **before**
    running the above ``easy_install`` command.
+   
+   If you intend to install Toil with the ``mesos`` extra into a virtualenv, be
+   sure to create that virtualenv with
+
+   ::
+
+      virtualenv --system-site-packages
+
+   Otherwise, Toil will not be able to import the ``mesos.native`` module.
 
 .. _python-dev:
 .. topic:: Python headers and static libraries
@@ -109,10 +119,12 @@ Here's what each extra provides:
 Building & testing
 ------------------
 
-For developers and people interested in building the project from source the following
-explains how to setup virtualenv to create an environment to use Toil in.
+For developers and people interested in building the project from source the
+following explains how to setup virtualenv to create an environment to use Toil
+in.
 
-After cloning the source and ``cd``-ing into the project root, create a virtualenv and activate it::
+After cloning the source and ``cd``-ing into the project root, create a
+virtualenv and activate it::
 
     virtualenv venv
     . venv/bin/activate
@@ -126,23 +138,45 @@ Simply running
 from the project root will print a description of the available Makefile
 targets.
 
-If cloning from GitHub, running
+Once you created and activated the virtualenv, the first step is to install the
+build requirements. These are additional packages that Toil needs to be tested
+and built, but not run::
+
+   make prepare
+
+Once the virtualenv has been prepared with the build requirements, running
 
 ::
 
    make develop
 
-will install Toil in *editable* mode, also known as `development mode`_. Just
-like with a regular install, you may specify extras to use in development mode
-after installing any native dependencies listed in :ref:`installation-ref`.
+will create an editable installation of Toil and its runtime requirements in
+the current virtualenv. The installation is called *editable* (also known as a
+`development mode`_ installation) because changes to the Toil source code
+immediately affect the virtualenv. Optionally, set the ``extras`` variable to
+ensure that ``make develop`` installs support for optional extras. Consult
+``setup.py`` for the list of supported extras. To install Toil in development
+mode with all extras run
 
 ::
 
-   make develop extras=[aws,mesos,azure,google,encryption]
+   make develop extras=[aws,mesos,azure,google,encryption,cwl]
 
 .. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
 
-To build the docs use
+Note that some extras have native dependencies as listed in
+:ref:`installation-ref`. Be sure to install them before running the above
+command. If you get
+
+::
+
+   ImportError: No module named mesos.native
+
+make sure you install Mesos and the Mesos egg as described in :ref:`Apache
+Mesos <mesos>` and be sure to create the virtualenv with
+``--system-site-packages``.
+
+To build the docs, run ``make develop`` with all extras followed by
 
 ::
 
@@ -178,7 +212,7 @@ Azure extra, the following can be used::
 
    make test tests="-m 'not azure and not parasol' src"
 
-Running mesos tests
+Running Mesos tests
 ~~~~~~~~~~~~~~~~~~~
 
 See :ref:`Apache Mesos <mesos>`. Be sure to create the virtualenv with
