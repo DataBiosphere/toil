@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import os
 import uuid
 import logging
@@ -21,6 +22,9 @@ import bz2
 import cPickle
 import socket
 import httplib
+import time
+from collections import Iterable, Iterator
+from typing import Callable
 from datetime import datetime, timedelta
 
 from ConfigParser import RawConfigParser, NoOptionError
@@ -81,7 +85,46 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and
     Table Service to store job info with strong consistency."""
 
-    def __init__(self, accountName, namePrefix, config=None, jobChunkSize=maxAzureTablePropertySize):
+    @classmethod
+    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
+        account, namePrefix = jobStoreString.split(':', 1)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        if not cls.containerNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > cls.maxContainerNameLen - cls.maxNameLen - len(cls.nameSeparator):
+            raise ValueError(("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                              "characters." % namePrefix))
+
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, cls.nameSeparator))
+
+        return cls(account, namePrefix, config=config, **kwargs)
+
+    # Dots in container names should be avoided because container names are used in HTTPS bucket
+    # URLs where the may interfere with the certificate common name. We use a double
+    # underscore as a separator instead.
+    #
+    containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
+
+    # See https://msdn.microsoft.com/en-us/library/azure/dd135715.aspx
+    #
+    minContainerNameLen = 3
+    maxContainerNameLen = 63
+    maxNameLen = 10
+    nameSeparator = 'xx'  # Table names must be alphanumeric
+
+    # Do not invoke the constructor, use the factory method above.
+
+    def __init__(self, accountName, namePrefix, config=None,
+                 jobChunkSize=maxAzureTablePropertySize):
         self.jobChunkSize = jobChunkSize
         self.keyPath = None
 
@@ -120,9 +163,6 @@ class AzureJobStore(AbstractJobStore):
         if self.config.cseKey is not None:
             self.keyPath = self.config.cseKey
 
-    # Table names must be alphanumeric
-    nameSeparator = 'xx'
-
     # Length of a jobID - used to test if a stats file has been read already or not
     jobIDLength = len(str(uuid.uuid4()))
 
@@ -130,20 +170,20 @@ class AzureJobStore(AbstractJobStore):
         return self.namePrefix + self.nameSeparator + name
 
     def jobs(self):
-        
+
         # How many jobs have we done?
         total_processed = 0
-            
+
         for jobEntity in self.jobItems.query_entities_auto():
             # Process the items in the page
             yield AzureJob.fromEntity(jobEntity)
             total_processed += 1
-            
+
             if total_processed % 1000 == 0:
                 # Produce some feedback for the user, because this can take
                 # a long time on, for example, Azure
                 logger.info("Processed %d total jobs" % total_processed)
-            
+
         logger.info("Processed %d total jobs" % total_processed)
 
     def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
@@ -210,6 +250,7 @@ class AzureJobStore(AbstractJobStore):
         """
         :return: (blobService, containerName, blobName)
         """
+
         def invalidUrl():
             raise RuntimeError("The URL '%s' is invalid" % url.geturl())
 
@@ -305,12 +346,14 @@ class AzureJobStore(AbstractJobStore):
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         with self._uploadStream(sharedFileID, self.files, encrypted=isProtected) as fd:
             yield fd
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
+        assert self._validateSharedFileName(sharedFileName)
         sharedFileID = self._newFileID(sharedFileName)
         if not self.fileExists(sharedFileID):
             raise NoSuchFileException(sharedFileID)
@@ -589,33 +632,33 @@ class AzureTable(object):
             return self.__getattr__('get_entity')(**kwargs)
         except AzureMissingResourceHttpError:
             return None
-    
+
     def query_entities_auto(self, **kwargs):
         """
         An automatically-paged version of query_entities. The iterator just
         yields all entities matching the query, occasionally going back to Azure
         for the next page.
         """
-        
+
         # We need to page through the results, since we only get some of them at
         # a time. Just like in the BlobService. See the only documentation
         # available: the API bindings source code, at:
         # https://github.com/Azure/azure-storage-python/blob/09e9f186740407672777d6cb6646c33a2273e1a8/azure/storage/table/tableservice.py#L385
-        
+
         # These two together constitute the primary key for an item. 
         next_partition_key = None
         next_row_key = None
-    
+
         while True:
             # Get a page (up to 1000 items)
             kwargs['next_partition_key'] = next_partition_key
             kwargs['next_row_key'] = next_row_key
             page = self.query_entities(**kwargs)
-            
+
             for result in page:
                 # Yield each item one at a time
                 yield result
-                
+
             if hasattr(page, 'x_ms_continuation'):
                 # Next time ask for the next page. If you use .get() you need
                 # the lower-case versions, but this is some kind of fancy case-
@@ -626,7 +669,7 @@ class AzureTable(object):
                 # No continuation to check
                 next_partition_key = None
                 next_row_key = None
-            
+
             if not next_partition_key and not next_row_key:
                 # If we run out of pages, stop
                 break
@@ -709,101 +752,132 @@ class AzureJob(JobWrapper):
         return item
 
 
-def retryOnAzureTimeout(exception):
-    timeoutMsg = "could not be completed within the specified time"
-    busyMsg = "Service Unavailable"
-    return (isinstance(exception, AzureException) and
-            (timeoutMsg in str(exception) or busyMsg in str(exception)))
 
-
-def retry_on_error(num_tries=5, retriable_exceptions=(socket.error, socket.gaierror,
-                                                      httplib.HTTPException, requests.ConnectionError),
-                   retriable_check=retryOnAzureTimeout):
+def defaultRetryPredicate(exception):
     """
-    Retries on a set of allowable exceptions, retrying temporary Azure errors by default.
+    >>> defaultRetryPredicate(socket.error())
+    True
+    >>> defaultRetryPredicate(socket.gaierror())
+    True
+    >>> defaultRetryPredicate(httplib.HTTPException())
+    True
+    >>> defaultRetryPredicate(requests.ConnectionError())
+    True
+    >>> defaultRetryPredicate(AzureException('x could not be completed within the specified time'))
+    True
+    >>> defaultRetryPredicate(AzureException('x service unavailable'))
+    True
+    >>> defaultRetryPredicate(AzureException('x server is busy'))
+    True
+    >>> defaultRetryPredicate(AzureException('x'))
+    False
+    >>> defaultRetryPredicate(RuntimeError())
+    False
+    """
+    return (isinstance(exception, (socket.error,
+                                   socket.gaierror,
+                                   httplib.HTTPException,
+                                   requests.ConnectionError))
+            or isinstance(exception, AzureException) and
+            any(message in str(exception).lower() for message in (
+                "could not be completed within the specified time",
+                "service unavailable",
+                "server is busy")))
 
-    :param num_tries: number of times to try before giving up.
-    :param retriable_exceptions: a tuple of exceptions that should always be retried.
-    :param retriable_check: a function that takes an exception not in retriable_exceptions \
-    and returns True if it should be retried, and False otherwise.
+def retry_on_error(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=defaultRetryPredicate):
+    """
+    Retry an EC2 operation while the failure matches a given predicate and until a given timeout
+    expires, waiting a given amount of time in between attempts. This function is a generator
+    that yields contextmanagers. See doctests below for example usage.
 
-    :return: a generator yielding contextmanagers
+    :param Iterable[float] delays: an interable yielding the time in seconds to wait before each 
+           retried attempt, the last element of the iterable will be repeated. 
 
-    Retry the correct number of times and then give up and reraise
+    :param float timeout: a overall timeout that should not be exceeded for all attempts together. 
+           This is a best-effort mechanism only and it won't abort an ongoing attempt, even if the 
+           timeout expires during that attempt. 
+
+    :param Callable[[Exception],bool] predicate: a unary callable returning True if another 
+           attempt should be made to recover from the given exception. 
+
+    :return: a generator yielding context managers, one per attempt
+    :rtype: Iterator
+
+    Retry for a limited amount of time:
+    
+    >>> true = lambda _:True
+    >>> false = lambda _:False
     >>> i = 0
-    >>> for attempt in retry_on_error(retriable_exceptions=(RuntimeError,)):
+    >>> for attempt in retry_on_error( delays=[0], timeout=.1, predicate=true ):
     ...     with attempt:
     ...         i += 1
-    ...         raise RuntimeError("foo")
+    ...         raise RuntimeError('foo')
     Traceback (most recent call last):
     ...
     RuntimeError: foo
-    >>> i
-    5
+    >>> i > 1
+    True
 
-    Give up and reraise on any unexpected exceptions
+    If timeout is 0, do exactly one attempt:
+    
     >>> i = 0
-    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=()):
+    >>> for attempt in retry_on_error( timeout=0 ):
     ...     with attempt:
     ...         i += 1
-    ...         raise RuntimeError("foo")
+    ...         raise RuntimeError( 'foo' )
     Traceback (most recent call last):
     ...
     RuntimeError: foo
     >>> i
     1
 
-    Retriable check function works as expected
+    Don't retry on success:
+    
     >>> i = 0
-    >>> for attempt in retry_on_error(num_tries=5, retriable_exceptions=(),
-    ...                               retriable_check=lambda x: str(x) == 'foo'):
-    ...     with attempt:
-    ...         i += 1
-    ...         if i == 3:
-    ...             raise RuntimeError("bar")
-    ...         else:
-    ...             raise RuntimeError("foo")
-    Traceback (most recent call last):
-    ...
-    RuntimeError: bar
-    >>> i
-    3
-
-    Do things only once if they succeed!
-    >>> i = 0
-    >>> for attempt in retry_on_error():
+    >>> for attempt in retry_on_error( delays=[0], timeout=.1, predicate=true ):
     ...     with attempt:
     ...         i += 1
     >>> i
     1
-    """
-    go = [None]
 
-    @contextmanager
-    def attempt(last=False):
-        try:
+    Don't retry on unless predicate returns True:
+    
+    >>> i = 0
+    >>> for attempt in retry_on_error( delays=[0], timeout=.1, predicate=false):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise RuntimeError( 'foo' )
+    Traceback (most recent call last):
+    ...
+    RuntimeError: foo
+    >>> i
+    1
+    """
+    if timeout > 0:
+        go = [None]
+
+        @contextmanager
+        def repeated_attempt(delay):
+            try:
+                yield
+            except Exception as e:
+                if time.time() + delay < expiration and predicate(e):
+                    logger.info('Got %s, trying again in %is.', e, delay)
+                    time.sleep(delay)
+                else:
+                    raise
+            else:
+                go.pop()
+
+        delays = iter(delays)
+        expiration = time.time() + timeout
+        delay = next(delays) 
+        while go:
+            yield repeated_attempt(delay)
+            delay = next(delays, delay)
+    else:
+        @contextmanager
+        def single_attempt():
             yield
-        except retriable_exceptions as e:
-            # Any instance of these exceptions is automatically retriable.
-            if last:
-                raise
-            else:
-                logger.info("Got a retriable exception %s, trying again" % e.__class__.__name__)
-        except Exception as e:
-            # For other exceptions, the retriable_check function determines whether to retry
-            if retriable_check(e):
-                logger.info("Exception %s passed predicate, trying again" % e.__class__.__name__)
-            else:
-                raise
-        else:
-            go.pop()
 
-    while go:
-        if num_tries == 1:
-            yield attempt(last=True)
-        else:
-            yield attempt()
-        # It's safe to do this, even with Python's weird default
-        # arguments behavior, since we are assigning to num_tries
-        # rather than mutating it.
-        num_tries -= 1
+        yield single_attempt()
