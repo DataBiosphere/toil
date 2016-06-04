@@ -38,13 +38,20 @@ def resolveEntryPoint(entryPoint):
     return value may be an absolute or a relative path.
     """
     if hasattr(sys, 'real_prefix'):
-        # Inside a virtualenv we will use absolute paths to the entrypoints. For clusters this
-        # means that if Toil is installed in a virtualenv on the leader, it must be installed in
-        # a virtualenv located at the same path on the worker.
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
-        assert os.path.isfile(path)
-        assert os.access(path, os.X_OK)
-        return path
+        # Inside a virtualenv we try to use absolute paths to the entrypoints. 
+        if os.path.isfile(path):
+            # If the entrypoint is present, Toil must have been installed into the virtualenv (as 
+            # opposed to being included via --system-site-packages). For clusters this means that 
+            # if Toil is installed in a virtualenv on the leader, it must be installed in
+            # a virtualenv located at the same path on each worker as well.
+            assert os.access(path, os.X_OK)
+            return path
+        else:
+            # For virtualenv's that have the toil package directory on their sys.path but whose 
+            # bin directory lacks the Toil entrypoints, i.e. where Toil is included via 
+            # --system-site-packages, we rely on PATH just as if we weren't in a virtualenv. 
+            return entryPoint
     else:
         # Outside a virtualenv it is hard to predict where the entry points got installed. It is
         # the reponsibility of the user to ensure that they are present on PATH and point to the
