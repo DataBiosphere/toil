@@ -410,8 +410,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         else:
             def stash(tmpDirPath):
                 # Save the original dirPath such that we can restore it in globalize()
-                with open(os.path.join(tmpDirPath, '.original'), 'w') as f:
-                    f.write(json.dumps(self))
+                with open(os.path.join(tmpDirPath, '.dirPath'), 'w') as f:
+                    f.write(self.dirPath)
 
             resource.download(callback=stash)
             return self.__class__(dirPath=resource.localDirPath, name=self.name)
@@ -430,8 +430,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         Reverse the effect of localize().
         """
         try:
-            with open(os.path.join(self.dirPath, '.original')) as f:
-                return self.__class__(*json.loads(f.read()))
+            with open(os.path.join(self.dirPath, '.dirPath')) as f:
+                dirPath = f.read()
         except IOError as e:
             if e.errno == errno.ENOENT:
                 if self._runningOnWorker():
@@ -439,6 +439,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
                 return self
             else:
                 raise
+        else:
+            return self.__class__( dirPath=dirPath, name=self.name )
+
 
     @property
     def _resourcePath(self):
