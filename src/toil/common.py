@@ -521,9 +521,10 @@ class Toil(object):
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
 
+        self._batchSystem = self.createBatchSystem(self.config, 
+                                                   jobStore=self._jobStore,
+                                                   userScript=rootJob.getUserScript())
         try:
-            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore,
-                                                       userScript=rootJob.getUserScript())
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
@@ -558,8 +559,8 @@ class Toil(object):
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
 
+        self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
         try:
-            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
@@ -615,8 +616,8 @@ class Toil(object):
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):
         """
-        Creates an instance of the batch system specified in the given config. If a job store and a user
-        script are given then the user script can be hot deployed into the workflow.
+        Creates an instance of the batch system specified in the given config. If a job store and 
+        a user script are given then the user script can be hot deployed into the workflow. 
 
         :param toil.common.Config config: the current configuration
         :param jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
