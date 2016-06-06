@@ -15,33 +15,37 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-import urlparse
-from Queue import Queue
-from abc import abstractmethod, ABCMeta
 import hashlib
-from itertools import chain, islice
+import io
+import itertools
 import logging
 import os
-import io
-import urllib2
-from threading import Thread
-import tempfile
-import uuid
 import shutil
+import tempfile
 import time
-import itertools
-
+import urllib2
+import urlparse
+import uuid
+from Queue import Queue
+from abc import abstractmethod, ABCMeta
+from itertools import chain, islice
+from threading import Thread
 from unittest import skip
-from toil.common import Config
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException)
-from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, needs_google
 
 from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
-from toil.jobStores.fileJobStore import FileJobStore
 
-from toil.test import ToilTest, needs_aws, needs_azure, needs_encryption, make_tests
+from toil.common import Config
+from toil.jobStores.abstractJobStore import (AbstractJobStore, 
+                                             NoSuchJobException,
+                                             NoSuchFileException)
+from toil.jobStores.fileJobStore import FileJobStore
+from toil.test import (ToilTest, 
+                       needs_aws, 
+                       needs_azure, 
+                       needs_encryption, 
+                       make_tests, 
+                       needs_google, 
+                       experimental)
 
 logger = logging.getLogger(__name__)
 
@@ -370,7 +374,8 @@ class hidden:
             jobStoreTestClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
             make_tests(importExportFile,
                        targetClass=cls,
-                       otherJobStore={jsCls.__name__: jsCls for jsCls in jobStoreTestClasses},
+                       otherJobStore={jsCls.__name__: jsCls for jsCls in jobStoreTestClasses 
+                                      if not getattr( jsCls, '__unittest_skip__', False ) },
                        size=dict(zero=0,
                                  one=1,
                                  oneMiB=2**20,
@@ -669,6 +674,7 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
         os.remove(localFilePath)
 
+@experimental
 @needs_google
 class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
     projectID = 'cgc-05-0006'
@@ -850,7 +856,7 @@ class InvalidAWSJobStoreTest(ToilTest):
                           AWSJobStore.loadOrCreateJobStore,
                           'us-west-2:a_b')
 
-
+@experimental
 @needs_azure
 class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     accountName = 'toiltest'

@@ -20,6 +20,7 @@ import unittest
 import shutil
 import re
 
+from bd2k.util import less_strict_bool
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
 
@@ -132,8 +133,7 @@ def needs_aws(test_item):
         # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
-        return unittest.skip("Skipping test. Install toil with the 'aws' extra to include this "
-                             "test.")(test_item)
+        return unittest.skip("Install toil with the 'aws' extra to include this test.")(test_item)
     except:
         raise
     else:
@@ -143,16 +143,18 @@ def needs_aws(test_item):
         if boto_credentials:
             return test_item
         if (os.path.exists(dot_aws_credentials_path) or
-                (os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path,'ec2'))):
+                (os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'))):
             # Assume that EC2 machines like the Jenkins slave that we run CI on will have IAM roles
             return test_item
         else:
-            return unittest.skip("Skipping test. Create ~/.boto or ~/.aws/credentials to include "
+            return unittest.skip("Configure ~/.aws/credentials with AWS credentials to include "
                                  "this test.")(test_item)
+
 
 def file_begins_with(path, prefix):
     with open(path) as f:
         return f.read(len(prefix)) == prefix
+
 
 def needs_google(test_item):
     """
@@ -162,14 +164,16 @@ def needs_google(test_item):
     try:
         from boto import config
     except ImportError:
-        return unittest.skip("Skipping test. Install Toil with the 'google' extra to include this "
-                             "test.")(test_item)
+        return unittest.skip(
+            "Install Toil with the 'google' extra to include this test.")(test_item)
     else:
         boto_credentials = config.get('Credentials', 'gs_access_key_id')
         if boto_credentials:
             return test_item
         else:
-            return unittest.skip("Skipping test. Create properly configured ~/.boto to include this test.")(test_item)
+            return unittest.skip(
+                "Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+
 
 def needs_azure(test_item):
     """
@@ -180,16 +184,15 @@ def needs_azure(test_item):
         # noinspection PyUnresolvedReferences
         import azure.storage
     except ImportError:
-        return unittest.skip("Skipping test. Install toil with the 'azure' extra) to include this "
-                             "test.")(test_item)
+        return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
     except:
         raise
     else:
         from toil.jobStores.azureJobStore import credential_file_path
         full_credential_file_path = os.path.expanduser(credential_file_path)
         if not os.path.exists(full_credential_file_path):
-            return unittest.skip("Skipping test. Configure %s with the access key for the "
-                                 "'toiltest' storage account." % credential_file_path)(test_item)
+            return unittest.skip("Configure %s with the access key for the 'toiltest' storage "
+                                 "account." % credential_file_path)(test_item)
         return test_item
 
 
@@ -201,8 +204,7 @@ def needs_gridengine(test_item):
     if next(which('qsub'), None):
         return test_item
     else:
-        return unittest.skip("Skipping test. Install GridEngine to include this test.")(test_item)
-        
+        return unittest.skip("Install GridEngine to include this test.")(test_item)
 
 
 def needs_mesos(test_item):
@@ -215,8 +217,8 @@ def needs_mesos(test_item):
         # noinspection PyUnresolvedReferences
         import mesos.native
     except ImportError:
-        return unittest.skip("Skipping test. Install toil with the 'mesos' extra to include this "
-                             "test.")(test_item)
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     except:
         raise
     else:
@@ -231,7 +233,7 @@ def needs_parasol(test_item):
     if next(which('parasol'), None):
         return test_item
     else:
-        return unittest.skip("Skipping test. Install Parasol to include this test.")(test_item)
+        return unittest.skip("Install Parasol to include this test.")(test_item)
 
 
 def needs_slurm(test_item):
@@ -242,7 +244,7 @@ def needs_slurm(test_item):
     if next(which('squeue'), None):
         return test_item
     else:
-        return unittest.skip("Skipping test. Install Slurm to include this test.")(test_item)
+        return unittest.skip("Install Slurm to include this test.")(test_item)
 
 
 def needs_encryption(test_item):
@@ -255,8 +257,8 @@ def needs_encryption(test_item):
         # noinspection PyUnresolvedReferences
         import nacl
     except ImportError:
-        return unittest.skip("Skipping test. Install toil with the 'encryption' extra to include "
-                             "this test.")(test_item)
+        return unittest.skip(
+            "Install Toil with the 'encryption' extra to include this test.")(test_item)
     except:
         raise
     else:
@@ -273,14 +275,28 @@ def needs_cwl(test_item):
         # noinspection PyUnresolvedReferences
         import cwltool
     except ImportError:
-        return unittest.skip("Skipping test. Install toil with the 'cwl' extra to include this "
-                             "test.")(test_item)
+        return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
     except:
         raise
     else:
         return test_item
 
+
+def experimental(test_item):
+    """
+    Use this to decorate experimental or brittle tests in order to skip them during regular builds.
+    """
+    # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an 
+    # environment variable. 
+    test_item = _mark_test('experimental', test_item)
+    if not less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
+        return unittest.skip(
+            'Set TOIL_TEST_EXPERIMENTAL="True" to include this experimental test.')(test_item)
+
+
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
+
+
 # FIXME: move to bd2k-python-lib
 
 
