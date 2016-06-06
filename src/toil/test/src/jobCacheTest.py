@@ -30,7 +30,7 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job, IllegalDeletionCacheError
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
@@ -818,6 +818,7 @@ class AwsJobStoreCacheTest(Hidden.AbstractCacheTest):
 
 
 @needs_azure
+@experimental
 class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
     def _getTestJobStorePath(self):
         super(AzureJobStoreCacheTest, self)._getTestJobStorePath()
@@ -829,6 +830,7 @@ class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
 
 
 @needs_google
+@experimental
 class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
     def _getTestJobStorePath(self):
         projectID = 'cgc-05-0006'
