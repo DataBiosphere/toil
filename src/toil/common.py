@@ -764,9 +764,10 @@ class Toil(object):
         assert self._batchSystem is not None
 
         startTime = time.time()
-        logger.debug('Shutting down batch system')
+        logger.debug('Shutting down batch system ...')
         self._batchSystem.shutdown()
-        logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
+        logger.debug('... finished shutting down the batch system in %s seconds.' 
+                     % (time.time() - startTime))
 
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
