@@ -370,7 +370,8 @@ class hidden:
             jobStoreTestClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
             make_tests(importExportFile,
                        targetClass=cls,
-                       otherJobStore={jsCls.__name__: jsCls for jsCls in jobStoreTestClasses},
+                       otherJobStore={jsCls.__name__: jsCls for jsCls in jobStoreTestClasses 
+                                      if not getattr( jsCls, '__unittest_skip__', False ) },
                        size=dict(zero=0,
                                  one=1,
                                  oneMiB=2**20,
