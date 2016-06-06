@@ -578,7 +578,7 @@ class Toil(object):
         :param str jobStoreString: see exception message below
         :param toil.common.Config config: see AbstractJobStore.__init__
         :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
         if jobStoreString[0] in '/.':
             jobStoreString = 'file:' + jobStoreString
