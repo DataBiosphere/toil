@@ -375,13 +375,11 @@ class AbstractJobStore(object):
                (which can be downloaded from the job store in a batch) instead of piecemeal when 
                recursed into.
         """
-        # Iterate from the root jobWrapper and collate all jobs that are reachable from it
-        # All other jobs returned by self.jobs() are orphaned and can be removed
-        reachableFromRoot = set()
-
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
-
+        
+        # Functions to get and check the existence of jobs, using the jobCache
+        # if present
         def getJob(jobId):
             if jobCache is not None:
                 try:
@@ -405,6 +403,10 @@ class AbstractJobStore(object):
                 return jobCache.itervalues()
             else:
                 return self.jobs()
+        
+        # Iterate from the root jobWrapper and collate all jobs that are reachable from it
+        # All other jobs returned by self.jobs() are orphaned and can be removed
+        reachableFromRoot = set()
 
         def getConnectedJobs(jobWrapper):
             if jobWrapper.jobStoreID in reachableFromRoot:
@@ -418,55 +420,59 @@ class AbstractJobStore(object):
             # Traverse service jobs
             for jobs in jobWrapper.services:
                 for serviceJobStoreID in map(lambda x: x[0], jobs):
-                    assert serviceJobStoreID not in reachableFromRoot
-                    reachableFromRoot.add(serviceJobStoreID)
+                    if haveJob(serviceJobStoreID):
+                        assert serviceJobStoreID not in reachableFromRoot
+                        reachableFromRoot.add(serviceJobStoreID)
 
         logger.info("Checking job graph connectivity...")
         getConnectedJobs(self.loadRootJob())
         logger.info("%d jobs reachable from root." % len(reachableFromRoot))
 
-        # Cleanup invalid jobs
-        for jobWrapper in (x for x in getJobs() if x not in reachableFromRoot):
+        # Cleanup jobs that are not reachable from the root, and therefore orphaned
+        jobsToDelete = filter(lambda x : x.jobStoreID not in reachableFromRoot, getJobs())
+        for jobWrapper in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobWrapper.filesToDelete:
                 # Delete any files that should already be deleted
                 logger.critical(
                     "Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
                 self.deleteFile(fileID)
-            jobWrapper.filesToDelete = []
+            # Delete the job
+            self.delete(jobWrapper.jobStoreID)
 
-        # clean up valid jobs
+        # Clean up jobs that are in reachable from the root
         for jobWrapper in (getJob(x) for x in reachableFromRoot):
-            changed = [False]
             # jobWrappers here are necessarily in reachable from root.
-            # While jobs at the end of the stack are already deleted remove
-            # those jobs from the stack (this cleans up the case that the jobWrapper
-            # had successors to run, but had not been updated to reflect this)
+            
+            changed = [False] # This is a flag to indicate the jobWrapper state has 
+            # changed
+            
+            # If the job has files to delete delete them.
             if len(jobWrapper.filesToDelete) != 0:
                 # Delete any files that should already be deleted
                 for fileID in jobWrapper.filesToDelete:
-                    logger.critical(
-                        "Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
+                    logger.critical("Removing file in job store: %s that was "
+                                    "marked for deletion but not previously removed" % fileID)
                     self.deleteFile(fileID)
                 jobWrapper.filesToDelete = []
                 changed[0] = True
 
-            # For a job whose command is already execute, remove jobs from the
+            # For a job whose command is already executed, remove jobs from the
             # stack that are already deleted. 
             # This cleans up the case that the jobWrapper
             # had successors to run, but had not been updated to reflect this
-            
             if jobWrapper.command is None:
-                stackSize = sum(map(len, jobWrapper.stack))
+                stackSizeFn = lambda : sum(map(len, jobWrapper.stack))
+                startStackSize = stackSizeFn()
                 # Remove deleted jobs
                 jobWrapper.stack = map(lambda x : filter(lambda y : self.exists(y[0]), x), jobWrapper.stack)
                 # Remove empty stuff from the stack
                 jobWrapper.stack = filter(lambda x : len(x) > 0, jobWrapper.stack)
-                # Check if anything go removed
-                if sum(map(len, jobWrapper.stack)) != stackSize:
+                # Check if anything got removed
+                if stackSizeFn() != startStackSize:
                     changed[0] = True
                 
-            # Cleanup any services that have already been finished
+            # Cleanup any services that have already been finished.
             # Filter out deleted services and update the flags for services that exist
             # If there are services then renew  
             # the start and terminate flags if they have been removed
@@ -498,13 +504,14 @@ class AbstractJobStore(object):
                 
                 return newFlag
             
-            servicesSize = sum(map(len, jobWrapper.services))
+            servicesSizeFn = lambda : sum(map(len, jobWrapper.services))
+            startServicesSize = servicesSizeFn()
             jobWrapper.services = filter(lambda z : len(z) > 0, map(lambda serviceJobList : 
                                         map(lambda x : x[:4] + (subFlagFile(x[0], x[4], 1), 
                                                                 subFlagFile(x[0], x[5], 2), 
                                                                 subFlagFile(x[0], x[6], 3)), 
                                         filter(lambda y : self.exists(y[0]), serviceJobList)), jobWrapper.services)) 
-            if sum(map(len, jobWrapper.services)) != servicesSize:
+            if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
             # Reset the retry count of the jobWrapper
