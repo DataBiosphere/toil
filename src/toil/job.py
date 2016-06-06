@@ -2012,6 +2012,7 @@ class Job(object):
         commandTokens = command.split()
         assert "_toil" == commandTokens[0]
         userModule = ModuleDescriptor(*(commandTokens[2:]))
+        logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
         if pickleFile == "firstJob":
@@ -2035,8 +2036,10 @@ class Job(object):
 
         def filter_main(module_name, class_name):
             if module_name == '__main__':
+                logger.debug('Getting %s from user module __main__ (%s).', class_name, userModule)
                 return getattr(userModule, class_name)
             else:
+                logger.debug('Getting %s from module %s.', class_name, module_name)
                 return getattr(importlib.import_module(module_name), class_name)
 
         unpickler.find_global = filter_main
@@ -2505,6 +2508,9 @@ class FunctionWrappingJob(Job):
         self._kwargs=kwargs
 
     def _getUserFunction(self):
+        logger.debug('Loading user function %s from module %s.',
+                     self.userFunctionName,
+                     self.userFunctionModule) 
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
@@ -2599,7 +2605,8 @@ class ServiceJob(Job):
         self.jobWrapper = None
 
     def run(self, fileStore):
-        #Unpickle the service
+        # Unpickle the service
+        logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
         service = self._unpickle( userModule, BytesIO( self.pickledService ) )
         #Start the service
