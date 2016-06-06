@@ -664,10 +664,8 @@ class Toil(object):
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
         if jobStore is not None and userScript is not None:
-            hotDeployUserScript = (not userScript.belongsToToil and batchSystemClass.supportsHotDeployment())
-            if hotDeployUserScript:
+            if not userScript.belongsToToil and batchSystemClass.supportsHotDeployment():
                 kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
-                # TODO: toil distribution
 
         return batchSystemClass(**kwargs)
 
