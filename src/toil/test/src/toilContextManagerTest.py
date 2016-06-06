@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-from toil.common import Toil, ToilContextManagerMisuseException
+from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
 from toil.test import ToilTest
 
@@ -29,7 +29,7 @@ class ToilContextManagerTest(ToilTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
         toil = Toil(options)
-        self.assertRaises(ToilContextManagerMisuseException, toil.start, HelloWorld())
+        self.assertRaises(ToilContextManagerException, toil.start, HelloWorld())
 
 
 class HelloWorld(Job):

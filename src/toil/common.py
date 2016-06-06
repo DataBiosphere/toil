@@ -520,7 +520,8 @@ class Toil(object):
         """
         self._assertContextManagerUsed()
         if self.config.restart:
-            raise ToilConfigException('A workflow can only be started once. Use restart() to resume it.')
+            raise ToilRestartException('A Toil workflow can only be started once. Use '
+                                       'Toil.restart() to resume it.')
 
         try:
             self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore,
@@ -558,7 +559,8 @@ class Toil(object):
         """
         self._assertContextManagerUsed()
         if not self.config.restart:
-            raise ToilConfigException('Cannot call restart on initial run of workflow')
+            raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
+                                       'not restart().')
 
         try:
             self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
@@ -771,25 +773,18 @@ class Toil(object):
 
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
-            raise ToilContextManagerMisuseException("This method cannot be called outside of Toil context manager.")
+            raise ToilContextManagerException()
 
 
-class ToilConfigException(Exception):
-    """
-    Misconfigured toil workflow exception
-    """
-
+class ToilRestartException(Exception):
     def __init__(self, message):
-        super(ToilConfigException, self).__init__(message)
+        super(ToilRestartException, self).__init__(message)
 
 
-class ToilContextManagerMisuseException(Exception):
-    """
-    Toil class used without context manager exception
-    """
-
-    def __init__(self, message):
-        super(ToilContextManagerMisuseException, self).__init__(message)
+class ToilContextManagerException(Exception):
+    def __init__(self):
+        super(ToilContextManagerException, self).__init__(
+            'This method cannot be called outside the "with Toil(...)" context manager.')
 
 # Nested functions can't have doctests so we have to make this global
 
