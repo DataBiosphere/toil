@@ -500,9 +500,8 @@ class Toil(object):
         """
         self._inContextManager = False
         if (exc_type is not None and self.config.clean == "onError" or
-            exc_type is None and self.config.clean == "onSuccess" or
-             self.config.clean == "always"):
-            
+                        exc_type is None and self.config.clean == "onSuccess" or
+                    self.config.clean == "always"):
             logger.info("Attempting to delete the job store")
             self._jobStore.deleteJobStore()
             logger.info("Successfully deleted the job store")
@@ -510,13 +509,12 @@ class Toil(object):
 
     def start(self, rootJob):
         """
-        Invoke a Toil workflow with the given job as the root for an initial run. This method must
-        be called in the body of a ``with Toil(...) as toil:`` statement. This method should not be called
-        more than once for a workflow that has not finished.
+        Invoke a Toil workflow with the given job as the root for an initial run. This method 
+        must be called in the body of a ``with Toil(...) as toil:`` statement. This method should 
+        not be called more than once for a workflow that has not finished. 
 
-        :param toil.job.Job rootJob: The root job for the workflow
-        :return: The return value of the root job
-        :rtype: Any
+        :param toil.job.Job rootJob: The root job of the workflow
+        :return: The root job's return value 
         """
         self._assertContextManagerUsed()
         if self.config.restart:
@@ -543,19 +541,17 @@ class Toil(object):
             # Setup the first wrapper and cache it
             job = rootJob._serialiseFirstJob(self._jobStore)
             self._cacheJob(job)
-
+            
             return self._runMainLoop(job)
-
         finally:
             self._shutdownBatchSystem()
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only if a workflow
-        has previously been started and has not finished.
+        Restarts a workflow that has been interrupted. This method should be called if and only 
+        if a workflow has previously been started and has not finished. 
 
-        :return: The return value of the root job
-        :rtype: Any
+        :return: The root job's return value
         """
         self._assertContextManagerUsed()
         if not self.config.restart:
@@ -591,10 +587,10 @@ class Toil(object):
             jobStoreName, jobStoreArgs = jobStoreString.split(':', 1)
         except ValueError:
             raise RuntimeError(
-                'Job store string must either be a path starting in . or / or a contain at least one '
-                'colon separating the name of the job store implementation from an initialization '
-                'string specific to that job store. If a path starting in . or / is passed, the file '
-                'job store will be used for backwards compatibility.' )
+                'A job store string must either be a path starting in . or / or a contain at '
+                'least one colon separating the name of the job store implementation from an '
+                'initialization string specific to that job store. If a path starting in . or / '
+                'is passed, the file job store will be used for backwards compatibility.' ) 
 
         if jobStoreName == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
@@ -719,8 +715,8 @@ class Toil(object):
     @staticmethod
     def getWorkflowDir(workflowID, configWorkDir=None):
         """
-        Returns a path to the directory where worker directories and the cache will be located for this
-        workflow.
+        Returns a path to the directory where worker directories and the cache will be located 
+        for this workflow. 
 
         :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
@@ -750,7 +746,8 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        with RealtimeLogger(self._batchSystem, level=self.options.logLevel if self.options.realTimeLogging else None):
+        with RealtimeLogger(self._batchSystem, 
+                            level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
             from toil.leader import mainLoop
             return mainLoop(config=self.config,
