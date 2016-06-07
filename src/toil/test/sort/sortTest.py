@@ -22,13 +22,20 @@ import subprocess
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
-from toil.common import Toil, ToilRestartException
+from toil.common import Toil
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test.sort.sort import setup, sortMemory
-from toil.test import ToilTest, needs_aws, needs_mesos, needs_azure, needs_parasol, needs_gridengine, needs_google
+from toil.test import (ToilTest,
+                       needs_aws,
+                       needs_mesos,
+                       needs_azure,
+                       needs_parasol,
+                       needs_gridengine,
+                       needs_google,
+                       experimental)
 from toil.jobStores.abstractJobStore import JobStoreCreationException
 from toil.leader import FailedJobsException
 
@@ -173,10 +180,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
+    @experimental
     @needs_azure
     def testAzureSingle(self):
         self._toilSort(jobStore=self._azureJobStore(), batchSystem='singleMachine')
 
+    @experimental
     @needs_azure
     @needs_mesos
     def testAzureMesos(self):
@@ -186,10 +195,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
+    @experimental
     @needs_google
     def testGoogleSingle(self):
         self._toilSort(jobStore=self._googleJobStore(), batchSystem="singleMachine")
 
+    @experimental
     @needs_google
     @needs_mesos
     def testGoogleMesos(self):

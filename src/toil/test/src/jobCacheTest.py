@@ -829,8 +829,8 @@ class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
         super(AzureJobStoreCacheTest, self).testExtremeCacheSetup()
 
 
-@needs_google
 @experimental
+@needs_google
 class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
     def _getTestJobStorePath(self):
         projectID = 'cgc-05-0006'

@@ -922,6 +922,7 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
         blobService.delete_container(containerName)
 
+@experimental
 @needs_azure
 class InvalidAzureJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
@@ -947,6 +948,7 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStore
     pass
 
 
+@experimental
 @needs_azure
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
