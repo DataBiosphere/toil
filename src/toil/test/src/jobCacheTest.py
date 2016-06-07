@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Author : Arjun Arkal Rao
-Affiliation : UCSC BME, UCSC Genomics Institute
-File : src/toil/test/src/JobCacheTest.py
-"""
+from __future__ import absolute_import
 from __future__ import print_function
+
 import collections
+import inspect
 import os
-import sys
 import random
 import signal
 import time
 import unittest
+from abc import abstractmethod, ABCMeta
 
 from struct import pack, unpack
 from uuid import uuid4
@@ -39,24 +37,31 @@ from toil.jobStores.abstractJobStore import NoSuchFileException
 testingIsAutomatic = True
 
 
-class Hidden:
+class hidden:
     """
     Hiding the abstract test class from the Unittest loader so it can be inherited in different test
     suites for the different job stores.
     """
+
     class AbstractCacheTest(ToilTest):
         """
         Abstract tests for the the various cache functions in Job.CachedFileStore
         """
+        __metaclass__ = ABCMeta
+
         def setUp(self):
-            super(Hidden.AbstractCacheTest, self).setUp()
+            super(hidden.AbstractCacheTest, self).setUp()
             testDir = self._createTempDir()
-            self.options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+            self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'INFO'
             self.options.workDir = testDir
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
             self.options.disableSharedCache = False
+
+        @abstractmethod
+        def _getTestJobStore(self):
+            raise NotImplementedError()
 
         # Sanity
         def testToilIsNotBroken(self):
@@ -73,6 +78,7 @@ class Hidden:
             C.addChild(D)
             Job.Runner.startToil(A, self.options)
 
+        # noinspection PyUnusedLocal
         @staticmethod
         def _uselessFunc(job):
             """
@@ -134,14 +140,14 @@ class Hidden:
             Try to acquire a lock on the lock file.  If 2 threads have the lock concurrently, then
             abort.
             """
-            for i in xrange(0,1000):
-                with job.fileStore.cacheLock() as x:
+            for i in xrange(0, 1000):
+                with job.fileStore.cacheLock():
                     cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
                     cacheInfo.nlink += 1
                     cacheInfo.cached = max(cacheInfo.nlink, cacheInfo.cached)
                     cacheInfo.write(job.fileStore.cacheStateFile)
                 time.sleep(0.001)
-                with job.fileStore.cacheLock() as x:
+                with job.fileStore.cacheLock():
                     cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
                     cacheInfo.nlink -= 1
                     cacheInfo.write(job.fileStore.cacheStateFile)
@@ -151,7 +157,7 @@ class Hidden:
             """
             Assert that the cache test passed successfully.
             """
-            with job.fileStore.cacheLock() as x:
+            with job.fileStore.cacheLock():
                 cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
                 # Value of the nlink has to be zero for successful run
                 assert cacheInfo.nlink == 0
@@ -205,10 +211,11 @@ class Hidden:
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
             # by the job store and are not reflected in the cache hence this test is redundant.
-            if (not self.options.jobStore.startswith(('aws', 'azure', 'google')) and
-                    os.stat(self.options.workDir).st_dev ==
-                        os.stat(os.path.dirname(self.options.jobStore)).st_dev):
-                self.skipTest('jobStore and workdir are on the same filesystem.')
+            if not self.options.jobStore.startswith(('aws', 'azure', 'google')):
+                workDirDev = os.stat(self.options.workDir).st_dev
+                jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
+                if workDirDev == jobStoreDev:
+                    self.skipTest('Job store and working directory are on the same filesystem.')
 
         def _testCacheEviction(self, file1MB, file2MB, diskRequestMB):
             """
@@ -246,11 +253,11 @@ class Hidden:
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
                 errType, errMsg = self._parseAssertionError(self.options.logFile)
-                if (errType == 'AssertionError' and
-                        errMsg == 'Unable to free up enough space for caching.'):
+                if (errType == 'AssertionError' 
+                    and errMsg == 'Unable to free up enough space for caching.'):
                     self.assertEqual(expectedResult, 'Fail')
                 else:
-                    self.fail('An AssertionError was not thrown by Toil')
+                    self.fail('Toil did not raise the expected AssertionError')
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -272,18 +279,18 @@ class Hidden:
 
             fsID = job.fileStore.writeGlobalFile(testFile.name)
 
+            actual = os.stat(testFile.name).st_nlink
             if isLocalFile:
-                # Since the file has been hard linked it should have
-                # nlink_count = threshold +1 (local, cached, and possibly job store)
-                x = job.fileStore.nlinkThreshold + 1
-                assert os.stat(testFile.name).st_nlink == x, 'Should have %s ' % x + 'nlinks. ' + \
-                    'Got %s' % os.stat(testFile.name).st_nlink
+                # Since the file has been hard linked it should have nlink_count = threshold + 1
+                # (local, cached, and possibly job store).
+                expected = job.fileStore.nlinkThreshold + 1
+                assert actual == expected, 'Should have %i nlinks. Got %i' % (expected, actual)
             else:
                 # Since the file hasn't been hard linked it should have nlink_count = 1
-                assert os.stat(testFile.name).st_nlink == 1, 'Should have 1 nlink. Got ' + \
-                    '%s' % os.stat(testFile.name).st_nlink
+                assert actual == 1, 'Should have one nlink. Got %i.' % actual
             return fsID
 
+        # noinspection PyUnusedLocal
         @staticmethod
         def _sleepy(job, timeToSleep):
             """
@@ -418,19 +425,19 @@ class Hidden:
             if isCachedFile:
                 outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                        mutable=False)
-                expectedNlinks = x + 1
+                expected = x + 1
             else:
                 if cacheReadFile:
                     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                            cache=True, mutable=False)
-                    expectedNlinks = x + 1
+                    expected = x + 1
                 else:
                     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                            cache=False, mutable=False)
-                    expectedNlinks = x
+                    expected = x
             if isTest:
-                assert os.stat(outfile).st_nlink == expectedNlinks, 'Should have ' + \
-                    '%s ' % expectedNlinks + 'nlinks. Got %s.' % os.stat(outfile).st_nlink
+                actual = os.stat(outfile).st_nlink
+                assert actual == expected, 'Should have %i nlinks. Got %i.' % (expected, actual)
                 return None
             else:
                 return outfile
@@ -480,7 +487,7 @@ class Hidden:
                               fileMB=256)
             B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             jobs = {}
-            for i in xrange(0,10):
+            for i in xrange(0, 10):
                 jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fileInfo=A.rv(),
                                         maxWriteFile=os.path.abspath(x.name), disk='1G',
                                         memory='10M', cores=1)
@@ -493,9 +500,9 @@ class Hidden:
         @staticmethod
         def _multipleFileReader(job, diskMB, fileInfo, maxWriteFile):
             """
-            Read fsID from file store and add to cache.  Assert cached file size in the cache lock
-            file never goes up, assert sum of job reqs is always
-                   (a multiple of job reqs) - (number of files linked to the cachedfile * filesize).
+            Read fsID from file store and add to cache.  Assert cached file size in the cache
+            lock file never goes up, assert sum of job reqs is always (a multiple of job reqs) -
+            (number of files linked to the cachedfile * filesize).
 
             :param int diskMB: disk requirements provided to the job
             :param str fsID: job store file ID
@@ -535,8 +542,11 @@ class Hidden:
             describing the correct values.
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
-            F = Job.wrapJobFn(self._returnFileTestFn, jobDisk=2*1024*1024*1024, initialCachedSize=0,
-                              nonLocalDir=workdir, disk='2G')
+            F = Job.wrapJobFn(self._returnFileTestFn,
+                              jobDisk=2 * 1024 * 1024 * 1024,
+                              initialCachedSize=0,
+                              nonLocalDir=workdir,
+                              disk='2G')
             Job.Runner.startToil(F, self.options)
 
         def testReturnFileSizesWithBadWorker(self):
@@ -549,8 +559,11 @@ class Hidden:
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
             workdir = self._createTempDir(purpose='nonLocalDir')
-            F = Job.wrapJobFn(self._returnFileTestFn, jobDisk=2*1024*1024*1024, initialCachedSize=0,
-                              nonLocalDir=workdir, numIters=30, disk='2G')
+            F = Job.wrapJobFn(self._returnFileTestFn,
+                              jobDisk=2 * 1024 * 1024 * 1024,
+                              initialCachedSize=0,
+                              nonLocalDir=workdir,
+                              numIters=30, disk='2G')
             Job.Runner.startToil(F, self.options)
 
         @staticmethod
@@ -565,39 +578,38 @@ class Hidden:
             """
             cached = initialCachedSize
             work_dir = job.fileStore.getLocalTempDir()
-            writtenFiles = {} # fsID: (size, isLocal)
+            writtenFiles = {}  # fsID: (size, isLocal)
             localFileIDs = collections.defaultdict(list)  # fsid: local/non-local/mutable/immutable
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
-            jobDisk -= writeFileSize*1024*1024
-            writtenFiles[
-                Hidden.AbstractCacheTest._writeFileToJobStore(job, isLocalFile=True,
-                                                              fileMB=writeFileSize)] = writeFileSize
+            jobDisk -= writeFileSize * 1024 * 1024
+            cls = hidden.AbstractCacheTest
+            fsId = cls._writeFileToJobStore(job, isLocalFile=True, fileMB=writeFileSize)
+            writtenFiles[fsId] = writeFileSize
             if job.fileStore._fileIsCached(writtenFiles.keys()[0]):
-                cached += writeFileSize*1024*1024
+                cached += writeFileSize * 1024 * 1024
             localFileIDs[writtenFiles.keys()[0]].append('local')
-            Hidden.AbstractCacheTest._requirementsConcur(job, jobDisk, cached)
-            i=0
+            cls._requirementsConcur(job, jobDisk, cached)
+            i = 0
             while i <= numIters:
                 randVal = random.random()
                 if randVal < 0.33:  # Write
                     writeFileSize = random.randint(0, 30)
                     if random.random() <= 0.5:  # Write a local file
-                        fsID = Hidden.AbstractCacheTest._writeFileToJobStore(job, isLocalFile=True,
-                                                                             fileMB=writeFileSize)
+                        fsID = cls._writeFileToJobStore(job, isLocalFile=True, fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('local')
-                        jobDisk -= writeFileSize*1024*1024
+                        jobDisk -= writeFileSize * 1024 * 1024
                         if job.fileStore._fileIsCached(fsID):
-                            cached += writeFileSize*1024*1024
+                            cached += writeFileSize * 1024 * 1024
                     else:  # Write a non-local file
-                        fsID = Hidden.AbstractCacheTest._writeFileToJobStore(job, isLocalFile=False,
-                                                                             nonLocalDir=nonLocalDir,
-                                                                             fileMB=writeFileSize)
+                        fsID = cls._writeFileToJobStore(job, isLocalFile=False,
+                                                        nonLocalDir=nonLocalDir,
+                                                        fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('non-local')
                         # No change to the job since there was no caching
-                    Hidden.AbstractCacheTest._requirementsConcur(job, jobDisk, cached)
+                    cls._requirementsConcur(job, jobDisk, cached)
                 else:
                     if len(writtenFiles) == 0:
                         continue
@@ -615,11 +627,11 @@ class Hidden:
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
                                                          mutable=False)
                             localFileIDs[fsID].append('immutable')
-                            jobDisk -= rdelFileSize*1024*1024
+                            jobDisk -= rdelFileSize * 1024 * 1024
                         if not fileWasCached:
                             if job.fileStore._fileIsCached(fsID):
-                                cached += rdelFileSize*1024*1024
-                        Hidden.AbstractCacheTest._requirementsConcur(job, jobDisk, cached)
+                                cached += rdelFileSize * 1024 * 1024
+                        cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in localFileIDs.keys():
@@ -632,12 +644,12 @@ class Hidden:
                         if fsID in localFileIDs.keys():
                             for lFID in localFileIDs[fsID]:
                                 if lFID not in ('non-local', 'mutable'):
-                                    jobDisk += rdelFileSize*1024*1024
+                                    jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
                             if not job.fileStore._fileIsCached(fsID):
-                                cached -= rdelFileSize*1024*1024
-                        Hidden.AbstractCacheTest._requirementsConcur(job, jobDisk, cached)
+                                cached -= rdelFileSize * 1024 * 1024
+                        cls._requirementsConcur(job, jobDisk, cached)
                 i += 1
             return jobDisk, cached
 
@@ -665,7 +677,8 @@ class Hidden:
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
             self.options.retryCount = 1
-            F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=2*1024*1024*1024, testDir=workdir,
+            F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=2 * 1024 * 1024 * 1024,
+                              testDir=workdir,
                               disk='2G')
             G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             F.addChild(G)
@@ -681,14 +694,14 @@ class Hidden:
             :param float jobDisk: Disk space supplied for this job
             :param str testDir: T3sting directory
             """
-            HACT = Hidden.AbstractCacheTest
+            cls = hidden.AbstractCacheTest
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
                 with open(os.path.join(testDir, 'testfile.test'), 'r') as fH:
                     cached = unpack('d', fH.read())[0]
-                HACT._requirementsConcur(job, jobDisk, cached)
-                HACT._returnFileTestFn(job, jobDisk, cached, testDir, 20)
+                cls._requirementsConcur(job, jobDisk, cached)
+                cls._returnFileTestFn(job, jobDisk, cached, testDir, 20)
             else:
-                modifiedJobReqs, cached = HACT._returnFileTestFn(job, jobDisk, 0, testDir, 20)
+                modifiedJobReqs, cached = cls._returnFileTestFn(job, jobDisk, 0, testDir, 20)
                 with open(os.path.join(testDir, 'testfile.test'), 'w') as fH:
                     fH.write(pack('d', cached))
                 os.kill(os.getpid(), signal.SIGKILL)
@@ -802,14 +815,14 @@ class Hidden:
                 pass
 
 
-class FileJobStoreCacheTest(Hidden.AbstractCacheTest):
-    pass
+class FileJobStoreCacheTest(hidden.AbstractCacheTest):
+    def _getTestJobStore(self):
+        return self._getTestJobStorePath()
 
 
 @needs_aws
-class AwsJobStoreCacheTest(Hidden.AbstractCacheTest):
-    def _getTestJobStorePath(self):
-        super(AwsJobStoreCacheTest, self)._getTestJobStorePath()
+class AwsJobStoreCacheTest(hidden.AbstractCacheTest):
+    def _getTestJobStore(self):
         return 'aws:us-west-2:cache-tests-' + str(uuid4())
 
     @unittest.skipIf(testingIsAutomatic, "To save time")
@@ -819,9 +832,8 @@ class AwsJobStoreCacheTest(Hidden.AbstractCacheTest):
 
 @needs_azure
 @experimental
-class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
-    def _getTestJobStorePath(self):
-        super(AzureJobStoreCacheTest, self)._getTestJobStorePath()
+class AzureJobStoreCacheTest(hidden.AbstractCacheTest):
+    def _getTestJobStore(self):
         return 'azure:toiltest:cache-tests-' + str(uuid4())
 
     @unittest.skipIf(testingIsAutomatic, "To save time")
@@ -831,33 +843,27 @@ class AzureJobStoreCacheTest(Hidden.AbstractCacheTest):
 
 @experimental
 @needs_google
-class GoogleJobStoreCacheTest(Hidden.AbstractCacheTest):
-    def _getTestJobStorePath(self):
+class GoogleJobStoreCacheTest(hidden.AbstractCacheTest):
+    def _getTestJobStore(self):
         projectID = 'cgc-05-0006'
-        super(GoogleJobStoreCacheTest, self)._getTestJobStorePath()
         return 'google:' + projectID + ':cache-tests-' + str(uuid4())
 
     @unittest.skipIf(testingIsAutomatic, "To save time")
     def testExtremeCacheSetup(self):
         super(GoogleJobStoreCacheTest, self).testExtremeCacheSetup()
 
-################################################################################
-# Define utility functions because toil can't pickle static methods
-################################################################################
 
-_writeFileToJobStore = Hidden.AbstractCacheTest._writeFileToJobStore
-_sleepy = Hidden.AbstractCacheTest._sleepy
-_readFromJobStore = Hidden.AbstractCacheTest._readFromJobStore
-_probeJobReqs = Hidden.AbstractCacheTest._probeJobReqs
-_multipleFileReader = Hidden.AbstractCacheTest._multipleFileReader
-_selfishLocker = Hidden.AbstractCacheTest._selfishLocker
-_setUpLockFile = Hidden.AbstractCacheTest._setUpLockFile
-_raceTestSuccess = Hidden.AbstractCacheTest._raceTestSuccess
-_uselessFunc = Hidden.AbstractCacheTest._uselessFunc
-_forceModifyCacheLockFile = Hidden.AbstractCacheTest._forceModifyCacheLockFile
-_returnFileTestFn = Hidden.AbstractCacheTest._returnFileTestFn
-_requirementsConcur = Hidden.AbstractCacheTest._requirementsConcur
-_parseAssertionError = Hidden.AbstractCacheTest._parseAssertionError
-_controlledFailTestFn = Hidden.AbstractCacheTest._controlledFailTestFn
-_removeReadFileFn = Hidden.AbstractCacheTest._removeReadFileFn
-_deleteLocalFileFn = Hidden.AbstractCacheTest._deleteLocalFileFn
+def _exportStaticMethodAsGlobalFunctions(cls):
+    """
+    Define utility functions because Toil can't pickle static methods. Note that this relies on
+    the convention that the first argument of a job function is named 'job'.
+    """
+    for name, kind, clazz, value in inspect.classify_class_attrs(cls):
+        if kind == 'static method':
+            method = value.__func__
+            args = inspect.getargspec(method).args
+            if args and args[0] == 'job':
+                globals()[name] = method
+
+
+_exportStaticMethodAsGlobalFunctions(hidden.AbstractCacheTest)
