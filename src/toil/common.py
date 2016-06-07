@@ -500,9 +500,8 @@ class Toil(object):
         """
         self._inContextManager = False
         if (exc_type is not None and self.config.clean == "onError" or
-            exc_type is None and self.config.clean == "onSuccess" or
-             self.config.clean == "always"):
-            
+                        exc_type is None and self.config.clean == "onSuccess" or
+                    self.config.clean == "always"):
             logger.info("Attempting to delete the job store")
             self._jobStore.deleteJobStore()
             logger.info("Successfully deleted the job store")
@@ -510,21 +509,22 @@ class Toil(object):
 
     def start(self, rootJob):
         """
-        Invoke a Toil workflow with the given job as the root for an initial run. This method must
-        be called in the body of a ``with Toil(...) as toil:`` statement. This method should not be called
-        more than once for a workflow that has not finished.
+        Invoke a Toil workflow with the given job as the root for an initial run. This method 
+        must be called in the body of a ``with Toil(...) as toil:`` statement. This method should 
+        not be called more than once for a workflow that has not finished. 
 
-        :param toil.job.Job rootJob: The root job for the workflow
-        :return: The return value of the root job
-        :rtype: Any
+        :param toil.job.Job rootJob: The root job of the workflow
+        :return: The root job's return value 
         """
         self._assertContextManagerUsed()
         if self.config.restart:
-            raise ToilConfigException('A workflow can only be started once. Use restart() to resume it.')
+            raise ToilRestartException('A Toil workflow can only be started once. Use '
+                                       'Toil.restart() to resume it.')
 
+        self._batchSystem = self.createBatchSystem(self.config, 
+                                                   jobStore=self._jobStore,
+                                                   userScript=rootJob.getUserScript())
         try:
-            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore,
-                                                       userScript=rootJob.getUserScript())
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
@@ -542,26 +542,25 @@ class Toil(object):
             # Setup the first wrapper and cache it
             job = rootJob._serialiseFirstJob(self._jobStore)
             self._cacheJob(job)
-
+            
             return self._runMainLoop(job)
-
         finally:
             self._shutdownBatchSystem()
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only if a workflow
-        has previously been started and has not finished.
+        Restarts a workflow that has been interrupted. This method should be called if and only 
+        if a workflow has previously been started and has not finished. 
 
-        :return: The return value of the root job
-        :rtype: Any
+        :return: The root job's return value
         """
         self._assertContextManagerUsed()
         if not self.config.restart:
-            raise ToilConfigException('Cannot call restart on initial run of workflow')
+            raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
+                                       'not restart().')
 
+        self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
         try:
-            self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
@@ -580,7 +579,7 @@ class Toil(object):
         :param str jobStoreString: see exception message below
         :param toil.common.Config config: see AbstractJobStore.__init__
         :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: jobStores.abstractJobStore.AbstractJobStore
+        :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
         if jobStoreString[0] in '/.':
             jobStoreString = 'file:' + jobStoreString
@@ -589,10 +588,10 @@ class Toil(object):
             jobStoreName, jobStoreArgs = jobStoreString.split(':', 1)
         except ValueError:
             raise RuntimeError(
-                'Job store string must either be a path starting in . or / or a contain at least one '
-                'colon separating the name of the job store implementation from an initialization '
-                'string specific to that job store. If a path starting in . or / is passed, the file '
-                'job store will be used for backwards compatibility.' )
+                'A job store string must either be a path starting in . or / or a contain at '
+                'least one colon separating the name of the job store implementation from an '
+                'initialization string specific to that job store. If a path starting in . or / '
+                'is passed, the file job store will be used for backwards compatibility.' ) 
 
         if jobStoreName == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
@@ -617,8 +616,8 @@ class Toil(object):
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):
         """
-        Creates an instance of the batch system specified in the given config. If a job store and a user
-        script are given then the user script can be hot deployed into the workflow.
+        Creates an instance of the batch system specified in the given config. If a job store and 
+        a user script are given then the user script can be hot deployed into the workflow. 
 
         :param toil.common.Config config: the current configuration
         :param jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
@@ -666,10 +665,8 @@ class Toil(object):
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
         if jobStore is not None and userScript is not None:
-            hotDeployUserScript = (not userScript.belongsToToil and batchSystemClass.supportsHotDeployment())
-            if hotDeployUserScript:
+            if not userScript.belongsToToil and batchSystemClass.supportsHotDeployment():
                 kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
-                # TODO: toil distribution
 
         return batchSystemClass(**kwargs)
 
@@ -717,8 +714,8 @@ class Toil(object):
     @staticmethod
     def getWorkflowDir(workflowID, configWorkDir=None):
         """
-        Returns a path to the directory where worker directories and the cache will be located for this
-        workflow.
+        Returns a path to the directory where worker directories and the cache will be located 
+        for this workflow. 
 
         :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
@@ -748,7 +745,8 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        with RealtimeLogger(self._batchSystem, level=self.options.logLevel if self.options.realTimeLogging else None):
+        with RealtimeLogger(self._batchSystem, 
+                            level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
             from toil.leader import mainLoop
             return mainLoop(config=self.config,
@@ -765,31 +763,25 @@ class Toil(object):
         assert self._batchSystem is not None
 
         startTime = time.time()
-        logger.debug('Shutting down batch system')
+        logger.debug('Shutting down batch system ...')
         self._batchSystem.shutdown()
-        logger.debug('Finished shutting down the batch system in %s seconds.' % (time.time() - startTime))
+        logger.debug('... finished shutting down the batch system in %s seconds.' 
+                     % (time.time() - startTime))
 
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
-            raise ToilContextManagerMisuseException("This method cannot be called outside of Toil context manager.")
+            raise ToilContextManagerException()
 
 
-class ToilConfigException(Exception):
-    """
-    Misconfigured toil workflow exception
-    """
-
+class ToilRestartException(Exception):
     def __init__(self, message):
-        super(ToilConfigException, self).__init__(message)
+        super(ToilRestartException, self).__init__(message)
 
 
-class ToilContextManagerMisuseException(Exception):
-    """
-    Toil class used without context manager exception
-    """
-
-    def __init__(self, message):
-        super(ToilContextManagerMisuseException, self).__init__(message)
+class ToilContextManagerException(Exception):
+    def __init__(self):
+        super(ToilContextManagerException, self).__init__(
+            'This method cannot be called outside the "with Toil(...)" context manager.')
 
 # Nested functions can't have doctests so we have to make this global
 
