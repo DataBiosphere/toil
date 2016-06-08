@@ -488,7 +488,7 @@ class hidden:
             B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             jobs = {}
             for i in xrange(0, 10):
-                jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fileInfo=A.rv(),
+                jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
                                         maxWriteFile=os.path.abspath(x.name), disk='1G',
                                         memory='10M', cores=1)
                 A.addChild(jobs[i])
@@ -498,18 +498,19 @@ class hidden:
                 assert int(y.read()) > 2
 
         @staticmethod
-        def _multipleFileReader(job, diskMB, fileInfo, maxWriteFile):
+        def _multipleFileReader(job, diskMB, fsID, maxWriteFile):
             """
-            Read fsID from file store and add to cache.  Assert cached file size in the cache
-            lock file never goes up, assert sum of job reqs is always (a multiple of job reqs) -
-            (number of files linked to the cachedfile * filesize).
+            Read a file from the job store immutable and explicitly ask to have it in the cache.
+            If we are using the File Job Store, assert sum of cached file sizes in the cache lock
+            file is zero, else assert it is equal to the read file.
+            Also assert the sum job reqs + (number of files linked to the cachedfile * filesize) is
+            and integer multiple of the disk requirements provided to this job.
 
             :param int diskMB: disk requirements provided to the job
             :param str fsID: job store file ID
             :param str maxWriteFile: path to file where the max number of concurrent readers of
                                      cache lock file will be written
             """
-            fsID = fileInfo
             work_dir = job.fileStore.getLocalTempDir()
             outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True,
                                                    mutable=False)
