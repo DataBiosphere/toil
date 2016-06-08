@@ -329,7 +329,7 @@ class MesosBatchSystem(BatchSystemSupport,
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCores, offerMemory, offerDisk = self._determineOfferResources(offer)
-            log.debug('Received offer %s with %i MiB memory, %i core(s) and %i MiB of disk.',
+            log.debug('Received offer %s with %.2f MiB memory, %.2f core(s) and %.2f MiB of disk.',
                       offer.id.value, offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
             remainingMemory = offerMemory

@@ -151,7 +151,7 @@ class JobBatcher:
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk, preemptable)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = IssuedJob(jobStoreID, memory, cores, disk, preemptable)
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
-                     "%s and cores: %i, disk: %i, and memory: %i",
+                     "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
                      jobStoreID, str(jobBatchSystemID), cores, disk, memory)
 
     def issueJobs(self, jobs):
