@@ -660,7 +660,9 @@ class Toil(object):
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
         if not (config.disableSharedCache or batchSystemClass.supportsWorkerCleanup()):
-            raise RuntimeError('%s currently does not support shared caching.' % config.batchSystem)
+            raise RuntimeError('%s currently does not support shared caching.  Use the '
+                               '--disableSharedCache option when running Toil with this batch '
+                               'system.' % config.batchSystem)
         logger.info('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
