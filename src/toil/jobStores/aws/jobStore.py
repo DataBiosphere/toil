@@ -507,7 +507,7 @@ class AWSJobStore(AbstractJobStore):
             return self.db.get_domain(domain_name)
         except SDBResponseError as e:
             if no_such_domain(e):
-                for attempt in retry_sdb(retry_while=sdb_unavailable):
+                for attempt in retry_sdb(predicate=sdb_unavailable):
                     with attempt:
                         return self.db.create_domain(domain_name)
             else:
