@@ -15,7 +15,7 @@
 from __future__ import absolute_import
 
 from StringIO import StringIO
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 import logging
 import os
 import re
@@ -27,6 +27,7 @@ import itertools
 import repr as reprlib
 
 from bd2k.util import strict_bool
+from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass
 from bd2k.util.threading import ExceptionalThread
 from boto.sdb.domain import Domain
@@ -42,7 +43,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
 from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
-                                         monkeyPatchSdbConnection)
+                                         monkeyPatchSdbConnection, retry_s3)
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
@@ -66,29 +67,37 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
     :return: An object representing the completed upload.
     """
     partSize = defaultPartSize
-    s3 = boto.connect_s3()
-    headers = headers or {}
-    totalSize = srcKey.size
-
-    # initiate copy
-    upload = s3.get_bucket(dstBucketName).initiate_multipart_upload(dstKeyName, headers=headers)
-    try:
-        start = 0
-        partIndex = itertools.count()
-        while start < totalSize:
-            end = min(start + partSize, totalSize)
-            upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                      src_key_name=srcKey.name,
-                                      part_num=next(partIndex)+1,
-                                      start=start,
-                                      end=end-1,
-                                      headers=headers)
-            start += partSize
-    except:
-        upload.cancel_upload()
-        raise
-    else:
-        return upload.complete_upload()
+    # We need a location-agnostic connection to S3 so we can't use the one that we
+    # normally use for interacting with the job store bucket.
+    with closing(boto.connect_s3()) as s3:
+        headers = headers or {}
+        totalSize = srcKey.size
+        for attempt in retry_s3():
+            with attempt:
+                dstBucket = s3.get_bucket(dstBucketName)
+                upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
+        try:
+            start = 0
+            partIndex = itertools.count()
+            while start < totalSize:
+                end = min(start + partSize, totalSize)
+                for attempt in retry_s3():
+                    with attempt:
+                        upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
+                                                  src_key_name=srcKey.name,
+                                                  src_version_id=srcKey.version_id,
+                                                  part_num=next(partIndex) + 1,
+                                                  start=start,
+                                                  end=end - 1,
+                                                  headers=headers)
+                start += partSize
+        except:
+            with panic(log=log):
+                upload.cancel_upload()
+        else:
+            for attempt in retry_s3():
+                with attempt:
+                    return upload.complete_upload()
 
 
 class AWSJobStore(AbstractJobStore):
@@ -260,11 +269,12 @@ class AWSJobStore(AbstractJobStore):
                         self.filesDomain.batch_delete_attributes(itemsDict)
             for item in items:
                 version = item.get('version')
-                if version:
-                    self.filesBucket.delete_key(key_name=item.name,
-                                                version_id=version)
-                else:
-                    self.filesBucket.delete_key(key_name=item.name)
+                for attempt in retry_s3():
+                    with attempt:
+                        if version:
+                            self.filesBucket.delete_key(key_name=item.name, version_id=version)
+                        else:
+                            self.filesBucket.delete_key(key_name=item.name)
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         info = self.FileInfo.create(jobStoreID)
@@ -333,7 +343,6 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
-
 
     def writeFile(self, localFilePath, jobStoreID=None):
         info = self.FileInfo.create(jobStoreID)
@@ -446,8 +455,10 @@ class AWSJobStore(AbstractJobStore):
         if info.content is not None:
             with info.uploadStream(allowInlining=False) as f:
                 f.write(info.content)
-        key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-        return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
+        for attempt in retry_s3():
+            with attempt:
+                key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
+                return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
 
     def getSharedPublicUrl(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)
@@ -652,6 +663,7 @@ class AWSJobStore(AbstractJobStore):
             :type item: Item
             """
             assert item is not None
+
             # Strings come back from SDB as unicode
             def strOrNone(s):
                 return s if s is None else str(s)
@@ -725,7 +737,10 @@ class AWSJobStore(AbstractJobStore):
                                                                      expected_value=expected)
                 # clean up the old version of the file if necessary and safe
                 if self.previousVersion and (self.previousVersion != self.version):
-                    self.outer.filesBucket.delete_key(self.fileID, version_id=self.previousVersion)
+                    for attempt in retry_s3():
+                        with attempt:
+                            self.outer.filesBucket.delete_key(self.fileID,
+                                                              version_id=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = xrange(numNewContentChunks, self._numContentChunks)
@@ -751,33 +766,45 @@ class AWSJobStore(AbstractJobStore):
                 if file_size <= self.outer.partSize:
                     key = self.outer.filesBucket.new_key(key_name=self.fileID)
                     key.name = self.fileID
-                    key.set_contents_from_filename(localFilePath, headers=headers)
+                    for attempt in retry_s3():
+                        with attempt:
+                            key.set_contents_from_filename(localFilePath, headers=headers)
                     self.version = key.version_id
                 else:
                     with open(localFilePath, 'rb') as f:
-                        upload = self.outer.filesBucket.initiate_multipart_upload(
-                            key_name=self.fileID,
-                            headers=headers)
+                        for attempt in retry_s3():
+                            with attempt:
+                                upload = self.outer.filesBucket.initiate_multipart_upload(
+                                    key_name=self.fileID,
+                                    headers=headers)
                         try:
                             start = 0
                             part_num = itertools.count()
                             while start < file_size:
                                 end = min(start + self.outer.partSize, file_size)
                                 assert f.tell() == start
-                                upload.upload_part_from_file(fp=f,
-                                                             part_num=next(part_num) + 1,
-                                                             size=end - start,
-                                                             headers=headers)
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        upload.upload_part_from_file(fp=f,
+                                                                     part_num=next(part_num) + 1,
+                                                                     size=end - start,
+                                                                     headers=headers)
                                 start = end
                             assert f.tell() == file_size == start
                         except:
-                            upload.cancel_upload()
-                            raise
+                            with panic(log=log):
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        upload.cancel_upload()
                         else:
-                            self.version = upload.complete_upload().version_id
-                key = self.outer.filesBucket.get_key(self.fileID,
-                                                     headers=headers,
-                                                     version_id=self.version)
+                            for attempt in retry_s3():
+                                with attempt:
+                                    self.version = upload.complete_upload().version_id
+                for attempt in retry_s3():
+                    with attempt:
+                        key = self.outer.filesBucket.get_key(self.fileID,
+                                                             headers=headers,
+                                                             version_id=self.version)
                 assert key.size == file_size
                 # Make resonably sure that the file wasn't touched during the upload
                 assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
@@ -794,24 +821,32 @@ class AWSJobStore(AbstractJobStore):
                             self.content = buf
                         else:
                             headers = self._s3EncryptionHeaders()
-                            upload = store.filesBucket.initiate_multipart_upload(
-                                key_name=self.fileID,
-                                headers=headers)
+                            for attempt in retry_s3():
+                                with attempt:
+                                    upload = store.filesBucket.initiate_multipart_upload(
+                                        key_name=self.fileID,
+                                        headers=headers)
                             try:
                                 for part_num in itertools.count():
                                     # There must be at least one part, even if the file is empty.
                                     if len(buf) == 0 and part_num > 0: break
-                                    upload.upload_part_from_file(fp=StringIO(buf),
-                                                                 # S3 part numbers are 1-based
-                                                                 part_num=part_num + 1,
-                                                                 headers=headers)
+                                    for attempt in retry_s3():
+                                        with attempt:
+                                            upload.upload_part_from_file(fp=StringIO(buf),
+                                                                         # part numbers are 1-based
+                                                                         part_num=part_num + 1,
+                                                                         headers=headers)
                                     if len(buf) == 0: break
                                     buf = readable.read(self.outer.partSize)
                             except:
-                                upload.cancel_upload()
-                                raise
+                                with panic(log=log):
+                                    for attempt in retry_s3():
+                                        with attempt:
+                                            upload.cancel_upload()
                             else:
-                                self.version = upload.complete_upload().version_id
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        self.version = upload.complete_upload().version_id
 
                     def reader():
                         buf = readable.read()
@@ -821,7 +856,10 @@ class AWSJobStore(AbstractJobStore):
                             key = store.filesBucket.new_key(key_name=self.fileID)
                             buf = StringIO(buf)
                             headers = self._s3EncryptionHeaders()
-                            assert buf.len == key.set_contents_from_file(fp=buf, headers=headers)
+                            for attempt in retry_s3():
+                                with attempt:
+                                    assert buf.len == key.set_contents_from_file(fp=buf,
+                                                                                 headers=headers)
                             self.version = key.version_id
 
                     thread = ExceptionalThread(target=multipartReader if multipart else reader)
@@ -834,12 +872,12 @@ class AWSJobStore(AbstractJobStore):
 
         def copyFrom(self, srcKey):
             """
-            Copies contents of source key into file.
+            Copies contents of source key into this file.
 
             :param srcKey: The key that will be copied from
             """
-            size = srcKey.bucket.get_key(srcKey.name).size
-            if size <= self._maxInlinedSize():
+            assert srcKey.size is not None
+            if srcKey.size <= self._maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
                 self.version = self._copyKey(srcKey=srcKey,
@@ -855,41 +893,51 @@ class AWSJobStore(AbstractJobStore):
             :param Bucket dstBucket: The bucket that contains or will contain the destination key.
             """
             dstKey = dstBucket.new_key(dstKeyName)
-
             if self.content is not None:
-                dstKey.set_contents_from_string(self.content)
-
+                for attempt in retry_s3():
+                    with attempt:
+                        dstKey.set_contents_from_string(self.content)
             elif self.version:
-                srcKey = self.outer.filesBucket.get_key(self.fileID, headers=self._s3EncryptionHeaders())
-                self._copyKey(srcKey=srcKey,
-                              dstBucketName=dstBucket.name,
-                              dstKeyName=dstKeyName,
-                              headers={"amz-copy-source".join(k.split('amz')): v
-                                       for k, v in self._s3EncryptionHeaders().items()})
+                for attempt in retry_s3():
+                    srcKey = self.outer.filesBucket.get_key(self.fileID,
+                                                            validate=False)
+                    srcKey.version_id = self.version
+                    with attempt:
+                        headers = {k.replace('amz-', 'amz-copy-source-', 1): v
+                                   for k, v in self._s3EncryptionHeaders().iteritems()}
+                        self._copyKey(srcKey=srcKey,
+                                      dstBucketName=dstBucket.name,
+                                      dstKeyName=dstKeyName,
+                                      headers=headers)
             else:
                 assert False
 
         def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
             headers = headers or {}
-            s3 = boto.connect_s3()
-
             if srcKey.size > self.outer.partSize:
                 return copyKeyMultipart(srcKey=srcKey,
                                         dstBucketName=dstBucketName,
                                         dstKeyName=dstKeyName,
                                         headers=headers)
             else:
-                dstBucket = s3.get_bucket(dstBucketName)
-                return dstBucket.copy_key(new_key_name=dstKeyName,
-                                          src_bucket_name=srcKey.bucket.name,
-                                          src_key_name=srcKey.name,
-                                          metadata=srcKey.metadata,
-                                          headers=headers)
+                # We need a location-agnostic connection to S3 so we can't use the one that we
+                # normally use for interacting with the job store bucket.
+                with closing(boto.connect_s3()) as s3:
+                    for attempt in retry_s3():
+                        with attempt:
+                            dstBucket = s3.get_bucket(dstBucketName)
+                            return dstBucket.copy_key(new_key_name=dstKeyName,
+                                                      src_bucket_name=srcKey.bucket.name,
+                                                      src_version_id=srcKey.version_id,
+                                                      src_key_name=srcKey.name,
+                                                      metadata=srcKey.metadata,
+                                                      headers=headers)
 
         def _hashesAreEqual(self, srcHash, dstHash):
             if self.encrypted:
-                log.debug("MD5 hash of imported or exported files cannot be checked because it is encrypted."
-                          % self._fileID)
+                log.debug(
+                    "MD5 hash of imported or exported files cannot be checked because it is encrypted."
+                    % self._fileID)
                 return True
             else:
                 return dstHash == srcHash
@@ -901,9 +949,11 @@ class AWSJobStore(AbstractJobStore):
             elif self.version:
                 headers = self._s3EncryptionHeaders()
                 key = self.outer.filesBucket.get_key(self.fileID, validate=False)
-                key.get_contents_to_filename(localFilePath,
-                                             version_id=self.version,
-                                             headers=headers)
+                for attempt in retry_s3():
+                    with attempt:
+                        key.get_contents_to_filename(localFilePath,
+                                                     version_id=self.version,
+                                                     headers=headers)
             else:
                 assert False
 
@@ -919,9 +969,11 @@ class AWSJobStore(AbstractJobStore):
                             elif self.version:
                                 headers = self._s3EncryptionHeaders()
                                 key = self.outer.filesBucket.get_key(self.fileID, validate=False)
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=self.version)
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        key.get_contents_to_file(writable,
+                                                                 headers=headers,
+                                                                 version_id=self.version)
                             else:
                                 assert False
                         finally:
@@ -945,8 +997,10 @@ class AWSJobStore(AbstractJobStore):
                             self.fileID,
                             expected_values=['version', self.previousVersion])
                 if self.previousVersion:
-                    store.filesBucket.delete_key(key_name=self.fileID,
-                                                 version_id=self.previousVersion)
+                    for attempt in retry_s3():
+                        with attempt:
+                            store.filesBucket.delete_key(key_name=self.fileID,
+                                                         version_id=self.previousVersion)
 
         def _s3EncryptionHeaders(self):
             sseKeyPath = self.outer.sseKeyPath
@@ -997,24 +1051,36 @@ class AWSJobStore(AbstractJobStore):
         respectively. Calling configure_versioning with False on a bucket will cause
         get_versioning_status to then return 'Suspended' for some reason.
         """
-        status = bucket.get_versioning_status()
+        for attempt in retry_s3():
+            with attempt:
+                status = bucket.get_versioning_status()
         return bool(status) and self.versionings[status['Versioning']]
 
     def deleteJobStore(self):
         self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
         if self.filesBucket is not None:
-            for upload in self.filesBucket.list_multipart_uploads():
-                upload.cancel_upload()
+            for attempt in retry_s3():
+                with attempt:
+                    for upload in self.filesBucket.list_multipart_uploads():
+                        upload.cancel_upload()
             if self.__getBucketVersioning(self.filesBucket) in (True, None):
-                for key in list(self.filesBucket.list_versions()):
-                    self.filesBucket.delete_key(key.name, version_id=key.version_id)
+                for attempt in retry_s3():
+                    with attempt:
+                        for key in list(self.filesBucket.list_versions()):
+                            self.filesBucket.delete_key(key.name, version_id=key.version_id)
             else:
-                for key in list(self.filesBucket.list()):
-                    key.delete()
-            self.filesBucket.delete()
+                for attempt in retry_s3():
+                    with attempt:
+                        for key in list(self.filesBucket.list()):
+                            key.delete()
+            for attempt in retry_s3():
+                with attempt:
+                    self.filesBucket.delete()
         for domain in (self.filesDomain, self.jobsDomain):
             if domain is not None:
-                domain.delete()
+                for attempt in retry_sdb():
+                    with attempt:
+                        domain.delete()
 
 
 aRepr = reprlib.Repr()
