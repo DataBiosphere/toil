@@ -1173,17 +1173,27 @@ class Job(object):
                         self.returnFileSize(fileStoreID, localFilePath, lockFileHandle,
                                             fileAlreadyCached=True)
                 # If the file is not in cache, check whether the .harbinger file for the given
-                # FileStoreID exists. If it does, the wait and periodically check for the removal of
-                # the file and the addition of the completed download into cache of the file by the
-                # other job. Then we link to it.
+                # FileStoreID exists.  If it does, the wait and periodically check for the removal
+                # of the file and the addition of the completed download into cache of the file by
+                # the other job. Then we link to it.
                 elif fileIsLocal and os.path.exists(harbingerFileName):
                     logger.info('CACHE: Waiting for another worker to download file with ID %s.'
                                 % fileStoreID)
                     while os.path.exists(harbingerFileName):
-                        # Release the file lock and then periodically check for completed download
-                        flock(lockFileHandle, LOCK_UN)
-                        time.sleep(20)  # What should this value be?
-                        flock(lockFileHandle, LOCK_EX)
+                        # Ensure that the process downloading the file is still alive.  The PID will
+                        # be in the harbinger file.
+                        pid = int(open(harbingerFileName).read())
+                        if self._pidExists(pid):
+                            # Release the file lock and then wait for a bit before repeating.
+                            flock(lockFileHandle, LOCK_UN)
+                            time.sleep(20)
+                            # Grab the file lock before repeating.
+                            flock(lockFileHandle, LOCK_EX)
+                        else:
+                            # The process that was supposed to download the file has died so we need
+                            # to remove the harbinger.
+                            os.remove(harbingerFileName)
+
                     # If the code reaches here, the partial lock file has been removed. This means
                     # either the file was successfully downloaded and added to cache, or something
                     # failed. To prevent code duplication, we recursively call readGlobalFile.
@@ -1195,8 +1205,12 @@ class Job(object):
                     logger.debug('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
                     if fileIsLocal and cache:
                         # If caching of the downloaded file is desired, First create the .partial
-                        # file so other jobs know not to redundantly download the same file.
-                        open(harbingerFileName, 'w').close()  # This emulates the system 'touch'
+                        # file so other jobs know not to redundantly download the same file.  Write
+                        # the PID of this process into the file so other jobs know who is carrying
+                        # out the download.
+                        with open(harbingerFileName + '.tmp', 'w') as harbingerFile:
+                            harbingerFile.write(str(os.getpid()))
+                        os.rename(harbingerFileName + '.tmp', harbingerFileName)
                         # Now release the file lock while the file is downloaded as download could
                         # take a while.
                         flock(lockFileHandle, LOCK_UN)
@@ -1205,13 +1219,13 @@ class Job(object):
                         try:
                             self.jobStore.readFile(fileStoreID,
                                                    '/.'.join(os.path.split(cachedFileName)))
-                        except: #TODO
+                        except:
                             if os.path.exists('/.'.join(os.path.split(cachedFileName))):
                                 os.remove('/.'.join(os.path.split(cachedFileName)))
+                            raise
                         else:
                             # If the download succeded, officially add the file to cache (by
-                            # recording it in the cache lock file) if possible. Possibly use better
-                            # function name.
+                            # recording it in the cache lock file) if possible.
                             if os.path.exists('/.'.join(os.path.split(cachedFileName))):
                                 os.rename('/.'.join(os.path.split(cachedFileName)), cachedFileName)
                                 self.addToCache(localFilePath, fileStoreID, 'read', mutable)
@@ -1912,6 +1926,29 @@ class Job(object):
                 # If the file was added to the cache, the value is subtracted from the requirements,
                 # and it is added if the file was removed form the cache.
                 self.jobReqs -= (fileSize * multiplier)
+
+        @staticmethod
+        def _pidExists(pid):
+            """
+            This will return True if the process associated with pid is still running on the
+            machine.
+            This is based on stackoverflow question 568271.
+
+            :param int pid: ID of the process to check for
+            :return: True/False
+            :rtype: bool
+            """
+            assert pid > 0
+            try:
+                os.kill(pid, 0)
+            except OSError as err:
+                if err.errno == errno.ESRCH:
+                    # ESRCH == No such process
+                    return False
+                else:
+                    raise
+            else:
+                return True
 
     class Service:
         """
