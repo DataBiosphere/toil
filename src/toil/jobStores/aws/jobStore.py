@@ -42,8 +42,8 @@ from boto.exception import SDBResponseError, S3ResponseError
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.jobStores.aws.sdbUtils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
-                                         monkeyPatchSdbConnection, retry_s3)
+from toil.jobStores.aws.utils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
+                                      monkeyPatchSdbConnection, retry_s3)
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
