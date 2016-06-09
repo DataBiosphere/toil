@@ -362,10 +362,10 @@ class JobBatcher:
 
         else:
             for predecessorJob in self.toilState.successorJobStoreIDToPredecessorJobs.pop(jobStoreID):
-                self.toilState.successorCounts[predecessorJob] -= 1
-                assert self.toilState.successorCounts[predecessorJob] >= 0
-                if self.toilState.successorCounts[predecessorJob] == 0: #Job is done
-                    self.toilState.successorCounts.pop(predecessorJob)
+                self.toilState.successorCounts[predecessorJob.jobStoreID] -= 1
+                assert self.toilState.successorCounts[predecessorJob.jobStoreID] >= 0
+                if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0: #Job is done
+                    self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
                     logger.debug('Job %s has all its non-service successors completed or totally '
                                  'failed', predecessorJob.jobStoreID)
                     assert predecessorJob not in self.toilState.updatedJobs
@@ -385,7 +385,8 @@ class ToilState( object ):
     def __init__( self, jobStore, rootJob, jobCache=None):
         # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
         self.successorJobStoreIDToPredecessorJobs = { }
-        # Hash of jobs to counts of numbers of successors issued.
+        
+        # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs
         # without successors in this map.
         self.successorCounts = { }
@@ -400,11 +401,14 @@ class ToilState( object ):
 
         # Jobs (as jobStoreIDs) with successors that have totally failed
         self.hasFailedSuccessors = set()
+        
         # Jobs that are ready to be processed
         self.updatedJobs = set( )
+        
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
         self.totalFailedJobs = set()
+        
         ##Algorithm to build this information
         logger.info("(Re)building internal scheduler state")
         self._buildToilState(rootJob, jobStore, jobCache)
@@ -444,7 +448,7 @@ class ToilState( object ):
                 jobWrapper.command = jobWrapper.checkpoint
 
         else: # There exist successors
-            self.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
+            self.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
             for successorJobStoreTuple in jobWrapper.stack[-1]:
                 successorJobStoreID = successorJobStoreTuple[0]
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
@@ -812,8 +816,8 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                                  jobWrapper.jobStoreID, len(jobWrapper.stack[-1]))
                     #Record the number of successors that must be completed before
                     #the jobWrapper can be considered again
-                    assert jobWrapper not in toilState.successorCounts
-                    toilState.successorCounts[jobWrapper] = len(jobWrapper.stack[-1])
+                    assert jobWrapper.jobStoreID not in toilState.successorCounts
+                    toilState.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
                     #List of successors to schedule
                     successors = []
                     #For each successor schedule if all predecessors have been completed
