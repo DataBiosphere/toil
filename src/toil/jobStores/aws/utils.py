@@ -15,11 +15,18 @@
 from __future__ import absolute_import
 import base64
 import bz2
-from contextlib import contextmanager
+import socket
 import logging
 import types
-from boto.exception import SDBResponseError, BotoServerError
-import time
+
+import errno
+from boto.exception import (SDBResponseError,
+                            BotoServerError,
+                            S3ResponseError,
+                            S3CreateError,
+                            S3CopyError)
+
+from toil.jobStores.utils import retry
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +102,6 @@ class SDBHelper(object):
     def _maxEncodedSize(cls):
         return cls._maxChunks() * cls.maxValueSize
 
-
     @classmethod
     def binaryToAttributes(cls, binary):
         if binary is None: return {}
@@ -144,10 +150,12 @@ class SDBHelper(object):
             binary = None
         return binary, numChunks
 
+
 from boto.sdb.connection import SDBConnection
 
+
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
-                              replace=True, expected_value=None):
+                               replace=True, expected_value=None):
     """
     Monkey-patched version of SDBConnection.put_attributes that uses POST instead of GET
 
@@ -165,6 +173,7 @@ def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
     # The addition of the verb keyword argument is the only difference to put_attributes (Hannes)
     return self.get_status('PutAttributes', params, verb='POST')
 
+
 def monkeyPatchSdbConnection(sdb):
     """
     :type sdb: SDBConnection
@@ -172,12 +181,16 @@ def monkeyPatchSdbConnection(sdb):
     sdb.put_attributes = types.MethodType(_put_attributes_using_post, sdb)
 
 
-# FIXME: This was lifted from cgcloud-lib where we use it for EC2 retries. The only difference
-# FIXME: ... between that code and this is the name of the exception.
+default_delays = (0, 1, 1, 4, 16, 64)
+default_timeout = 300
 
-a_short_time = 5
 
-a_long_time = 60 * 60
+def sdb_unavailable(e):
+    return isinstance(e, BotoServerError) and e.status == 503
+
+
+def retryable_sdb_errors(e):
+    return sdb_unavailable(e) or no_such_domain(e)
 
 
 def no_such_domain(e):
@@ -186,109 +199,21 @@ def no_such_domain(e):
             and e.error_code.endswith('NoSuchDomain'))
 
 
-def sdb_unavailable(e):
-    return e.__class__ == BotoServerError and e.status.startswith("503")
+def retry_sdb(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=retryable_sdb_errors):
+    return retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
-def true(_):
-    return True
+def retryable_s3_errors(e):
+    return (isinstance(e, (S3CreateError, S3ResponseError))
+            and e.status == 409
+            and 'try again' in e.message
+            # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
+            # English description suggests that errno is 54 (ECONNRESET) while the actual
+            # errno is listed as 104. To be safe, we check for both:
+            or isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
+            or isinstance(e, BotoServerError) and e.status == 500
+            or isinstance(e, S3CopyError) and 'try again' in e.message)
 
 
-def false(_):
-    return False
-
-
-def retry_sdb(retry_after=a_short_time,
-              retry_for=10 * a_short_time,
-              retry_while=no_such_domain):
-    """
-    Retry an SDB operation while the failure matches a given predicate and until a given timeout
-    expires, waiting a given amount of time in between attempts. This function is a generator
-    that yields contextmanagers. See doctests below for example usage.
-
-    :param retry_after: the delay in seconds between attempts
-
-    :param retry_for: the timeout in seconds.
-
-    :param retry_while: a callable with one argument, an instance of SDBResponseError, returning \
-    True if another attempt should be made or False otherwise
-
-    :return: a generator yielding contextmanagers
-
-    Retry for a limited amount of time:
-    >>> i = 0
-    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=true ):
-    ...     with attempt:
-    ...         i += 1
-    ...         raise SDBResponseError( 'foo', 'bar' )
-    Traceback (most recent call last):
-    ...
-    SDBResponseError: SDBResponseError: foo bar
-    <BLANKLINE>
-    >>> i > 1
-    True
-
-    Do exactly one attempt:
-    >>> i = 0
-    >>> for attempt in retry_sdb( retry_for=0 ):
-    ...     with attempt:
-    ...         i += 1
-    ...         raise SDBResponseError( 'foo', 'bar' )
-    Traceback (most recent call last):
-    ...
-    SDBResponseError: SDBResponseError: foo bar
-    <BLANKLINE>
-    >>> i
-    1
-
-    Don't retry on success
-    >>> i = 0
-    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=true ):
-    ...     with attempt:
-    ...         i += 1
-    >>> i
-    1
-
-    Don't retry on unless condition returns
-    >>> i = 0
-    >>> for attempt in retry_sdb( retry_after=0, retry_for=.1, retry_while=false ):
-    ...     with attempt:
-    ...         i += 1
-    ...         raise SDBResponseError( 'foo', 'bar' )
-    Traceback (most recent call last):
-    ...
-    SDBResponseError: SDBResponseError: foo bar
-    <BLANKLINE>
-    >>> i
-    1
-    """
-    if retry_for > 0:
-        go = [None]
-
-        @contextmanager
-        def repeated_attempt():
-            try:
-                yield
-            except BotoServerError as e:
-                if time.time() + retry_after < expiration:
-                    if retry_while(e):
-                        log.info('... got %s, trying again in %is ...', e.error_code, retry_after)
-                        time.sleep(retry_after)
-                    else:
-                        log.info('Exception failed predicate, giving up.')
-                        raise
-                else:
-                    log.info('Retry timeout expired, giving up.')
-                    raise
-            else:
-                go.pop()
-
-        expiration = time.time() + retry_for
-        while go:
-            yield repeated_attempt()
-    else:
-        @contextmanager
-        def single_attempt():
-            yield
-
-        yield single_attempt()
+def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
+    return retry(delays=delays, timeout=timeout, predicate=predicate)
