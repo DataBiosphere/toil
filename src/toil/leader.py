@@ -366,6 +366,7 @@ class JobBatcher:
                 assert self.toilState.successorCounts[predecessorJob.jobStoreID] >= 0
                 if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0: #Job is done
                     self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
+                    predecessorJob.stack.pop()
                     logger.debug('Job %s has all its non-service successors completed or totally '
                                  'failed', predecessorJob.jobStoreID)
                     assert predecessorJob not in self.toilState.updatedJobs
@@ -821,7 +822,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     #List of successors to schedule
                     successors = []
                     #For each successor schedule if all predecessors have been completed
-                    for successorJobStoreID, memory, cores, disk, preemptable, predecessorID in jobWrapper.stack.pop():
+                    for successorJobStoreID, memory, cores, disk, preemptable, predecessorID in jobWrapper.stack[-1]:
                         #Build map from successor to predecessors.
                         if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
