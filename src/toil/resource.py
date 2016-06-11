@@ -56,9 +56,9 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     ZIP archive of that directory.
     """
 
-    rootDirPathEnvName = 'JTRES_ROOT'
-
     resourceEnvNamePrefix = 'JTRES_'
+
+    rootDirPathEnvName = resourceEnvNamePrefix + 'ROOT'
 
     @classmethod
     def create(cls, jobStore, leaderPath):
@@ -116,10 +116,11 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         Removes all downloaded, localized resources
         """
         resourceRootDirPath = os.environ[cls.rootDirPathEnvName]
+        os.environ.pop(cls.rootDirPathEnvName)
         shutil.rmtree(resourceRootDirPath)
         for k, v in os.environ.items():
             if k.startswith(cls.resourceEnvNamePrefix):
-                os.unsetenv(k)
+                os.environ.pop(k)
 
     def register(self):
         """
