@@ -13,16 +13,18 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
 import importlib
 import os
-
 import sys
-from zipfile import ZipFile
-from bd2k.util.files import mkdir_p
 from io import BytesIO
+from subprocess import check_call
+from zipfile import ZipFile
 
+from bd2k.util.files import mkdir_p
 from mock import MagicMock, patch
 
+from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest
 
@@ -42,31 +44,59 @@ class ResourceTest(ToilTest):
                                                                  'foo/bar/__init__.py',
                                                                  'foo/bar/helper.py'))
 
+    def testVirtualEnv(self):
+        self._testExternal(moduleName='foo.userScript',
+                           virtualenv=True,
+                           pyFiles=('foo/__init__.py',
+                                    'foo/userScript.py',
+                                    'foo/bar/__init__.py',
+                                    'foo/bar/helper.py',
+                                    'de/pen/dency.py',
+                                    'de/__init__.py',
+                                    'de/pen/__init__.py'))
+
     def testStandAloneInPackage(self):
         self.assertRaises(ResourceException,
                           self._testExternal,
                           moduleName='userScript',
                           pyFiles=('__init__.py', 'userScript.py', 'helper.py'))
 
-    def _testExternal(self, moduleName, pyFiles):
+    def _testExternal(self, moduleName, pyFiles, virtualenv=False):
         dirPath = self._createTempDir()
-        pycFiles = set(pyFile + 'c' for pyFile in pyFiles)
-        for relPath in pyFiles:
-            path = os.path.join(dirPath, relPath)
-            mkdir_p(os.path.dirname(path))
-            with open(path, 'w') as f:
-                f.write('pass\n')
-        sys.path.append(dirPath)
+        if virtualenv:
+            self.assertTrue(inVirtualEnv())
+            check_call(['virtualenv', dirPath])
+            sitePackages = os.path.join(dirPath, 'lib', 'python2.7', 'site-packages')
+            # tuple assignment is necessary to make this line immediately precede the try:
+            oldPrefix, sys.prefix, dirPath = sys.prefix, dirPath, sitePackages
+        else:
+            oldPrefix = None
         try:
-            userScript = importlib.import_module(moduleName)
+            pycFiles = set(pyFile + 'c' for pyFile in pyFiles)
+            for relPath in pyFiles:
+                path = os.path.join(dirPath, relPath)
+                mkdir_p(os.path.dirname(path))
+                with open(path, 'w') as f:
+                    f.write('pass\n')
+            sys.path.append(dirPath)
             try:
-                self._test(userScript.__name__, expectedContents=pycFiles)
+                userScript = importlib.import_module(moduleName)
+                try:
+                    self._test(userScript.__name__,
+                               expectedContents=pycFiles,
+                               allowExtraContents=virtualenv)
+                finally:
+                    del userScript
+                    while moduleName:
+                        del sys.modules[moduleName]
+                        self.assertFalse(moduleName in sys.modules)
+                        moduleName = '.'.join(moduleName.split('.')[:-1])
+
             finally:
-                del userScript
-                del sys.modules[moduleName]
-            self.assertFalse(moduleName in sys.modules)
+                sys.path.remove(dirPath)
         finally:
-            sys.path.remove(dirPath)
+            if oldPrefix:
+                sys.prefix = oldPrefix
 
     def testBuiltIn(self):
         # Create a ModuleDescriptor for the module containing ModuleDescriptor, i.e. toil.resource
@@ -74,7 +104,8 @@ class ResourceTest(ToilTest):
         self.assertEquals(module_name, 'toil.resource')
         self._test(module_name, shouldBelongToToil=True)
 
-    def _test(self, module_name, shouldBelongToToil=False, expectedContents=None):
+    def _test(self, module_name,
+              shouldBelongToToil=False, expectedContents=None, allowExtraContents=True):
         module = ModuleDescriptor.forModule(module_name)
         # Assert basic attributes and properties
         self.assertEqual(module.belongsToToil, shouldBelongToToil)
@@ -114,30 +145,37 @@ class ResourceTest(ToilTest):
         # Check contents if requested
         if expectedContents is not None:
             with ZipFile(BytesIO(zipFile)) as _zipFile:
-                self.assertEqual(set(_zipFile.namelist()), expectedContents)
+                actualContents = set(_zipFile.namelist())
+                if allowExtraContents:
+                    self.assertTrue(actualContents.issuperset(expectedContents))
+                else:
+                    self.assertEqual(actualContents, expectedContents)
 
         self.assertEquals(resource.url, url)
         # Now we're on the worker. Prepare the storage for localized resources
         Resource.prepareSystem()
-        # Register the resource for subsequent lookup.
-        resource.register()
-        # Lookup the resource and ensure that the result is equal to but not the same as the
-        # original resource. Lookup will also be used when we localize the module that was
-        # originally used to create the resource.
-        localResource = Resource.lookup(module._resourcePath)
-        self.assertEquals(resource, localResource)
-        self.assertIsNot(resource, localResource)
-        # Now show that we can localize the module using the registered resource. Set up a mock
-        # urlopen() that yields the zipped tree ...
-        mock_urlopen = MagicMock()
-        mock_urlopen.return_value.read.return_value = zipFile
-        with patch('toil.resource.urlopen', mock_urlopen):
-            # ... and use it to download and unpack the resource
-            localModule = module.localize()
-        # The name should be equal between original and localized resource ...
-        self.assertEquals(module.name, localModule.name)
-        # ... but the directory should be different.
-        self.assertNotEquals(module.dirPath, localModule.dirPath)
-        # Show that we can 'undo' localization. This is necessary when the user script's jobs are
-        # invoked on the worker where they generate more child jobs.
-        self.assertEquals(localModule.globalize(), module)
+        try:
+            # Register the resource for subsequent lookup.
+            resource.register()
+            # Lookup the resource and ensure that the result is equal to but not the same as the
+            # original resource. Lookup will also be used when we localize the module that was
+            # originally used to create the resource.
+            localResource = Resource.lookup(module._resourcePath)
+            self.assertEquals(resource, localResource)
+            self.assertIsNot(resource, localResource)
+            # Now show that we can localize the module using the registered resource. Set up a mock
+            # urlopen() that yields the zipped tree ...
+            mock_urlopen = MagicMock()
+            mock_urlopen.return_value.read.return_value = zipFile
+            with patch('toil.resource.urlopen', mock_urlopen):
+                # ... and use it to download and unpack the resource
+                localModule = module.localize()
+            # The name should be equal between original and localized resource ...
+            self.assertEquals(module.name, localModule.name)
+            # ... but the directory should be different.
+            self.assertNotEquals(module.dirPath, localModule.dirPath)
+            # Show that we can 'undo' localization. This is necessary when the user script's jobs
+            #  are invoked on the worker where they generate more child jobs.
+            self.assertEquals(localModule.globalize(), module)
+        finally:
+            Resource.cleanSystem()
