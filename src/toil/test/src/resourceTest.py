@@ -87,8 +87,11 @@ class ResourceTest(ToilTest):
                                allowExtraContents=virtualenv)
                 finally:
                     del userScript
-                    del sys.modules[moduleName]
-                self.assertFalse(moduleName in sys.modules)
+                    while moduleName:
+                        del sys.modules[moduleName]
+                        self.assertFalse(moduleName in sys.modules)
+                        moduleName = '.'.join(moduleName.split('.')[:-1])
+
             finally:
                 sys.path.remove(dirPath)
         finally:
@@ -151,25 +154,28 @@ class ResourceTest(ToilTest):
         self.assertEquals(resource.url, url)
         # Now we're on the worker. Prepare the storage for localized resources
         Resource.prepareSystem()
-        # Register the resource for subsequent lookup.
-        resource.register()
-        # Lookup the resource and ensure that the result is equal to but not the same as the
-        # original resource. Lookup will also be used when we localize the module that was
-        # originally used to create the resource.
-        localResource = Resource.lookup(module._resourcePath)
-        self.assertEquals(resource, localResource)
-        self.assertIsNot(resource, localResource)
-        # Now show that we can localize the module using the registered resource. Set up a mock
-        # urlopen() that yields the zipped tree ...
-        mock_urlopen = MagicMock()
-        mock_urlopen.return_value.read.return_value = zipFile
-        with patch('toil.resource.urlopen', mock_urlopen):
-            # ... and use it to download and unpack the resource
-            localModule = module.localize()
-        # The name should be equal between original and localized resource ...
-        self.assertEquals(module.name, localModule.name)
-        # ... but the directory should be different.
-        self.assertNotEquals(module.dirPath, localModule.dirPath)
-        # Show that we can 'undo' localization. This is necessary when the user script's jobs are
-        # invoked on the worker where they generate more child jobs.
-        self.assertEquals(localModule.globalize(), module)
+        try:
+            # Register the resource for subsequent lookup.
+            resource.register()
+            # Lookup the resource and ensure that the result is equal to but not the same as the
+            # original resource. Lookup will also be used when we localize the module that was
+            # originally used to create the resource.
+            localResource = Resource.lookup(module._resourcePath)
+            self.assertEquals(resource, localResource)
+            self.assertIsNot(resource, localResource)
+            # Now show that we can localize the module using the registered resource. Set up a mock
+            # urlopen() that yields the zipped tree ...
+            mock_urlopen = MagicMock()
+            mock_urlopen.return_value.read.return_value = zipFile
+            with patch('toil.resource.urlopen', mock_urlopen):
+                # ... and use it to download and unpack the resource
+                localModule = module.localize()
+            # The name should be equal between original and localized resource ...
+            self.assertEquals(module.name, localModule.name)
+            # ... but the directory should be different.
+            self.assertNotEquals(module.dirPath, localModule.dirPath)
+            # Show that we can 'undo' localization. This is necessary when the user script's jobs
+            #  are invoked on the worker where they generate more child jobs.
+            self.assertEquals(localModule.globalize(), module)
+        finally:
+            Resource.cleanSystem()
