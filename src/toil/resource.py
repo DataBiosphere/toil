@@ -437,7 +437,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
 
         :rtype: toil.resource.Resource
         """
-        if self._runningOnWorker():
+        if not self._runningOnWorker():
             log.warn('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
