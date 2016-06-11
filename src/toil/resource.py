@@ -11,24 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from __future__ import absolute_import
-from collections import namedtuple
-from contextlib import closing
+
+import errno
 import hashlib
 import importlib
-from io import BytesIO
 import json
 import logging
 import os
+import shutil
+import sys
+from collections import namedtuple
+from contextlib import closing
+from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
 from urllib2 import urlopen
-import errno
 from zipfile import ZipFile, PyZipFile
-import sys
-import shutil
+
 from bd2k.util.iterables import concat
-import tempfile
+
+from toil import inVirtualEnv
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +70,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         :rtype: Resource
         """
         if os.path.isdir(leaderPath):
-            subcls = DirectoryResource
+            if inVirtualEnv() and leaderPath.startswith(sys.prefix):
+                subcls = VirtualEnvResource
+            else:
+                subcls = DirectoryResource
         elif os.path.isfile(leaderPath):
             subcls = FileResource
         elif os.path.exists(leaderPath):
@@ -98,7 +105,8 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         except KeyError:
             # Create directory holding local copies of requested resources ...
             resourceRootDirPath = mkdtemp()
-            # .. and register its location in an environment variable such that child processes can find it
+            # .. and register its location in an environment variable such that child processes
+            # can find it.
             os.environ[cls.rootDirPathEnvName] = resourceRootDirPath
         assert os.path.isdir(resourceRootDirPath)
 
@@ -166,8 +174,8 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     @property
     def localPath(self):
         """
-        The path to resource on the worker. The file or directory at the given resource may not
-        exist. Invoking download() will ensure that it does.
+        The path to resource on the worker. The file or directory at the returned path may or may
+        not yet exist. Invoking download() will ensure that it does.
         """
         raise NotImplementedError
 
@@ -209,7 +217,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
     def _save(self, dirPath):
         """
-        Save this resource to disk at the given parent path.
+        Save this resource to the directory at the given parent path.
 
         :type dirPath: str
         """
@@ -249,19 +257,20 @@ class FileResource(Resource):
 class DirectoryResource(Resource):
     """
     A resource read from a directory on the leader. The URL will point to a ZIP archive of the
-    directory.
+    directory. Only Python script/modules will be included. The directory may be a package but it
+    does not need to be.
     """
 
     @classmethod
-    def _load(cls, leaderPath):
+    def _load(cls, path):
         """
-        :type leaderPath: str
+        :type path: str
         """
         bytesIO = BytesIO()
         # PyZipFile compiles .py files on the fly, filters out any non-Python files and
         # distinguishes between packages and simple directories.
         with PyZipFile(file=bytesIO, mode='w') as zipFile:
-            zipFile.writepy(leaderPath)
+            zipFile.writepy(path)
         bytesIO.seek(0)
         return bytesIO
 
@@ -275,6 +284,30 @@ class DirectoryResource(Resource):
     @property
     def localPath(self):
         return self.localDirPath
+
+
+class VirtualEnvResource(DirectoryResource):
+    """
+    A resource read from a virtualenv on the leader. All modules and packages found in the
+    virtualenv's site-packages directory will be included. Any .pth or .egg-link files will be
+    ignored.
+    """
+
+    @classmethod
+    def _load(cls, path):
+        sitePackages = os.path.dirname(path)
+        assert os.path.basename(sitePackages) == 'site-packages'
+        bytesIO = BytesIO()
+        with PyZipFile(file=bytesIO, mode='w') as zipFile:
+            # This adds the .py files but omits subdirectories since site-packages is not a package
+            zipFile.writepy(sitePackages)
+            # Now add the missing packages
+            for name in os.listdir(sitePackages):
+                path = os.path.join(sitePackages, name)
+                if os.path.isdir(path) and os.path.isfile(os.path.join(path, '__init__.py')):
+                    zipFile.writepy(path)
+        bytesIO.seek(0)
+        return bytesIO
 
 
 class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
@@ -331,8 +364,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         filePath[-1], extension = os.path.splitext(filePath[-1])
         assert extension in ('.py', '.pyc')
         if name == '__main__':
+            # User script/module was invoked as the main program
             if module.__package__:
-                # invoked via python -m foo.bar
+                # Invoked as a module via python -m foo.bar
                 name = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
@@ -341,17 +375,17 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
                 name = '.'.join(reversed(name))
                 dirPath = os.path.sep.join(filePath)
             else:
-                # invoked via python foo/bar.py
+                # Invoked as a script via python foo/bar.py
                 name = filePath.pop()
                 dirPath = os.path.sep.join(filePath)
                 cls._check_conflict(dirPath, name)
         else:
-            # imported as a module
+            # User module was imported. Determine the directory containing the top-level package
             for package in reversed(name.split('.')):
                 dirPathTail = filePath.pop()
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
-
+        assert os.path.isdir(dirPath)
         return cls(dirPath=dirPath, name=name)
 
     @classmethod
@@ -441,8 +475,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
             else:
                 raise
         else:
-            return self.__class__( dirPath=dirPath, name=self.name )
-
+            return self.__class__(dirPath=dirPath, name=self.name)
 
     @property
     def _resourcePath(self):

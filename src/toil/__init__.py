@@ -32,12 +32,16 @@ def toilPackageDirPath():
     return result
 
 
+def inVirtualEnv():
+    return hasattr(sys, 'real_prefix')
+
+
 def resolveEntryPoint(entryPoint):
     """
     Returns the path to the given entry point (see setup.py) that *should* work on a worker. The
     return value may be an absolute or a relative path.
     """
-    if hasattr(sys, 'real_prefix'):
+    if inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints. 
         if os.path.isfile(path):
