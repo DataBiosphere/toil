@@ -1372,7 +1372,7 @@ class Job(object):
             """
             with self._CacheState.open(self) as cacheInfo:
                 jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
-            if fileStoreID in jobState.jobSpecificFiles.keys():
+            if jobState.isPopulated() and fileStoreID in jobState.jobSpecificFiles.keys():
                 # Use deleteLocalFile in the backend to delete the local copy of the file.
                 self.deleteLocalFile(fileStoreID)
                 # At this point, the local file has been deleted, and possibly the cached copy. If
@@ -1479,7 +1479,7 @@ class Job(object):
                 'cached': 0,
                 'sigmaJob': 0,
                 'cacheDir': self.localCacheDir,
-                'jobState': collections.defaultdict(int)})
+                'jobState': collections.defaultdict(dict)})
             cacheInfo.write(personalCacheStateFile)
 
         def encodedFileID(self, JobStoreFileID):
@@ -1926,6 +1926,9 @@ class Job(object):
                 # If the file was added to the cache, the value is subtracted from the requirements,
                 # and it is added if the file was removed form the cache.
                 self.jobReqs -= (fileSize * multiplier)
+
+            def isPopulated(self):
+                return self.__dict__ != {}
 
         @staticmethod
         def _pidExists(pid):
@@ -2440,18 +2443,20 @@ class Job(object):
     def _run(self, jobWrapper, fileStore):
         return self.run(fileStore)
 
-    def _execute(self, jobWrapper, stats, localTempDir, jobStore, fileStore):
+    @contextmanager
+    def _executor(self, jobWrapper, stats, fileStore):
         """
-        This is the core method for running the job within a worker.
+        This is the core wrapping method for running the job within a worker.  It sets up the stats
+        and logging before yielding. After completion of the body, the function will finish up the
+        stats and logging, and starts the async update process for the job.
         """
-        if stats != None:
+        if stats is not None:
             startTime = time.time()
             startClock = getTotalCpuTime()
         baseDir = os.getcwd()
-        #Run the job
-        returnValues = self._run(jobWrapper, fileStore)
-        #Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseExistingJob(jobWrapper, jobStore, returnValues)
+
+        yield
+
         # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete
         if not self.checkpoint:
@@ -2461,13 +2466,13 @@ class Job(object):
             # Else copy them to the job wrapper to delete later
             jobWrapper.checkpointFilesToDelete = list(Promise.filesToDelete)
         Promise.filesToDelete.clear()
-        #Now indicate the asynchronous update of the job can happen
+        # Now indicate the asynchronous update of the job can happen
         fileStore._updateJobWhenDone()
-        #Change dir back to cwd dir, if changed by job (this is a safety issue)
+        # Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
-        #Finish up the stats
-        if stats != None:
+        # Finish up the stats
+        if stats is not None:
             totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
             stats.jobs.append(
                 Expando(
@@ -2477,6 +2482,20 @@ class Job(object):
                     memory=str(totalMemoryUsage)
                 )
             )
+
+    def _runner(self, jobWrapper, jobStore, fileStore):
+        """
+        This method actually runs the job, and serialises the next jobs.
+
+        :param class jobWrapper: Instance of a job wrapper object
+        :param class jobStore: Instance of the job store
+        :param class fileStore: Instance of Job.FileStore or Job.CachedFileStore
+        :return:
+        """
+        # Run the job
+        returnValues = self._run(jobWrapper, fileStore)
+        # Serialize the new jobs defined by the run method to the jobStore
+        self._serialiseExistingJob(jobWrapper, jobStore, returnValues)
 
     def _jobName(self):
         """
