@@ -25,6 +25,7 @@ import urlparse
 import uuid
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
+from contextlib import closing
 from itertools import chain, islice
 from threading import Thread
 from unittest import skip
@@ -794,9 +795,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     @classmethod
     def _createExternalStore(cls):
-        import boto
-        s3 = boto.s3.connect_to_region(cls.testRegion)
-        return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
+        import boto.s3
+        with closing( boto.s3.connect_to_region(cls.testRegion) ) as s3:
+            s3 = boto.s3.connect_to_region(cls.testRegion)
+            return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
 
     @classmethod
     def _cleanUpExternalStore(cls, url):
