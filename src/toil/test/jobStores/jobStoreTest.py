@@ -785,14 +785,17 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     @classmethod
     def _hashTestFile(cls, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        bucket, key = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url), existing=True)
-        contents = key.get_contents_as_string()
+        key = AWSJobStore._getKeyForUrl(urlparse.urlparse(url), existing=True)
+        try:
+            contents = key.get_contents_as_string()
+        finally:
+            key.bucket.connection.close()
         return hashlib.md5(contents).hexdigest()
 
     @classmethod
     def _createExternalStore(cls):
         import boto
-        s3 = boto.connect_s3()
+        s3 = boto.s3.connect_to_region(cls.testRegion)
         return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
 
     @classmethod
@@ -800,14 +803,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import AWSJobStore
         import boto
         try:
-            bucket, _ = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url))
-        except boto.exception.S3ResponseError as ex:
-            assert ex.error_code == 404
+            bucket = AWSJobStore._getKeyForUrl(urlparse.urlparse(url)).bucket
+        except boto.exception.S3ResponseError as e:
+            assert e.error_code == 404
         else:
-            s3 = boto.connect_s3()
-            for key in bucket.list():
-                key.delete()
-            s3.delete_bucket(bucket)
+            try:
+                for key in bucket.list():
+                    key.delete()
+                bucket.delete(bucket)
+            finally:
+                bucket.connection.close()
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
