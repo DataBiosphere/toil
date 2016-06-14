@@ -337,8 +337,8 @@ def main():
                                  localTempDir=fileStore.localTempDir,
                                  jobStore=jobStore,
                                  fileStore=fileStore)
-                    if random.randint(0,100) < 35:
-                        os.kill(os.getpid(), signal.SIGKILL)
+                    time.sleep(3)
+                    os.kill(os.getpid(), signal.SIGKILL)
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
                 if config.disableSharedCache:
