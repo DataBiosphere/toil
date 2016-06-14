@@ -29,7 +29,7 @@ from itertools import chain, islice
 from threading import Thread
 from unittest import skip
 
-from bd2k.util.objects import abstractstaticmethod, abstractclassmethod
+from bd2k.util.objects import abstractclassmethod
 
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore, 
@@ -49,19 +49,19 @@ logger = logging.getLogger(__name__)
 
 # TODO: AWSJobStore does not check the existence of jobs before associating files with them
 
-class hidden:
+class AbstractJobStoreTest:
     """
     Hide abstract base class from unittest's test case loader
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractJobStoreTest(ToilTest):
+    class Test(ToilTest):
         __metaclass__ = ABCMeta
 
         @classmethod
         def setUpClass(cls):
-            super(hidden.AbstractJobStoreTest, cls).setUpClass()
+            super(AbstractJobStoreTest.Test, cls).setUpClass()
             logging.basicConfig(level=logging.DEBUG)
             logging.getLogger('boto').setLevel(logging.CRITICAL)
 
@@ -76,14 +76,14 @@ class hidden:
             raise NotImplementedError()
 
         def setUp(self):
-            super(hidden.AbstractJobStoreTest, self).setUp()
+            super(AbstractJobStoreTest.Test, self).setUp()
             self.namePrefix = 'jobstore-test-' + str(uuid.uuid4())
             self.config = self._createConfig()
             self.master = self._createJobStore(self.config)
 
         def tearDown(self):
             self.master.deleteJobStore()
-            super(hidden.AbstractJobStoreTest, self).tearDown()
+            super(AbstractJobStoreTest.Test, self).tearDown()
 
         def test(self):
             """
@@ -306,6 +306,7 @@ class hidden:
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
 
+        # noinspection PyMethodParameters
         @abstractclassmethod
         def _prepareTestFile(cls, size=None):
             """
@@ -318,8 +319,9 @@ class hidden:
             """
             raise NotImplementedError()
 
-        @abstractstaticmethod
-        def _hashTestFile(url):
+        # noinspection PyMethodParameters
+        @abstractclassmethod
+        def _hashTestFile(cls, url):
             """
             Returns hexadecimal MD5 digest of the contents of the file pointed at by the URL.
             """
@@ -330,12 +332,14 @@ class hidden:
             externalStore = cls._createExternalStore()
             return externalStore
 
-        @abstractstaticmethod
-        def _createExternalStore():
+        # noinspection PyMethodParameters
+        @abstractclassmethod
+        def _createExternalStore(cls):
             raise NotImplementedError()
 
-        @abstractstaticmethod
-        def _cleanUpExternalStore(url):
+        # noinspection PyMethodParameters
+        @abstractclassmethod
+        def _cleanUpExternalStore(cls, url):
             raise NotImplementedError()
 
         mpTestPartSize = 5 * 2**20
@@ -344,8 +348,8 @@ class hidden:
         def makeImportExportTests(cls):
             def importExportFile(self, other, size):
                 """
-                :param hidden.AbstractJobStoreTest self: the current test case
-                :param hidden.AbstractJobStoreTest other: the test case for the job store to import
+                :param AbstractJobStoreTest.Test self: the current test case
+                :param AbstractJobStoreTest.Test other: the test case for the job store to import
                        from or export to (not an instance, just the class)
                 :param int size: the size of the test file
                 """
@@ -521,7 +525,8 @@ class hidden:
             with open(filePath, 'r') as f:
                 while True:
                     buf = f.read(self._partSize())
-                    if not buf: break
+                    if not buf:
+                        break
                     hashOut.update(buf)
             self.assertEqual(hashIn.digest(), hashOut.digest())
 
@@ -602,24 +607,29 @@ class hidden:
         def _partSize(self):
             return 5 * 1024 * 1024
 
-    class AbstractEncryptedJobStoreTest(AbstractJobStoreTest):
+
+class AbstractEncryptedJobStoreTest:
+    # noinspection PyAbstractClass
+    class Test(AbstractJobStoreTest.Test):
         """
-        A mixin test case that creates a job store that encrypts files stored within it
+        A test of job stores that use encryption
         """
         __metaclass__ = ABCMeta
 
         def setUp(self):
+            # noinspection PyAttributeOutsideInit
             self.sseKeyDir = tempfile.mkdtemp()
+            # noinspection PyAttributeOutsideInit
             self.cseKeyDir = tempfile.mkdtemp()
-            super(hidden.AbstractEncryptedJobStoreTest, self).setUp()
+            super(AbstractEncryptedJobStoreTest.Test, self).setUp()
 
         def tearDown(self):
-            super(hidden.AbstractEncryptedJobStoreTest, self).tearDown()
+            super(AbstractEncryptedJobStoreTest.Test, self).tearDown()
             shutil.rmtree(self.sseKeyDir)
             shutil.rmtree(self.cseKeyDir)
 
         def _createConfig(self):
-            config = super(hidden.AbstractEncryptedJobStoreTest, self)._createConfig()
+            config = super(AbstractEncryptedJobStoreTest.Test, self)._createConfig()
             sseKeyFile = os.path.join(self.sseKeyDir, 'keyFile')
             with open(sseKeyFile, 'w') as f:
                 f.write('01234567890123456789012345678901')
@@ -633,7 +643,7 @@ class hidden:
             return config
 
 
-class FileJobStoreTest(hidden.AbstractJobStoreTest):
+class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self, config=None):
         return FileJobStore(self.namePrefix, config=config)
 
@@ -652,25 +662,25 @@ class FileJobStoreTest(hidden.AbstractJobStoreTest):
 
             return url, hashlib.md5(content).hexdigest()
 
-    @staticmethod
-    def _hashTestFile(url):
+    @classmethod
+    def _hashTestFile(cls, url):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
         with open(localFilePath, 'r') as f:
             return hashlib.md5(f.read()).hexdigest()
 
-    @staticmethod
-    def _createExternalStore():
+    @classmethod
+    def _createExternalStore(cls):
         return tempfile.mkdtemp()
 
-    @staticmethod
-    def _cleanUpExternalStore(url):
+    @classmethod
+    def _cleanUpExternalStore(cls, url):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
         os.remove(localFilePath)
 
 
 @experimental
 @needs_google
-class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
+class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = 'cgc-05-0006'
     headers = {"x-goog-project-id": projectID}
 
@@ -690,8 +700,8 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
                 boto.storage_uri(uri).set_contents_from_string(readable.read(size))
         return uri
 
-    @staticmethod
-    def _hashTestFile(url):
+    @classmethod
+    def _hashTestFile(cls, url):
         import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
@@ -699,16 +709,16 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
         contents = uri.get_contents_as_string(headers=GoogleJobStoreTest.headers)
         return hashlib.md5(contents).hexdigest()
 
-    @staticmethod
-    def _createExternalStore():
+    @classmethod
+    def _createExternalStore(cls):
         import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
         return GoogleJobStore._retryCreateBucket(uri=uri, headers=GoogleJobStoreTest.headers)
 
-    @staticmethod
-    def _cleanUpExternalStore(url):
+    @classmethod
+    def _cleanUpExternalStore(cls, url):
         import boto
         from toil.jobStores.googleJobStore import GoogleJobStore
         projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
@@ -735,7 +745,7 @@ class GoogleJobStoreTest(hidden.AbstractJobStoreTest):
 
 
 @needs_aws
-class AWSJobStoreTest(hidden.AbstractJobStoreTest):
+class AWSJobStoreTest(AbstractJobStoreTest.Test):
     testRegion = 'us-west-2'
 
     def _createJobStore(self, config=None):
@@ -746,7 +756,7 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
         AWSJobStore.FileInfo.defaultS3PartSize = partSize
         return AWSJobStore.loadOrCreateJobStore(self.testRegion + ':' + self.namePrefix,
                                                 config=config,
-                                                partSize=2**20*5)
+                                                partSize=5 * 2**20)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -772,21 +782,21 @@ class AWSJobStoreTest(hidden.AbstractJobStoreTest):
             bucket.new_key(fileName).set_contents_from_string(readable.read(size))
         return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
 
-    @staticmethod
-    def _hashTestFile(url):
+    @classmethod
+    def _hashTestFile(cls, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
         bucket, key = AWSJobStore._extractKeyInfoFromUrl(urlparse.urlparse(url), existing=True)
         contents = key.get_contents_as_string()
         return hashlib.md5(contents).hexdigest()
 
-    @staticmethod
-    def _createExternalStore():
+    @classmethod
+    def _createExternalStore(cls):
         import boto
         s3 = boto.connect_s3()
         return s3.create_bucket('import_export_test_%s' % (uuid.uuid4()))
 
-    @staticmethod
-    def _cleanUpExternalStore(url):
+    @classmethod
+    def _cleanUpExternalStore(cls, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
         import boto
         try:
@@ -826,7 +836,7 @@ class InvalidAWSJobStoreTest(ToilTest):
 
 @experimental
 @needs_azure
-class AzureJobStoreTest(hidden.AbstractJobStoreTest):
+class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = 'toiltest'
 
     def _createJobStore(self, config=None):
@@ -865,12 +875,13 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
     @classmethod
     def _hashTestFile(cls, url):
         from toil.jobStores.azureJobStore import AzureJobStore
-        blobService, containerName, blobName = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
+        url = urlparse.urlparse(url)
+        blobService, containerName, blobName = AzureJobStore._extractBlobInfoFromUrl(url)
         content = blobService.get_blob_to_bytes(containerName, blobName)
         return hashlib.md5(content).hexdigest()
 
-    @staticmethod
-    def _createExternalStore():
+    @classmethod
+    def _createExternalStore(cls):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
         from azure.storage.blob import BlobService
 
@@ -880,10 +891,11 @@ class AzureJobStoreTest(hidden.AbstractJobStoreTest):
         blobService.create_container(containerName)
         return containerName
 
-    @staticmethod
-    def _cleanUpExternalStore(url):
+    @classmethod
+    def _cleanUpExternalStore(cls, url):
         from toil.jobStores.azureJobStore import AzureJobStore
-        blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(urlparse.urlparse(url))
+        url = urlparse.urlparse(url)
+        blobService, containerName, _ = AzureJobStore._extractBlobInfoFromUrl(url)
         blobService.delete_container(containerName)
 
 
@@ -903,22 +915,22 @@ class InvalidAzureJobStoreTest(ToilTest):
                           'toiltest:a_b')
 
 
-class EncryptedFileJobStoreTest(FileJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
 
 @needs_aws
 @needs_encryption
-class EncryptedAWSJobStoreTest(AWSJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
 
 @experimental
 @needs_azure
 @needs_encryption
-class EncryptedAzureJobStoreTest(AzureJobStoreTest, hidden.AbstractEncryptedJobStoreTest):
+class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
 
-hidden.AbstractJobStoreTest.makeImportExportTests()
-hidden.AbstractJobStoreTest.makeImportOnlyTests()
+AbstractJobStoreTest.Test.makeImportExportTests()
+AbstractJobStoreTest.Test.makeImportOnlyTests()
