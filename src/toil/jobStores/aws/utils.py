@@ -185,21 +185,28 @@ default_delays = (0, 1, 1, 4, 16, 64)
 default_timeout = 300
 
 
+def connection_reset(e):
+    # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
+    # English description suggests that errno is 54 (ECONNRESET) while the actual
+    # errno is listed as 104. To be safe, we check for both:
+    return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
+
+
 def sdb_unavailable(e):
     return isinstance(e, BotoServerError) and e.status == 503
 
 
-def retryable_sdb_errors(e):
-    return sdb_unavailable(e) or no_such_domain(e)
-
-
-def no_such_domain(e):
+def no_such_sdb_domain(e):
     return (isinstance(e, SDBResponseError)
             and e.error_code
             and e.error_code.endswith('NoSuchDomain'))
 
 
-def retry_sdb(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=retryable_sdb_errors):
+def retryable_sdb_errors(e):
+    return sdb_unavailable(e) or no_such_sdb_domain(e) or connection_reset(e)
+
+
+def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
     return retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
@@ -207,10 +214,7 @@ def retryable_s3_errors(e):
     return (isinstance(e, (S3CreateError, S3ResponseError))
             and e.status == 409
             and 'try again' in e.message
-            # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
-            # English description suggests that errno is 54 (ECONNRESET) while the actual
-            # errno is listed as 104. To be safe, we check for both:
-            or isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
+            or connection_reset(e)
             or isinstance(e, BotoServerError) and e.status == 500
             or isinstance(e, S3CopyError) and 'try again' in e.message)
 
