@@ -42,7 +42,7 @@ from boto.exception import SDBResponseError, S3ResponseError
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.jobStores.aws.utils import (SDBHelper, retry_sdb, no_such_domain, sdb_unavailable,
+from toil.jobStores.aws.utils import (SDBHelper, retry_sdb, no_such_sdb_domain, sdb_unavailable,
                                       monkeyPatchSdbConnection, retry_s3)
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
@@ -517,7 +517,7 @@ class AWSJobStore(AbstractJobStore):
         try:
             return self.db.get_domain(domain_name)
         except SDBResponseError as e:
-            if no_such_domain(e):
+            if no_such_sdb_domain(e):
                 for attempt in retry_sdb(predicate=sdb_unavailable):
                     with attempt:
                         return self.db.create_domain(domain_name)
