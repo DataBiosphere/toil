@@ -94,10 +94,10 @@ def getJobStoreClasses():
     jobStoreClassNames = (
         "toil.jobStores.azureJobStore.AzureJobStore",
         "toil.jobStores.fileJobStore.FileJobStore",
+        "toil.jobStores.googleJobStore.GoogleJobStore",
         "toil.jobStores.aws.jobStore.AWSJobStore",
         "toil.jobStores.abstractJobStore.JobStoreSupport"
     )
-
     jobStoreClasses = []
     for className in jobStoreClassNames:
         moduleName, className = className.rsplit('.', 1)
