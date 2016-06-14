@@ -337,7 +337,7 @@ def main():
                                  localTempDir=fileStore.localTempDir,
                                  jobStore=jobStore,
                                  fileStore=fileStore)
-
+                    os.kill(os.getpid(), signal.SIGKILL)
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
                 if config.disableSharedCache:
