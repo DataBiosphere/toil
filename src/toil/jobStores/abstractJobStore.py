@@ -234,10 +234,11 @@ class AbstractJobStore(object):
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
                                             "is nothing to restart." % jobStoreString)
 
-    def importFile(self, srcUrl):
+    def importFile(self, srcUrl, sharedFileName=None):
         """
         Imports the file pointed at by sourceUrl into job store. The jobStoreFileId of the new
-        file is returned.
+        file is returned. If a shared file name is given the file is imported as a shared file
+        and its name is returned.
 
         Note that the helper method _importFile is used to read from the source and write to
         destination (which is the current job store in this case). To implement any optimizations that
@@ -258,24 +259,33 @@ class AbstractJobStore(object):
 
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
+        :param str sharedFileName: Optional name that will import the file as a shared file with the given name.
         :return The jobStoreFileId of imported file.
         :rtype: str
         """
         url = urlparse.urlparse(srcUrl)
-        return self._importFile(findJobStoreForUrl(url), url)
+        return self._importFile(findJobStoreForUrl(url), url, sharedFileName=sharedFileName)
 
-    def _importFile(self, otherCls, url):
+    def _importFile(self, otherCls, url, sharedFileName=None):
         """
         Refer to importFile docstring for information about this method.
 
         :param type otherCls: The concrete subclass of AbstractJobStore that supports exporting to the given URL.
         :param urlparse.ParseResult url: The parsed url given to importFile.
+        :param str sharedFileName: Optional name that will import the file as a shared file with the given name.
         :return: The job store file ID of the imported file
         :rtype: str
         """
-        with self.writeFileStream() as (writable, jobStoreFileID):
-            otherCls._readFromUrl(url, writable)
-            return jobStoreFileID
+        if sharedFileName is None:
+            with self.writeFileStream() as (writable, jobStoreFileID):
+                otherCls._readFromUrl(url, writable)
+                return jobStoreFileID
+        else:
+            if not self._validateSharedFileName(sharedFileName):
+                raise ValueError("The name '%s' if not a valud shared file name." % sharedFileName)
+            with self.writeSharedFileStream(sharedFileName) as writable:
+                otherCls._readFromUrl(url, writable)
+                return sharedFileName
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
