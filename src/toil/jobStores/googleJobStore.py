@@ -318,16 +318,16 @@ class GoogleJobStore(AbstractJobStore):
 
     @staticmethod
     def _retryCreateBucket(uri, headers):
-        bucket = None
-        while not bucket:
+        # FIMXE: This should use retry from utils
+        while True:
             try:
-                bucket = uri.create_bucket(headers=headers)
+                # FIMXE: this leaks a connection on exceptions
+                return uri.create_bucket(headers=headers)
             except boto.exception.GSResponseError as e:
                 if e.status == 429:
                     time.sleep(10)
                 else:
                     raise
-        return bucket
 
     @staticmethod
     def _newID(isFile=False, jobStoreID=None):
