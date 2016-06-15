@@ -289,7 +289,9 @@ def experimental(test_item):
     # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an 
     # environment variable. 
     test_item = _mark_test('experimental', test_item)
-    if not less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
+    if less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
+        return test_item
+    else:
         return unittest.skip(
             'Set TOIL_TEST_EXPERIMENTAL="True" to include this experimental test.')(test_item)
 

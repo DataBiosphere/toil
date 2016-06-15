@@ -38,12 +38,19 @@ from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import SDBResponseError, S3ResponseError
+from boto.s3.key import Key
 
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchJobException,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException)
-from toil.jobStores.aws.utils import (SDBHelper, retry_sdb, no_such_sdb_domain, sdb_unavailable,
-                                      monkeyPatchSdbConnection, retry_s3)
+from toil.jobStores.aws.utils import (SDBHelper,
+                                      retry_sdb,
+                                      no_such_sdb_domain,
+                                      sdb_unavailable,
+                                      monkeyPatchSdbConnection,
+                                      retry_s3,
+                                      bucket_location_to_region)
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
@@ -284,61 +291,82 @@ class AWSJobStore(AbstractJobStore):
 
     def _importFile(self, otherCls, url):
         if issubclass(otherCls, AWSJobStore):
-            srcBucket, srcKey = self._extractKeyInfoFromUrl(url, existing=True)
-            info = self.FileInfo.create(srcKey.name)
-            info.copyFrom(srcKey)
-            info.save()
+            srcKey = self._getKeyForUrl(url, existing=True)
+            try:
+                info = self.FileInfo.create(srcKey.name)
+                info.copyFrom(srcKey)
+                info.save()
+            finally:
+                srcKey.bucket.connection.close()
             return info.fileID
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):
-            dstBucket, newKey = self._extractKeyInfoFromUrl(url)
-            info = self.FileInfo.loadOrFail(jobStoreFileID)
-            info.copyTo(newKey.name, dstBucket)
+            dstKey = self._getKeyForUrl(url)
+            try:
+                info = self.FileInfo.loadOrFail(jobStoreFileID)
+                info.copyTo(dstKey)
+            finally:
+                dstKey.bucket.connection.close()
         else:
             super(AWSJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        srcBucket, srcKey = cls._extractKeyInfoFromUrl(url, existing=True)
-        srcKey.get_contents_to_file(writable)
+        srcKey = cls._getKeyForUrl(url, existing=True)
+        try:
+            srcKey.get_contents_to_file(writable)
+        finally:
+            srcKey.bucket.connection.close()
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        dstBucket, dstKey = cls._extractKeyInfoFromUrl(url)
-        dstKey.set_contents_from_string(readable.read())
+        dstKey = cls._getKeyForUrl(url)
+        try:
+            dstKey.set_contents_from_string(readable.read())
+        finally:
+            dstKey.bucket.connection.close()
 
     @staticmethod
-    def _extractKeyInfoFromUrl(url, existing=None):
+    def _getKeyForUrl(url, existing=None):
         """
-        Extracts bucket and key from URL. The existing parameter determines if a
-        particular state of existence should be enforced. Note also that if existing
-        is not True and the key does not exist.
+        Extracts a key from a given s3:// URL. On return, but not on exceptions, this method
+        leaks an S3Connection object. The caller is responsible to close that by calling
+        key.bucket.connection.close().
 
-        :param existing: determines what the state
-        :return: (bucket, key)
+        :param bool existing: If True, key is expected to exist. If False, key is expected not to
+               exists and it will be created. If None, the key will be created if it doesn't exist.
+
+        :rtype: Key
         """
-        s3 = boto.connect_s3()
-        bucket = s3.get_bucket(url.netloc)
-        key = bucket.get_key(url.path[1:])
+        # Get the bucket's region to avoid a redirect per request
+        with closing(boto.connect_s3()) as s3:
+            region = bucket_location_to_region(s3.get_bucket(url.netloc).get_location())
 
-        if existing is True:
+        # Note that caller is responsible for closing the connection
+        s3 = boto.s3.connect_to_region(region)
+        try:
+            bucket = s3.get_bucket(url.netloc)
+            key = bucket.get_key(url.path[1:])
+            if existing is True:
+                if key is None:
+                    raise RuntimeError('Key does not exist.')
+            elif existing is False:
+                if key is not None:
+                    raise RuntimeError('Key exists.')
+            elif existing is None:
+                pass
+            else:
+                assert False
             if key is None:
-                raise RuntimeError('Key does not exist.')
-        elif existing is False:
-            if key is not None:
-                raise RuntimeError('Key exists.')
-        elif existing is None:
-            pass
+                key = bucket.new_key(url.path[1:])
+        except:
+            with panic():
+                s3.close()
         else:
-            assert False
-
-        if key is None:
-            key = bucket.new_key(url.path[1:])
-
-        return bucket, key
+            return key
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -645,7 +673,7 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def loadOrFail(cls, jobStoreFileID, customName=None):
             """
-            :rtype: FileInfo
+            :rtype: AWSJobStore.FileInfo
             :return: an instance of this class representing the file with the given ID
             :raises NoSuchFileException: if given file does not exist
             """
@@ -816,7 +844,7 @@ class AWSJobStore(AbstractJobStore):
             with os.fdopen(readable_fh, 'r') as readable:
                 with os.fdopen(writable_fh, 'w') as writable:
                     def multipartReader():
-                        buf = readable.read(self.outer.partSize)
+                        buf = readable.read(store.partSize)
                         if allowInlining and len(buf) <= self._maxInlinedSize():
                             self.content = buf
                         else:
@@ -829,14 +857,16 @@ class AWSJobStore(AbstractJobStore):
                             try:
                                 for part_num in itertools.count():
                                     # There must be at least one part, even if the file is empty.
-                                    if len(buf) == 0 and part_num > 0: break
+                                    if len(buf) == 0 and part_num > 0:
+                                        break
                                     for attempt in retry_s3():
                                         with attempt:
                                             upload.upload_part_from_file(fp=StringIO(buf),
                                                                          # part numbers are 1-based
                                                                          part_num=part_num + 1,
                                                                          headers=headers)
-                                    if len(buf) == 0: break
+                                    if len(buf) == 0:
+                                        break
                                     buf = readable.read(self.outer.partSize)
                             except:
                                 with panic(log=log):
@@ -885,14 +915,12 @@ class AWSJobStore(AbstractJobStore):
                                              dstKeyName=self._fileID,
                                              headers=self._s3EncryptionHeaders()).version_id
 
-        def copyTo(self, dstKeyName, dstBucket):
+        def copyTo(self, dstKey):
             """
-            Copies contents of file to destination key.
+            Copies contents of this file to the given key.
 
-            :param str newKeyName: The name of the new key to be created or copied to from the file.
-            :param Bucket dstBucket: The bucket that contains or will contain the destination key.
+            :param Key dstKey: The key to copy this file's content to
             """
-            dstKey = dstBucket.new_key(dstKeyName)
             if self.content is not None:
                 for attempt in retry_s3():
                     with attempt:
@@ -906,8 +934,8 @@ class AWSJobStore(AbstractJobStore):
                         headers = {k.replace('amz-', 'amz-copy-source-', 1): v
                                    for k, v in self._s3EncryptionHeaders().iteritems()}
                         self._copyKey(srcKey=srcKey,
-                                      dstBucketName=dstBucket.name,
-                                      dstKeyName=dstKeyName,
+                                      dstBucketName=dstKey.bucket.name,
+                                      dstKeyName=dstKey.name,
                                       headers=headers)
             else:
                 assert False
@@ -932,15 +960,6 @@ class AWSJobStore(AbstractJobStore):
                                                       src_key_name=srcKey.name,
                                                       metadata=srcKey.metadata,
                                                       headers=headers)
-
-        def _hashesAreEqual(self, srcHash, dstHash):
-            if self.encrypted:
-                log.debug(
-                    "MD5 hash of imported or exported files cannot be checked because it is encrypted."
-                    % self._fileID)
-                return True
-            else:
-                return dstHash == srcHash
 
         def download(self, localFilePath):
             if self.content is not None:

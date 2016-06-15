@@ -98,10 +98,9 @@ class hidden:
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
+        # Disable the concurrency test in this case
+
         def testJobConcurrency(self):
-            """
-            Override test in batchSystemTest.hidden.AbstractBatchSystemJobTest
-            """
             pass
 
 
