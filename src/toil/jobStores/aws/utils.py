@@ -20,6 +20,8 @@ import logging
 import types
 
 import errno
+from ssl import SSLError
+
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
@@ -202,8 +204,16 @@ def no_such_sdb_domain(e):
             and e.error_code.endswith('NoSuchDomain'))
 
 
+def retryable_ssl_error(e):
+    # https://github.com/BD2KGenomics/toil/issues/978
+    return isinstance(e, SSLError) and e.reason == 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'
+
+
 def retryable_sdb_errors(e):
-    return sdb_unavailable(e) or no_such_sdb_domain(e) or connection_reset(e)
+    return (sdb_unavailable(e)
+            or no_such_sdb_domain(e)
+            or connection_reset(e)
+            or retryable_ssl_error(e))
 
 
 def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
@@ -223,21 +233,21 @@ def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable
     return retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
-def region_to_bucket_location( region ):
+def region_to_bucket_location(region):
     if region == 'us-east-1':
         return ''
     else:
         return region
 
 
-def bucket_location_to_region( location ):
+def bucket_location_to_region(location):
     if location == '':
         return 'us-east-1'
     else:
         return location
 
 
-def bucket_location_to_http_url( location ):
+def bucket_location_to_http_url(location):
     if location:
         return 'https://s3-' + location + '.amazonaws.com'
     else:
