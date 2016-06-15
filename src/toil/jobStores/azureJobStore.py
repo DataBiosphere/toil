@@ -786,4 +786,4 @@ def defaultRetryPredicate(exception):
 
 
 def retry_azure(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=defaultRetryPredicate):
-    retry(delays=delays, timeout=timeout, predicate=predicate)
+    return retry(delays=delays, timeout=timeout, predicate=predicate)
