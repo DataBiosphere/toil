@@ -961,15 +961,6 @@ class AWSJobStore(AbstractJobStore):
                                                       metadata=srcKey.metadata,
                                                       headers=headers)
 
-        def _hashesAreEqual(self, srcHash, dstHash):
-            if self.encrypted:
-                log.debug(
-                    "MD5 hash of imported or exported files cannot be checked because it is encrypted."
-                    % self._fileID)
-                return True
-            else:
-                return dstHash == srcHash
-
         def download(self, localFilePath):
             if self.content is not None:
                 with open(localFilePath, 'w') as f:
