@@ -77,10 +77,10 @@ class AbstractJobStoreTest:
         # if other values are also used is that there will be more external stores and less sharing
         # of them. They will still all be cleaned-up.
 
-        @staticmethod
+        @classmethod
         @memoize
         def __new__(cls, *args):
-            return super(AbstractJobStoreTest.Test, cls).__new__(cls, *args)
+            return super(AbstractJobStoreTest.Test, cls).__new__(*args)
 
         def _createConfig(self):
             return Config()
