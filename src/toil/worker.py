@@ -328,15 +328,14 @@ def main():
 
                 # Create a fileStore object for the job
                 fileStore = FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
-                with fileStore.open(job):
-                    #Get the next block function and list that will contain any messages
-                    blockFn = fileStore._blockFn
+                with job._executor(jobWrapper=jobWrapper,
+                                   stats=statsDict if config.stats else None,
+                                   fileStore=fileStore):
+                    with fileStore.open(job):
+                        # Get the next block function and list that will contain any messages
+                        blockFn = fileStore._blockFn
 
-                    job._execute(jobWrapper=jobWrapper,
-                                 stats=statsDict if config.stats else None,
-                                 localTempDir=fileStore.localTempDir,
-                                 jobStore=jobStore,
-                                 fileStore=fileStore)
+                        job._runner(jobWrapper=jobWrapper, jobStore=jobStore, fileStore=fileStore)
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
