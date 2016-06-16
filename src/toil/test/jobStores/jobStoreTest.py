@@ -381,7 +381,13 @@ class AbstractJobStoreTest:
         @classmethod
         def makeImportExportTests(cls):
 
-            def importExportFile(self, otherCls, size):
+            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
+
+            activeTestClassesByName = {testCls.__name__: testCls
+                                       for testCls in testClasses
+                                       if not getattr(testCls, '__unittest_skip__', False)}
+
+            def testImportExportFile(self, otherCls, size):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
 
@@ -406,12 +412,9 @@ class AbstractJobStoreTest:
                 self.master.exportFile(jobStoreFileID, dstUrl)
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
 
-            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
-            make_tests(importExportFile,
+            make_tests(testImportExportFile,
                        targetClass=cls,
-                       otherCls={testCls.__name__: testCls
-                                 for testCls in testClasses
-                                 if not getattr(testCls, '__unittest_skip__', False)},
+                       otherCls=activeTestClassesByName,
                        size=dict(zero=0,
                                  one=1,
                                  oneMiB=2 ** 20,
@@ -419,20 +422,39 @@ class AbstractJobStoreTest:
                                  partSize=cls.mpTestPartSize,
                                  partSizePlusOne=cls.mpTestPartSize + 1))
 
-        @classmethod
-        def makeImportOnlyTests(cls):
-            def importHttpFile(self):
-                # prepare random file for import
-                self.master.partSize = cls.mpTestPartSize
-                srcUrl = 'https://raw.githubusercontent.com/BD2KGenomics/toil/master/Makefile'
-                srcHash = hashlib.md5(urllib2.urlopen(srcUrl).read()).hexdigest()
-                # test import
-                jobStoreFileID = self.master.importFile(srcUrl)
-                with self.master.readFileStream(jobStoreFileID) as f:
-                    fileMD5 = hashlib.md5(f.read()).hexdigest()
-                self.assertEqual(fileMD5, srcHash)
+            def testImportSharedFile(self, otherCls):
+                """
+                :param AbstractJobStoreTest.Test self: the current test case
 
-            make_tests(importHttpFile, targetClass=cls)
+                :param AbstractJobStoreTest.Test otherCls: the test case class for the job store
+                       to import from or export to
+                """
+                # Prepare test file in other job store
+                self.master.partSize = cls.mpTestPartSize
+                other = otherCls('test')
+                store = other._externalStore()
+
+                srcUrl, srcMd5 = other._prepareTestFile(store, 42)
+                # Import into job store under test
+                self.assertIsNone(self.master.importFile(srcUrl, sharedFileName='foo'))
+                with self.master.readSharedFileStream('foo') as f:
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+
+            make_tests(testImportSharedFile,
+                       targetClass=cls,
+                       otherCls=activeTestClassesByName)
+
+        def testImportHttpFile(self):
+            # Prepare random file for import
+            self.master.partSize = self.mpTestPartSize
+            srcUrl = 'https://raw.githubusercontent.com/BD2KGenomics/toil/master/Makefile'
+            srcHash = hashlib.md5(urllib2.urlopen(srcUrl).read()).hexdigest()
+            # test import
+            jobStoreFileID = self.master.importFile(srcUrl)
+            with self.master.readFileStream(jobStoreFileID) as f:
+                fileMD5 = hashlib.md5(f.read()).hexdigest()
+            self.assertEqual(fileMD5, srcHash)
 
         def testFileDeletion(self):
             """
@@ -947,4 +969,3 @@ class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTes
 
 
 AbstractJobStoreTest.Test.makeImportExportTests()
-AbstractJobStoreTest.Test.makeImportOnlyTests()
