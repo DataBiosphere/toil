@@ -105,7 +105,8 @@ def getJobStoreClasses():
         try:
             module = import_module(moduleName)
         except ImportError:
-            logger.info("Unable to import '%s'" % moduleName)
+            logger.info("Unable to import '%s'. This may be because Toil was not installed with the"
+                        " relevant extra." % moduleName)
         else:
             jobStoreClasses.append(getattr(module, className))
     return jobStoreClasses
