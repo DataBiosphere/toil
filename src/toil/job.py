@@ -575,13 +575,7 @@ class Job(object):
                     # the file itself is deleted. The fileHandle itself should persist
                     # while we maintain the open file handle
                     with self.jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
-                        bufferSize=1000000 # TODO: This buffer number probably needs to be
-                        # modified/tuned
-                        while 1:
-                            copyBuffer = inputFileHandle.read(bufferSize)
-                            if not copyBuffer:
-                                break
-                            outputFileHandle.write(copyBuffer)
+                        shutil.copyfileobj(inputFileHandle, outputFileHandle)
                     inputFileHandle.close()
                     # Remove the file from the lock files
                     with self._pendingFileWritesLock:
@@ -1000,6 +994,49 @@ class Job(object):
 
             self._setupCache()
 
+        # Cache-friendly version of asyncWrite.  This essentially duplicates FileStore.asyncWrite
+        # and adds in a few lines with caching logic.  We deemed it not worth the effort of
+        # attempting to make a template method that can be modified in CachedFileStore since the
+        # parent method will be phased out very soon.
+        def asyncWrite(self):
+            try:
+                while True:
+                    try:
+                        # Block for up to two seconds waiting for a file
+                        args = self.queue.get(timeout=2)
+                    except Empty:
+                        # Check if termination event is signaled
+                        # (set in the event of an exception in the worker)
+                        if self._terminateEvent.isSet():
+                            raise RuntimeError("The termination flag is set, exiting")
+                        continue
+                    # Normal termination condition is getting None from queue
+                    if args is None:
+                        break
+                    inputFileHandle, jobStoreFileID = args
+                    cachedFileName = self.encodedFileID(jobStoreFileID)
+                    # Ensure that the harbinger exists in the cache directory and that the PID
+                    # matches that of this writing thread.
+                    # If asyncWrite is ported to subprocesses instead of threads in the future,
+                    # insert logic here to securely overwrite the harbinger file.
+                    harbingerFile = self.HarbingerFile(self, cachedFileName=cachedFileName)
+                    assert harbingerFile.exists()
+                    assert harbingerFile.read() == int(os.getpid())
+                    # We pass in a fileHandle, rather than the file-name, in case
+                    # the file itself is deleted. The fileHandle itself should persist
+                    # while we maintain the open file handle
+                    with self.jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
+                        shutil.copyfileobj(inputFileHandle, outputFileHandle)
+                    inputFileHandle.close()
+                    # Remove the file from the lock files
+                    with self._pendingFileWritesLock:
+                        self._pendingFileWrites.remove(jobStoreFileID)
+                    # Remove the harbinger file
+                    harbingerFile.delete()
+            except:
+                self._terminateEvent.set()
+                raise
+
         @contextmanager
         def open(self,job):
             '''
@@ -1076,6 +1113,15 @@ class Job(object):
                 # Check if the user allows asynchronous file writes
                 elif self.jobStore.config.useAsync:
                     jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
+                    # Before we can start the async process, we should also create a dummy harbinger
+                    # file in the cache such that any subsequent jobs asking for this file will not
+                    # attempt to download it from the job store till the write is complete.  We do
+                    # this now instead of in the writing thread because there is an edge case where
+                    # readGlobalFile in a subsequent job is called before the writing thread has
+                    # received the message to write the file and has created the dummy harbinger
+                    # (and the file was unable to be cached/was evicted from the cache).
+                    harbingerFile = self.HarbingerFile(self, fileStoreID=jobStoreFileID)
+                    harbingerFile.write()
                     fileHandle = open(absLocalFileName, 'r')
                     with self._pendingFileWritesLock:
                         self._pendingFileWrites.add(jobStoreFileID)
@@ -1144,7 +1190,7 @@ class Job(object):
             # currently being downloaded by another job and will be in the cache shortly. It is used
             # to prevent multiple jobs from simultaneously downloading the same file from the file
             # store.
-            harbingerFileName = self.getHarbingerFileName(cachedFileName=cachedFileName)
+            harbingerFile = self.HarbingerFile(self, cachedFileName=cachedFileName)
             # setup the output filename.  If a name is provided, use it - This makes it a Named
             # Local File. If a name isn't provided, use the base64 encoded name such that we can
             # easily identify the files later on.
@@ -1178,25 +1224,9 @@ class Job(object):
                 # FileStoreID exists.  If it does, the wait and periodically check for the removal
                 # of the file and the addition of the completed download into cache of the file by
                 # the other job. Then we link to it.
-                elif fileIsLocal and os.path.exists(harbingerFileName):
-                    logger.info('CACHE: Waiting for another worker to download file with ID %s.'
-                                % fileStoreID)
-                    while os.path.exists(harbingerFileName):
-                        # Ensure that the process downloading the file is still alive.  The PID will
-                        # be in the harbinger file.
-                        pid = int(open(harbingerFileName).read())
-                        if self._pidExists(pid):
-                            # Release the file lock and then wait for a bit before repeating.
-                            flock(lockFileHandle, LOCK_UN)
-                            time.sleep(20)
-                            # Grab the file lock before repeating.
-                            flock(lockFileHandle, LOCK_EX)
-                        else:
-                            # The process that was supposed to download the file has died so we need
-                            # to remove the harbinger.
-                            os.remove(harbingerFileName)
-
-                    # If the code reaches here, the partial lock file has been removed. This means
+                elif fileIsLocal and harbingerFile.exists():
+                    harbingerFile.waitOnDownload(lockFileHandle)
+                    # If the code reaches here, the harbinger file has been removed. This means
                     # either the file was successfully downloaded and added to cache, or something
                     # failed. To prevent code duplication, we recursively call readGlobalFile.
                     flock(lockFileHandle, LOCK_UN)
@@ -1206,13 +1236,11 @@ class Job(object):
                 else:
                     logger.debug('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
                     if fileIsLocal and cache:
-                        # If caching of the downloaded file is desired, First create the .partial
+                        # If caching of the downloaded file is desired, First create the harbinger
                         # file so other jobs know not to redundantly download the same file.  Write
                         # the PID of this process into the file so other jobs know who is carrying
                         # out the download.
-                        with open(harbingerFileName + '.tmp', 'w') as harbingerFile:
-                            harbingerFile.write(str(os.getpid()))
-                        os.rename(harbingerFileName + '.tmp', harbingerFileName)
+                        harbingerFile.write()
                         # Now release the file lock while the file is downloaded as download could
                         # take a while.
                         flock(lockFileHandle, LOCK_UN)
@@ -1236,7 +1264,7 @@ class Job(object):
                         finally:
                             # Reacquire the file lock and delete the partial file.
                             flock(lockFileHandle, LOCK_EX)
-                            os.remove(harbingerFileName)
+                            harbingerFile.delete()
                     else:
                         # Release the cache lock since the remaining stuff is not cache related.
                         flock(lockFileHandle, LOCK_UN)
@@ -1496,19 +1524,6 @@ class Job(object):
             outCachedFile = os.path.join(self.localCacheDir,
                                          base64.urlsafe_b64encode(JobStoreFileID))
             return outCachedFile
-
-        def getHarbingerFileName(self, fileStoreID=None, cachedFileName=None):
-            """
-            Returns the harbinger file name for a cahed file, or for a job store ID
-            :param str fileStoreID:
-            :param str cachedFileName:
-            :return: Harbinger file name
-            :rtype: str
-            """
-            assert (fileStoreID and not cachedFileName) or (cachedFileName and not fileStoreID)
-            if fileStoreID:
-                cachedFileName = self.encodedFileID(fileStoreID)
-            return '/.'.join(os.path.split(cachedFileName)) + '.harbinger'
 
         def _fileIsCached(self, jobStoreFileID):
             '''
@@ -1945,28 +1960,93 @@ class Job(object):
             def isPopulated(self):
                 return self.__dict__ != {}
 
-        @staticmethod
-        def _pidExists(pid):
+        class HarbingerFile(object):
             """
-            This will return True if the process associated with pid is still running on the
-            machine.
-            This is based on stackoverflow question 568271.
+            Represents the placeholder file that harbinges the arrival of a local copy of a file in
+            the job store.
+            """
+            def __init__(self, fileStore, fileStoreID=None, cachedFileName=None):
+                """
+                Returns the harbinger file name for a cached file, or for a job store ID
 
-            :param int pid: ID of the process to check for
-            :return: True/False
-            :rtype: bool
-            """
-            assert pid > 0
-            try:
-                os.kill(pid, 0)
-            except OSError as err:
-                if err.errno == errno.ESRCH:
-                    # ESRCH == No such process
-                    return False
+                :param class fileStore: The 'self' object of the fileStore class
+                :param str fileStoreID: The file store ID for an input file
+                :param str cachedFileName: The cache file name corresponding to a given file
+                :return: Harbinger file name
+                :rtype: str
+                """
+                # We need either a file store ID, or a cached file name, but not both (XOR).
+                assert (fileStoreID is None) != (cachedFileName is None)
+                if fileStoreID is not None:
+                    self.fileStoreID = fileStoreID
+                    cachedFileName = fileStore.encodedFileID(fileStoreID)
                 else:
-                    raise
-            else:
-                return True
+                    self.fileStoreID = fileStore.decodedFileID(cachedFileName)
+                self.harbingerFileName = '/.'.join(os.path.split(cachedFileName)) + '.harbinger'
+
+            def write(self):
+                with open(self.harbingerFileName + '.tmp', 'w') as harbingerFile:
+                    harbingerFile.write(str(os.getpid()))
+                # Make this File read only to prevent overwrites
+                os.chmod(self.harbingerFileName + '.tmp', 0444)
+                os.rename(self.harbingerFileName + '.tmp', self.harbingerFileName)
+
+            def waitOnDownload(self, lockFileHandle):
+                """
+                This method is called when a readGlobalFile process is waiting on another process to
+                write a file to the cache.
+
+                :param lockFileHandle: The open handle to the cache lock file
+                :return: None
+                """
+                while self.exists():
+                    logger.info('CACHE: Waiting for another worker to download file with ID %s.'
+                                % self.fileStoreID)
+                    # Ensure that the process downloading the file is still alive.  The PID will
+                    # be in the harbinger file.
+                    pid = self.read()
+                    if self._pidExists(pid):
+                        # Release the file lock and then wait for a bit before repeating.
+                        flock(lockFileHandle, LOCK_UN)
+                        time.sleep(20)
+                        # Grab the file lock before repeating.
+                        flock(lockFileHandle, LOCK_EX)
+                    else:
+                        # The process that was supposed to download the file has died so we need
+                        # to remove the harbinger.
+                        harbingerFile.delete()
+
+            def read(self):
+                return int(open(self.harbingerFileName).read())
+
+            def exists(self):
+                return os.path.exists(self.harbingerFileName)
+
+            def delete(self):
+                os.remove(self.harbingerFileName)
+
+            @staticmethod
+            def _pidExists(pid):
+                """
+                This will return True if the process associated with pid is still running on the
+                machine.
+                This is based on stackoverflow question 568271.
+
+                :param int pid: ID of the process to check for
+                :return: True/False
+                :rtype: bool
+                """
+                assert pid > 0
+                try:
+                    os.kill(pid, 0)
+                except OSError as err:
+                    if err.errno == errno.ESRCH:
+                        # ESRCH == No such process
+                        return False
+                    else:
+                        raise
+                else:
+                    return True
 
     class Service:
         """

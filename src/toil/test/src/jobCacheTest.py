@@ -395,7 +395,7 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            job.fileStore.logToMaster('Double writing')
+            job.fileStore.logToMaster('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
             with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
@@ -412,10 +412,9 @@ class hidden:
             :param fsID: Job store file ID for the read file
             :return: None
             """
-            job.fileStore.logToMaster('Reading')
-            # These will be relevant once the rest of the code comes in
-            # assert not job.fileStore._fileIsCached(fsID)
-            # assert os.path.exists(job.fileStore.getHarbingerFileName(fileStoreID=fsID))
+            job.fileStore.logToMaster('Reading the written file')
+            assert not job.fileStore._fileIsCached(fsID)
+            assert job.fileStore.HarbingerFile(job.fileStore, fileStoreID=fsID).exists()
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests

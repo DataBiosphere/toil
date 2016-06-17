@@ -18,5 +18,5 @@ export LIBPROCESS_IP=127.0.0.1
 
 rm -rf /mnt/ephemeral/tmp
 mkdir /mnt/ephemeral/tmp && export TMPDIR=/mnt/ephemeral/tmp
-make test tests="src/toil/test/src/jobCacheTest.py"
+make $make_targets
 rm -rf /mnt/ephemeral/tmp
