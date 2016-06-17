@@ -672,9 +672,9 @@ class Toil(object):
 
         return batchSystemClass(**kwargs)
 
-    def importFile(self, srcUrl):
+    def importFile(self, srcUrl, sharedFileName=None):
         self._assertContextManagerUsed()
-        return self._jobStore.importFile(srcUrl)
+        return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID, dstUrl):
         self._assertContextManagerUsed()
