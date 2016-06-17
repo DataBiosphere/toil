@@ -233,7 +233,7 @@ class hidden:
                 expectedResult = 50 - file1MB if diskRequestMB <= file1MB else 0
             try:
                 A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, fileMB=file1MB)
-                # Sleep for 1 second after writing the first fiel so that their ctimes are
+                # Sleep for 1 second after writing the first file so that their ctimes are
                 # guaranteed to be distinct for the purpose of this test.
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, fileMB=file2MB)
@@ -253,8 +253,8 @@ class hidden:
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
                 errType, errMsg = self._parseAssertionError(self.options.logFile)
-                if (errType == 'AssertionError' 
-                    and errMsg == 'Unable to free up enough space for caching.'):
+                if (errType == 'AssertionError' and
+                        errMsg == 'Unable to free up enough space for caching.'):
                     self.assertEqual(expectedResult, 'Fail')
                 else:
                     self.fail('Toil did not raise the expected AssertionError')
@@ -360,6 +360,63 @@ class hidden:
                         if fields[1].endswith('Error:'):
                             return fields[1][:-1], ' '.join(fields[2:])
             raise RuntimeError('An error was not found in the error log.')
+
+        def testAsyncWriteWithCaching(self):
+            """
+            Ensure the Async Writing of files happens as expected.  The first Job forcefully
+            modifies the cache lock file to 1GB. The second asks for 1GB of disk and  writes a 900MB
+            file into cache and then rewrites it to the job store. The third asks for 1GB of disk
+            and then requests the file.
+
+            The second writeGlobalFile in the writing job should trigger an async write to the job
+            store and the since the first was written to cache, the second won't have space to be.
+            The third job should wait for the second to finish writing to the job store (through the
+            harbinger mechanism) and there should be no read-only error thrown by the async write
+            threads.
+            """
+            self.options.retryCount = 0
+            A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=1024, disk='1G')
+            B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=900, disk='1G')
+            C = Job.wrapJobFn(self._readFromJobStoreWithoutAsssertions, fsID=B.rv(), disk='1G')
+            # Set it to > 2GB such that the cleanup jobs don't die.
+            D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
+            A.addChild(B)
+            B.addChild(C)
+            C.addChild(D)
+            Job.Runner.startToil(A, self.options)
+
+        @staticmethod
+        def _doubleWriteFileToJobStore(job, fileMB):
+            """
+            Write a local file to job store, then write it again.  The second should trigger an
+            async write.
+
+            :param job: job
+            :param fileMB: File Size
+            :return: Job store file ID for second written file
+            """
+            job.fileStore.logToMaster('Double writing')
+            work_dir = job.fileStore.getLocalTempDir()
+            with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
+                testFile.write(os.urandom(fileMB * 1024 * 1024))
+
+            job.fileStore.writeGlobalFile(testFile.name)
+            return job.fileStore.writeGlobalFile(testFile.name)
+
+        @staticmethod
+        def _readFromJobStoreWithoutAsssertions(job, fsID):
+            """
+            Reads a file from the job store.  That will be all, thank you.
+
+            :param job: job
+            :param fsID: Job store file ID for the read file
+            :return: None
+            """
+            job.fileStore.logToMaster('Reading')
+            # These will be relevant once the rest of the code comes in
+            # assert not job.fileStore._fileIsCached(fsID)
+            # assert os.path.exists(job.fileStore.getHarbingerFileName(fileStoreID=fsID))
+            job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
         def testWriteNonLocalFileToJobStore(self):
@@ -732,7 +789,7 @@ class hidden:
             """
             Accept a file. Run os.remove on it. Then attempt to delete it locally. This will raise
             an error for files read immutably.
-            Then write a new file to teh jobstore and try to do the same. This should always raise
+            Then write a new file to the jobstore and try to do the same. This should always raise
             an error
 
             :param fileToDelete: File written to the job store that is tracked by the cache

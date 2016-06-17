@@ -548,46 +548,48 @@ class Job(object):
             self.queue = Queue()
             self.updateSemaphore = Semaphore()
             self.mutable = self.jobStore.config.readGlobalFileMutableByDefault
-            #Function to write files asynchronously to job store
-            def asyncWrite():
-                try:
-                    while True:
-                        try:
-                            #Block for up to two seconds waiting for a file
-                            args = self.queue.get(timeout=2)
-                        except Empty:
-                            #Check if termination event is signaled
-                            #(set in the event of an exception in the worker)
-                            if self._terminateEvent.isSet():
-                                raise RuntimeError("The termination flag is set, exiting")
-                            continue
-                        #Normal termination condition is getting None from queue
-                        if args is None:
-                            break
-                        inputFileHandle, jobStoreFileID = args
-                        #We pass in a fileHandle, rather than the file-name, in case
-                        #the file itself is deleted. The fileHandle itself should persist
-                        #while we maintain the open file handle
-                        with jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
-                            bufferSize=1000000 #TODO: This buffer number probably needs to be modified/tuned
-                            while 1:
-                                copyBuffer = inputFileHandle.read(bufferSize)
-                                if not copyBuffer:
-                                    break
-                                outputFileHandle.write(copyBuffer)
-                        inputFileHandle.close()
-                        #Remove the file from the lock files
-                        with self._pendingFileWritesLock:
-                            self._pendingFileWrites.remove(jobStoreFileID)
-                except:
-                    self._terminateEvent.set()
-                    raise
-
-            self.workers = map(lambda i : Thread(target=asyncWrite),
+            self.workers = map(lambda i : Thread(target=self.asyncWrite),
                                range(self.workerNumber))
             for worker in self.workers:
                 worker.start()
             self.inputBlockFn = inputBlockFn
+
+        #Function to write files asynchronously to job store
+        def asyncWrite(self):
+            try:
+                while True:
+                    try:
+                        # Block for up to two seconds waiting for a file
+                        args = self.queue.get(timeout=2)
+                    except Empty:
+                        # Check if termination event is signaled
+                        # (set in the event of an exception in the worker)
+                        if self._terminateEvent.isSet():
+                            raise RuntimeError("The termination flag is set, exiting")
+                        continue
+                    # Normal termination condition is getting None from queue
+                    if args is None:
+                        break
+                    inputFileHandle, jobStoreFileID = args
+                    # We pass in a fileHandle, rather than the file-name, in case
+                    # the file itself is deleted. The fileHandle itself should persist
+                    # while we maintain the open file handle
+                    with self.jobStore.updateFileStream(jobStoreFileID) as outputFileHandle:
+                        bufferSize=1000000 # TODO: This buffer number probably needs to be
+                        # modified/tuned
+                        while 1:
+                            copyBuffer = inputFileHandle.read(bufferSize)
+                            if not copyBuffer:
+                                break
+                            outputFileHandle.write(copyBuffer)
+                    inputFileHandle.close()
+                    # Remove the file from the lock files
+                    with self._pendingFileWritesLock:
+                        self._pendingFileWrites.remove(jobStoreFileID)
+            except:
+                self._terminateEvent.set()
+                raise
+
 
         @contextmanager
         def open(self, job):
@@ -1142,7 +1144,7 @@ class Job(object):
             # currently being downloaded by another job and will be in the cache shortly. It is used
             # to prevent multiple jobs from simultaneously downloading the same file from the file
             # store.
-            harbingerFileName = ''.join(['/.'.join(os.path.split(cachedFileName)), '.harbinger'])
+            harbingerFileName = self.getHarbingerFileName(cachedFileName=cachedFileName)
             # setup the output filename.  If a name is provided, use it - This makes it a Named
             # Local File. If a name isn't provided, use the base64 encoded name such that we can
             # easily identify the files later on.
@@ -1494,6 +1496,19 @@ class Job(object):
             outCachedFile = os.path.join(self.localCacheDir,
                                          base64.urlsafe_b64encode(JobStoreFileID))
             return outCachedFile
+
+        def getHarbingerFileName(self, fileStoreID=None, cachedFileName=None):
+            """
+            Returns the harbinger file name for a cahed file, or for a job store ID
+            :param str fileStoreID:
+            :param str cachedFileName:
+            :return: Harbinger file name
+            :rtype: str
+            """
+            assert (fileStoreID and not cachedFileName) or (cachedFileName and not fileStoreID)
+            if fileStoreID:
+                cachedFileName = self.encodedFileID(fileStoreID)
+            return '/.'.join(os.path.split(cachedFileName)) + '.harbinger'
 
         def _fileIsCached(self, jobStoreFileID):
             '''
