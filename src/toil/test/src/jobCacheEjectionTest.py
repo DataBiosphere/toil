@@ -39,13 +39,13 @@ class JobCacheEjectionTest(ToilTest):
             options.retryCount=100
             options.badWorker=0.5
             options.badWorkerFailInterval = 1.0
-            # Create a temp file to write teh test results
+            # Create a temp file to write the test results
             handle, logfile = tempfile.mkstemp(dir=test_dir)
             os.close(handle)
             file_sizes = [50000, 40000, 30000]
             # Randomize to (potentially) test all combinations
             random.shuffle(file_sizes)
-            # Run the workflow. A, B and C do teh cache operations, and D prints test status to tempFile
+            # Run the workflow. A, B and C do the cache operations, and D prints test status to tempFile
             A = Job.wrapJobFn(fileTestJob, file_sizes[0])
             B = Job.wrapJobFn(fileTestJob, file_sizes[0])
             C = Job.wrapJobFn(fileTestJob, file_sizes[0])
