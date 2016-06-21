@@ -224,14 +224,19 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("toil core options", "Options to specify the \
     location of the toil workflow and turn on stats collation about the performance of jobs.")
-    #TODO - specify how this works when path is AWS
     addOptionFn('jobStore', type=str,
-                      help=("Store in which to place job management files \
-                      and the global accessed temporary files"
-                      "(If this is a file path this needs to be globally accessible "
-                      "by all machines running jobs).\n"
-                      "If the store already exists and restart is false an"
-                      " ExistingJobStoreException exception will be thrown."))
+                help=("Store in which to place job management files and the global accessed "
+                      "temporary files. Job store locator strings should be formatted as follows\n"
+                      "aws:<AWS region>:<name prefix>\n"
+                      "azure:<account>:<name prefix>'\n"
+                      "google:<project id>:<name prefix>\n"
+                      "file:<file path>\n"
+                      "Note that for backwards compatibility ./foo is equivalent to file:/foo and "
+                      "/bar is equivalent to file:/bar.\n"
+                      "(If this is a file path this needs to be globally accessible by all machines"
+                      " running jobs).\n"
+                      "If the store already exists and restart is false a JobStoreCreationException"
+                      " exception will be thrown."))
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil "
                      "run should be placed. Temp files and folders will be placed in a directory "
@@ -571,27 +576,24 @@ class Toil(object):
             self._shutdownBatchSystem()
 
     @staticmethod
-    def loadOrCreateJobStore(jobStoreString, config=None):
+    def loadOrCreateJobStore(locator, config=None):
         """
         Loads an existing jobStore if it already exists. Otherwise a new instance of a jobStore is
         created and returned.
 
-        :param str jobStoreString: see exception message below
+        :param str locator: The location of the job store.
         :param toil.common.Config config: see AbstractJobStore.__init__
         :return: an instance of a concrete subclass of AbstractJobStore
         :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
-        if jobStoreString[0] in '/.':
-            jobStoreString = 'file:' + jobStoreString
+        if locator[0] in '/.':
+            locator = 'file:' + locator
 
         try:
-            jobStoreName, jobStoreArgs = jobStoreString.split(':', 1)
+            jobStoreName, jobStoreArgs = locator.split(':', 1)
         except ValueError:
-            raise RuntimeError(
-                'A job store string must either be a path starting in . or / or a contain at '
-                'least one colon separating the name of the job store implementation from an '
-                'initialization string specific to that job store. If a path starting in . or / '
-                'is passed, the file job store will be used for backwards compatibility.' ) 
+            raise RuntimeError('Invalid job store locator for proper formatting check locator '
+                               'documentation for each job store.')
 
         if jobStoreName == 'file':
             from toil.jobStores.fileJobStore import FileJobStore

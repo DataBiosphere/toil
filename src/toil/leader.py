@@ -131,7 +131,7 @@ class JobBatcher:
     def __init__(self, config, batchSystem, jobStore, toilState, serviceManager):
         self.config = config
         self.jobStore = jobStore
-        self.jobStoreString = config.jobStore
+        self.jobStoreLocator = config.jobStore
         self.toilState = toilState
         # Map of batch system IDs to IsseudJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
@@ -147,7 +147,7 @@ class JobBatcher:
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreString, jobStoreID))
+        jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreLocator, jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk, preemptable)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = IssuedJob(jobStoreID, memory, cores, disk, preemptable)
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
@@ -464,9 +464,9 @@ class ToilState( object ):
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
 class FailedJobsException( Exception ):
-    def __init__( self, jobStoreString, numberOfFailedJobs ):
-        super( FailedJobsException, self ).__init__( "The job store '%s' contains %i failed jobs" % (jobStoreString, numberOfFailedJobs))
-        self.jobStoreString = jobStoreString
+    def __init__(self, jobStoreLocator, numberOfFailedJobs):
+        super( FailedJobsException, self ).__init__( "The job store '%s' contains %i failed jobs" % (jobStoreLocator, numberOfFailedJobs))
+        self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = numberOfFailedJobs
 
 class ServiceManager( object ):

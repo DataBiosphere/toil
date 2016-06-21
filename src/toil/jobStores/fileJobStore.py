@@ -50,7 +50,7 @@ class FileJobStore(AbstractJobStore):
         # Safety checks for existing jobStore
         self._checkJobStoreCreation(create=config is not None,
                                     exists=os.path.exists(self.jobStoreDir),
-                                    jobStoreString=self.jobStoreDir)
+                                    locator=self.jobStoreDir)
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
         # Creation of jobStore, if necessary

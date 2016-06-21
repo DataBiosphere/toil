@@ -741,7 +741,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createJobStore(self, config=None):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.createJobStore(self.namePrefix + ":" + GoogleJobStoreTest.projectID,
+        return GoogleJobStore.createJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix,
                                              config=config)
 
     def _prepareTestFile(self, bucket, size=None):
