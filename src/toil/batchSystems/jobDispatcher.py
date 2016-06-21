@@ -4,7 +4,7 @@
 # caching branch as well. The main semantic changes to JobDispatcher were wall time and the
 # IssuedJob stuff.
 
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2016 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
