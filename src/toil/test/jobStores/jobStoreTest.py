@@ -16,6 +16,7 @@ from __future__ import absolute_import
 
 import hashlib
 import logging
+
 import os
 import shutil
 import tempfile
@@ -25,12 +26,13 @@ import urlparse
 import uuid
 from Queue import Queue
 from abc import abstractmethod, ABCMeta
-from itertools import chain, islice
+from itertools import chain, islice, count
 from threading import Thread
 from unittest import skip
 
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
+from mock import patch
 
 from toil.common import Config
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -812,6 +814,44 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     f.write(s)
                 with master.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
+
+    def testInaccessableLocation(self):
+        # This could break if 1000genomes enables GetBucketLocation in their S3 bucket policy,
+        # see https://rt.sanger.ac.uk/Ticket/Display.html?id=534925. If that happens, we'll have
+        # to set up or mock a bucket that disallows it.
+        url = 's3://1000genomes/20131219.populations.tsv'
+        with patch('toil.jobStores.aws.jobStore.log') as mock_log:
+            jobStoreID = self.master.importFile(url)
+            self.assertTrue(self.master.fileExists(jobStoreID))
+            args, kwargs = mock_log.warn.call_args
+            self.assertTrue('Could not determine location' in args[0])
+
+    def testMultiPartImportFailures(self):
+        # This should be less than the number of threads in the pool used by the MP copy.
+        num_parts = 10
+        i = count()
+
+        # noinspection PyUnusedLocal
+        def fail(*args, **kwargs):
+            # The sleep ensures that all tasks are scheduled in the thread pool. Without it,
+            # there is a chance that one task fails before another is scheduled, causing the
+            # latter to bail out immediatly and failing the assertion that ensure the number of
+            # failing tasks.
+            time.sleep(.25)
+            if i.next() % 2 == 0:
+                raise RuntimeError()
+
+        with patch('boto.s3.multipart.MultiPartUpload.copy_part_from_key',
+                   new_callable=lambda: fail):
+            self.master.partSize = self.mpTestPartSize
+            bucket = self._createExternalStore()
+            url, md5 = self._prepareTestFile(bucket, self.mpTestPartSize * num_parts)
+            try:
+                self.master.importFile(url)
+            except RuntimeError as e:
+                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (num_parts / 2))
+            else:
+                self.fail('Expected a RuntimeError to be raised')
 
     def _prepareTestFile(self, bucket, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
