@@ -16,7 +16,17 @@ make develop extras=[aws,mesos,azure,encryption,cwl]
 # Required for running Mesos master and slave daemons as part of the tests
 export LIBPROCESS_IP=127.0.0.1
 
-rm -rf /mnt/ephemeral/tmp
-mkdir /mnt/ephemeral/tmp && export TMPDIR=/mnt/ephemeral/tmp
+TMPDIR=/mnt/ephemeral/tmp
+rm -rf $TMPDIR
+mkdir $TMPDIR
+# Check that we have enough free space for running the tests
+python -c "
+min_free_in_GiB = 20
+import os, sys
+s=os.statvfs('$TMPDIR')
+f=s.f_frsize * s.f_bavail
+sys.exit(1 if f < min_free_in_GiB << 30 else 0)
+"
+export TMPDIR
 make $make_targets
-rm -rf /mnt/ephemeral/tmp
+rm -rf $TMPDIR
