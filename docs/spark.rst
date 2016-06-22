@@ -32,12 +32,12 @@ HDFS has very good performance for large reads; write performance varies with
 the cluster configuration.
 
 We decompose this cluster into two separate classes inside of Toil:
-:class:`toil.spark.spark_cluster.SparkCluster` and
-:class:`toil.spark.spark_cluster.WorkerService`. The
-:class:`toil.spark.spark_cluster.SparkCluster` class launches the Spark master
+:class:`toil.lib.spark.SparkService` and
+:class:`toil.lib.spark.WorkerService`. The
+:class:`toil.lib.spark.SparkService` class launches the Spark master
 and HDFS namenode, and then adds one or more
-:class:`toil.spark.spark_cluster.WorkerService` child services. The
-:class:`toil.spark.spark_cluster.WorkerService` class then launches the
+:class:`toil.lib.spark.WorkerService` child services. The
+:class:`toil.lib.spark.WorkerService` class then launches the
 Spark worker and HDFS datanode. The individual Spark and HDFS applications are
 run using docker containers from cgl-docker-lib_.
 
@@ -49,7 +49,7 @@ Launching a Spark Cluster
 To launch a Spark cluster, import:
 
 ::
-        from toil.spark.spark_cluster import spawn_spark_cluster
+        from toil.lib.spark import spawn_spark_cluster
 
 Then, add a service job:
 
