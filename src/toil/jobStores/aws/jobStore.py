@@ -595,8 +595,9 @@ class AWSJobStore(AbstractJobStore):
                         location = region_to_bucket_location(self.region)
                         bucket = self.s3.create_bucket(bucket_name, location=location)
                     except S3CreateError as e:
-                        if e.error_code == 'BucketAlreadyOwnedByYou':
+                        if e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'):
                             # https://github.com/BD2KGenomics/toil/issues/955
+                            # https://github.com/BD2KGenomics/toil/issues/995
                             log.warn('Got %s, retrying.', e)
                             # and loop
                         else:
