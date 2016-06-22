@@ -14,28 +14,21 @@
 
 from __future__ import absolute_import
 
-import io
 import logging
-import traceback
+import os
 import uuid
 from contextlib import contextmanager, closing
-import collections
-from unittest import skip
-
-import math
 
 import boto
-import os
-from bd2k.util.exceptions import panic
-from concurrent.futures import ThreadPoolExecutor
-from psutil import cpu_count
+import boto.s3
+
+from toil.jobStores.aws.jobStore import copyKeyMultipart
 from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.test import ToilTest, make_tests
-from toil.jobStores.aws.jobStore import copyKeyMultipart
 
-
-partSize = 2**20 * 5
+partSize = 2 ** 20 * 5
 logger = logging.getLogger(__name__)
+
 
 @contextmanager
 def openS3(keySize=None):
@@ -70,21 +63,20 @@ def openS3(keySize=None):
 class AWSMultipartCopyTest(ToilTest):
     region = 'us-west-2'
 
-    def setUp(self):
-        super(AWSMultipartCopyTest, self).setUp()
-
     @classmethod
-    def makeTests(self):
+    def makeTests(cls):
         def multipartCopy(self, threadPoolSize):
             # key size is padded to ensure some threads are reused
             keySize = int((threadPoolSize * partSize) * 1.3)
             with openS3(keySize) as srcKey:
                 with openS3() as dstBucket:
-                    copyKeyMultipart(srcKey, dstBucket, 'test')
+                    copyKeyMultipart(srcKey, dstBucket, 'test', partSize)
                     self.assertEqual(srcKey.get_contents_as_string(),
                                      dstBucket.get_key('test').get_contents_as_string())
 
-        make_tests(multipartCopy, targetClass=AWSMultipartCopyTest,
+        make_tests(multipartCopy,
+                   targetClass=AWSMultipartCopyTest,
                    threadPoolSize={str(x): x for x in (1, 2, 16)})
+
 
 AWSMultipartCopyTest.makeTests()

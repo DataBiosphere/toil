@@ -14,8 +14,6 @@
 
 from __future__ import absolute_import
 
-import threading
-import traceback
 from StringIO import StringIO
 from contextlib import contextmanager, closing
 import logging
@@ -43,7 +41,7 @@ from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
-from boto.exception import SDBResponseError, S3ResponseError, S3CreateError
+from boto.exception import S3CreateError
 from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
 from concurrent.futures import ThreadPoolExecutor
@@ -65,10 +63,8 @@ import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
 
-defaultPartSize = 2 ** 20 * 50
 
-
-def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
+def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
@@ -77,6 +73,8 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
     :param boto.s3.key.Key srcKey: The source key to be copied from.
     :param str dstBucketName: The name of the destination bucket for the copy.
     :param str dstKeyName: The name of the destination key that will be created or overwritten.
+    :param int partSize: The size of each individual part, must be >= 5 MiB but large enough to
+           not exceed 10k parts for the whole file
     :param dict headers: Any headers that should be passed.
 
     :rtype: boto.s3.multipart.CompletedMultiPartUpload
@@ -85,36 +83,34 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
     def copyPart(partIndex):
         if exceptions:
             return None
-        else:
-            try:
-                for attempt in retry_s3():
-                    with attempt:
-                        # Note that part_num is indexed from 1 while start and end are indexed from
-                        # 0. Notice also that the partIndex variable is indexed from 0.
-                        part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                         src_key_name=srcKey.name,
-                                                         src_version_id=srcKey.version_id,
-                                                         part_num=partIndex + 1,
-                                                         start=partIndex * partSize,
-                                                         end=min(partIndex * partSize + partSize,
-                                                                 totalSize) - 1,
-                                                         headers=headers)
-                log.debug('Successfully copied part %d of %d', partIndex, totalParts)
-
-            except Exception as e:
-                if len(exceptions) <= 4:
-                    exceptions[partIndex] = traceback.format_exc()
-                else:
-                    exceptions[partIndex] = e
-                log.debug('Part number %s of copy failed.', partIndex)
-                return None
+        try:
+            for attempt in retry_s3():
+                with attempt:
+                    start = partIndex * partSize
+                    end = min(start + partSize, totalSize)
+                    part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
+                                                     src_key_name=srcKey.name,
+                                                     src_version_id=srcKey.version_id,
+                                                     # S3 part numbers are 1-based
+                                                     part_num=partIndex + 1,
+                                                     # S3 range intervals are closed at the end
+                                                     start=start, end=end - 1,
+                                                     headers=headers)
+        except Exception as e:
+            if len(exceptions) < 5:
+                exceptions.append(e)
+                log.error('Failed to copy part number %d:', partIndex, exc_info=True)
             else:
-                return part
+                log.warn('Also failed to copy part number %d due to %s.', partIndex, e)
+            return None
+        else:
+            log.debug('Successfully copied part %d of %d.', partIndex, totalParts)
+            # noinspection PyUnboundLocalVariable
+            return part
 
-    partSize = defaultPartSize
     totalSize = srcKey.size
     totalParts = (totalSize + partSize - 1) / partSize
-    exceptions = collections.OrderedDict()
+    exceptions = []
     # We need a location-agnostic connection to S3 so we can't use the one that we
     # normally use for interacting with the job store bucket.
     with closing(boto.connect_s3()) as s3:
@@ -125,17 +121,14 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, headers=None):
         log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
                  srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
         try:
+            # We can oversubscribe cores by at least a factor of 16 since each copy task just
+            # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
+            # exactly free either. Lastly, we don't need more threads than we have parts.
             with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                finishedParts = set(executor.map(copyPart, xrange(0, totalParts)))
+                parts = list(executor.map(copyPart, xrange(0, totalParts)))
                 if exceptions:
-                    for partIndex, tb in exceptions[0:4].items():
-                        log.info("Part %d of copy failed with the following exception:\n%s",
-                                 partIndex, tb)
-                    for partIndex, exception in exceptions[4:].items():
-                        log.debug("Part %d of copy failed with the following exception:\n%s",
-                                  partIndex, exception)
-                    raise RuntimeError('One or more parts failed to copy. See log for details.')
-                assert len(finishedParts) == totalParts
+                    raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
+                assert len(filter(None, parts)) == totalParts
         except:
             with panic(log=log):
                 upload.cancel_upload()
@@ -188,7 +181,7 @@ class AWSJobStore(AbstractJobStore):
 
     # Do not invoke the constructor, use the factory method above.
 
-    def __init__(self, region, namePrefix, config=None, partSize=defaultPartSize):
+    def __init__(self, region, namePrefix, config=None, partSize=50 << 20):
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -198,6 +191,10 @@ class AWSJobStore(AbstractJobStore):
 
         :param config: the config object to written to this job store. Must be None for existing
         job stores. Must not be None for new job stores.
+
+        :param int partSize: The size of each individual part used for multipart operations like
+               upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
+               whole file
         """
         log.debug("Instantiating %s for region %s and name prefix '%s'",
                   self.__class__, region, namePrefix)
@@ -396,8 +393,8 @@ class AWSJobStore(AbstractJobStore):
                 region = bucket_location_to_region(s3.get_bucket(url.netloc).get_location())
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
-                log.debug("Could not access location of bucket at URL '%s', reverting to generic S3"
-                          " connection.", url.geturl())
+                log.warn("Could not determine location of bucket hosting URL '%s', reverting "
+                         "to generic S3 endpoint.", url.geturl())
                 s3 = boto.connect_s3()
             else:
                 raise
@@ -1027,6 +1024,7 @@ class AWSJobStore(AbstractJobStore):
                 return copyKeyMultipart(srcKey=srcKey,
                                         dstBucketName=dstBucketName,
                                         dstKeyName=dstKeyName,
+                                        partSize=self.outer.partSize,
                                         headers=headers)
             else:
                 # We need a location-agnostic connection to S3 so we can't use the one that we
