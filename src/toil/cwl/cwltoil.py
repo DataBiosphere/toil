@@ -161,7 +161,7 @@ def writeFile(writeFunc, index, x):
         try:
             index[x] = (writeFunc(rp), os.path.basename(x))
         except Exception as e:
-            logging.error("Got exception '%s' while writing '%s'", e, x)
+            cwllogger.error("Got exception '%s' while copying '%s'", e, x)
             raise
     return index[x]
 
