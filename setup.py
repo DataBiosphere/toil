@@ -32,7 +32,8 @@ setup(
             'psutil==3.0.1'],
         'aws': [
             botoRequirement,
-            'cgcloud-lib==1.4a1.dev195' ],
+            'cgcloud-lib==1.4a1.dev195',
+            'futures==3.0.5'],
         'azure': [
             'azure==1.0.3'],
         'encryption': [
