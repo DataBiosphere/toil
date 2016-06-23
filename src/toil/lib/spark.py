@@ -178,10 +178,7 @@ class SparkService(Job.Service):
         if cores is None:
             cores = multiprocessing.cpu_count()
 
-        if overrideLeaderIP is None:
-            self.hostname = subprocess.check_output(["hostname", "-f",])[:-1]
-        else:
-            self.hostname = overrideLeaderIP
+        self.hostname = overrideLeaderIP
 
         Job.Service.__init__(self, memory=memory, cores=cores, disk=disk)
 
@@ -192,6 +189,9 @@ class SparkService(Job.Service):
 
         :param fileStore: Unused
         """
+
+        if self.hostname is None:
+            self.hostname = subprocess.check_output(["hostname", "-f",])[:-1]
 
         _log.info("Started Spark master container.")
         self.sparkContainerID = _docker_call(no_rm = True,
