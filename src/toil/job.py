@@ -1361,7 +1361,7 @@ class Job(object):
             from toil.jobStores.fileJobStore import FileJobStore
             if (isinstance(self.jobStore, FileJobStore) and
                         os.stat(os.path.dirname(self.localCacheDir)).st_dev == os.stat(
-                            self.jobStore.jobStoreDir).st_dev):
+                            self.jobStore.locator.jobStoreDir).st_dev):
                 self.nlinkThreshold = 2
             else:
                 self.nlinkThreshold = 1

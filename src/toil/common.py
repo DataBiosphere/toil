@@ -581,34 +581,8 @@ class Toil(object):
         :return: an instance of a concrete subclass of AbstractJobStore
         :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
-        if locator[0] in '/.':
-            locator = 'file:' + locator
-
-        try:
-            jobStoreName, jobStoreArgs = locator.split(':', 1)
-        except ValueError:
-            raise RuntimeError('Invalid job store locator for proper formatting check locator '
-                               'documentation for each job store.')
-
-        if jobStoreName == 'file':
-            from toil.jobStores.fileJobStore import FileJobStore
-            return FileJobStore(jobStoreArgs, config=config)
-
-        elif jobStoreName == 'aws':
-            from toil.jobStores.aws.jobStore import AWSJobStore
-            return AWSJobStore.loadOrCreateJobStore(jobStoreArgs, config=config)
-
-        elif jobStoreName == 'azure':
-            from toil.jobStores.azureJobStore import AzureJobStore
-            account, namePrefix = jobStoreArgs.split(':', 1)
-            return AzureJobStore(account, namePrefix, config=config)
-        
-        elif jobStoreName == 'google':
-            from toil.jobStores.googleJobStore import GoogleJobStore
-            projectID, namePrefix = jobStoreArgs.split(':', 1)
-            return GoogleJobStore(namePrefix, projectID, config=config)
-        else:
-            raise RuntimeError("Unknown job store implementation '%s'" % jobStoreName)
+        from toil.jobStores.abstractJobStore import AbstractJobStore
+        return AbstractJobStore.Locator.loadOrCreateJobStore(locator, config=config)
 
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):
@@ -668,6 +642,13 @@ class Toil(object):
                 kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
 
         return batchSystemClass(**kwargs)
+
+    @classmethod
+    def clean(cls, jobStoreLocator):
+        from toil.jobStores.abstractJobStore import AbstractJobStore
+        # local import is required to prevent a circular import
+        locator = AbstractJobStore.Locator.parse(jobStoreLocator)
+        locator.jobStoreCls.doDeleteJobStore(locator)
 
     def importFile(self, srcUrl, sharedFileName=None):
         self._assertContextManagerUsed()
