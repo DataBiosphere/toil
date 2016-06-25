@@ -87,8 +87,8 @@ class AzureJobStore(AbstractJobStore):
     Table Service to store job info with strong consistency."""
 
     @classmethod
-    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
-        account, namePrefix = jobStoreString.split(':', 1)
+    def loadOrCreateJobStore(cls, locator, config=None, **kwargs):
+        account, namePrefix = locator.split(':', 1)
         if '--' in namePrefix:
             raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
                              "%s." % (namePrefix, cls.nameSeparator))

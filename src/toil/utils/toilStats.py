@@ -65,7 +65,7 @@ def initializeOptions(parser):
               "(If this is a file path this needs to be globally accessible "
               "by all machines running jobs).\n"
               "If the store already exists and restart is false an"
-              " ExistingJobStoreException exception will be thrown."))
+              " JobStoreCreationException exception will be thrown."))
     parser.add_argument("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_argument("--raw", action="store_true", default=False,

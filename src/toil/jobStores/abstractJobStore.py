@@ -213,7 +213,7 @@ class AbstractJobStore(object):
         return rootJob
 
     @staticmethod
-    def _checkJobStoreCreation(create, exists, jobStoreString):
+    def _checkJobStoreCreation(create, exists, locator):
         """
         Consistency checks which will result in exceptions if we attempt to overwrite an existing
         job store. This method must be called by the constructor of a subclass before any
@@ -230,10 +230,10 @@ class AbstractJobStore(object):
             raise JobStoreCreationException("The job store '%s' already exists. Use --restart to "
                                             "resume the workflow, or remove the job store with "
                                             "'toil clean' to start the workflow from scratch" %
-                                            jobStoreString) 
+                                            locator)
         if not create and not exists:
             raise JobStoreCreationException("The job store '%s' does not exist, so there "
-                                            "is nothing to restart." % jobStoreString)
+                                            "is nothing to restart." % locator)
 
     def importFile(self, srcUrl, sharedFileName=None):
         """

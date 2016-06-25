@@ -2463,7 +2463,7 @@ class Job(object):
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobWrappers)
 
-        # Temporarily set the jobStore strings for the promise call back functions
+        # Temporarily set the jobStore locators for the promise call back functions
         for job in ordering:
             job._promiseJobStore = jobStore
             def setForServices(serviceJob):
@@ -2939,10 +2939,10 @@ class Promise(object):
         # The allocation of the file in the job store is intentionally lazy, we only allocate an
         # empty file in the job store if the promise is actually being pickled. This is done so
         # that we do not allocate files for promises that are never used.
-        jobStoreString, jobStoreFileID = self.job.allocatePromiseFile(self.index)
+        jobStoreLocator, jobStoreFileID = self.job.allocatePromiseFile(self.index)
         # Returning a class object here causes the pickling machinery to attempt to instantiate
         # the class. We will catch that with __new__ and return an the actual return value instead.
-        return self.__class__, (jobStoreString, jobStoreFileID)
+        return self.__class__, (jobStoreLocator, jobStoreFileID)
 
     @staticmethod
     def __new__(cls, *args):
@@ -2955,11 +2955,11 @@ class Promise(object):
             return cls._resolve(*args)
 
     @classmethod
-    def _resolve(cls, jobStoreString, jobStoreFileID):
+    def _resolve(cls, jobStoreLocator, jobStoreFileID):
         # Initialize the cached job store if it was never initialized in the current process or
         # if it belongs to a different workflow that was run earlier in the current process.
-        if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreString:
-            cls._jobstore = Toil.loadOrCreateJobStore(jobStoreString)
+        if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreLocator:
+            cls._jobstore = Toil.loadOrCreateJobStore(jobStoreLocator)
         cls.filesToDelete.add(jobStoreFileID)
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be

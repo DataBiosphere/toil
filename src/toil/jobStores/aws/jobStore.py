@@ -151,8 +151,8 @@ class AWSJobStore(AbstractJobStore):
     """
 
     @classmethod
-    def loadOrCreateJobStore(cls, jobStoreString, config=None, **kwargs):
-        region, namePrefix = jobStoreString.split(':')
+    def loadOrCreateJobStore(cls, locator, config=None, **kwargs):
+        region, namePrefix = locator.split(':')
         if not cls.bucketNameRe.match(namePrefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
                              "hyphens or lower-case letters and must not start or end in a "

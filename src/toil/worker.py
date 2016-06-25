@@ -81,14 +81,14 @@ def main():
     #Input args
     ##########################################
     
-    jobStoreString = sys.argv[1]
+    jobStoreLocator = sys.argv[1]
     jobStoreID = sys.argv[2]
     
     ##########################################
     #Load the jobStore/config file
     ##########################################
     
-    jobStore = Toil.loadOrCreateJobStore(jobStoreString)
+    jobStore = Toil.loadOrCreateJobStore(jobStoreLocator)
     config = jobStore.config
     
     ##########################################

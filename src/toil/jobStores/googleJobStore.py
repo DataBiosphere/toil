@@ -22,13 +22,12 @@ GOOGLE_STORAGE = 'gs'
 class GoogleJobStore(AbstractJobStore):
 
     @classmethod
-    def createJobStore(cls, jobStoreString, config=None):
+    def createJobStore(cls, locator, config=None):
         try:
-            namePrefix, projectID = jobStoreString.split(":", 1)
-            # jobstorestring = gs:project_id:bucket
+            projectID, namePrefix = locator.split(":", 1)
         except ValueError:
             # we don't have a specified projectID
-            namePrefix = jobStoreString
+            namePrefix = locator
             projectID = None
         return cls(namePrefix, projectID, config)
 
