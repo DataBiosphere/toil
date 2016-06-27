@@ -936,6 +936,11 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         self.assertIsNot(job1, job2)
         self.assertEqual(job2.command, command)
 
+    def testJobStoreExists(self):
+        self.assertTrue(self.master._jobStoreExists())
+        self.master.deleteJobStore()
+        self.assertFalse(self.master._jobStoreExists())
+
     def _prepareTestFile(self, containerName, size=None):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
         from azure.storage.blob import BlobService

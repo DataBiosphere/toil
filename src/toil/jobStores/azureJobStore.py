@@ -139,12 +139,8 @@ class AzureJobStore(AbstractJobStore):
         self.tableService = TableService(account_key=self.account_key, account_name=accountName)
         self.blobService = BlobService(account_key=self.account_key, account_name=accountName)
 
-        # Register our job-store in the global table for this storage account
-        self.registryTable = self._getOrCreateTable('toilRegistry')
-        exists = self.registryTable.get_entity(row_key=self.namePrefix)
+        exists = self._jobStoreExists()
         self._checkJobStoreCreation(config is not None, exists, accountName + ":" + self.namePrefix)
-        self.registryTable.insert_or_replace_entity(row_key=self.namePrefix,
-                                                    entity={'exists': True})
 
         # Serialized jobs table
         self.jobItems = self._getOrCreateTable(self.qualify('jobs'))
@@ -225,12 +221,27 @@ class AzureJobStore(AbstractJobStore):
             self.deleteFile(jobStoreFileID)
 
     def deleteJobStore(self):
-        self.registryTable.delete_entity(row_key=self.namePrefix)
         self.jobItems.delete_table()
         self.jobFileIDs.delete_table()
         self.files.delete_container()
         self.statsFiles.delete_container()
         self.statsFileIDs.delete_table()
+
+    def _jobStoreExists(self):
+        """
+        Checks if job store exists by querying the existence of the statsFileIDs table. Note that
+        this is the last component that is deleted in deleteJobStore.
+        """
+        for attempt in retry_azure():
+            with attempt:
+                try:
+                    table = self.tableService.query_tables(table_name=self.qualify('statsFileIDs'))
+                    return table is not None
+                except AzureMissingResourceHttpError as e:
+                    if e.status_code == 404:
+                        return False
+                    else:
+                        raise
 
     def getEnv(self):
         return dict(AZURE_ACCOUNT_KEY=self.account_key)
