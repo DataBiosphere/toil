@@ -16,14 +16,17 @@ from __future__ import absolute_import
 import urllib2
 import urlparse
 
+import shutil
+
 import re
 from abc import ABCMeta, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
 from toil.job import JobException
 from bd2k.util import memoize
 from bd2k.util.objects import abstractclassmethod
+from toil.jobStores.utils import retry_http
 
 try:
     import cPickle
@@ -924,7 +927,6 @@ class AbstractJobStore(object):
 
 
 class JobStoreSupport(AbstractJobStore):
-
     __metaclass__ = ABCMeta
 
     @classmethod
@@ -933,10 +935,7 @@ class JobStoreSupport(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        out = urllib2.urlopen(url.geturl())
-        while True:
-            toWrite = out.read(2**20)
-            if toWrite in ('', None):
-                break
-            else:
-                writable.write(toWrite)
+        for attempt in retry_http():
+            with attempt:
+                with closing(urllib2.urlopen(url.geturl())) as readable:
+                    shutil.copyfileobj(readable, writable)

@@ -1,4 +1,5 @@
 import logging
+import urllib2
 from contextlib import contextmanager
 
 import time
@@ -109,3 +110,26 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never):
             yield
 
         yield single_attempt()
+
+default_delays = (0, 1, 1, 4, 16, 64)
+default_timeout = 300
+
+
+def retryable_http_error(e):
+    return isinstance(e, urllib2.HTTPError) and e.code in ('503', '408', '500')
+
+
+def retry_http(delays=default_delays, timeout=default_timeout, predicate=retryable_http_error):
+    """
+    >>> i = 0
+    >>> for attempt in retry_http(timeout=5):
+    ...     with attempt:
+    ...         i += 1
+    ...         raise urllib2.HTTPError('http://www.test.com', '408', 'some message', {}, None)
+    Traceback (most recent call last):
+    ...
+    HTTPError: HTTP Error 408: some message
+    >>> i > 1
+    True
+    """
+    return retry(delays=delays, timeout=timeout, predicate=predicate)
