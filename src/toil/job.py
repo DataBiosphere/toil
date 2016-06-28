@@ -3046,9 +3046,4 @@ class FileID(str):
 
     @classmethod
     def forPath(cls, fileStoreID, filePath):
-        size = cls._resolveFileSize(filePath)
-        return cls(fileStoreID, size)
-
-    @staticmethod
-    def _resolveFileSize(filePath):
-        return os.stat(filePath).st_size
+        return cls(fileStoreID, os.stat(filePath).st_size)
