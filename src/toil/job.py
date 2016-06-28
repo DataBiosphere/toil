@@ -660,6 +660,7 @@ class Job(object):
             If not the global file must be deleted manually.
 
             :returns: an ID that can be used to retrieve the file.
+            :rtype: FileID
             """
             #Put the file into the cache if it is a path within localTempDir
             absLocalFileName = os.path.abspath(localFileName)
@@ -679,7 +680,7 @@ class Job(object):
             else:
                 #Write the file directly to the file store
                 jobStoreFileID = self.jobStore.writeFile(localFileName, cleanupID)
-            return jobStoreFileID
+            return FileID.forPath(jobStoreFileID, absLocalFileName)
 
         def writeGlobalFileStream(self, cleanup=False):
             """
@@ -692,12 +693,14 @@ class Job(object):
             The yielded file handle does not need to and should not be closed explicitly.
             """
             #TODO: Make this work with the caching??
+            #TODO: Make this work with FileID
             return self.jobStore.writeFileStream(None if not cleanup else self.jobWrapper.jobStoreID)
 
         def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
             """
             Get a copy of a file in the job store.
 
+            :param FileID fileStoreID: The unique job store ID for the file
             :param string userPath: a path to the name of file to which the global \
             file will be copied or hard-linked (see below).
 
@@ -1086,6 +1089,7 @@ class Job(object):
             If not the global file must be deleted manually.
 
             :returns: an ID that can be used to retrieve the file.
+            :rtype: FileID
             """
             absLocalFileName = self._abspath(localFileName)
             # What does this do?
@@ -1145,7 +1149,7 @@ class Job(object):
                 # Non local files are NOT cached by default, but they are tracked as local files.
                 self._JobState.updateJobSpecificFiles(self, jobStoreFileID, None,
                                                       0.0, False)
-            return jobStoreFileID
+            return FileID.forPath(jobStoreFileID, absLocalFileName)
 
         def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
             """
@@ -1159,7 +1163,7 @@ class Job(object):
             The cache parameter will be used only if the file isn't already in the cache, and
             provided user path (if specified) is in the scope of local temp dir.
 
-            :param fileStoreID: file store id for the file
+            :param FileID fileStoreID: job store id for the file
 
             :param string userPath: a path to the name of file to which the global \
             file will be copied or hard-linked (see below).
@@ -1851,6 +1855,7 @@ class Job(object):
                     # Based on answer by user "Mark" at:
                     # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                     # We can't pickle nested classes. So we have to pickle the variables of the class
+                    # If we ever change this, we need to ensure it doesn't break FileID
                     cPickle.dump(self.__dict__, fH, cPickle.HIGHEST_PROTOCOL)
                 os.rename(fileName + '.tmp', fileName)
 
@@ -3026,3 +3031,24 @@ class PromisedRequirement(object):
                 foundPromisedRequirement = True
         return foundPromisedRequirement
 
+
+class FileID(str):
+    """
+    A class to wrap the job store file id returned by writeGlobalFile and any attributes we may want
+    to add to it.
+    """
+    def __new__(cls, fileStoreID, *args):
+        return super(FileID, cls).__new__(cls, fileStoreID)
+
+    def __init__(self, fileStoreID, size):
+        super(FileID, self).__init__(fileStoreID)
+        self.size = size
+
+    @classmethod
+    def forPath(cls, fileStoreID, filePath):
+        size = cls._resolveFileSize(filePath)
+        return cls(fileStoreID, size)
+
+    @staticmethod
+    def _resolveFileSize(filePath):
+        return os.stat(filePath).st_size

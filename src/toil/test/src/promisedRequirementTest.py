@@ -103,6 +103,54 @@ class hidden:
         def testJobConcurrency(self):
             pass
 
+        def testPromisesWithJobStoreFileObjects(self):
+            """
+            Check whether FileID objects are being pickled properly when used as return
+            values of functions.  Then ensure that lambdas of promised FileID objects can be
+            used to describe the requirements of a subsequent job.  This type of operation will be
+            used commonly in Toil scripts.
+            :return: None
+            """
+            file1 = 1024
+            file2 = 512
+            F1 = Job.wrapJobFn(_writer, file1)
+            F2 = Job.wrapJobFn(_writer, file2)
+            G = Job.wrapJobFn(_follower, file1+file2,
+                              disk=PromisedRequirement(lambda x, y: x.size + y.size,
+                                                       F1.rv(), F2.rv()))
+            F1.addChild(F2)
+            F2.addChild(G)
+            Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles')))
+
+
+def _writer(job, fileSize):
+    '''
+    Write a local file and return the FileID obtained from running writeGlobalFile on
+    it.
+
+    :param job job: job
+    :param int fileSize: Size of the file in bytes
+    :returns: the result of writeGlobalFile on a locally created file
+    :rtype: job.FileID
+    '''
+    with open(job.fileStore.getLocalTempFileName(), 'w') as fH:
+        fH.write(os.urandom(fileSize))
+    return job.fileStore.writeGlobalFile(fH.name)
+
+
+def _follower(job, expectedDisk):
+    """
+    This job follows the _writer jobs and ensures the expected disk is used.
+
+    :param job job: job
+    :param expectedDisk: Expect disk to be used by this job
+    :return: None
+    """
+    assert job.effectiveRequirements(job.fileStore.jobStore.config).disk == expectedDisk
+
+
+
+
 
 def maxConcurrency(job, cpuCount, filename, coresPerJob):
     """
@@ -159,4 +207,3 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
-
