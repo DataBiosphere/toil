@@ -506,8 +506,8 @@ cwltool.process.supportedProcessRequirements = ("DockerRequirement",
 def main(args=None, stdout=sys.stdout):
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    parser.add_argument("cwltool", type=str)
-    parser.add_argument("cwljob", type=str)
+    parser.add_argument("cwltool", type=str, nargs='?', default='')
+    parser.add_argument("cwljob", type=str, nargs='?', default='')
 
     # Will override the "jobStore" positional argument, enables
     # user to select jobStore or get a default from logic one below.
@@ -542,57 +542,67 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
-    uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
-
-    try:
-        t = cwltool.main.load_tool(options.cwltool, False, True,
-                                   cwltool.workflow.defaultMakeTool,
-        True)
-    except cwltool.process.UnsupportedRequirement as e:
-        logging.error(e)
-        return 33
-
-    if options.conformance_test:
-        loader = schema_salad.ref_resolver.Loader({})
-    else:
-        jobloaderctx = {"path": {"@type": "@id"}, "format": {"@type": "@id"}}
-        jobloaderctx.update(t.metadata.get("$namespaces", {}))
-        loader = schema_salad.ref_resolver.Loader(jobloaderctx)
-
-    job, _ = loader.resolve_ref(uri)
-
-    if type(t) == int:
-        return t
-
-    fillInDefaults(t.tool["inputs"], job)
-
-    if options.conformance_test:
-        adjustFiles(job, lambda x: x.replace("file://", ""))
-        stdout.write(json.dumps(
-            cwltool.main.single_job_executor(t, job, options.basedir, options,
-                                             conformance_test=True, use_container=use_container,
-                                             preserve_environment=options.preserve_environment), indent=4))
-        return 0
-
-    if not options.basedir:
-        options.basedir = os.path.dirname(os.path.abspath(options.cwljob))
-
     outdir = options.outdir
 
     with Toil(options) as toil:
-        def importDefault(tool):
-            adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
-            adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
-            return tool
-        t.visit(importDefault)
+        if not toil.options.restart:
+            uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
 
-        builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
-        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
-        adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
-        adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
-        wf1.cwljob = builder.job
+            if not options.cwltool:
+                cwllogger.error("Must provide CWL tool")
+                return 1
 
-        outobj = toil.start(wf1)
+            try:
+                t = cwltool.main.load_tool(options.cwltool, False, True,
+                                           cwltool.workflow.defaultMakeTool,
+                True)
+            except cwltool.process.UnsupportedRequirement as e:
+                logging.error(e)
+                return 33
+
+            if options.conformance_test:
+                loader = schema_salad.ref_resolver.Loader({})
+            else:
+                jobloaderctx = {"path": {"@type": "@id"}, "format": {"@type": "@id"}}
+                jobloaderctx.update(t.metadata.get("$namespaces", {}))
+                loader = schema_salad.ref_resolver.Loader(jobloaderctx)
+
+            job = {}
+            if options.cwljob:
+                job, _ = loader.resolve_ref(uri)
+
+            if type(t) == int:
+                return t
+
+            fillInDefaults(t.tool["inputs"], job)
+
+            if options.conformance_test:
+                adjustFiles(job, lambda x: x.replace("file://", ""))
+                stdout.write(json.dumps(
+                    cwltool.main.single_job_executor(t, job, options.basedir, options,
+                                                     conformance_test=True, use_container=use_container,
+                                                     preserve_environment=options.preserve_environment), indent=4))
+                return 0
+
+            if not options.basedir:
+                options.basedir = os.path.dirname(os.path.abspath(options.cwljob))
+
+            def importDefault(tool):
+                adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
+                adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
+                return tool
+            t.visit(importDefault)
+
+            builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
+            (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
+            adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
+            adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
+            wf1.cwljob = builder.job
+
+            outobj = toil.start(wf1)
+        else:
+            outobj = toil.restart()
+
         outobj = resolve_indirect(outobj)
 
         adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={}, export=True, rename_collision=True))
