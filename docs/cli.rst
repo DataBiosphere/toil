@@ -4,7 +4,7 @@ Command line interface and arguments
 ====================================
 
 Toil provides many command line options when running a toil script (see :ref:`running`), 
-or using Toil to run a CWL or WDL script. Many of these are described below. 
+or using Toil to run a CWL script. Many of these are described below.
 For most Toil scripts executing '--help' will show this list of options.
 
 It is also possible to set and manipulate the options described when invoking a 
