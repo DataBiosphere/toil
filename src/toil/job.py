@@ -17,7 +17,6 @@ from __future__ import absolute_import, print_function
 import base64
 import cPickle
 import collections
-import copy_reg
 import errno
 import importlib
 import inspect
@@ -25,7 +24,6 @@ import logging
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
 import time
@@ -1928,32 +1926,38 @@ class Job(object):
     def getUserScript(self):
         return self.userModule
 
-    ####################################################
-    #Functions to pass Job.run return values to the
-    #input arguments of other Job instances
-    ####################################################
-
-    def _setReturnValuesForPromises(self, returnValues, jobStore):
+    def _fulfillPromises(self, returnValues, jobStore):
         """
-        Sets the values for promises using the return values from the job's run function.
+        Sets the values for promises using the return values from this job's run() function.
         """
         for index, promiseFileStoreIDs in self._rvs.iteritems():
-            promisedValue = returnValues if index is None else returnValues[index]
+            if index is None:
+                # Note that its possible for returnValues to be a promise, not an actual return
+                # value. This is the case if the job returns a promise from another job. In
+                # either case, we just pass it on.
+                promisedValue = returnValues
+            else:
+                # If there is an index ...
+                if isinstance(returnValues, Promise):
+                    # ... and the value itself is a Promise, we need to created a new, narrower
+                    # promise and pass it on.
+                    promisedValue = Promise(returnValues.job, index)
+                else:
+                    # Otherwise, we just select the desired component of the return value.
+                    promisedValue = returnValues[index]
             for promiseFileStoreID in promiseFileStoreIDs:
                 # File may be gone if the job is a service being re-run and the accessing job is
-                # already complete
+                # already complete.
                 if jobStore.fileExists(promiseFileStoreID):
                     with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
                         cPickle.dump(promisedValue, fileHandle, cPickle.HIGHEST_PROTOCOL)
 
-    ####################################################
-    #Functions associated with Job.checkJobGraphAcyclic to establish
-    #that the job graph does not contain any cycles of dependencies.
-    ####################################################
+    # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
+    # contain any cycles of dependencies:
 
     def _dfs(self, visited):
-        """Adds the job and all jobs reachable on a directed path from current \
-        node to the set 'visited'.
+        """
+        Adds the job and all jobs reachable on a directed path from current node to the given set.
         """
         if self not in visited:
             visited.add(self)
@@ -2201,7 +2205,7 @@ class Job(object):
             #We store the return values at this point, because if a return value
             #is a promise from another job, we need to register the promise
             #before we serialise the other jobs
-            self._setReturnValuesForPromises(returnValues, jobStore)
+            self._fulfillPromises(returnValues, jobStore)
             #Pickle the non-root jobs
             for job in ordering[:-1]:
                 # Pickle the services for the job
@@ -2551,7 +2555,7 @@ class ServiceJob(Job):
             #The start credentials  must be communicated to processes connecting to
             #the service, to do this while the run method is running we
             #cheat and set the return value promise within the run method
-            self._setReturnValuesForPromises(startCredentials, fileStore.jobStore)
+            self._fulfillPromises(startCredentials, fileStore.jobStore)
             self._rvs = {}  # Set this to avoid the return values being updated after the
             #run method has completed!
 
