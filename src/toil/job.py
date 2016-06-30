@@ -810,7 +810,8 @@ class Job(object):
                     # either the file was successfully downloaded and added to cache, or something
                     # failed. To prevent code duplication, we recursively call readGlobalFile.
                     flock(lockFileHandle, LOCK_UN)
-                    return self.readGlobalFile(fileStoreID, userPath, cache)
+                    return self.readGlobalFile(fileStoreID, userPath=userPath, cache=cache,
+                                               mutable=mutable)
                 # If the file is not in cache, then download it to the userPath and then add to
                 # cache if specified.
                 else:
