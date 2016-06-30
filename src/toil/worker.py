@@ -208,9 +208,8 @@ def main():
         logger.debug("Next available file descriptor: {}".format(
             nextOpenDescriptor()))
 
-        # Setup the caching variable now in case of an exception during loading of jobwrapper, etc
-        # Flag to identify if the run is cached or not.
-        FileStore = Job.FileStore if config.disableSharedCache else Job.CachedFileStore
+        # Setup the FileStore variable now.
+        FileStore = Job.FileStore
 
         ##########################################
         #Load the jobWrapper
@@ -321,11 +320,6 @@ def main():
                 if job.checkpoint:
                     jobWrapper.checkpoint = jobWrapper.command
 
-                # Need to fix all this for non shared cache runs
-                if config.disableSharedCache:
-                    #Cleanup the cache from the previous job
-                    cleanCacheFn(job.effectiveRequirements(jobStore.config).cache)
-
                 # Create a fileStore object for the job
                 fileStore = FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
                 with job._executor(jobWrapper=jobWrapper,
@@ -339,9 +333,6 @@ def main():
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
-                if config.disableSharedCache:
-                    #Set the clean cache function
-                    cleanCacheFn = fileStore._cleanLocalTempDir
 
             else:
                 #The command may be none, in which case
@@ -432,7 +423,7 @@ def main():
             assert jobWrapper.cores >= successorJobWrapper.cores
             
             #Build a fileStore to update the job
-            fileStore = Job.FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
+            fileStore = FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
             
             #Update blockFn
             blockFn = fileStore._blockFn

@@ -82,9 +82,7 @@ class Config(object):
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.disableSharedCache = False
         self.readGlobalFileMutableByDefault = False
-        self.defaultCache = self.defaultDisk
         self.defaultPreemptable = False
         self.maxCores = sys.maxint
         self.maxMemory = sys.maxint
@@ -191,9 +189,7 @@ class Config(object):
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
-        setOption("disableSharedCache")
         setOption("readGlobalFileMutableByDefault")
-        setOption("defaultCache", h2b, iC(0))
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
@@ -360,20 +356,13 @@ def _addOptions(addGroupFn, config):
                      'that do not specify an explicit value for this requirement. Standard '
                      'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
                      bytes2human( config.defaultDisk, symbols='iec' ))
-    addOptionFn("--disableSharedCache", dest="disableSharedCache", action='store_true', default=None,
-                help='Should the shared cache strategy be disabled? Default is False')
     addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
-                action='store_true', default=None, help='Shared caching disallows modification of '
-                                                        'read global files by default. This flag '
-                                                        'makes it makes read file mutable by '
-                                                        'default, however it also defeats the '
-                                                        'purpose of shared caching via hard links '
-                                                        'to save space. Default is False')
-    addOptionFn('--defaultCache', dest='defaultCache', default=None, metavar='INT',
-                help='The default amount of disk space to use for caching files shared between '
-                     'jobs. Only applicable to jobs that do not specify an explicit value for '
-                     'this requirement. Standard suffixes like K, Ki, M, Mi, G or Gi are '
-                     'supported. Default is %s' % bytes2human( config.defaultCache, symbols='iec' ))
+                action='store_true', default=None, help='Toil disallows modification of read '
+                                                        'global files by default. This flag makes '
+                                                        'it makes read file mutable by default, '
+                                                        'however it also defeats the purpose of '
+                                                        'shared caching via hard links to save '
+                                                        'space. Default is False')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
@@ -661,10 +650,10 @@ class Toil(object):
         else:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
-        if not (config.disableSharedCache or batchSystemClass.supportsWorkerCleanup()):
-            raise RuntimeError('%s currently does not support shared caching.  Use the '
-                               '--disableSharedCache option when running Toil with this batch '
-                               'system.' % config.batchSystem)
+        if not batchSystemClass.supportsWorkerCleanup():
+            raise RuntimeError('%s currently does not support shared caching.  Use Toil version '
+                               '3.1.6 along with the --disableSharedCache option if you want to '
+                               'use this batch system.' % config.batchSystem)
         logger.info('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 

@@ -57,7 +57,6 @@ class hidden:
             self.options.workDir = testDir
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
-            self.options.disableSharedCache = False
 
         @abstractmethod
         def _getTestJobStore(self):
