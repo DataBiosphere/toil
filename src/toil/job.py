@@ -99,9 +99,11 @@ class Job(object):
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
         self.userModule = ModuleDescriptor.forModule(self.__module__)
-        # Maps indices into composite return values to lists of IDs of files containing promised
-        # values for those return value items. The special key None represents the entire return
-        # value.
+        # Maps index paths into composite return values to lists of IDs of files containing
+        # promised values for those return value items. An index path is a tuple of indices that
+        # traverses a nested data structure of lists, dicts, tuples or any other type supporting
+        # the __getitem__() protocol.. The special key `()` (the empty tuple) represents the
+        # entire return value.
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
 
@@ -306,29 +308,37 @@ class Job(object):
     #job run functions
     ####################################################
 
-    def rv(self, index=None):
+    def rv(self, *path):
         """
         Creates a *promise* (:class:`toil.job.Promise`) representing a return value of the job's
         run method, or, in case of a function-wrapping job, the wrapped function's return value.
 
-        :param int|None index: If None the complete return value will be used, otherwise an
-               index to select an individual item from the return value in which case the return
-               value must be of a type that implements the __getitem__ magic method, e.g. dict,
-               list or tuple.
+        :param (Any) path: Optional path for selecting a component of the promised return value.
+               If absent or empty, the entire return value will be used. Otherwise, the first
+               element of the path is used to select an individual item of the return value. For
+               that to work, the return value must be a list, dictionary or of any other type
+               implementing the `__getitem__()` magic method. If the selected item is yet another
+               composite value, the second element of the path can be used to select an item from
+               it, and so on. For example, if the return value is `[6,{'a':42}]`, `.rv(0)` would
+               select `6` , `rv(1)` would select `{'a':3}` while `rv(1,'a')` would select `3`. To
+               select a slice from a return value that is slicable, e.g. tuple or list, the path
+               element should be a `slice` object. For example, assuming that the return value is
+               `[6, 7, 8, 9]` then `.rv(slice(1, 3))` would select `[7, 8]`. Note that slicing
+               really only makes sense at the end of path.
 
         :return: A promise representing the return value of this jobs :meth:`toil.job.Job.run`
                  method.
 
         :rtype: toil.job.Promise
         """
-        return Promise(self, index)
+        return Promise(self, path)
 
-    def allocatePromiseFile(self, index):
+    def allocatePromiseFile(self, path):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a '
                                'predecessor of the job receiving the promise')
         jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
-        self._rvs[index].append(jobStoreFileID)
+        self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
     ####################################################
@@ -1930,21 +1940,23 @@ class Job(object):
         """
         Sets the values for promises using the return values from this job's run() function.
         """
-        for index, promiseFileStoreIDs in self._rvs.iteritems():
-            if index is None:
+        for path, promiseFileStoreIDs in self._rvs.iteritems():
+            if not path:
                 # Note that its possible for returnValues to be a promise, not an actual return
                 # value. This is the case if the job returns a promise from another job. In
                 # either case, we just pass it on.
                 promisedValue = returnValues
             else:
-                # If there is an index ...
+                # If there is an path ...
                 if isinstance(returnValues, Promise):
                     # ... and the value itself is a Promise, we need to created a new, narrower
                     # promise and pass it on.
-                    promisedValue = Promise(returnValues.job, index)
+                    promisedValue = Promise(returnValues.job, path)
                 else:
                     # Otherwise, we just select the desired component of the return value.
-                    promisedValue = returnValues[index]
+                    promisedValue = returnValues
+                    for index in path:
+                        promisedValue = promisedValue[index]
             for promiseFileStoreID in promiseFileStoreIDs:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
@@ -2517,8 +2529,9 @@ class EncapsulatedJob(Job):
     def addFollowOn(self, followOnJob):
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
-    def rv(self, index=None):
-        return self.encapsulatedJob.rv(index)
+    def rv(self, *path):
+        return self.encapsulatedJob.rv(*path)
+
 
 class ServiceJob(Job):
     """
@@ -2640,12 +2653,12 @@ class Promise(object):
     """
     A set of IDs of files containing promised values when we know we won't need them anymore
     """
-    def __init__(self, job, index):
+    def __init__(self, job, path):
         """
         :param Job job: the job whose return value this promise references
         """
         self.job = job
-        self.index = index
+        self.path = path
 
     def __reduce__(self):
         """
@@ -2657,7 +2670,7 @@ class Promise(object):
         # The allocation of the file in the job store is intentionally lazy, we only allocate an
         # empty file in the job store if the promise is actually being pickled. This is done so
         # that we do not allocate files for promises that are never used.
-        jobStoreLocator, jobStoreFileID = self.job.allocatePromiseFile(self.index)
+        jobStoreLocator, jobStoreFileID = self.job.allocatePromiseFile(self.path)
         # Returning a class object here causes the pickling machinery to attempt to instantiate
         # the class. We will catch that with __new__ and return an the actual return value instead.
         return self.__class__, (jobStoreLocator, jobStoreFileID)

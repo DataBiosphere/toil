@@ -62,3 +62,25 @@ def b(job):
 
 def c():
     return 42, 43
+
+
+class PathIndexingPromiseTest(ToilTest):
+    """
+    Test support for indexing promises of arbitrarily nested data structures of lists, dicts and
+    tuples, or any other object supporting the __getitem__() protocol.
+    """
+
+    def test(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = 'INFO'
+        root = Job.wrapJobFn(d)
+        self.assertEquals(Job.Runner.startToil(root, options), ('b', 43, 3))
+
+
+def d(job):
+    child = job.addChild(job.wrapFn(e))
+    return child.rv('a'), child.rv(42), child.rv('c', 2)
+
+
+def e():
+    return {'a': 'b', 42: 43, 'c': [1, 2, 3]}
