@@ -844,7 +844,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         with patch('boto.s3.multipart.MultiPartUpload.copy_part_from_key',
                    new_callable=lambda: fail):
             self.master.partSize = self.mpTestPartSize
-            bucket = self._createExternalStore()
+            bucket = self._externalStore()
             url, md5 = self._prepareTestFile(bucket, self.mpTestPartSize * num_parts)
             try:
                 self.master.importFile(url)
