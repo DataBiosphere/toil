@@ -571,6 +571,28 @@ Example::
 
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
+
+Files can be staged in different ways. A file can be imported on either the leader or worker, or it
+can be directly downloaded on the worker. Each of these approaches have their own advantages that
+should be considered.
+
+Importing is preferred for cases in which the file in question is needed several times. For
+example, Amazon's S3 platform, used in the AWS job store, is better optimized for reads and writes
+to buckets from an EC2 instance in the same region. Thus an import is justified if a source file is
+in a different region than that of the job store and the workflow is running on AWS EC2 instances.
+Files that are accessed exactly once during a workflow, should be imported on workers instead of the
+leader. This is done inside job functions with the :meth:`toil.job.Job.FileStore.importFile` method.
+However, files local to the leader must be imported on the leader itself. Importing files on a
+worker where possible is preferred as it will allow for performance gains due to the parallelization
+of concurrently running jobs as well as the added benefit of retries on import failures.
+
+Direct downloads may be more efficient for cases in which the cost of the copy operation imposed by
+an import is unnecessary. For example, a direct download is better for large files that are used
+only once. Note that `toil-scripts/lib`_ contains common functionality for downloading URLs in cases
+where a download is preferred to file staging.
+
+.. _toil-scripts/lib: https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/lib/urls.py
+
 Services
 --------
 
