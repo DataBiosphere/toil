@@ -87,12 +87,12 @@ class AbstractJobStoreTest:
         def _createConfig(self):
             return Config()
 
-        @abstractmethod
         def _createJobStore(self, config=None):
             """
             :rtype: AbstractJobStore
             """
-            raise NotImplementedError()
+            return AbstractJobStore.Locator.loadOrCreateJobStore(self._jobStoreLocator(),
+                                                                 config=config)
 
         def setUp(self):
             super(AbstractJobStoreTest.Test, self).setUp()
@@ -383,7 +383,7 @@ class AbstractJobStoreTest:
         @classmethod
         def makeImportExportTests(cls):
 
-            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
+            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest, GoogleJobStoreTest]
 
             activeTestClassesByName = {testCls.__name__: testCls
                                        for testCls in testClasses
@@ -657,6 +657,38 @@ class AbstractJobStoreTest:
             # on the jobs iterator for certain cloud providers
             self.assertTrue(len(allJobs) <= 3001)
 
+        @abstractmethod
+        def testInvalidJobStoreLocator(self):
+            """
+            Tests job store Locator parse method.
+            """
+            raise NotImplementedError()
+
+        def testCorruptDelete(self):
+            """
+            Tests deleteJobStore when part of the job store is corrupted or deleted.
+            """
+            self._corruptJobStore()
+            self.master.deleteJobStore()
+
+        @abstractmethod
+        def _corruptJobStore(self):
+            """
+            Deletes some part of a job store.
+            """
+            raise NotImplementedError()
+
+        def testRobustDeleteJobStore(self):
+            self.master.deleteJobStore()
+            self.master.deleteJobStore()
+
+        @abstractmethod
+        def _jobStoreLocator(self):
+            """
+            Returns the parsed job store locator that corresponds with master.
+            """
+            raise NotImplementedError()
+
         # Sub-classes may want to override these in order to maximize test coverage
 
         def _largeLogEntrySize(self):
@@ -705,8 +737,15 @@ class AbstractEncryptedJobStoreTest:
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
-    def _createJobStore(self, config=None):
-        return FileJobStore(self.namePrefix, config=config)
+    def _jobStoreLocator(self):
+        return AbstractJobStore.Locator.parse('file:' + self.namePrefix)
+
+    def _corruptJobStore(self):
+        shutil.rmtree(self.master.locator.jobStoreDir)
+
+    def testInvalidJobStoreLocator(self):
+        for locator in ('file:/some/path', '/some/path', './some/path'):
+            AbstractJobStore.Locator.parse(locator)
 
     def _prepareTestFile(self, dirPath, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
@@ -739,10 +778,28 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = 'cgc-05-0006'
     headers = {"x-goog-project-id": projectID}
 
-    def _createJobStore(self, config=None):
-        from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.createJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix,
-                                             config=config)
+    def _jobStoreLocator(self):
+        return AbstractJobStore.Locator.parse('google:' +
+                                              GoogleJobStoreTest.projectID +
+                                              ':' +
+                                              self.namePrefix)
+
+    def _corruptJobStore(self):
+        import boto
+        for i in xrange(0, 5):
+            # retry a few times in case of ghost objects in files bucket
+            # hard limit prevents infinite loop caused by unaccounted errors.
+            try:
+                for obj in self.master.files.list():
+                    try:
+                        obj.delete()
+                    except boto.exception.GSResponseError:
+                        pass
+                self.master.locator.uri.delete_bucket(self.master.locator.headers)
+            except:
+                pass
+            else:
+                break
 
     def _prepareTestFile(self, bucket, size=None):
         import boto
@@ -752,6 +809,11 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             with open('/dev/urandom', 'r') as readable:
                 boto.storage_uri(uri).set_contents_from_string(readable.read(size))
         return uri
+
+    def testInvalidJobStoreLocator(self):
+        for locator in ('google:' + self.projectID + ':' + ('a' * 53),
+                        'google:' + self.projectID + ':test-google'):
+            self.assertRaises(ValueError, AbstractJobStore.Locator.parse, locator)
 
     def _hashTestFile(self, url):
         import boto
@@ -792,15 +854,20 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     testRegion = 'us-west-2'
 
+    def _jobStoreLocator(self):
+        return AbstractJobStore.Locator.parse('aws:' + self.testRegion + ':' + self.namePrefix)
+
     def _createJobStore(self, config=None):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
         AWSJobStore.FileInfo.defaultS3PartSize = partSize
-        return AWSJobStore.loadOrCreateJobStore(self.testRegion + ':' + self.namePrefix,
-                                                config=config,
-                                                partSize=5 * 2 ** 20)
+        return AbstractJobStore.Locator.loadOrCreateJobStore(self._jobStoreLocator(), config=config,
+                                                        partSize=5 << 20)
+
+    def _corruptJobStore(self):
+        self.master.filesBucket.delete()
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -853,6 +920,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail('Expected a RuntimeError to be raised')
 
+    def testInvalidJobStoreLocator(self):
+        for locator in ('aws:us-west-2:a--b', 'aws:us-west-2:' + ('a'*100), 'aws:us-west-2:a_b'):
+            self.assertRaises(ValueError, AbstractJobStore.Locator.parse, locator)
+
     def _prepareTestFile(self, bucket, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 's3://%s/%s' % (bucket.name, fileName)
@@ -899,29 +970,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         return AWSJobStore.itemsPerBatchDelete
 
 
-@needs_aws
-class InvalidAWSJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-        self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
-                          'us-west-2:a--b')
-        self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
-                          'us-west-2:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
-                          'us-west-2:a_b')
-
-
 @experimental
 @needs_azure
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = 'toiltest'
 
-    def _createJobStore(self, config=None):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName, self.namePrefix, config=config)
+    def _jobStoreLocator(self):
+        return AbstractJobStore.Locator.parse('azure:' + self.accountName + ':' + self.namePrefix)
+
+    def _corruptJobStore(self):
+        self.master.locator.tableService.delete_table(self.master.jobFileIDs)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -940,6 +998,12 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         self.assertTrue(self.master._jobStoreExists())
         self.master.deleteJobStore()
         self.assertFalse(self.master._jobStoreExists())
+
+    def testInvalidJobStoreLocator(self):
+        for locator in ('azure:' + self.accountName + ':a--b',
+                        'azure:' + self.accountName + ':' + ('a' * 100),
+                        'azure:' + self.accountName + ':a_b'):
+            self.assertRaises(ValueError, AbstractJobStore.Locator.parse, locator)
 
     def _prepareTestFile(self, containerName, size=None):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
@@ -978,22 +1042,6 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         blobService = BlobService(account_key=_fetchAzureAccountKey(self.accountName),
                                   account_name=self.accountName)
         blobService.delete_container(containerName)
-
-
-@experimental
-@needs_azure
-class InvalidAzureJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
-                          'toiltest:a--b')
-        self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
-                          'toiltest:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
-                          'toiltest:a_b')
 
 
 class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.Test):

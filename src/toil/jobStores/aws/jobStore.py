@@ -19,7 +19,7 @@ from contextlib import contextmanager, closing
 import logging
 from multiprocessing import cpu_count
 
-import collections
+from collections import namedtuple
 
 import os
 import re
@@ -57,7 +57,8 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
                                       bucket_location_to_region,
-                                      region_to_bucket_location)
+                                      region_to_bucket_location,
+                                      retryable_sdb_errors)
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
@@ -149,62 +150,80 @@ class AWSJobStore(AbstractJobStore):
     partitioned into chunks of 1024 bytes and each chunk is stored as a an attribute of the SDB
     item representing the job. UUIDs are used to identify jobs and files.
     """
+    class Locator(namedtuple('Locator', ('region', 'namePrefix')), AbstractJobStore.Locator):
+        """
+        Represents the location of a job store in AWS similar to how URLs are used to locate
+        resources on the Internet.  Has the following attributes:
+            * region: The AWS region of the job store as a string.
+            * namePrefix: The name prefix of the job store as a string.
 
-    @classmethod
-    def loadOrCreateJobStore(cls, locator, config=None, **kwargs):
-        region, namePrefix = locator.split(':')
-        if not cls.bucketNameRe.match(namePrefix):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a "
-                             "hyphen." % namePrefix)
-        # Reserve 13 for separator and suffix
-        if len(namePrefix) > cls.maxBucketNameLen - cls.maxNameLen - len(cls.nameSeparator):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
-                             "characters." % namePrefix)
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, cls.nameSeparator))
-        return cls(region, namePrefix, config=config, **kwargs)
+        The syntax for an AWS job store locator string is as follows:
+            aws:<AWS region>:<name prefix>
 
-    # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
-    # URLs where the may interfere with the certificate common name. We use a double
-    # underscore as a separator instead.
-    #
-    bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
+        For name prefix syntax see exception messages in parse method below.
+        """
+        jobStoreName = 'aws'
 
-    # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
-    #
-    minBucketNameLen = 3
-    maxBucketNameLen = 63
-    maxNameLen = 10
-    nameSeparator = '--'
+        # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
+        # URLs where the may interfere with the certificate common name. We use a double
+        # underscore as a separator instead.
+        #
+        bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
 
-    # Do not invoke the constructor, use the factory method above.
+        # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
+        #
+        minBucketNameLen = 3
+        maxBucketNameLen = 63
+        maxNameLen = 10
+        nameSeparator = '--'
 
-    def __init__(self, region, namePrefix, config=None, partSize=50 << 20):
+        @property
+        def jobStoreCls(self):
+            return AWSJobStore
+
+        @classmethod
+        def parse(cls, locator):
+            try:
+                region, prefix = locator.split(':')
+            except ValueError:
+                raise ValueError("The job store locator '%s' is invalid." % locator)
+            else:
+                if not cls.bucketNameRe.match(prefix):
+                    raise ValueError("Invalid prefix '%s'. Name prefixes must contain only digits, "
+                                     "hyphens or lower-case letters and must not start or end in a "
+                                     "hyphen." % prefix)
+                elif len(prefix) > cls.maxBucketNameLen - cls.maxNameLen - len(cls.nameSeparator):
+                    raise ValueError("Invalid prefix '%s'. Name prefixes may not be longer than 50 "
+                                     "characters." % prefix)
+                elif cls.nameSeparator in prefix:
+                    raise ValueError("Invalid prefix '%s'. Name prefixes may not contain '%s'." %
+                                     (prefix, cls.nameSeparator))
+                else:
+                    return cls(region, prefix)
+
+        def __str__(self):
+            return ':'.join((self.jobStoreName, self.region, self.namePrefix))
+
+    # Do not invoke the constructor, use the loadOrCreateJobStore factory method.
+
+    def __init__(self, locator, config=None, partSize=50 << 20):
         """
         Create a new job store in AWS or load an existing one from there.
 
-        :param region: the AWS region to create the job store in, e.g. 'us-west-2'
-
-        :param namePrefix: S3 bucket names and SDB tables will be prefixed with this
-
+        :param AWSJobStore.Locator locator: The parsed location of the job store.
         :param config: the config object to written to this job store. Must be None for existing
-        job stores. Must not be None for new job stores.
-
+               job stores. Must not be None for new job stores.
         :param int partSize: The size of each individual part used for multipart operations like
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
-        log.debug("Instantiating %s for region %s and name prefix '%s'",
-                  self.__class__, region, namePrefix)
-        self.region = region
-        self.namePrefix = namePrefix
+        self.locator = locator
+        log.debug("Creating job store at '%s'", self.locator)
         self.jobsDomain = None
         self.filesDomain = None
         self.filesBucket = None
-        self.db = self._connectSimpleDB()
-        self.s3 = self._connectS3()
+        self.db = self._connectSimpleDB(self.locator.region)
+        self.s3 = self._connectS3(self.locator.region)
         self.partSize = partSize
 
         # Check global registry domain for existence of this job store. The first time this is
@@ -213,15 +232,15 @@ class AWSJobStore(AbstractJobStore):
         self.registry_domain = self._getOrCreateDomain('toil-registry')
         for attempt in retry_sdb():
             with attempt:
-                attributes = self.registry_domain.get_attributes(item_name=namePrefix,
+                attributes = self.registry_domain.get_attributes(item_name=self.locator.namePrefix,
                                                                  attribute_name='exists',
                                                                  consistent_read=True)
                 exists = strict_bool(attributes.get('exists', str(False)))
-                self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
+                self._checkJobStoreCreation(create, exists, self.locator)
 
         def qualify(name):
-            assert len(name) <= self.maxNameLen
-            return self.namePrefix + self.nameSeparator + name
+            assert len(name) <= self.Locator.maxNameLen
+            return self.locator.namePrefix + self.Locator.nameSeparator + name
 
         self.jobsDomain = self._getOrCreateDomain(qualify('jobs'))
         self.filesDomain = self._getOrCreateDomain(qualify('files'))
@@ -230,7 +249,7 @@ class AWSJobStore(AbstractJobStore):
         # Now register this job store
         for attempt in retry_sdb():
             with attempt:
-                self.registry_domain.put_attributes(item_name=namePrefix,
+                self.registry_domain.put_attributes(item_name=self.locator.namePrefix,
                                                     attributes=dict(exists='True'))
 
         super(AWSJobStore, self).__init__(config=config)
@@ -552,40 +571,42 @@ class AWSJobStore(AbstractJobStore):
         assert self._validateSharedFileName(sharedFileName)
         return self.getPublicUrl(self._sharedFileID(sharedFileName))
 
-    def _connectSimpleDB(self):
+    @classmethod
+    def _connectSimpleDB(cls, region):
         """
         :rtype: SDBConnection
         """
-        db = boto.sdb.connect_to_region(self.region)
+        db = boto.sdb.connect_to_region(region)
         if db is None:
             raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB "
-                             "region." % self.region)
+                             "region." % region)
         assert db is not None
         monkeyPatchSdbConnection(db)
         return db
 
-    def _connectS3(self):
+    @classmethod
+    def _connectS3(cls, region):
         """
         :rtype: S3Connection
         """
-        s3 = boto.s3.connect_to_region(self.region)
+        s3 = boto.s3.connect_to_region(region)
         if s3 is None:
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." %
-                             self.region)
+                             region)
         return s3
 
     def _getOrCreateBucket(self, bucket_name, versioning=False):
         """
         :rtype: Bucket
         """
-        assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
-        assert self.bucketNameRe.match(bucket_name)
+        assert self.Locator.minBucketNameLen <= len(bucket_name) <= self.Locator.maxBucketNameLen
+        assert self.Locator.bucketNameRe.match(bucket_name)
         log.info("Setting up job store bucket '%s'.", bucket_name)
         while True:
             log.debug("Looking up job store bucket '%s'.", bucket_name)
             try:
                 bucket = self.s3.get_bucket(bucket_name, validate=True)
-                assert self.__getBucketRegion(bucket) == self.region
+                assert self.__getBucketRegion(bucket) == self.locator.region
                 assert versioning is self.__getBucketVersioning(bucket)
                 log.debug("Using existing job store bucket '%s'.", bucket_name)
                 return bucket
@@ -593,7 +614,7 @@ class AWSJobStore(AbstractJobStore):
                 if e.error_code == 'NoSuchBucket':
                     log.debug("Bucket '%s' does not exist. Creating it.", bucket_name)
                     try:
-                        location = region_to_bucket_location(self.region)
+                        location = region_to_bucket_location(self.locator.region)
                         bucket = self.s3.create_bucket(bucket_name, location=location)
                     except S3CreateError as e:
                         if e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'):
@@ -604,7 +625,7 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             raise
                     else:
-                        assert self.__getBucketRegion(bucket) == self.region
+                        assert self.__getBucketRegion(bucket) == self.locator.region
                         if versioning:
                             bucket.configure_versioning(versioning)
                         log.debug("Created new job store bucket '%s'.", bucket_name)
@@ -1151,10 +1172,9 @@ class AWSJobStore(AbstractJobStore):
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
-    def __getBucketVersioning(self, bucket):
+    @classmethod
+    def __getBucketVersioning(cls, bucket):
         """
-        A valueable lesson in how to botch a simple tri-state boolean.
-
         For newly created buckets get_versioning_status returns None. We map that to False.
 
         TBD: This may actually be a result of eventual consistency
@@ -1167,39 +1187,91 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_s3():
             with attempt:
                 status = bucket.get_versioning_status()
-        return bool(status) and self.versionings[status['Versioning']]
+        return bool(status) and cls.versionings[status['Versioning']]
 
-    def __getBucketRegion(self, bucket):
+    @staticmethod
+    def __getBucketRegion(bucket):
         for attempt in retry_s3():
             with attempt:
                 return bucket_location_to_region(bucket.get_location())
 
     def deleteJobStore(self):
-        self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
-        if self.filesBucket is not None:
-            for attempt in retry_s3():
-                with attempt:
-                    for upload in self.filesBucket.list_multipart_uploads():
-                        upload.cancel_upload()
-            if self.__getBucketVersioning(self.filesBucket) in (True, None):
+        self.doDeleteJobStore(self.locator)
+
+    @classmethod
+    def doDeleteJobStore(cls, locator):
+        existed = False
+        with closing(cls._connectS3(locator.region)) as s3:
+            try:
                 for attempt in retry_s3():
                     with attempt:
-                        for key in list(self.filesBucket.list_versions()):
-                            self.filesBucket.delete_key(key.name, version_id=key.version_id)
+                        filesBucket = s3.get_bucket(locator.namePrefix
+                                                    + cls.Locator.nameSeparator
+                                                    + 'files')
+            except S3ResponseError as e:
+                if e.error_code == 'NoSuchBucket':
+                    pass
+                else:
+                    raise
             else:
+                existed = True
+                filesBucketName = filesBucket.name
+                log.debug("Attempting to delete bucket '%s'...", filesBucketName)
+                log.debug("Cancelling multipart uploads in '%s' if any exist...", filesBucketName)
                 for attempt in retry_s3():
                     with attempt:
-                        for key in list(self.filesBucket.list()):
-                            key.delete()
-            for attempt in retry_s3():
-                with attempt:
-                    self.filesBucket.delete()
-        for domain in (self.filesDomain, self.jobsDomain):
-            if domain is not None:
+                        for upload in filesBucket.list_multipart_uploads():
+                            upload.cancel_upload()
+                log.debug("Deleting keys in bucket '%s' if any exist...", filesBucketName)
+                for attempt in retry_s3():
+                    with attempt:
+                        if cls.__getBucketVersioning(filesBucket) in (True, None):
+                            for key in list(filesBucket.list_versions()):
+                                filesBucket.delete_key(key.name, version_id=key.version_id)
+                        else:
+                            for key in list(filesBucket.list()):
+                                key.delete()
+                for attempt in retry_s3():
+                    with attempt:
+                        filesBucket.delete()
+
+        with closing(cls._connectSimpleDB(locator.region)) as sdb:
+            def getDomain(name):
+                def predicate(e):
+                    return not no_such_sdb_domain(e) and retryable_sdb_errors(e)
+                try:
+                    for attempt in retry_sdb(predicate=predicate):
+                        with attempt:
+                            return sdb.get_domain(name)
+                except SDBResponseError as e:
+                    if e.error_code == 'NoSuchDomain':
+                        return None
+                    else:
+                        raise
+
+            for domainName in ('files', 'jobs'):
+                domainName = locator.namePrefix + cls.Locator.nameSeparator + domainName
+                domain = getDomain(domainName)
+                if domain is not None:
+                    existed = True
+                    log.debug("Attempting to delete domain '%s'.", domainName)
+                    for attempt in retry_sdb():
+                        with attempt:
+                            domain.delete()
+                    log.debug("Successfully deleted deleted '%s'.", domainName)
+
+            registry = getDomain('toil-registry')
+            if registry is not None:
+                existed = True
                 for attempt in retry_sdb():
                     with attempt:
-                        domain.delete()
-
+                        registry.put_attributes(locator.namePrefix, dict(exists=str(False)))
+            else:
+                log.info('Registry domain not found.')
+        if existed:
+            log.info("Successfully deleted job store at '%s'.", locator)
+        elif not existed:
+            log.info("No job store found at '%s'.", locator)
 
 aRepr = reprlib.Repr()
 aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)

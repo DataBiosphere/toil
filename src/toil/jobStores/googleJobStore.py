@@ -4,6 +4,8 @@ import hashlib
 import os
 import uuid
 from StringIO import StringIO
+
+from collections import namedtuple
 from bd2k.util.threading import ExceptionalThread
 import boto
 import logging
@@ -12,6 +14,7 @@ import time
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)
+from toil.jobStores.utils import retry
 from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger(__name__)
@@ -20,16 +23,62 @@ GOOGLE_STORAGE = 'gs'
 
 
 class GoogleJobStore(AbstractJobStore):
+    class Locator(namedtuple('Locator', ('projectID', 'namePrefix', 'headers', 'uri')),
+                  AbstractJobStore.Locator):
+        """
+        Represents the location of a job store in Google Storage similar to how URLs are used to
+        locate resources on the Internet.  Has the following attributes:
+            * projectID: The project ID of the job store as a string if one is given. If a project
+                         ID is not given this is None.
+            * namePrefix: The name prefix of the job store as a string.
+            * headerValues: A dictionary of header values.
+            * uri: A boto storage uri object for the job store.
 
-    @classmethod
-    def createJobStore(cls, locator, config=None):
-        try:
-            projectID, namePrefix = locator.split(":", 1)
-        except ValueError:
-            # we don't have a specified projectID
-            namePrefix = locator
-            projectID = None
-        return cls(namePrefix, projectID, config)
+        The syntax for a Google job store locator string is as follows:
+            google:<project ID>:<name prefix>
+
+        Note that a project ID may be omitted if one does not exist, like so:
+            google:<name prefix>
+
+        For name prefix syntax see exception messages in parse method below.
+        """
+        jobStoreName = 'google'
+
+        # See https://cloud.google.com/storage/docs/naming#requirements
+        #
+        maxBucketNameLen = 63
+        bucketSuffix = "--toil"
+
+        @property
+        def jobStoreCls(self):
+            return GoogleJobStore
+
+        @classmethod
+        def parse(cls, locator):
+            try:
+                projectID, prefix = locator.split(':')
+            except ValueError as e:
+                if e.message == 'need more than 1 value to unpack':
+                    projectID = None
+                    prefix = locator
+                else:
+                    raise ValueError("The job store locator '%s' is invalid." % locator)
+
+            if 'google' in prefix:
+                raise ValueError("Invalid name prefix '%s'. Name prefixes cannot contain "
+                                 "'google'" % prefix)
+            elif len(prefix) > cls.maxBucketNameLen - len(cls.bucketSuffix) - len('gs://'):
+                raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer "
+                                 "than 52 characters." % prefix)
+            else:
+                headers = {"x-goog-project-id": projectID} if projectID else {}
+                uri = boto.storage_uri("gs://%s%s" % (prefix, cls.bucketSuffix), GOOGLE_STORAGE)
+                return cls(projectID, prefix, headers, uri)
+
+        def __str__(self):
+            return ':'.join((self.jobStoreName, self.projectID or '', self.namePrefix))
+
+    readStatsBaseID = '_f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
     # this, we use getters that return copies of our original dictionaries. reported:
@@ -44,70 +93,87 @@ class GoogleJobStore(AbstractJobStore):
 
     @property
     def headerValues(self):
-        return self._headerValues.copy()
+        return self.locator.headers.copy()
 
     @headerValues.setter
     def headerValues(self, value):
-        self._headerValues = value
+        self.locator.headers = value
 
-    def __init__(self, namePrefix, projectID=None, config=None):
-        #  create 2 buckets
-        self.projectID = projectID
+    # Do not invoke the constructor, use the loadOrCreateJobStore factory method.
 
-        self.bucketName = namePrefix+"--toil"
-        log.debug("Instantiating google jobStore with name: %s", self.bucketName)
-        self.gsBucketURL = "gs://"+self.bucketName
-
-        self._headerValues = {"x-goog-project-id": projectID} if projectID else {}
-        self._encryptedHeaders = self.headerValues
-
-        self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
+    def __init__(self, locator, config=None):
+        self.locator = locator
+        log.debug("Creating job store at '%s'", self.locator)
+        self._encryptedHeaders = self.locator.headers
         self.files = None
-
         exists = True
         try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except boto.exception.GSResponseError:
-            exists = False
-
-        create = config is not None
-        self._checkJobStoreCreation(create, exists, projectID+':'+namePrefix)
-
+            self.files = self.locator.uri.get_bucket(headers=self.headerValues, validate=True)
+        except boto.exception.GSResponseError as e:
+            if e.error_code == 'NoSuchBucket':
+                exists = False
+            else:
+                raise
+        self._checkJobStoreCreation(config is not None, exists, self.locator)
         if not exists:
-            self.files = self._retryCreateBucket(self.uri, self.headerValues)
-
+            self.files = self._retryCreateBucket(self.locator.uri, self.headerValues)
         super(GoogleJobStore, self).__init__(config=config)
+
         self.sseKeyPath = self.config.sseKey
-        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
+        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable
+        # dicts
         self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders())
 
-        self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
-        self.statsReadPrefix = '_'
-        self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
-
     def deleteJobStore(self):
-        # no upper time limit on this call keep trying delete calls until we succeed - we can
-        # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
-        # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
-        while True:
-            try:
-                self.uri.delete_bucket()
-            except boto.exception.GSResponseError as e:
-                if e.status == 404:
-                    return  # the bucket doesn't exist so we are done
-                else:
-                    # bucket could still have objects, or contain ghost objects
-                    time.sleep(0.5)
-            else:
-                # we have succesfully deleted bucket
-                return
+        self.doDeleteJobStore(self.locator)
 
-            # object could have been deleted already
-            for obj in self.files.list():
+    @classmethod
+    def doDeleteJobStore(cls, locator):
+        def noSuchBucket(e):
+            return isinstance(e, boto.exception.GSResponseError) and e.error_code == 'NoSuchBucket'
+
+        existed = False
+        try:
+            for attempt in retry(timeout=5, predicate=noSuchBucket):
+                with attempt:
+                    bucket = locator.uri.get_bucket(validate=True)
+        except boto.exception.GSResponseError as e:
+            if e.error_code == 'NoSuchBucket':
+                pass
+            else:
+                raise
+        else:
+            existed = True
+            log.info("Attempting to delete job store files bucket at '%s'...", locator.uri)
+            # no upper time limit on this call keep trying delete calls until we succeed - we can
+            # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
+            # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
+            while True:
                 try:
-                    obj.delete()
-                except boto.exception.GSResponseError:
-                    pass
+                    locator.uri.delete_bucket()
+                except boto.exception.GSResponseError as e:
+                    if e.status == 404:
+                        break
+                    else:
+                        log.debug("Either the bucket at '%s' is not empty or it contains ghost "
+                                  "objects...", locator.uri)
+                        time.sleep(0.5)
+                else:
+                    log.debug("Successfully deleted files bucket at '%s'.", locator.uri)
+                    break
+
+                # object could have been deleted already
+                log.debug("Attempting to empty files bucket at '%s' if any objects exist...",
+                          locator.uri)
+                for obj in bucket.list():
+                    try:
+                        obj.delete()
+                    except boto.exception.GSResponseError:
+                        pass
+        if existed:
+            log.info("Successfully deleted job store at '%s'.", locator)
+        elif not existed:
+            log.info("No job store found at '%s'.", locator)
 
     def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
         jobStoreID = self._newID()
