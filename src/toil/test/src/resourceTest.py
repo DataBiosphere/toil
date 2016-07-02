@@ -17,8 +17,10 @@ from __future__ import absolute_import
 import importlib
 import os
 import sys
+from inspect import getsource
 from io import BytesIO
-from subprocess import check_call
+from subprocess import check_call, Popen, PIPE
+from textwrap import dedent
 from zipfile import ZipFile
 
 from bd2k.util.files import mkdir_p
@@ -26,7 +28,7 @@ from mock import MagicMock, patch
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
-from toil.test import ToilTest
+from toil.test import ToilTest, tempFileContaining
 
 
 class ResourceTest(ToilTest):
@@ -179,3 +181,40 @@ class ResourceTest(ToilTest):
             self.assertEquals(localModule.globalize(), module)
         finally:
             Resource.cleanSystem()
+
+    def testNonPyStandAlone(self):
+        """
+        Asserts that Toil enforces the user script to have a .py or .pyc extension because that's
+        the only way hot deployment can re-import the module on a worker. See
+
+        https://github.com/BD2KGenomics/toil/issues/631 and
+        https://github.com/BD2KGenomics/toil/issues/858
+        """
+
+        def script():
+            import argparse
+            from toil.job import Job
+            from toil.common import Toil
+
+            def fn():
+                pass
+
+            if __name__ == '__main__':
+                parser = argparse.ArgumentParser()
+                Job.Runner.addToilOptions(parser)
+                options = parser.parse_args()
+                job = Job.wrapFn(fn, memory='10M', cores=0.1, disk='10M')
+                with Toil(options) as toil:
+                    toil.start(job)
+
+        scriptBody = dedent('\n'.join(getsource(script).split('\n')[1:]))
+        shebang = '#! %s\n' % sys.executable
+        with tempFileContaining(shebang + scriptBody) as scriptPath:
+            self.assertFalse(scriptPath.endswith(('.py', '.pyc')))
+            os.chmod(scriptPath, 0755)
+            jobStorePath = scriptPath + '.jobStore'
+            process = Popen([scriptPath, jobStorePath], stderr=PIPE)
+            stdout, stderr = process.communicate()
+            self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr)
+            self.assertNotEquals(0, process.returncode)
+            self.assertFalse(os.path.exists(jobStorePath))

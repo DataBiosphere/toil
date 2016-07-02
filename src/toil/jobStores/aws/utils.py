@@ -39,6 +39,8 @@ class SDBHelper(object):
 
     >>> import os
     >>> H=SDBHelper
+    >>> H.presenceIndicator()
+    '000'
     >>> H.binaryToAttributes(None)
     {}
     >>> H.attributesToBinary({})
@@ -128,6 +130,15 @@ class SDBHelper(object):
     @classmethod
     def _isValidChunkName(cls, s):
         return len(s) == 3 and s.isdigit()
+
+    @classmethod
+    def presenceIndicator(cls):
+        """
+        The key that is guaranteed to be present in the return value of binaryToAttributes().
+        Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
+        this method could be used to detect the presence/absence of an item in SDB.
+        """
+        return cls._chunkName(0)
 
     @classmethod
     def attributesToBinary(cls, attributes):

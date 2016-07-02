@@ -25,7 +25,7 @@ class JobTest(ToilTest):
     """
     Tests testing the job class
     """
-    
+
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -59,8 +59,8 @@ class JobTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            options.retryCount=100
-            options.badWorker=0.5
+            options.retryCount = 100
+            options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(A, options)
@@ -69,7 +69,7 @@ class JobTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
-    
+
     def testStatic2(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -90,7 +90,7 @@ class JobTest(ToilTest):
             B = Job.wrapFn(fn1Test, A.rv(), outFile)
             C = Job.wrapFn(fn1Test, B.rv(), outFile)
             D = Job.wrapFn(fn1Test, C.rv(), outFile)
-            
+
             # Connect them into a workflow
             A.addChild(B)
             A.addFollowOn(C)
@@ -99,8 +99,8 @@ class JobTest(ToilTest):
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            options.retryCount=100
-            options.badWorker=0.5
+            options.retryCount = 100
+            options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(A, options)
@@ -123,8 +123,9 @@ class JobTest(ToilTest):
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            # Add in follow on edges - these are returned as a list, and as a set
-            # of augmented edges in the adjacency list
+            # Add in follow on edges - these are returned as a list, and as a set of augmented
+            # edges in the adjacency list
+            # edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
             # Make the job graph
@@ -132,7 +133,7 @@ class JobTest(ToilTest):
             rootJob.checkJobGraphAcylic()  # This should not throw an exception
             rootJob.checkJobGraphConnected()  # Nor this
             # Check root detection explicitly
-            self.assertEquals(rootJob.getRootJobs(), set((rootJob,)))
+            self.assertEquals(rootJob.getRootJobs(), {rootJob})
 
             # Test making multiple roots
             childEdges2 = childEdges.copy()
@@ -163,13 +164,13 @@ class JobTest(ToilTest):
 
             # Now try adding edges that create a cycle
 
-            ##Try adding a child edge from a descendant to an ancestor
+            # Try adding a child edge from a descendant to an ancestor
             fNode, tNode = self.getRandomEdge(nodeNumber)
             while fNode not in self.reachable(tNode, adjacencyList):
                 fNode, tNode = self.getRandomEdge(nodeNumber)
             checkChildEdgeCycleDetection(fNode, tNode)
 
-            ##Try adding a self child edge
+            # Try adding a self child edge
             node = random.choice(xrange(nodeNumber))
             checkChildEdgeCycleDetection(node, node)
 
@@ -187,27 +188,27 @@ class JobTest(ToilTest):
                 self.makeJobGraph(nodeNumber, childEdges,
                                   followOnEdges, None).checkJobGraphAcylic()
 
-            ##Try adding a follow on edge from a descendant to an ancestor
+            # Try adding a follow on edge from a descendant to an ancestor
             fNode, tNode = self.getRandomEdge(nodeNumber)
             while fNode not in self.reachable(tNode, adjacencyList):
                 fNode, tNode = self.getRandomEdge(nodeNumber)
             checkFollowOnEdgeCycleDetection(fNode, tNode)
 
-            ##Try adding a self follow on edge
+            # Try adding a self follow on edge
             node = random.choice(xrange(nodeNumber))
             checkFollowOnEdgeCycleDetection(node, node)
 
-            ##Try adding a follow on edge between two nodes with shared descendants
+            # Try adding a follow on edge between two nodes with shared descendants
             fNode, tNode = self.getRandomEdge(nodeNumber)
-            if (len(self.reachable(tNode, adjacencyList). \
-                            intersection(self.reachable(fNode, adjacencyList))) > 0 and
-                        (fNode, tNode) not in childEdges):
+            if (len(self.reachable(tNode, adjacencyList)
+                        .intersection(self.reachable(fNode, adjacencyList))) > 0
+                and (fNode, tNode) not in childEdges):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
 
     def testEvaluatingRandomDAG(self):
         """
-        Randomly generate test input then check that the ordering of the running
-        respected the constraints.
+        Randomly generate test input then check that the ordering of the running respected the
+        constraints.
         """
         jobStore = self._getTestJobStorePath()
         for test in xrange(30):
@@ -219,8 +220,8 @@ class JobTest(ToilTest):
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            # Add in follow on edges - these are returned as a list, and as a set
-            # of augmented edges in the adjacency list
+            # Add in follow on edges - these are returned as a list, and as a set of augmented
+            # edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
             # Make the job graph
@@ -228,14 +229,13 @@ class JobTest(ToilTest):
             # Run the job  graph
             options = Job.Runner.getDefaultOptions("%s.%i" % (jobStore, test))
             options.retryCount = 100
-            options.badWorker=0.5
+            options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
-            #options.logLevel = "DEBUG"
             Job.Runner.startToil(rootJob, options)
-            # For each job check it created a valid output file
-            # and add the ordering relationships contained within the output
-            # file to the ordering relationship, so we can check they are compatible
-            # with the relationships defined by the job DAG.
+            # For each job check it created a valid output file and add the ordering
+            # relationships contained within the output file to the ordering relationship,
+            # so we can check they are compatible with the relationships defined by the job DAG.
+            ordering = None
             for i in xrange(nodeNumber):
                 with open(os.path.join(tempDir, str(i)), 'r') as fH:
                     ordering = map(int, fH.readline().split())
@@ -254,14 +254,13 @@ class JobTest(ToilTest):
     def getRandomEdge(nodeNumber):
         assert nodeNumber > 1
         fNode = random.choice(xrange(nodeNumber - 1))
-        return (fNode, random.choice(xrange(fNode, nodeNumber)))
+        return fNode, random.choice(xrange(fNode, nodeNumber))
 
     @staticmethod
     def makeRandomDAG(nodeNumber):
         """
-        Makes a random dag with "nodeNumber" nodes in which all nodes are 
-        connected. Return value is list of edges, each of form (a, b), 
-        where a and b are integers >= 0 < nodeNumber 
+        Makes a random dag with "nodeNumber" nodes in which all nodes are connected. Return value
+        is list of edges, each of form (a, b), where a and b are integers >= 0 < nodeNumber
         referring to nodes and the edge is from a to b.
         """
         # Pick number of total edges to create
@@ -278,16 +277,15 @@ class JobTest(ToilTest):
         """
         Make adjacency list representation of edges
         """
-        adjacencyList = [set() for i in xrange(nodeNumber)]
+        adjacencyList = [set() for _ in xrange(nodeNumber)]
         for fNode, tNode in edges:
             adjacencyList[fNode].add(tNode)
         return adjacencyList
 
-    @staticmethod
-    def reachable(node, adjacencyList, followOnAdjacencyList=None):
+    def reachable(self, node, adjacencyList, followOnAdjacencyList=None):
         """
-        Find the set of nodes reachable from this node (including the node). 
-        Return is a set of integers. 
+        Find the set of nodes reachable from this node (including the node). Return is a set of
+        integers.
         """
         visited = set()
 
@@ -296,24 +294,22 @@ class JobTest(ToilTest):
                 visited.add(fNode)
                 for tNode in adjacencyList[fNode]:
                     dfs(tNode)
-                if followOnAdjacencyList != None:
+                if followOnAdjacencyList is not None:
                     for tNode in followOnAdjacencyList[fNode]:
                         dfs(tNode)
 
         dfs(node)
         return visited
 
-    @staticmethod
-    def addRandomFollowOnEdges(childAdjacencyList):
+    def addRandomFollowOnEdges(self, childAdjacencyList):
         """
-        Adds random follow on edges to the graph, represented as an adjacency list.
-        The follow on edges are returned as a set and their augmented edges
-        are added to the adjacency list.
+        Adds random follow on edges to the graph, represented as an adjacency list. The follow on
+        edges are returned as a set and their augmented edges are added to the adjacency list.
         """
-        # This function makes the augmented adjacency list
+
         def makeAugmentedAdjacencyList():
-            augmentedAdjacencyList = map(lambda i: childAdjacencyList[i].union(followOnAdjacencyList[i]),
-                                         range(len(childAdjacencyList)))
+            augmentedAdjacencyList = [childAdjacencyList[i].union(followOnAdjacencyList[i])
+                                      for i in range(len(childAdjacencyList))]
 
             def addImpliedEdges(node, followOnEdges):
                 visited = set()
@@ -337,12 +333,11 @@ class JobTest(ToilTest):
         # Loop to create the follow on edges (try 1000 times)
         while random.random() > 0.001:
             fNode, tNode = JobTest.getRandomEdge(len(childAdjacencyList))
-            # Get the  descendants of fNode not on a path of edges starting with a follow-on
-            # edge from fNode
-            fDescendants = reduce(lambda i, j: i.union(j), map(lambda c:
-                                                               JobTest.reachable(c, childAdjacencyList,
-                                                                                 followOnAdjacencyList),
-                                                               childAdjacencyList[fNode]), set())
+            # Get the  descendants of fNode not on a path of edges starting with a follow-on edge
+            # from fNode
+            fDescendants = reduce(set.union,
+                                  (self.reachable(c, childAdjacencyList, followOnAdjacencyList)
+                                   for c in childAdjacencyList[fNode]), set())
             fDescendants.add(fNode)
 
             # Make an adjacency list including augmented edges and proposed
@@ -353,10 +348,10 @@ class JobTest(ToilTest):
 
             augmentedAdjacencyList = makeAugmentedAdjacencyList()
 
-            # If the augmented adjacency doesn't contain a cycle then add the follow on edge
-            # to the list of follow ons else remove the follow on edge from the follow on
-            # adjacency list
-            if JobTest.isAcyclic(augmentedAdjacencyList):
+            # If the augmented adjacency doesn't contain a cycle then add the follow on edge to
+            # the list of follow ons else remove the follow on edge from the follow on adjacency
+            # list.
+            if self.isAcyclic(augmentedAdjacencyList):
                 followOnEdges.add((fNode, tNode))
             else:
                 followOnAdjacencyList[fNode].remove(tNode)
@@ -366,49 +361,49 @@ class JobTest(ToilTest):
 
         return followOnEdges
 
-    @staticmethod
-    def makeJobGraph(nodeNumber, childEdges, followOnEdges, outPath):
+    def makeJobGraph(self, nodeNumber, childEdges, followOnEdges, outPath):
         """
-        Converts a DAG into a job graph. childEdges and followOnEdges are
-        the lists of child and followOn edges.
+        Converts a DAG into a job graph. childEdges and followOnEdges are the lists of child and
+        followOn edges.
         """
-        #Map of jobs to the list of promises they have
+        # Map of jobs to the list of promises they have
         jobsToPromisesMap = {}
-        #Function for making job
+
         def makeJob(string):
             promises = []
-            job = Job.wrapFn(fn2Test, promises, string, 
-                             os.path.join(outPath, string) if outPath != None else None)
+            job = Job.wrapFn(fn2Test, promises, string,
+                             None if outPath is None else os.path.join(outPath, string))
             jobsToPromisesMap[job] = promises
             return job
-        #Make the jobs
+
+        # Make the jobs
         jobs = map(lambda i: makeJob(str(i)), xrange(nodeNumber))
-        #Make the edges
+        # Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
         for fNode, tNode in followOnEdges:
             jobs[fNode].addFollowOn(jobs[tNode])
-        #Function to get a random predecessor for a job
+
         def getRandomPredecessor(job):
             predecessor = random.choice(list(job._directPredecessors))
             while random.random() > 0.5 and len(predecessor._directPredecessors) > 0:
                 predecessor = random.choice(list(predecessor._directPredecessors))
             return predecessor
-        #Connect up set of random promises compatible with graph
+
+        # Connect up set of random promises compatible with graph
         while random.random() > 0.01:
             job = random.choice(jobsToPromisesMap.keys())
             promises = jobsToPromisesMap[job]
             if len(job._directPredecessors) > 0:
                 predecessor = getRandomPredecessor(job)
                 promises.append(predecessor.rv())
-                
+
         return jobs[0]
 
-    @staticmethod
-    def isAcyclic(adjacencyList):
+    def isAcyclic(self, adjacencyList):
         """
-        Returns true if there are any cycles in the graph, which is represented as an
-        adjacency list. 
+        Returns true if there are any cycles in the graph, which is represented as an adjacency
+        list.
         """
 
         def cyclic(fNode, visited, stack):
@@ -428,25 +423,28 @@ class JobTest(ToilTest):
                 return False
         return True
 
-def fn1Test(string, outputFile, promises=[]):
+
+def fn1Test(string, outputFile):
     """
-    Function appends string to output file, then returns the 
-    next ascii character of the first character in the string, e.g.
-    if string is "AA" returns "B"
+    Function appends string to output file, then returns the next ascii character of the first
+    character in the string, e.g. if string is "AA" returns "B".
     """
+
     rV = string + chr(ord(string[-1]) + 1)
     with open(outputFile, 'w') as fH:
         fH.write(rV)
     return rV
 
+
 def fn2Test(pStrings, s, outputFile):
     """
-    Function concatenates the strings in pStrings and s, in that order, and writes
-    the result to the output file. Returns s.
+    Function concatenates the strings in pStrings and s, in that order, and writes the result to
+    the output file. Returns s.
     """
     with open(outputFile, 'w') as fH:
         fH.write(" ".join(pStrings) + " " + s)
     return s
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 from abc import ABCMeta, abstractmethod
-from contextlib import contextmanager
 from fractions import Fraction
 from inspect import getsource
 import logging
@@ -37,7 +36,12 @@ from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    AbstractBatchSystem,
                                                    BatchSystemSupport)
 from toil.job import Job
-from toil.test import ToilTest, needs_mesos, needs_parasol, needs_gridengine, needs_slurm
+from toil.test import (ToilTest,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_gridengine,
+                       needs_slurm,
+                       tempFileContaining)
 
 log = logging.getLogger(__name__)
 
@@ -145,7 +149,7 @@ class hidden:
                 sys.exit(0 if os.getenv('FOO') == 'bar' else 42)
 
             script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
-            with tempFileContaining(script_body) as script_path:
+            with tempFileContaining(script_body, suffix='.py') as script_path:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
@@ -563,21 +567,6 @@ class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
         from glob import glob
         for f in glob('slurm-*.out'):
             os.unlink(f)
-
-
-@contextmanager
-def tempFileContaining(content):
-    fd, path = tempfile.mkstemp(suffix='.py')
-    try:
-        os.write(fd, content)
-    except:
-        os.close(fd)
-        raise
-    else:
-        os.close(fd)
-        yield path
-    finally:
-        os.unlink(path)
 
 
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):

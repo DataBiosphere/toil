@@ -19,6 +19,7 @@ import tempfile
 import unittest
 import shutil
 import re
+from contextlib import contextmanager
 
 from bd2k.util import less_strict_bool
 from bd2k.util.files import mkdir_p
@@ -457,3 +458,18 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
         prms = None
         prmNames = ""
         insertMethodToClass()
+
+
+@contextmanager
+def tempFileContaining(content, suffix=''):
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        os.write(fd, content)
+    except:
+        os.close(fd)
+        raise
+    else:
+        os.close(fd)
+        yield path
+    finally:
+        os.unlink(path)

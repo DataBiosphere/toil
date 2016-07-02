@@ -253,9 +253,10 @@ class AWSJobStore(AbstractJobStore):
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
             with attempt:
-                return bool(self.jobsDomain.get_attributes(item_name=jobStoreID,
-                                                           attribute_name=[],
-                                                           consistent_read=True))
+                return bool(self.jobsDomain.get_attributes(
+                    item_name=jobStoreID,
+                    attribute_name=[AWSJob.presenceIndicator()],
+                    consistent_read=True))
 
     def jobs(self):
         result = None
@@ -472,7 +473,7 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Wrote %r from stream.", info)
 
     def fileExists(self, jobStoreFileID):
-        return self.FileInfo.load(jobStoreFileID) is not None
+        return self.FileInfo.exists(jobStoreFileID)
 
     def readFile(self, jobStoreFileID, localFilePath):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
@@ -726,6 +727,19 @@ class AWSJobStore(AbstractJobStore):
         @classmethod
         def create(cls, ownerID):
             return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
+
+        @classmethod
+        def presenceIndicator(cls):
+            return 'encrypted'
+
+        @classmethod
+        def exists(cls,jobStoreFileID):
+            for attempt in retry_sdb():
+                with attempt:
+                    return bool( cls.outer.filesDomain.get_attributes(
+                        item_name=jobStoreFileID,
+                        attribute_name=[cls.presenceIndicator()],
+                        consistent_read=True))
 
         @classmethod
         def load(cls, jobStoreFileID):

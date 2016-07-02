@@ -15,19 +15,21 @@ from __future__ import absolute_import
 from toil.job import Job
 from toil.test import ToilTest
 
+
 class CachedUnpicklingJobStoreTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/817
     """
+
     def test(self):
         """
         Runs two identical Toil workflows with different job store paths
         """
         for _ in range(2):
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
+            options.logLevel = 'INFO'
             root = Job.wrapJobFn(parent)
-            value = Job.Runner.startToil(root, options)
+            Job.Runner.startToil(root, options)
 
 
 def parent(job):
@@ -36,3 +38,49 @@ def parent(job):
 
 def child():
     return 1
+
+
+class ChainedIndexedPromisesTest(ToilTest):
+    """
+    https://github.com/BD2KGenomics/toil/issues/1021
+    """
+
+    def test(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = 'INFO'
+        root = Job.wrapJobFn(a)
+        self.assertEquals(Job.Runner.startToil(root, options), 42)
+
+
+def a(job):
+    return job.addChild(job.wrapJobFn(b)).rv(0)
+
+
+def b(job):
+    return job.addChild(job.wrapFn(c)).rv()
+
+
+def c():
+    return 42, 43
+
+
+class PathIndexingPromiseTest(ToilTest):
+    """
+    Test support for indexing promises of arbitrarily nested data structures of lists, dicts and
+    tuples, or any other object supporting the __getitem__() protocol.
+    """
+
+    def test(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = 'INFO'
+        root = Job.wrapJobFn(d)
+        self.assertEquals(Job.Runner.startToil(root, options), ('b', 43, 3))
+
+
+def d(job):
+    child = job.addChild(job.wrapFn(e))
+    return child.rv('a'), child.rv(42), child.rv('c', 2)
+
+
+def e():
+    return {'a': 'b', 42: 43, 'c': [1, 2, 3]}

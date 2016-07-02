@@ -533,7 +533,7 @@ class Toil(object):
             rootJobReturnValueID = self._jobStore.getEmptyFileStoreID()
 
             # Add the root job return value as a promise
-            rootJob._rvs[None].append(rootJobReturnValueID)
+            rootJob._rvs[()].append(rootJobReturnValueID)
 
             # Write the name of the promise file in a shared file
             with self._jobStore.writeSharedFileStream("rootJobReturnValue") as fH:

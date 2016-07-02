@@ -31,6 +31,7 @@ from urllib2 import urlopen
 from zipfile import ZipFile, PyZipFile
 
 from bd2k.util.iterables import concat
+from bd2k.util.exceptions import require
 
 from toil import inVirtualEnv
 
@@ -363,7 +364,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         filePath = os.path.abspath(module.__file__)
         filePath = filePath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
-        assert extension in ('.py', '.pyc')
+        require( extension in ('.py', '.pyc'),
+                 'The name of a user script/module must end in .py or .pyc.')
         if name == '__main__':
             # User script/module was invoked as the main program
             if module.__package__:
