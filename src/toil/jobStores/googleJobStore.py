@@ -22,7 +22,7 @@ GOOGLE_STORAGE = 'gs'
 class GoogleJobStore(AbstractJobStore):
 
     @classmethod
-    def createJobStore(cls, locator, config=None):
+    def initialize(cls, locator, config=None):
         try:
             projectID, namePrefix = locator.split(":", 1)
         except ValueError:
@@ -85,7 +85,7 @@ class GoogleJobStore(AbstractJobStore):
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
-    def deleteJobStore(self):
+    def destroy(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket

@@ -36,7 +36,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_google,
                        experimental)
-from toil.jobStores.abstractJobStore import JobStoreCreationException
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
 from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     with Toil(options) as toil:
                         toil.restart()
                     self.fail()
-                except JobStoreCreationException:
+                except NoSuchJobStoreException:
                     pass
 
                 options.restart = False
@@ -123,7 +123,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     with Toil(options) as toil:
                         toil.start(firstJob)
                     self.fail()
-                except JobStoreCreationException:
+                except JobStoreExistsException:
                     pass
 
                 options.restart = True

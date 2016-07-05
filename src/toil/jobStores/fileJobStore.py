@@ -23,9 +23,15 @@ import os
 import tempfile
 import stat
 import errno
+
+from bd2k.util.exceptions import require
+
 from toil.lib.bioio import absSymPath
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchJobException,
+                                             NoSuchFileException,
+                                             JobStoreExistsException,
+                                             NoSuchJobStoreException)
 from toil.jobWrapper import JobWrapper
 
 logger = logging.getLogger( __name__ )
@@ -33,36 +39,42 @@ logger = logging.getLogger( __name__ )
 
 class FileJobStore(AbstractJobStore):
     """
-    Represents the toil using a network file system. For doc-strings of functions see
-    AbstractJobStore.
+    A job store that uses a directory on a locally attached file system. To be compatible with
+    distributed batch systems, that file system must be shared by all worker nodes.
     """
 
-    def __init__(self, jobStoreDir, config=None):
-        """
-        :param jobStoreDir: Place to create jobStore
-        :param config: See jobStores.abstractJobStore.AbstractJobStore.__init__
-        :raise RuntimeError: if config != None and the jobStore already exists or
-        config == None and the jobStore does not already exists. 
-        """
-        # This is root directory in which everything in the store is kept
-        self.jobStoreDir = absSymPath(jobStoreDir)
-        logger.info("Jobstore directory is: %s", self.jobStoreDir)
-        # Safety checks for existing jobStore
-        self._checkJobStoreCreation(create=config is not None,
-                                    exists=os.path.exists(self.jobStoreDir),
-                                    locator=self.jobStoreDir)
-        # Directory where temporary files go
-        self.tempFilesDir = os.path.join(self.jobStoreDir, "tmp")
-        # Creation of jobStore, if necessary
-        if config is not None:
-            os.mkdir(self.jobStoreDir)
-            os.mkdir(self.tempFilesDir)
-        # Parameters for creating temporary files
-        self.validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        self.levels = 2
-        super(FileJobStore, self).__init__(config=config)
+    # Parameters controlling the creation of temporary files
+    validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    levels = 2
 
-    def deleteJobStore(self):
+    def __init__(self, path):
+        """
+        :param str path: Path to directory holding the job store
+        """
+        super(FileJobStore, self).__init__()
+        self.jobStoreDir = absSymPath(path)
+        logger.info("Path to job store directory is '%s'.", self.jobStoreDir)
+        # Directory where temporary files go
+        self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
+
+    def initialize(self, config):
+        try:
+            os.mkdir(self.jobStoreDir)
+        except OSError as e:
+            if e.errno == errno.EEXIST:
+                raise JobStoreExistsException(self.jobStoreDir)
+            else:
+                raise
+        os.mkdir(self.tempFilesDir)
+        super(FileJobStore, self).initialize(config)
+
+    def resume(self):
+        if not os.path.exists(self.jobStoreDir):
+            raise NoSuchJobStoreException(self.jobStoreDir)
+        require( os.path.isdir, "'%s' is not a directory", self.jobStoreDir)
+        super(FileJobStore, self).resume()
+
+    def destroy(self):
         if os.path.exists(self.jobStoreDir):
             shutil.rmtree(self.jobStoreDir)
 

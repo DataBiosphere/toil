@@ -24,7 +24,7 @@ import sys
 from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil
+from toil.common import Toil, jobStoreLocatorHelp
 from toil.leader import ToilState
 from toil.job import JobException
 from toil.version import version
@@ -42,12 +42,8 @@ def main():
     parser = getBasicOptionParser()
     
     parser.add_argument("jobStore", type=str,
-              help=("Store in which to place job management files \
-              and the global accessed temporary files"
-              "(If this is a file path this needs to be globally accessible "
-              "by all machines running jobs).\n"
-              "If the store already exists and restart is false an"
-              " JobStoreCreationException exception will be thrown."))
+                        help="The location of a job store that holds the information about the "
+                             "workflow whose status is to be reported on." + jobStoreLocatorHelp)
     
     parser.add_argument("--verbose", dest="verbose", action="store_true",
                       help="Print loads of information, particularly all the log files of \
@@ -76,7 +72,7 @@ def main():
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
+    jobStore = Toil.resumeJobStore(options.jobStore)
     try:
         rootJob = jobStore.loadRootJob()
     except JobException:
