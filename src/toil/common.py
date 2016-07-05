@@ -30,6 +30,7 @@ from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
 
+
 class Config(object):
     """
     Class to represent configuration operations for a toil workflow run. 
@@ -41,7 +42,7 @@ class Config(object):
         necessary in order to distinguish between two consequitive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
-        self.workflowAttemptNumber=0
+        self.workflowAttemptNumber = None
         self.jobStore = os.path.abspath("./toil")
         self.logLevel = getLogLevelString()
         self.workDir = None
@@ -213,26 +214,35 @@ class Config(object):
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
+    def __eq__(self, other):
+        return self.__dict__ == other.__dict__
+
+    def __hash__(self):
+        return self.__dict__.__hash__()
+
+jobStoreLocatorHelp = ("A job store holds persistent information about the jobs and files in a "
+                       "workflow. If the workflow is run with a distributed batch system, the job "
+                       "store must be accessible by all worker nodes. Depending on the desired "
+                       "job store implementation, the location should be formatted according to "
+                       "one of the following schemes:\n\n"
+                       "file:<path> where <path> points to a directory on the file systen\n\n"
+                       "aws:<region>:<prefix> where <region> is the name of an AWS region like "
+                       "us-west-2 and <prefix> will be prepended to the names of any top-level "
+                       "AWS resources in use by job store, e.g. S3 buckets.\n\n "
+                       "azure:<account>:<prefix>\n\n"
+                       "google:<project_id>:<prefix> TODO: explain\n\n"
+                       "For backwards compatibility, you may also specify ./foo (equivalent to "
+                       "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 def _addOptions(addGroupFn, config):
     #
     #Core options
     #
-    addOptionFn = addGroupFn("toil core options", "Options to specify the \
-    location of the toil workflow and turn on stats collation about the performance of jobs.")
+    addOptionFn = addGroupFn("toil core options",
+                             "Options to specify the location of the Toil workflow and turn on "
+                             "stats collation about the performance of jobs.")
     addOptionFn('jobStore', type=str,
-                help=("Store in which to place job management files and the global accessed "
-                      "temporary files. Job store locator strings should be formatted as follows\n"
-                      "aws:<AWS region>:<name prefix>\n"
-                      "azure:<account>:<name prefix>'\n"
-                      "google:<project id>:<name prefix>\n"
-                      "file:<file path>\n"
-                      "Note that for backwards compatibility ./foo is equivalent to file:/foo and "
-                      "/bar is equivalent to file:/bar.\n"
-                      "(If this is a file path this needs to be globally accessible by all machines"
-                      " running jobs).\n"
-                      "If the store already exists and restart is false a JobStoreCreationException"
-                      " exception will be thrown."))
+                help="The location of the job store for the workflow. " + jobStoreLocatorHelp)
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil "
                      "run should be placed. Temp files and folders will be placed in a directory "
@@ -474,20 +484,25 @@ class Toil(object):
         workflow.
         """
         setLoggingFromOptions(self.options)
+        config = Config()
+        config.setOptions(self.options)
+        jobStore = self.getJobStore(config.jobStore)
+        if not config.restart:
+            config.workflowAttemptNumber = 0
+            jobStore.initialize(config)
+        else:
+            jobStore.resume()
+            # Merge configuration from job store with command line options
+            config = jobStore.config
+            config.setOptions(self.options)
+            config.workflowAttemptNumber += 1
+            jobStore.writeConfig()
+        self.config = config
+        self._jobStore = jobStore
         self._inContextManager = True
-        self.config = Config()
-        self.config.setOptions(self.options)
-        self._jobStore = self.loadOrCreateJobStore(self.config.jobStore,
-                                                   config=None if self.config.restart else self.config)
-        if self.config.restart:
-            # Reload configuration from job store
-            self.config = self._jobStore.config
-            self.config.setOptions(self.options)
-            self.config.workflowAttemptNumber += 1
-            self._jobStore.writeConfigToStore()
-
         return self
 
+    # noinspection PyUnusedLocal
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
@@ -497,7 +512,7 @@ class Toil(object):
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
                 logger.info("Attempting to delete the job store")
-                self._jobStore.deleteJobStore()
+                self._jobStore.destroy()
                 logger.info("Successfully deleted the job store")
         except Exception as e:
             if exc_type is None:
@@ -571,13 +586,12 @@ class Toil(object):
             self._shutdownBatchSystem()
 
     @staticmethod
-    def loadOrCreateJobStore(locator, config=None):
+    def getJobStore(locator):
         """
-        Loads an existing jobStore if it already exists. Otherwise a new instance of a jobStore is
-        created and returned.
+        Create an instance of the concrete job store implementation that matches the given locator.
 
-        :param str locator: The location of the job store.
-        :param toil.common.Config config: see AbstractJobStore.__init__
+        :param str locator: The location of the job store to be represent by the instance
+
         :return: an instance of a concrete subclass of AbstractJobStore
         :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
@@ -585,30 +599,35 @@ class Toil(object):
             locator = 'file:' + locator
 
         try:
-            jobStoreName, jobStoreArgs = locator.split(':', 1)
+            name, rest = locator.split(':', 1)
         except ValueError:
-            raise RuntimeError('Invalid job store locator for proper formatting check locator '
-                               'documentation for each job store.')
+            raise RuntimeError('Invalid job store locator syntax.')
 
-        if jobStoreName == 'file':
+        if name == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
-            return FileJobStore(jobStoreArgs, config=config)
+            return FileJobStore(rest)
 
-        elif jobStoreName == 'aws':
+        elif name == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
-            return AWSJobStore.loadOrCreateJobStore(jobStoreArgs, config=config)
+            return AWSJobStore(rest)
 
-        elif jobStoreName == 'azure':
+        elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
-            account, namePrefix = jobStoreArgs.split(':', 1)
+            account, namePrefix = rest.split(':', 1)
             return AzureJobStore(account, namePrefix, config=config)
         
-        elif jobStoreName == 'google':
+        elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
-            projectID, namePrefix = jobStoreArgs.split(':', 1)
+            projectID, namePrefix = rest.split(':', 1)
             return GoogleJobStore(namePrefix, projectID, config=config)
         else:
-            raise RuntimeError("Unknown job store implementation '%s'" % jobStoreName)
+            raise RuntimeError("Unknown job store implementation '%s'" % name)
+
+    @classmethod
+    def resumeJobStore(cls, locator):
+        jobStore = cls.getJobStore(locator)
+        jobStore.resume()
+        return jobStore
 
     @staticmethod
     def createBatchSystem(config, jobStore=None, userScript=None):

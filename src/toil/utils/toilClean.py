@@ -11,55 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Removes the JobStore from a toil run.
+"""
+Delete the job store used by a previous Toil workflow invocation
 """
 from __future__ import absolute_import
 import logging
-import sys
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil
-from toil.jobStores.abstractJobStore import JobStoreCreationException
+from toil.common import Toil, jobStoreLocatorHelp
 from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
 def main():
-    """Removes the JobStore from a toil run.
-    """
-
-    ##########################################
-    #Construct the arguments.
-    ##########################################
-
     parser = getBasicOptionParser()
     parser.add_argument("jobStore", type=str,
-                      help=("Store in which to place job management files \
-                      and the global accessed temporary files"
-                      "(If this is a file path this needs to be globally accessible "
-                      "by all machines running jobs).\n"
-                      "If the store already exists and restart is false an"
-                      " JobStoreCreationException exception will be thrown."))
+                        help="The location of the job store to delete. " + jobStoreLocatorHelp)
     parser.add_argument("--version", action='version', version=version)
     options = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
-
-    ##########################################
-    #Survey the status of the job and report.
-    ##########################################
-    logger.info("Checking if we have files for toil")
-    try:
-        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
-    except JobStoreCreationException:
-        logger.info("The specified JobStore does not exist, it may have already been deleted")
-        sys.exit(0)
-
     logger.info("Attempting to delete the job store")
-    jobStore.deleteJobStore()
+    jobStore = Toil.getJobStore(options.jobStore)
+    jobStore.destroy()
     logger.info("Successfully deleted the job store")
-
-
-def _test():
-    import doctest
-    return doctest.testmod()

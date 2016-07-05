@@ -2690,7 +2690,7 @@ class Promise(object):
         # Initialize the cached job store if it was never initialized in the current process or
         # if it belongs to a different workflow that was run earlier in the current process.
         if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreLocator:
-            cls._jobstore = Toil.loadOrCreateJobStore(jobStoreLocator)
+            cls._jobstore = Toil.resumeJobStore(jobStoreLocator)
         cls.filesToDelete.add(jobStoreFileID)
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be

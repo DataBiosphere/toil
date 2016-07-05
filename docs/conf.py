@@ -59,11 +59,16 @@ extensions = [
     'sphinx.ext.viewcode',
 ]
 
-def is_class(app, what, name, obj, skip, options):
-    return inspect.isclass(obj) or name.startswith('_')
+
+def skip(app, what, name, obj, skip, options):
+    if name == '__init__':
+        return False
+    return skip or inspect.isclass(obj) or name.startswith('_')
+
 
 def setup(app):
-    app.connect('autodoc-skip-member', is_class)
+    app.connect('autodoc-skip-member', skip)
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -138,7 +143,8 @@ pygments_style = 'sphinx'
 todo_include_todos = True
 
 # Include doc string for __init__ method in the documentation
-autoclass_content = 'both'
+autoclass_content = 'class'
+autodoc_member_order = 'bysource'
 
 # -- Options for HTML output ----------------------------------------------
 

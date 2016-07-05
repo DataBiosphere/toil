@@ -32,6 +32,8 @@ from unittest import skip
 
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
+# noinspection PyPackageRequirements
+# (installed by `make prepare`)
 from mock import patch
 
 from toil.common import Config
@@ -88,7 +90,7 @@ class AbstractJobStoreTest:
             return Config()
 
         @abstractmethod
-        def _createJobStore(self, config=None):
+        def _createJobStore(self):
             """
             :rtype: AbstractJobStore
             """
@@ -97,11 +99,12 @@ class AbstractJobStoreTest:
         def setUp(self):
             super(AbstractJobStoreTest.Test, self).setUp()
             self.namePrefix = 'jobstore-test-' + str(uuid.uuid4())
+            self.master = self._createJobStore()
             self.config = self._createConfig()
-            self.master = self._createJobStore(self.config)
+            self.master.initialize(self.config)
 
         def tearDown(self):
-            self.master.deleteJobStore()
+            self.master.destroy()
             super(AbstractJobStoreTest.Test, self).tearDown()
 
         def test(self):
@@ -134,6 +137,9 @@ class AbstractJobStoreTest:
             # Create a second instance of the job store, simulating a worker ...
             #
             worker = self._createJobStore()
+            worker.resume()
+            self.assertEquals(worker.config, self.config)
+            self.assertIsNot(worker.config, self.config)
             # ... and load the parent job there.
             jobOnWorker = worker.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnMaster, jobOnWorker)
@@ -653,9 +659,35 @@ class AbstractJobStoreTest:
             # on the jobs iterator for certain cloud providers
             self.assertTrue(len(allJobs) <= 3001)
 
-        # Sub-classes may want to override these in order to maximize test coverage
+        @abstractmethod
+        def _corruptJobStore(self):
+            """
+            Deletes some part of the physical storage represented by a job store.
+            """
+            raise NotImplementedError()
+
+        def testDestructionOfCorruptedJobStore(self):
+            self._corruptJobStore()
+            worker = self._createJobStore()
+            worker.destroy()
+            # Note that self.master.destroy() is done as part of shutdown
+
+        def testDestructionIdempotence(self):
+            # Master is fully initialized
+            self.master.destroy()
+            # Create a second instance for the same physical storage but do not .initialize() or
+            # .resume() it.
+            cleaner = self._createJobStore()
+            cleaner.destroy()
+            # And repeat
+            self.master.destroy()
+            cleaner = self._createJobStore()
+            cleaner.destroy()
 
         def _largeLogEntrySize(self):
+            """
+            Sub-classes may want to override these in order to maximize test coverage
+            """
             return 1 * 1024 * 1024
 
         def _batchDeletionSize(self):
@@ -701,8 +733,12 @@ class AbstractEncryptedJobStoreTest:
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
-    def _createJobStore(self, config=None):
-        return FileJobStore(self.namePrefix, config=config)
+    def _createJobStore(self):
+        return FileJobStore(self.namePrefix)
+
+    def _corruptJobStore(self):
+        assert isinstance(self.master, FileJobStore)  # type hint
+        shutil.rmtree(self.master.jobStoreDir)
 
     def _prepareTestFile(self, dirPath, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
@@ -735,10 +771,14 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = 'cgc-05-0006'
     headers = {"x-goog-project-id": projectID}
 
-    def _createJobStore(self, config=None):
+    def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.createJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix,
-                                             config=config)
+        return GoogleJobStore.initialize(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
+
+    def _corruptJobStore(self):
+        # The Google job store has only one resource, the bucket, so we can't corrupt it without
+        # fully deleting it.
+        pass
 
     def _prepareTestFile(self, bucket, size=None):
         import boto
@@ -788,15 +828,17 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     testRegion = 'us-west-2'
 
-    def _createJobStore(self, config=None):
+    def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        AWSJobStore.FileInfo.defaultS3PartSize = partSize
-        return AWSJobStore.loadOrCreateJobStore(self.testRegion + ':' + self.namePrefix,
-                                                config=config,
-                                                partSize=5 * 2 ** 20)
+        return AWSJobStore(self.testRegion + ':' + self.namePrefix, partSize=partSize)
+
+    def _corruptJobStore(self):
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        assert isinstance(self.master, AWSJobStore)  # type hinting
+        self.master.filesBucket.delete()
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -900,13 +942,13 @@ class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
+                          AWSJobStore,
                           'us-west-2:a--b')
         self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
+                          AWSJobStore,
                           'us-west-2:' + ('a' * 100))
         self.assertRaises(ValueError,
-                          AWSJobStore.loadOrCreateJobStore,
+                          AWSJobStore,
                           'us-west-2:a_b')
 
 
@@ -915,9 +957,14 @@ class InvalidAWSJobStoreTest(ToilTest):
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = 'toiltest'
 
-    def _createJobStore(self, config=None):
+    def _createJobStore(self):
         from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName, self.namePrefix, config=config)
+        return AzureJobStore(self.accountName + ':' + self.namePrefix)
+
+    def _corruptJobStore(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        assert isinstance(self.master, AzureJobStore)  # type hinting
+        self.master.tableService.delete_table(self.master.jobFileIDs)
 
     def _partSize(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -933,8 +980,10 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         self.assertEqual(job2.command, command)
 
     def testJobStoreExists(self):
+        from toil.jobStores.azureJobStore import AzureJobStore
+        assert isinstance(self.master, AzureJobStore)  # mostly for type hinting
         self.assertTrue(self.master._jobStoreExists())
-        self.master.deleteJobStore()
+        self.master.destroy()
         self.assertFalse(self.master._jobStoreExists())
 
     def _prepareTestFile(self, containerName, size=None):
@@ -954,8 +1003,8 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
     def _hashTestFile(self, url):
         from toil.jobStores.azureJobStore import AzureJobStore
         url = urlparse.urlparse(url)
-        blobService, containerName, blobName = AzureJobStore._extractBlobInfoFromUrl(url)
-        content = blobService.get_blob_to_bytes(containerName, blobName)
+        blob = AzureJobStore._parseWasbUrl(url)
+        content = blob.service.get_blob_to_bytes(blob.container, blob.name)
         return hashlib.md5(content).hexdigest()
 
     def _createExternalStore(self):
@@ -982,13 +1031,13 @@ class InvalidAzureJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.azureJobStore import AzureJobStore
         self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
+                          AzureJobStore,
                           'toiltest:a--b')
         self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
+                          AzureJobStore,
                           'toiltest:' + ('a' * 100))
         self.assertRaises(ValueError,
-                          AzureJobStore.loadOrCreateJobStore,
+                          AzureJobStore,
                           'toiltest:a_b')
 
 

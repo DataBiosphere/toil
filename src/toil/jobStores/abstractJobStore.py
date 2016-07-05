@@ -38,6 +38,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class InvalidImportExportUrlException(Exception):
+    def __init__(self, url):
+        """
+        :param urlparse.ParseResult url:
+        """
+        super(InvalidImportExportUrlException, self).__init__(
+            "The URL '%s' is invalid" % url.geturl())
+
+
 class NoSuchJobException(Exception):
     def __init__(self, jobStoreID):
         """
@@ -76,14 +85,17 @@ class NoSuchFileException(Exception):
         super(NoSuchFileException, self).__init__(message)
 
 
-class JobStoreCreationException(Exception):
-    def __init__(self, message):
-        """
-        Indicates that a conflicting configuration was passed when attempting to initialize the jobStore
+class NoSuchJobStoreException(Exception):
+    def __init__(self, locator):
+        super(NoSuchJobStoreException, self).__init__(
+            "The job store '%s' does not exist, so there is nothing to restart" % locator)
 
-        :param str message: a message to the user to inform them of the conflict
-        """
-        super(JobStoreCreationException, self).__init__(message)
+
+class JobStoreExistsException(Exception):
+    def __init__(self, locator):
+        super(JobStoreExistsException, self).__init__(
+            "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
+            "the job store with 'toil clean' to start the workflow from scratch" % locator)
 
 
 @memoize
@@ -131,38 +143,54 @@ def findJobStoreForUrl(url, export=False):
 
 class AbstractJobStore(object):
     """ 
-    Represents the physical storage for the jobs and associated files in a toil.
+    Represents the physical storage for the jobs and files in a Toil workflow.
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, config=None):
+    def __init__(self):
         """
-        :param toil.common.Config config: If config is not None then the given configuration object will be written
-               to the shared file "config.pickle" which can later be retrieved using the
-               readSharedFileStream. See writeConfigToStore. If this file already exists it will be
-               overwritten. If config is None, the shared file "config.pickle" is assumed to exist
-               and is retrieved. See loadConfigFromStore.
+        Create an instance of the job store. The instance will not be fully functional until
+        either :meth:`.initialize` or :meth:`.resume` is invoked. Note that the :meth:`.destroy`
+        method may be invoked on the object with or without prior invocation of either of these two
+        methods.
         """
-        # Now get on with reading or writing the config
-        if config is None:
-            with self.readSharedFileStream("config.pickle") as fileHandle:
-                config = cPickle.load(fileHandle)
-                assert config.workflowID is not None
-                self.__config = config
-        else:
-            assert config.workflowID is None
-            config.workflowID = str(uuid4())
-            logger.info("The workflow ID is: '%s'" % config.workflowID)
-            self.__config = config
-            self.writeConfigToStore()
+        self.__config = None
 
-    def writeConfigToStore(self):
+    def initialize(self, config):
         """
-        Re-writes the config attribute to the job store, so that its values can be retrieved
-        by a seperate JobStore instance. No value is returned from this method.
+        Create the physical storage for this job store, allocate a workflow ID and persist the
+        given Toil configuration to the store.
+
+        :param toil.common.Config config: the Toil configuration to initialize this job store
+               with. The given configuration will be updated with the newly allocated workflow ID.
+
+        :raises JobStoreExistsException: if the physical storage for this job store already exists
         """
-        with self.writeSharedFileStream("config.pickle", isProtected=False) as fileHandle:
+        assert config.workflowID is None
+        config.workflowID = str(uuid4())
+        logger.info("The workflow ID is: '%s'" % config.workflowID)
+        self.__config = config
+        self.writeConfig()
+
+    def writeConfig(self):
+        """
+        Persists the value of the :attr:`.config` attribute to the job store, so that it can be
+        retrieved later by other instances of this class.
+        """
+        with self.writeSharedFileStream('config.pickle', isProtected=False) as fileHandle:
             cPickle.dump(self.__config, fileHandle, cPickle.HIGHEST_PROTOCOL)
+
+    def resume(self):
+        """
+        Connect this instance to the physical storage it represents and load the Toil configuration
+        into the :attr:`.config` attribute.
+
+        :raises NoSuchJobStoreException: if the physical storage for this job store doesn't exist
+        """
+        with self.readSharedFileStream('config.pickle') as fileHandle:
+            config = cPickle.load(fileHandle)
+            assert config.workflowID is not None
+            self.__config = config
 
     @property
     def config(self):
@@ -215,28 +243,47 @@ class AbstractJobStore(object):
         self.setRootJob(rootJob.jobStoreID)
         return rootJob
 
-    @staticmethod
-    def _checkJobStoreCreation(create, exists, locator):
+    @property
+    @memoize
+    def _jobStoreClasses(self):
         """
-        Consistency checks which will result in exceptions if we attempt to overwrite an existing
-        job store. This method must be called by the constructor of a subclass before any
-        modification are made. Either create or exists must be True but not both.
+        A list of concrete AbstractJobStore implementations whose dependencies are installed.
 
-        :param bool create: a boolean indicating if the config will try to create a new job store
-
-        :param bool exists: a boolean indicating if the config will try to reconnect to an existing
-               job store
-
-        :raise JobStoreCreationException:  if create == exists
+        :rtype: list[AbstractJobStore]
         """
-        if create and exists:
-            raise JobStoreCreationException("The job store '%s' already exists. Use --restart to "
-                                            "resume the workflow, or remove the job store with "
-                                            "'toil clean' to start the workflow from scratch" %
-                                            locator)
-        if not create and not exists:
-            raise JobStoreCreationException("The job store '%s' does not exist, so there "
-                                            "is nothing to restart." % locator)
+        jobStoreClassNames = (
+            "toil.jobStores.azureJobStore.AzureJobStore",
+            "toil.jobStores.fileJobStore.FileJobStore",
+            "toil.jobStores.googleJobStore.GoogleJobStore",
+            "toil.jobStores.aws.jobStore.AWSJobStore",
+            "toil.jobStores.abstractJobStore.JobStoreSupport")
+        jobStoreClasses = []
+        for className in jobStoreClassNames:
+            moduleName, className = className.rsplit('.', 1)
+            from importlib import import_module
+            try:
+                module = import_module(moduleName)
+            except ImportError:
+                logger.info("Unable to import '%s'. You may want to try reinstalling Toil with "
+                            "additional extras.", moduleName)
+            else:
+                jobStoreClass = getattr(module, className)
+                jobStoreClasses.append(jobStoreClass)
+        return jobStoreClasses
+
+    def _findJobStoreForUrl(self, url, export=False):
+        """
+        Returns the AbstractJobStore subclass that supports the given URL.
+
+        :param urlparse.ParseResult url: The given URL
+        :param bool export: The URL for
+        :rtype: toil.jobStore.AbstractJobStore
+        """
+        for jobStoreCls in self._jobStoreClasses:
+            if jobStoreCls._supportsUrl(url, export):
+                return jobStoreCls
+        raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
+                           ('ex' if export else 'im', url.geturl()))
 
     def importFile(self, srcUrl, sharedFileName=None):
         """
@@ -276,9 +323,9 @@ class AbstractJobStore(object):
     def _importFile(self, otherCls, url, sharedFileName=None):
         """
         Import the file at the given URL using the given job store class to retrieve that file.
-        See also :meth:`importFile`. This method applies a generic approach to importing: it asks
-        the other job store class for a stream and writes that stream as eiher a regular or a
-        shared file.
+        See also :meth:`.importFile`. This method applies a generic approach to importing: it
+        asks the other job store class for a stream and writes that stream as eiher a regular or
+        a shared file.
 
         :param AbstractJobStore  otherCls: The concrete subclass of AbstractJobStore that supports
                reading from the given URL.
@@ -370,9 +417,17 @@ class AbstractJobStore(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def deleteJobStore(self):
+    def destroy(self):
         """
-        Removes the job store from the disk/store. Careful!
+        The inverse of :meth:`.initialize`, this method deletes the physical storage represented
+        by this instance. While not being atomic, this method *is* at least idempotent,
+        as a means to counteract potential issues with eventual consistency exhibited by the
+        underlying storage mechanisms. This means that if the method fails (raises an exception),
+        it may (and should be) invoked again. If the underlying storage mechanism is eventually
+        consistent, even a successful invocation is not an ironclad guarantee that the physical
+        storage vanished completely and immediately. A successful invocation only guarantees that
+        the deletion will eventually happen. It is therefore recommended to not immediately reuse
+        the same job store location for a new Toil workflow.
         """
         raise NotImplementedError()
 
@@ -400,7 +455,7 @@ class AbstractJobStore(object):
         """
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
-        
+
         # Functions to get and check the existence of jobs, using the jobCache
         # if present
         def getJob(jobId):
@@ -426,7 +481,7 @@ class AbstractJobStore(object):
                 return jobCache.itervalues()
             else:
                 return self.jobs()
-        
+
         # Iterate from the root jobWrapper and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
         reachableFromRoot = set()
@@ -438,7 +493,8 @@ class AbstractJobStore(object):
             # Traverse jobs in stack
             for jobs in jobWrapper.stack:
                 for successorJobStoreID in map(lambda x: x[0], jobs):
-                    if successorJobStoreID not in reachableFromRoot and haveJob(successorJobStoreID):
+                    if successorJobStoreID not in reachableFromRoot and haveJob(
+                        successorJobStoreID):
                         getConnectedJobs(getJob(successorJobStoreID))
             # Traverse service jobs
             for jobs in jobWrapper.services:
@@ -452,13 +508,13 @@ class AbstractJobStore(object):
         logger.info("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
-        jobsToDelete = filter(lambda x : x.jobStoreID not in reachableFromRoot, getJobs())
+        jobsToDelete = filter(lambda x: x.jobStoreID not in reachableFromRoot, getJobs())
         for jobWrapper in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobWrapper.filesToDelete:
                 # Delete any files that should already be deleted
-                logger.critical(
-                    "Removing file in job store: %s that was marked for deletion but not previously removed" % fileID)
+                logger.warn("Deleting file '%s'. It is marked for deletion but has not yet been "
+                            "removed.", fileID)
                 self.deleteFile(fileID)
             # Delete the job
             self.delete(jobWrapper.jobStoreID)
@@ -466,10 +522,10 @@ class AbstractJobStore(object):
         # Clean up jobs that are in reachable from the root
         for jobWrapper in (getJob(x) for x in reachableFromRoot):
             # jobWrappers here are necessarily in reachable from root.
-            
-            changed = [False] # This is a flag to indicate the jobWrapper state has 
+
+            changed = [False]  # This is a flag to indicate the jobWrapper state has
             # changed
-            
+
             # If the job has files to delete delete them.
             if len(jobWrapper.filesToDelete) != 0:
                 # Delete any files that should already be deleted
@@ -480,21 +536,21 @@ class AbstractJobStore(object):
                 jobWrapper.filesToDelete = []
                 changed[0] = True
 
-            # For a job whose command is already executed, remove jobs from the
-            # stack that are already deleted. 
-            # This cleans up the case that the jobWrapper
-            # had successors to run, but had not been updated to reflect this
+            # For a job whose command is already executed, remove jobs from the stack that are
+            # already deleted. This cleans up the case that the jobWrapper had successors to run,
+            # but had not been updated to reflect this.
             if jobWrapper.command is None:
-                stackSizeFn = lambda : sum(map(len, jobWrapper.stack))
+                stackSizeFn = lambda: sum(map(len, jobWrapper.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
-                jobWrapper.stack = map(lambda x : filter(lambda y : self.exists(y[0]), x), jobWrapper.stack)
+                jobWrapper.stack = map(lambda x: filter(lambda y: self.exists(y[0]), x),
+                                       jobWrapper.stack)
                 # Remove empty stuff from the stack
-                jobWrapper.stack = filter(lambda x : len(x) > 0, jobWrapper.stack)
+                jobWrapper.stack = filter(lambda x: len(x) > 0, jobWrapper.stack)
                 # Check if anything got removed
                 if stackSizeFn() != startStackSize:
                     changed[0] = True
-                
+
             # Cleanup any services that have already been finished.
             # Filter out deleted services and update the flags for services that exist
             # If there are services then renew  
@@ -502,38 +558,43 @@ class AbstractJobStore(object):
             def subFlagFile(jobStoreID, jobStoreFileID, flag):
                 if self.fileExists(jobStoreFileID):
                     return jobStoreFileID
-                
+
                 # Make a new flag
                 newFlag = self.getEmptyFileStoreID()
-                
+
                 # Load the jobWrapper for the service and initialise the link
                 serviceJobWrapper = getJob(jobStoreID)
-                
+
                 if flag == 1:
-                    logger.debug("Recreating a start service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    logger.debug("Recreating a start service flag for job: %s, flag: %s",
+                                 jobStoreID, newFlag)
                     serviceJobWrapper.startJobStoreID = newFlag
                 elif flag == 2:
-                    logger.debug("Recreating a terminate service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    logger.debug("Recreating a terminate service flag for job: %s, flag: %s",
+                                 jobStoreID, newFlag)
                     serviceJobWrapper.terminateJobStoreID = newFlag
                 else:
-                    logger.debug("Recreating a error service flag for job: %s, flag: %s", jobStoreID, newFlag)
+                    logger.debug("Recreating a error service flag for job: %s, flag: %s",
+                                 jobStoreID, newFlag)
                     assert flag == 3
                     serviceJobWrapper.errorJobStoreID = newFlag
-                    
+
                 # Update the service job on disk
                 self.update(serviceJobWrapper)
-                
+
                 changed[0] = True
-                
+
                 return newFlag
-            
-            servicesSizeFn = lambda : sum(map(len, jobWrapper.services))
+
+            servicesSizeFn = lambda: sum(map(len, jobWrapper.services))
             startServicesSize = servicesSizeFn()
-            jobWrapper.services = filter(lambda z : len(z) > 0, map(lambda serviceJobList : 
-                                        map(lambda x : x[:4] + (subFlagFile(x[0], x[4], 1), 
-                                                                subFlagFile(x[0], x[5], 2), 
-                                                                subFlagFile(x[0], x[6], 3)), 
-                                        filter(lambda y : self.exists(y[0]), serviceJobList)), jobWrapper.services)) 
+            jobWrapper.services = filter(
+                lambda z: len(z) > 0,
+                map(lambda serviceJobList:
+                    map(lambda x: x[:4] + (subFlagFile(x[0], x[4], 1),
+                                           subFlagFile(x[0], x[5], 2),
+                                           subFlagFile(x[0], x[6], 3)),
+                        filter(lambda y: self.exists(y[0]), serviceJobList)), jobWrapper.services))
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
