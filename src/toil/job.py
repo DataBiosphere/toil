@@ -54,6 +54,7 @@ from toil.resource import ModuleDescriptor
 logger = logging.getLogger( __name__ )
 
 
+
 class Job(object):
     """
     Class represents a unit of work in toil.
@@ -2454,31 +2455,32 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     """
     def __init__(self, userFunction, *args, **kwargs):
         self.promisedRequirements = {}
-        requirements = {'disk': '1M', 'memory': '32M', 'cores': 0.1}
+        self.userFunctionKwargs = kwargs.copy()
+        minRequirements = {'disk': '1M', 'memory': '32M', 'cores': 0.1}
         # Replace PromisedRequirements in intermediate job with small
         # resource requirements.
-        for name, value in requirements.items():
+        for requirement, minValue in minRequirements.items():
             try:
-                if isinstance(kwargs[name], PromisedRequirement):
-                    self.promisedRequirements[name] = kwargs[name]
-                    kwargs[name] = value
+                if isinstance(kwargs[requirement], PromisedRequirement):
+                    self.promisedRequirements[requirement] = kwargs[requirement]
+                    kwargs[requirement] = minValue
             except KeyError:
-                pass
+                kwargs[requirement] = minValue
         super(PromisedRequirementFunctionWrappingJob, self).__init__(userFunction, *args, **kwargs)
 
     def run(self, fileStore):
         # Assumes promises are fulfilled when parent job is run
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
-        return self.addChildFn(userFunction, *self._args, **self._kwargs).rv()
+        return self.addChildFn(userFunction, *self._args, **self.userFunctionKwargs).rv()
 
     def evaluatePromisedRequirements(self):
         requirements = ["disk", "memory", "cores"]
         for requirement in requirements:
             try:
-                self._kwargs[requirement] = self.promisedRequirements[requirement].getValue()
+                self.userFunctionKwargs[requirement] = self.promisedRequirements[requirement].getValue()
             except KeyError:
-                self._kwargs[requirement] = getattr(self, requirement)
+                pass
 
 
 class PromisedRequirementJobFunctionWrappingJob(PromisedRequirementFunctionWrappingJob):
@@ -2490,7 +2492,7 @@ class PromisedRequirementJobFunctionWrappingJob(PromisedRequirementFunctionWrapp
     def run(self, fileStore):
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
-        return self.addChildJobFn(userFunction, *self._args, **self._kwargs).rv()
+        return self.addChildJobFn(userFunction, *self._args, **self.userFunctionKwargs).rv()
 
 
 class EncapsulatedJob(Job):
@@ -2517,7 +2519,8 @@ class EncapsulatedJob(Job):
         Job.__init__(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
-        self.encapsulatedFollowOn = Job()
+        # Use minimum resource requirements for dummy Job instance
+        self.encapsulatedFollowOn = Job(disk='1M', memory='32M', cores=0.1)
         Job.addFollowOn(self, self.encapsulatedFollowOn)
 
     def addChild(self, childJob):

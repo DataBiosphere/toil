@@ -15,6 +15,7 @@
 from __future__ import absolute_import, print_function
 import os
 import logging
+import time
 import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
 from toil.job import Job
@@ -80,7 +81,7 @@ class hidden:
             :return: Toil options object
             """
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
+            # options.logLevel = "DEBUG"
             options.batchSystem = self.batchSystemName
             options.workDir = tempDir
             options.maxCores = self.cpuCount
@@ -98,9 +99,11 @@ class hidden:
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
-        # Disable the concurrency test in this case
 
         def testJobConcurrency(self):
+            """
+            This test is overridden because it is run in batchSystemTest.py
+            """
             pass
 
         def testPromisesWithJobStoreFileObjects(self):
@@ -121,6 +124,17 @@ class hidden:
             F1.addChild(F2)
             F2.addChild(G)
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles')))
+
+
+        def testPromiseRequirementRace(self):
+            """
+            Checks for a race condition when using promised requirements and child job functions.
+            """
+            A = Job.wrapJobFn(logDiskUsage, 'A', sleep=5, disk=PromisedRequirement(1024))
+            B = Job.wrapJobFn(logDiskUsage, 'B', disk=PromisedRequirement(lambda x: x + 1024, A.rv()))
+            A.addChild(B)
+            Job.Runner.startToil(A, self.getOptions(self._createTempDir('testFiles')))
+
 
 
 def _writer(job, fileSize):
@@ -147,9 +161,6 @@ def _follower(job, expectedDisk):
     :return: None
     """
     assert job.effectiveRequirements(job.fileStore.jobStore.config).disk == expectedDisk
-
-
-
 
 
 def maxConcurrency(job, cpuCount, filename, coresPerJob):
@@ -181,6 +192,21 @@ def getOne():
 
 def getThirtyTwoMb():
     return '32M'
+
+
+def logDiskUsage(job, funcName, sleep=0):
+    """
+    Logs the job's disk usage to master and sleeps for specified amount of time (default: 0)
+
+    :param job: Job instance
+    :param funcName str: Name of job function
+    :param sleep int: Number of seconds to sleep
+    :return: Disk Usage
+    """
+    diskUsage = job.effectiveRequirements(job.fileStore.jobStore.config).disk
+    job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
+    time.sleep(sleep)
+    return diskUsage
 
 
 class SingleMachinePromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest):
