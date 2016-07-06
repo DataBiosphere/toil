@@ -529,10 +529,10 @@ Staging of files into the job store
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 External files can be imported into or exported out of the job store prior to running a workflow
 when the :class:`toil.common.Toil` context manager is used on the leader. The context manager
-provides methods :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile` for
+provides methods :meth:`toil.common.Toil.importFile`, and :meth:`toil.common.Toil.exportFile` for
 this purpose. The destination and source locations of such files are described with URLs passed
 to the two methods. A list of the currently supported URLs can be found at
-:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. To import an external file
+:meth:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. To import an external file
 into the job store as a shared file, pass the optional ``sharedFileName`` parameter to that
 method.
 
