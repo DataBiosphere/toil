@@ -38,7 +38,7 @@ class hidden:
         An abstract base class for testing Toil workflows with promised requirements.
         """
 
-        def testPromisedRequirementDynamic(self):
+        def testConcurrencyDynamic(self):
             """
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
             """
@@ -52,7 +52,7 @@ class hidden:
                 maxValue = max(values)
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
-        def testPromisedRequirementStatic(self):
+        def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
             """
@@ -81,7 +81,7 @@ class hidden:
             :return: Toil options object
             """
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            # options.logLevel = "DEBUG"
+            options.logLevel = "DEBUG"
             options.batchSystem = self.batchSystemName
             options.workDir = tempDir
             options.maxCores = self.cpuCount
@@ -101,9 +101,6 @@ class hidden:
 
 
         def testJobConcurrency(self):
-            """
-            This test is overridden because it is run in batchSystemTest.py
-            """
             pass
 
         def testPromisesWithJobStoreFileObjects(self):
@@ -118,15 +115,16 @@ class hidden:
             file2 = 512
             F1 = Job.wrapJobFn(_writer, file1)
             F2 = Job.wrapJobFn(_writer, file2)
-            G = Job.wrapJobFn(_follower, file1+file2,
+            G = Job.wrapJobFn(_follower, file1 + file2,
                               disk=PromisedRequirement(lambda x, y: x.size + y.size,
                                                        F1.rv(), F2.rv()))
             F1.addChild(F2)
             F2.addChild(G)
+
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles')))
 
 
-        def testPromiseRequirementRace(self):
+        def testPromiseRequirementRaceStatic(self):
             """
             Checks for a race condition when using promised requirements and child job functions.
             """
@@ -134,7 +132,6 @@ class hidden:
             B = Job.wrapJobFn(logDiskUsage, 'B', disk=PromisedRequirement(lambda x: x + 1024, A.rv()))
             A.addChild(B)
             Job.Runner.startToil(A, self.getOptions(self._createTempDir('testFiles')))
-
 
 
 def _writer(job, fileSize):
@@ -196,12 +193,9 @@ def getThirtyTwoMb():
 
 def logDiskUsage(job, funcName, sleep=0):
     """
-    Logs the job's disk usage to master and sleeps for specified amount of time (default: 0)
+    Logs the job's disk usage to master and sleeps for specified amount of time.
 
-    :param job: Job instance
-    :param funcName str: Name of job function
-    :param sleep int: Number of seconds to sleep
-    :return: Disk Usage
+    :return: job function's disk usage
     """
     diskUsage = job.effectiveRequirements(job.fileStore.jobStore.config).disk
     job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
@@ -233,3 +227,4 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
+

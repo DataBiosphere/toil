@@ -209,7 +209,7 @@ class Job(object):
         :rtype: toil.job.FunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addChild(PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs))
+            return self.addChild(PromisedRequirementFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
 
@@ -224,7 +224,7 @@ class Job(object):
         :rtype: toil.job.FunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addFollowOn(PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs))
+            return self.addFollowOn(PromisedRequirementFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
 
@@ -240,7 +240,7 @@ class Job(object):
         :rtype: toil.job.JobFunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addChild(PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs))
+            return self.addChild(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
@@ -256,7 +256,7 @@ class Job(object):
         :rtype: toil.job.JobFunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs))
+            return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
 
@@ -273,7 +273,7 @@ class Job(object):
         :rtype: toil.job.FunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return PromisedRequirementFunctionWrappingJob(fn, *args, **kwargs)
+            return PromisedRequirementFunctionWrappingJob.create(fn, *args, **kwargs)
         else:
             return FunctionWrappingJob(fn, *args, **kwargs)
 
@@ -290,7 +290,7 @@ class Job(object):
         :rtype: toil.job.JobFunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return PromisedRequirementJobFunctionWrappingJob(fn, *args, **kwargs)
+            return PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs)
         else:
             return JobFunctionWrappingJob(fn, *args, **kwargs)
 
@@ -2451,34 +2451,38 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     """
     Handles dynamic resource allocation using :class:`toil.job.Promise` instances.
     Spawns child function using parent function parameters and fulfilled promised
-    resource requirements. See :class:`toil.job.FunctionWrappingJob` class
+    resource requirements.
     """
     def __init__(self, userFunction, *args, **kwargs):
-        self.promisedRequirements = {}
-        self.userFunctionKwargs = kwargs.copy()
-        minRequirements = {'disk': '1M', 'memory': '32M', 'cores': 0.1}
-        # Replace PromisedRequirements in intermediate job with small
-        # resource requirements.
-        for requirement, minValue in minRequirements.items():
-            try:
-                if isinstance(kwargs[requirement], PromisedRequirement):
-                    self.promisedRequirements[requirement] = kwargs[requirement]
-                    kwargs[requirement] = minValue
-            except KeyError:
-                kwargs[requirement] = minValue
+        self._promisedKwargs = kwargs.copy()
+        # Replace resource requirements in intermediate job with small values.
+        kwargs.update(dict(disk='1M', memory='32M', cores=0.1))
         super(PromisedRequirementFunctionWrappingJob, self).__init__(userFunction, *args, **kwargs)
+
+    @classmethod
+    def create(cls, userFunction, *args, **kwargs):
+        """
+        Creates an encapsulated Toil job function with unfulfilled promised resource
+        requirements. After the promises are fulfilled, a child job function is created
+        using updated resource values. The subgraph is encapsulated to ensure that this
+        child job function is run before other children in the workflow. Otherwise, a
+        different child may try to use an unresolved promise return value from the parent.
+        """
+        return EncapsulatedJob(cls(userFunction, *args, **kwargs))
 
     def run(self, fileStore):
         # Assumes promises are fulfilled when parent job is run
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
-        return self.addChildFn(userFunction, *self._args, **self.userFunctionKwargs).rv()
+        return self.addChildFn(userFunction, *self._args, **self._promisedKwargs).rv()
 
     def evaluatePromisedRequirements(self):
         requirements = ["disk", "memory", "cores"]
+        # Fulfill resource requirement promises
         for requirement in requirements:
             try:
-                self.userFunctionKwargs[requirement] = self.promisedRequirements[requirement].getValue()
+                if isinstance(self._promisedKwargs[requirement], PromisedRequirement):
+                    self._promisedKwargs[requirement] = self._promisedKwargs[requirement].getValue()
             except KeyError:
                 pass
 
@@ -2492,7 +2496,7 @@ class PromisedRequirementJobFunctionWrappingJob(PromisedRequirementFunctionWrapp
     def run(self, fileStore):
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
-        return self.addChildJobFn(userFunction, *self._args, **self.userFunctionKwargs).rv()
+        return self.addChildJobFn(userFunction, *self._args, **self._promisedKwargs).rv()
 
 
 class EncapsulatedJob(Job):
@@ -2516,10 +2520,11 @@ class EncapsulatedJob(Job):
         """
         :param toil.job.Job job: the job to encapsulate.
         """
-        Job.__init__(self)
+        # Giving the root of the subgraph the same resources as the first job in the subgraph.
+        Job.__init__(self, disk=job.disk, memory=job.memory, cores=job.cores)
         self.encapsulatedJob = job
         Job.addChild(self, job)
-        # Use minimum resource requirements for dummy Job instance
+        # Use small resource requirements for dummy Job instance.
         self.encapsulatedFollowOn = Job(disk='1M', memory='32M', cores=0.1)
         Job.addFollowOn(self, self.encapsulatedFollowOn)
 
