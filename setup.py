@@ -42,7 +42,7 @@ setup(
             'gcs_oauth2_boto_plugin==1.9',
             botoRequirement],
         'cwl': [
-            'cwltool==1.0.20160427142240']},
+            'cwltool==1.0.20160707195347']},
     package_dir={'': 'src'},
     packages=find_packages('src', exclude=['*.test']),
     entry_points={

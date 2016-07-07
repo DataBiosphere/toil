@@ -21,11 +21,13 @@ from toil.version import version
 from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
+import cwltool.load_tool
 import cwltool.main
 import cwltool.workflow
 import cwltool.expression
 import cwltool.builder
-from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary, fillInDefaults
+from cwltool.pathmapper import adjustFiles
+from cwltool.process import shortname, adjustFilesWithSecondary, fillInDefaults
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -211,11 +213,19 @@ class CWLJob(Job):
 
         # Run the tool
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                  os.getcwd(), None,
+                                                  basedir=os.getcwd(),
                                                   outdir=outdir,
                                                   tmpdir=tmpdir,
+                                                  tmpdir_prefix="tmp",
                                                   **self.executor_options)
 
+        def locToPath(p):
+            """Back compatibility -- handle converting locations into paths.
+            """
+            if "path" not in p and "location" in p:
+                p["path"] = p["location"]
+        cwltool.builder.adjustDirObjs(output, locToPath)
+        cwltool.builder.adjustFileObjs(output, locToPath)
         # Copy output files into the global file store.
         adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
 
@@ -485,7 +495,7 @@ class CWLWorkflow(Job):
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
-            outobj[shortname(out["id"])] = (shortname(out["source"]), promises[out["source"]].rv())
+            outobj[shortname(out["id"])] = (shortname(out["outputSource"]), promises[out["outputSource"]].rv())
 
         return IndirectDict(outobj)
 
@@ -545,9 +555,7 @@ def main(args=None, stdout=sys.stdout):
     uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
 
     try:
-        t = cwltool.main.load_tool(options.cwltool, False, True,
-                                   cwltool.workflow.defaultMakeTool,
-        True)
+        t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
         return 33
@@ -560,6 +568,13 @@ def main(args=None, stdout=sys.stdout):
         loader = schema_salad.ref_resolver.Loader(jobloaderctx)
 
     job, _ = loader.resolve_ref(uri)
+    # v1.0 should be specifying location but older YAML uses path
+    # provide back compatibility
+    def pathToLoc(p):
+        if "location" not in p and "path" in p:
+            p["location"] = p["path"]
+    cwltool.builder.adjustDirObjs(job, pathToLoc)
+    cwltool.builder.adjustFileObjs(job, pathToLoc)
 
     if type(t) == int:
         return t
@@ -569,7 +584,8 @@ def main(args=None, stdout=sys.stdout):
     if options.conformance_test:
         adjustFiles(job, lambda x: x.replace("file://", ""))
         stdout.write(json.dumps(
-            cwltool.main.single_job_executor(t, job, options.basedir, options,
+            cwltool.main.single_job_executor(t, job, basedir=options.basedir,
+                                             tmpdir_prefix="tmp",
                                              conformance_test=True, use_container=use_container,
                                              preserve_environment=options.preserve_environment), indent=4))
         return 0
@@ -586,7 +602,7 @@ def main(args=None, stdout=sys.stdout):
             return tool
         t.visit(importDefault)
 
-        builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
+        builder = t._init_job(job, basedir=os.path.dirname(os.path.abspath(options.cwljob)))
         (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
         adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
