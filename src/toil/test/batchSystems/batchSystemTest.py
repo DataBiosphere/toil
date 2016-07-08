@@ -284,7 +284,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
 
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
-                                        maxCores=numCores, maxMemory=1e9, maxDisk=1001)
+                                        maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
 
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
