@@ -852,8 +852,7 @@ class Job(object):
                                 # We don't need to return the file size here because addToCache
                                 # already does it for us
                         finally:
-                            # Reacquire the file lock and delete the partial file.
-                            flock(lockFileHandle, LOCK_EX)
+                            # In any case, delete the harbinger file.
                             harbingerFile.delete()
                     else:
                         # Release the cache lock since the remaining stuff is not cache related.
@@ -1569,8 +1568,6 @@ class Job(object):
                 :param class fileStore: The 'self' object of the fileStore class
                 :param str fileStoreID: The file store ID for an input file
                 :param str cachedFileName: The cache file name corresponding to a given file
-                :return: Harbinger file name
-                :rtype: str
                 """
                 # We need either a file store ID, or a cached file name, but not both (XOR).
                 assert (fileStoreID is None) != (cachedFileName is None)
@@ -1579,9 +1576,12 @@ class Job(object):
                     cachedFileName = fileStore.encodedFileID(fileStoreID)
                 else:
                     self.fileStoreID = fileStore.decodedFileID(cachedFileName)
+                self.fileStore = fileStore
                 self.harbingerFileName = '/.'.join(os.path.split(cachedFileName)) + '.harbinger'
 
             def write(self):
+                self.fileStore.logToMaster('CACHE: Creating a harbinger file for (%s). '
+                                           % self.fileStoreID, logging.DEBUG)
                 with open(self.harbingerFileName + '.tmp', 'w') as harbingerFile:
                     harbingerFile.write(str(os.getpid()))
                 # Make this File read only to prevent overwrites
@@ -1611,7 +1611,7 @@ class Job(object):
                     else:
                         # The process that was supposed to download the file has died so we need
                         # to remove the harbinger.
-                        harbingerFile.delete()
+                        self._delete()
 
             def read(self):
                 return int(open(self.harbingerFileName).read())
@@ -1620,6 +1620,19 @@ class Job(object):
                 return os.path.exists(self.harbingerFileName)
 
             def delete(self):
+                """
+                Acquires the cache lock then attempts to delete the harbinger file.
+                """
+                with self.fileStore.cacheLock():
+                    self._delete()
+
+            def _delete(self):
+                """
+                This function assumes you already have the cache lock!
+                """
+                assert self.exists()
+                self.fileStore.logToMaster('CACHE: Deleting the harbinger file for (%s)' %
+                                           self.fileStoreID, logging.DEBUG)
                 os.remove(self.harbingerFileName)
 
             @staticmethod
