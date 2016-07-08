@@ -29,6 +29,7 @@ import shutil
 from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
+from toil.fileStore import FileStore
 import signal
 
 logger = logging.getLogger( __name__ )
@@ -207,9 +208,6 @@ def main():
         #them.
         logger.debug("Next available file descriptor: {}".format(
             nextOpenDescriptor()))
-
-        # Setup the FileStore variable now.
-        FileStore = Job.FileStore
 
         ##########################################
         #Load the jobWrapper
