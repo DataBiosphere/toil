@@ -352,5 +352,6 @@ class InsufficientSystemResources(Exception):
         self.resource = resource
 
     def __str__(self):
-        return 'Requesting more {} than available. Requested: {}, Available: {}' \
-               ''.format(self.resource, self.requested, self.available)
+        return 'Requesting more {} than either physically available, or enforced by --max{}. ' \
+               'Requested: {}, Available: {}'.format(self.resource, self.resource.capitalize(),
+                                                     self.requested, self.available)
