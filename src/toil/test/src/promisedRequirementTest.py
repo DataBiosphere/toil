@@ -15,6 +15,7 @@
 from __future__ import absolute_import, print_function
 import os
 import logging
+import time
 import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
 from toil.job import Job
@@ -37,7 +38,7 @@ class hidden:
         An abstract base class for testing Toil workflows with promised requirements.
         """
 
-        def testPromisedRequirementDynamic(self):
+        def testConcurrencyDynamic(self):
             """
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
             """
@@ -51,7 +52,7 @@ class hidden:
                 maxValue = max(values)
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
-        def testPromisedRequirementStatic(self):
+        def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
             """
@@ -98,7 +99,6 @@ class hidden:
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
-        # Disable the concurrency test in this case
 
         def testJobConcurrency(self):
             pass
@@ -115,12 +115,23 @@ class hidden:
             file2 = 512
             F1 = Job.wrapJobFn(_writer, file1)
             F2 = Job.wrapJobFn(_writer, file2)
-            G = Job.wrapJobFn(_follower, file1+file2,
+            G = Job.wrapJobFn(_follower, file1 + file2,
                               disk=PromisedRequirement(lambda x, y: x.size + y.size,
                                                        F1.rv(), F2.rv()))
             F1.addChild(F2)
             F2.addChild(G)
+
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles')))
+
+
+        def testPromiseRequirementRaceStatic(self):
+            """
+            Checks for a race condition when using promised requirements and child job functions.
+            """
+            A = Job.wrapJobFn(logDiskUsage, 'A', sleep=5, disk=PromisedRequirement(1024))
+            B = Job.wrapJobFn(logDiskUsage, 'B', disk=PromisedRequirement(lambda x: x + 1024, A.rv()))
+            A.addChild(B)
+            Job.Runner.startToil(A, self.getOptions(self._createTempDir('testFiles')))
 
 
 def _writer(job, fileSize):
@@ -147,9 +158,6 @@ def _follower(job, expectedDisk):
     :return: None
     """
     assert job.effectiveRequirements(job.fileStore.jobStore.config).disk == expectedDisk
-
-
-
 
 
 def maxConcurrency(job, cpuCount, filename, coresPerJob):
@@ -183,6 +191,18 @@ def getThirtyTwoMb():
     return '32M'
 
 
+def logDiskUsage(job, funcName, sleep=0):
+    """
+    Logs the job's disk usage to master and sleeps for specified amount of time.
+
+    :return: job function's disk usage
+    """
+    diskUsage = job.effectiveRequirements(job.fileStore.jobStore.config).disk
+    job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
+    time.sleep(sleep)
+    return diskUsage
+
+
 class SingleMachinePromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest):
     """
     Tests against the SingleMachine batch system
@@ -207,3 +227,4 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
+
