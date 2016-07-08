@@ -12,38 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import re
-import os
-import uuid
-import logging
-from contextlib import contextmanager
-import inspect
+from __future__ import absolute_import
+
 import bz2
 import cPickle
-import socket
 import httplib
-import time
-from collections import Iterable, Iterator
-from typing import Callable
-from datetime import datetime, timedelta
-
+import inspect
+import logging
+import os
+import re
+import socket
+import uuid
 from ConfigParser import RawConfigParser, NoOptionError
+from collections import namedtuple
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy
-from azure.storage.table import TableService, EntityProperty
 from azure.storage.blob import BlobService, BlobSharedAccessPermissions
+from azure.storage.table import TableService, EntityProperty
 
+# noinspection PyPackageRequirements
+# (pulled in transitively)
 import requests
-from bd2k.util import strict_bool
+from bd2k.util import strict_bool, memoize
+from bd2k.util.exceptions import panic
 
-from bd2k.util.threading import ExceptionalThread
-
-from toil.jobStores.utils import retry
+from toil.jobStores.utils import retry, WritablePipe, ReadablePipe
 from toil.jobWrapper import JobWrapper
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchJobException,
                                              ConcurrentFileModificationException,
-                                             NoSuchFileException)
+                                             NoSuchFileException,
+                                             InvalidImportExportUrlException,
+                                             JobStoreExistsException,
+                                             NoSuchJobStoreException)
 import toil.lib.encryption as encryption
 
 logger = logging.getLogger(__name__)
@@ -83,35 +87,13 @@ maxAzureTablePropertySize = 64 * 1024
 
 class AzureJobStore(AbstractJobStore):
     """
-    A job store that uses Azure's blob store for file storage and
-    Table Service to store job info with strong consistency."""
-
-    @classmethod
-    def loadOrCreateJobStore(cls, locator, config=None, **kwargs):
-        account, namePrefix = locator.split(':', 1)
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, cls.nameSeparator))
-
-        if not cls.containerNameRe.match(namePrefix):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a "
-                             "hyphen." % namePrefix)
-
-        # Reserve 13 for separator and suffix
-        if len(namePrefix) > cls.maxContainerNameLen - cls.maxNameLen - len(cls.nameSeparator):
-            raise ValueError(("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
-                              "characters." % namePrefix))
-
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, cls.nameSeparator))
-
-        return cls(account, namePrefix, config=config, **kwargs)
+    A job store that uses Azure's blob store for file storage and Table Service to store job info
+    with strong consistency.
+    """
 
     # Dots in container names should be avoided because container names are used in HTTPS bucket
-    # URLs where the may interfere with the certificate common name. We use a double
-    # underscore as a separator instead.
+    # URLs where the may interfere with the certificate common name. We use a double underscore
+    # as a separator instead.
     #
     containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
 
@@ -121,50 +103,106 @@ class AzureJobStore(AbstractJobStore):
     maxContainerNameLen = 63
     maxNameLen = 10
     nameSeparator = 'xx'  # Table names must be alphanumeric
-
-    # Do not invoke the constructor, use the factory method above.
-
-    def __init__(self, accountName, namePrefix, config=None,
-                 jobChunkSize=maxAzureTablePropertySize):
-        self.jobChunkSize = jobChunkSize
-        self.keyPath = None
-
-        self.account_key = _fetchAzureAccountKey(accountName)
-        self.accountName = accountName
-        # Table names have strict requirements in Azure
-        self.namePrefix = self._sanitizeTableName(namePrefix)
-        logger.debug("Creating job store with name prefix '%s'" % self.namePrefix)
-
-        # These are the main API entrypoints.
-        self.tableService = TableService(account_key=self.account_key, account_name=accountName)
-        self.blobService = BlobService(account_key=self.account_key, account_name=accountName)
-
-        exists = self._jobStoreExists()
-        self._checkJobStoreCreation(config is not None, exists, accountName + ":" + self.namePrefix)
-
-        # Serialized jobs table
-        self.jobItems = self._getOrCreateTable(self.qualify('jobs'))
-        # Job<->file mapping table
-        self.jobFileIDs = self._getOrCreateTable(self.qualify('jobFileIDs'))
-
-        # Container for all shared and unshared files
-        self.files = self._getOrCreateBlobContainer(self.qualify('files'))
-
-        # Stats and logging strings
-        self.statsFiles = self._getOrCreateBlobContainer(self.qualify('statsfiles'))
-        # File IDs that contain stats and logging strings
-        self.statsFileIDs = self._getOrCreateTable(self.qualify('statsFileIDs'))
-
-        super(AzureJobStore, self).__init__(config=config)
-
-        if self.config.cseKey is not None:
-            self.keyPath = self.config.cseKey
-
     # Length of a jobID - used to test if a stats file has been read already or not
     jobIDLength = len(str(uuid.uuid4()))
 
-    def qualify(self, name):
-        return self.namePrefix + self.nameSeparator + name
+    def __init__(self, locator, jobChunkSize=maxAzureTablePropertySize):
+        super(AzureJobStore, self).__init__()
+        accountName, namePrefix = locator.split(':', 1)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain %s."
+                             % (namePrefix, self.nameSeparator))
+        if not self.containerNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > self.maxContainerNameLen - self.maxNameLen - len(self.nameSeparator):
+            raise ValueError(("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                              "characters." % namePrefix))
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, self.nameSeparator))
+        self.locator = locator
+        self.jobChunkSize = jobChunkSize
+        self.accountKey = _fetchAzureAccountKey(accountName)
+        self.accountName = accountName
+        # Table names have strict requirements in Azure
+        self.namePrefix = self._sanitizeTableName(namePrefix)
+        # These are the main API entry points.
+        self.tableService = TableService(account_key=self.accountKey, account_name=accountName)
+        self.blobService = BlobService(account_key=self.accountKey, account_name=accountName)
+        # Serialized jobs table
+        self.jobItems = None
+        # Job<->file mapping table
+        self.jobFileIDs = None
+        # Container for all shared and unshared files
+        self.files = None
+        # Stats and logging strings
+        self.statsFiles = None
+        # File IDs that contain stats and logging strings
+        self.statsFileIDs = None
+
+    @property
+    def keyPath(self):
+        return self.config.cseKey
+
+    def initialize(self, config):
+        if self._jobStoreExists():
+            raise JobStoreExistsException(self.locator)
+        logger.debug("Creating job store at '%s'" % self.locator)
+        self._bind(create=True)
+        super(AzureJobStore, self).initialize(config)
+
+    def resume(self):
+        if not self._jobStoreExists():
+            raise NoSuchJobStoreException(self.locator)
+        logger.debug("Using existing job store at '%s'" % self.locator)
+        self._bind(create=False)
+        super(AzureJobStore, self).resume()
+
+    def destroy(self):
+        for name in 'jobItems', 'jobFileIDs', 'files', 'statsFiles', 'statsFileIDs':
+            resource = getattr(self, name)
+            if resource is not None:
+                if isinstance(resource, AzureTable):
+                    resource.delete_table()
+                elif isinstance(resource, AzureBlobContainer):
+                    resource.delete_container()
+                else:
+                    assert False
+                setattr(self, name, None)
+
+    def _jobStoreExists(self):
+        """
+        Checks if job store exists by querying the existence of the statsFileIDs table. Note that
+        this is the last component that is deleted in :meth:`.destroy`.
+        """
+        for attempt in retry_azure():
+            with attempt:
+                try:
+                    table = self.tableService.query_tables(table_name=self._qualify('statsFileIDs'))
+                except AzureMissingResourceHttpError as e:
+                    if e.status_code == 404:
+                        return False
+                    else:
+                        raise
+                else:
+                    return table is not None
+
+    def _bind(self, create=False):
+        table = self._bindTable
+        container = self._bindContainer
+        for name, binder in (('jobItems', table),
+                             ('jobFileIDs', table),
+                             ('files', container),
+                             ('statsFiles', container),
+                             ('statsFileIDs', table)):
+            if getattr(self, name) is None:
+                setattr(self, name, binder(self._qualify(name), create=create))
+
+    def _qualify(self, name):
+        return self.namePrefix + self.nameSeparator + name.lower()
 
     def jobs(self):
 
@@ -220,69 +258,52 @@ class AzureJobStore(AbstractJobStore):
             jobStoreFileID = fileEntity.RowKey
             self.deleteFile(jobStoreFileID)
 
-    def deleteJobStore(self):
-        self.jobItems.delete_table()
-        self.jobFileIDs.delete_table()
-        self.files.delete_container()
-        self.statsFiles.delete_container()
-        self.statsFileIDs.delete_table()
-
-    def _jobStoreExists(self):
-        """
-        Checks if job store exists by querying the existence of the statsFileIDs table. Note that
-        this is the last component that is deleted in deleteJobStore.
-        """
-        for attempt in retry_azure():
-            with attempt:
-                try:
-                    table = self.tableService.query_tables(table_name=self.qualify('statsFileIDs'))
-                    return table is not None
-                except AzureMissingResourceHttpError as e:
-                    if e.status_code == 404:
-                        return False
-                    else:
-                        raise
-
     def getEnv(self):
-        return dict(AZURE_ACCOUNT_KEY=self.account_key)
+        return dict(AZURE_ACCOUNT_KEY=self.accountKey)
+
+    class BlobInfo(namedtuple('BlobInfo', ('account', 'container', 'name'))):
+        @property
+        @memoize
+        def service(self):
+            return BlobService(account_name=self.account,
+                               account_key=_fetchAzureAccountKey(self.account))
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        blobService, containerName, blobName = cls._extractBlobInfoFromUrl(url)
-        blobService.get_blob_to_file(containerName, blobName, writable)
+        blob = cls._parseWasbUrl(url)
+        blob.service.get_blob_to_file(container_name=blob.container,
+                                      blob_name=blob.name,
+                                      stream=writable)
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        blobService, containerName, blobName = cls._extractBlobInfoFromUrl(url)
-        blobService.put_block_blob_from_file(containerName, blobName, readable)
-        blobService.get_blob(containerName, blobName)
+        blob = cls._parseWasbUrl(url)
+        blob.service.put_block_blob_from_file(container_name=blob.container,
+                                              blob_name=blob.name,
+                                              stream=readable)
 
-    @staticmethod
-    def _extractBlobInfoFromUrl(url):
+    @classmethod
+    def _parseWasbUrl(cls, url):
         """
-        :return: (blobService, containerName, blobName)
+        :param urlparse.ParseResult url: x
+        :rtype: AzureJobStore.BlobInfo
         """
-
-        def invalidUrl():
-            raise RuntimeError("The URL '%s' is invalid" % url.geturl())
-
-        netloc = url.netloc.split('@')
-        if len(netloc) != 2:
-            invalidUrl()
-
-        accountEnd = netloc[1].find('.blob.core.windows.net')
-        if accountEnd == -1:
-            invalidUrl()
-
-        containerName, accountName = netloc[0], netloc[1][0:accountEnd]
-        blobName = url.path[1:]  # urlparse always includes a leading '/'
-        blobService = BlobService(account_key=_fetchAzureAccountKey(accountName),
-                                  account_name=accountName)
-        return blobService, containerName, blobName
+        assert url.scheme in ('wasb', 'wasbs')
+        try:
+            container, account = url.netloc.split('@')
+        except ValueError:
+            raise InvalidImportExportUrlException(url)
+        suffix = '.blob.core.windows.net'
+        if account.endswith(suffix):
+            account = account[:-len(suffix)]
+        else:
+            raise InvalidImportExportUrlException(url)
+        assert url.path[0] == '/'
+        return cls.BlobInfo(account=account, container=container, name=url.path[1:])
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
-        return url.scheme.lower() == 'wasb' or url.scheme.lower() == 'wasbs'
+        return url.scheme.lower() in ('wasb', 'wasbs')
 
     def writeFile(self, localFilePath, jobStoreID=None):
         jobStoreFileID = self._newFileID()
@@ -306,7 +327,8 @@ class AzureJobStore(AbstractJobStore):
                     while True:
                         buf = read_fd.read(self._maxAzureBlockBytes)
                         write_fd.write(buf)
-                        if not buf: break
+                        if not buf:
+                            break
         except AzureMissingResourceHttpError:
             raise NoSuchFileException(jobStoreFileID)
 
@@ -452,17 +474,37 @@ class AzureJobStore(AbstractJobStore):
             jobStoreID = entities[0].PartitionKey
             self.jobFileIDs.delete_entity(partition_key=jobStoreID, row_key=jobStoreFileID)
 
-    def _getOrCreateTable(self, tableName):
-        # This will not fail if the table already exists.
+    def _bindTable(self, tableName, create=False):
         for attempt in retry_azure():
             with attempt:
-                self.tableService.create_table(tableName)
-        return AzureTable(self.tableService, tableName)
+                try:
+                    tables = self.tableService.query_tables(table_name=tableName)
+                except AzureMissingResourceHttpError as e:
+                    if e.status_code != 404:
+                        raise
+                else:
+                    if tables:
+                        assert tables[0].name == tableName
+                        return AzureTable(self.tableService, tableName)
+                if create:
+                    self.tableService.create_table(tableName)
+                    return AzureTable(self.tableService, tableName)
+                else:
+                    return None
 
-    def _getOrCreateBlobContainer(self, containerName):
+    def _bindContainer(self, containerName, create=False):
         for attempt in retry_azure():
             with attempt:
-                self.blobService.create_container(containerName)
+                try:
+                    self.blobService.get_container_properties(containerName)
+                except AzureMissingResourceHttpError as e:
+                    if e.status_code == 404:
+                        if create:
+                            self.blobService.create_container(containerName)
+                        else:
+                            return None
+                    else:
+                        raise
         return AzureBlobContainer(self.blobService, containerName)
 
     def _sanitizeTableName(self, tableName):
@@ -500,66 +542,62 @@ class AzureJobStore(AbstractJobStore):
         if encrypted:
             # There is a small overhead for encrypted data.
             maxBlockSize -= encryption.overhead
-        readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
-                def reader():
-                    blockIDs = []
-                    try:
-                        while True:
-                            buf = readable.read(maxBlockSize)
-                            if len(buf) == 0:
-                                # We're safe to break here even if we never read anything, since
-                                # putting an empty block list creates an empty blob.
-                                break
-                            if encrypted:
-                                buf = encryption.encrypt(buf, self.keyPath)
-                            blockID = self._newFileID()
-                            container.put_block(blob_name=jobStoreFileID,
-                                                block=buf,
-                                                blockid=blockID)
-                            blockIDs.append(blockID)
-                    except:
-                        # This is guaranteed to delete any uncommitted
-                        # blocks.
-                        container.delete_blob(blob_name=jobStoreFileID)
-                        raise
 
-                    if checkForModification and expectedVersion is not None:
-                        # Acquire a (60-second) write lock,
-                        leaseID = container.lease_blob(blob_name=jobStoreFileID,
-                                                       x_ms_lease_action='acquire')['x-ms-lease-id']
-                        # check for modification,
-                        blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
-                        if blobProperties['etag'] != expectedVersion:
-                            container.lease_blob(blob_name=jobStoreFileID,
-                                                 x_ms_lease_action='release',
-                                                 x_ms_lease_id=leaseID)
-                            raise ConcurrentFileModificationException(jobStoreFileID)
-                        # commit the file,
-                        container.put_block_list(blob_name=jobStoreFileID,
-                                                 block_list=blockIDs,
-                                                 x_ms_lease_id=leaseID,
-                                                 x_ms_meta_name_values=dict(
-                                                     encrypted=str(encrypted)))
-                        # then release the lock.
+        store = self
+
+        class UploadPipe(WritablePipe):
+
+            def readFrom(self, readable):
+                blockIDs = []
+                try:
+                    while True:
+                        buf = readable.read(maxBlockSize)
+                        if len(buf) == 0:
+                            # We're safe to break here even if we never read anything, since
+                            # putting an empty block list creates an empty blob.
+                            break
+                        if encrypted:
+                            buf = encryption.encrypt(buf, store.keyPath)
+                        blockID = store._newFileID()
+                        container.put_block(blob_name=jobStoreFileID,
+                                            block=buf,
+                                            blockid=blockID)
+                        blockIDs.append(blockID)
+                except:
+                    with panic(log=logger):
+                        # This is guaranteed to delete any uncommitted blocks.
+                        container.delete_blob(blob_name=jobStoreFileID)
+
+                if checkForModification and expectedVersion is not None:
+                    # Acquire a (60-second) write lock,
+                    leaseID = container.lease_blob(blob_name=jobStoreFileID,
+                                                   x_ms_lease_action='acquire')['x-ms-lease-id']
+                    # check for modification,
+                    blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
+                    if blobProperties['etag'] != expectedVersion:
                         container.lease_blob(blob_name=jobStoreFileID,
                                              x_ms_lease_action='release',
                                              x_ms_lease_id=leaseID)
-                    else:
-                        # No need to check for modification, just blindly write over whatever
-                        # was there.
-                        container.put_block_list(blob_name=jobStoreFileID,
-                                                 block_list=blockIDs,
-                                                 x_ms_meta_name_values=dict(
-                                                     encrypted=str(encrypted)))
+                        raise ConcurrentFileModificationException(jobStoreFileID)
+                    # commit the file,
+                    container.put_block_list(blob_name=jobStoreFileID,
+                                             block_list=blockIDs,
+                                             x_ms_lease_id=leaseID,
+                                             x_ms_meta_name_values=dict(
+                                                 encrypted=str(encrypted)))
+                    # then release the lock.
+                    container.lease_blob(blob_name=jobStoreFileID,
+                                         x_ms_lease_action='release',
+                                         x_ms_lease_id=leaseID)
+                else:
+                    # No need to check for modification, just blindly write over whatever
+                    # was there.
+                    container.put_block_list(blob_name=jobStoreFileID,
+                                             block_list=blockIDs,
+                                             x_ms_meta_name_values=dict(encrypted=str(encrypted)))
 
-                thread = ExceptionalThread(target=reader)
-                thread.start()
-                yield writable
-            # The writable is now closed. This will send EOF to the readable and cause that
-            # thread to finish.
-            thread.join()
+        with UploadPipe() as writable:
+            yield writable
 
     @contextmanager
     def _downloadStream(self, jobStoreFileID, container):
@@ -571,34 +609,23 @@ class AzureJobStore(AbstractJobStore):
         if encrypted and self.keyPath is None:
             raise AssertionError('Content is encrypted but no key was provided.')
 
-        readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
-                def writer():
-                    try:
-                        chunkStartPos = 0
-                        fileSize = int(blobProps['Content-Length'])
-                        while chunkStartPos < fileSize:
-                            chunkEndPos = chunkStartPos + self._maxAzureBlockBytes - 1
-                            buf = container.get_blob(blob_name=jobStoreFileID,
-                                                     x_ms_range="bytes=%d-%d" % (chunkStartPos,
-                                                                                 chunkEndPos))
-                            if encrypted:
-                                buf = encryption.decrypt(buf, self.keyPath)
-                            writable.write(buf)
-                            chunkStartPos = chunkEndPos + 1
-                    finally:
-                        # Ensure readers aren't left blocking if this thread crashes.
-                        # This close() will send EOF to the reading end and ultimately cause the
-                        # yield to return. It also makes the implict .close() done by the enclosing
-                        # "with" context redundant but that should be ok since .close() on file
-                        # objects are idempotent.
-                        writable.close()
+        outer_self = self
 
-                thread = ExceptionalThread(target=writer)
-                thread.start()
-                yield readable
-                thread.join()
+        class DownloadPipe(ReadablePipe):
+            def writeTo(self, writable):
+                chunkStart = 0
+                fileSize = int(blobProps['Content-Length'])
+                while chunkStart < fileSize:
+                    chunkEnd = chunkStart + outer_self._maxAzureBlockBytes - 1
+                    buf = container.get_blob(blob_name=jobStoreFileID,
+                                             x_ms_range="bytes=%d-%d" % (chunkStart, chunkEnd))
+                    if encrypted:
+                        buf = encryption.decrypt(buf, outer_self.keyPath)
+                    writable.write(buf)
+                    chunkStart = chunkEnd + 1
+
+        with DownloadPipe() as readable:
+            yield readable
 
 
 class AzureTable(object):
@@ -691,8 +718,8 @@ class AzureBlobContainer(object):
     """
     A shim over the BlobService API, so that the container name is automatically filled in.
 
-    To avoid confusion over the position of any remaining positional
-    arguments, all method calls must use *only* keyword arguments.
+    To avoid confusion over the position of any remaining positional arguments, all method calls
+    must use *only* keyword arguments.
     """
 
     def __init__(self, blobService, containerName):

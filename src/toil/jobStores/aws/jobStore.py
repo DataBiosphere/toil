@@ -19,8 +19,6 @@ from contextlib import contextmanager, closing
 import logging
 from multiprocessing import cpu_count
 
-import collections
-
 import os
 import re
 import uuid
@@ -33,7 +31,6 @@ import repr as reprlib
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass
-from bd2k.util.threading import ExceptionalThread
 from boto.sdb.domain import Domain
 from boto.s3.bucket import Bucket
 from boto.s3.connection import S3Connection
@@ -49,7 +46,9 @@ from concurrent.futures import ThreadPoolExecutor
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
-                                             NoSuchFileException)
+                                             NoSuchFileException,
+                                             NoSuchJobStoreException,
+                                             JobStoreExistsException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
                                       no_such_sdb_domain,
@@ -58,6 +57,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       bucket_location_to_region,
                                       region_to_bucket_location)
+from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobWrapper import JobWrapper
 import toil.lib.encryption as encryption
 
@@ -80,6 +80,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
     :rtype: boto.s3.multipart.CompletedMultiPartUpload
     :return: An object representing the completed upload.
     """
+
     def copyPart(partIndex):
         if exceptions:
             return None
@@ -150,22 +151,6 @@ class AWSJobStore(AbstractJobStore):
     item representing the job. UUIDs are used to identify jobs and files.
     """
 
-    @classmethod
-    def loadOrCreateJobStore(cls, locator, config=None, **kwargs):
-        region, namePrefix = locator.split(':')
-        if not cls.bucketNameRe.match(namePrefix):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a "
-                             "hyphen." % namePrefix)
-        # Reserve 13 for separator and suffix
-        if len(namePrefix) > cls.maxBucketNameLen - cls.maxNameLen - len(cls.nameSeparator):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
-                             "characters." % namePrefix)
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, cls.nameSeparator))
-        return cls(region, namePrefix, config=config, **kwargs)
-
     # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double
     # underscore as a separator instead.
@@ -179,63 +164,138 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = '--'
 
-    # Do not invoke the constructor, use the factory method above.
-
-    def __init__(self, region, namePrefix, config=None, partSize=50 << 20):
+    def __init__(self, locator, partSize=50 << 20):
         """
         Create a new job store in AWS or load an existing one from there.
-
-        :param region: the AWS region to create the job store in, e.g. 'us-west-2'
-
-        :param namePrefix: S3 bucket names and SDB tables will be prefixed with this
-
-        :param config: the config object to written to this job store. Must be None for existing
-        job stores. Must not be None for new job stores.
 
         :param int partSize: The size of each individual part used for multipart operations like
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
+        super(AWSJobStore, self).__init__()
+        region, namePrefix = locator.split(':')
+        if not self.bucketNameRe.match(namePrefix):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a "
+                             "hyphen." % namePrefix)
+        # Reserve 13 for separator and suffix
+        if len(namePrefix) > self.maxBucketNameLen - self.maxNameLen - len(self.nameSeparator):
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
+                             "characters." % namePrefix)
+        if '--' in namePrefix:
+            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
+                             "%s." % (namePrefix, self.nameSeparator))
         log.debug("Instantiating %s for region %s and name prefix '%s'",
                   self.__class__, region, namePrefix)
+        self.locator = locator
         self.region = region
         self.namePrefix = namePrefix
+        self.partSize = partSize
         self.jobsDomain = None
         self.filesDomain = None
         self.filesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
-        self.partSize = partSize
 
-        # Check global registry domain for existence of this job store. The first time this is
-        # being executed in an AWS account, the registry domain will be created on the fly.
-        create = config is not None
-        self.registry_domain = self._getOrCreateDomain('toil-registry')
-        for attempt in retry_sdb():
-            with attempt:
-                attributes = self.registry_domain.get_attributes(item_name=namePrefix,
-                                                                 attribute_name='exists',
-                                                                 consistent_read=True)
-                exists = strict_bool(attributes.get('exists', str(False)))
-                self._checkJobStoreCreation(create, exists, region + ":" + namePrefix)
+    def initialize(self, config):
+        if self._registered:
+            raise JobStoreExistsException(self.locator)
+        self._registered = None
+        self._bind(create=True)
+        super(AWSJobStore, self).initialize(config)
+        # Only register after job store has been full initialized
+        self._registered = True
 
+    @property
+    def sseKeyPath(self):
+        return self.config.sseKey
+
+    def resume(self):
+        if not self._registered:
+            raise NoSuchJobStoreException(self.locator)
+        self._bind(create=False)
+        super(AWSJobStore, self).resume()
+
+    def _bind(self, create=False, block=True):
         def qualify(name):
             assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
 
-        self.jobsDomain = self._getOrCreateDomain(qualify('jobs'))
-        self.filesDomain = self._getOrCreateDomain(qualify('files'))
-        self.filesBucket = self._getOrCreateBucket(qualify('files'), versioning=True)
+        if self.jobsDomain is None:
+            self.jobsDomain = self._bindDomain(qualify('jobs'), create=create, block=block)
+        if self.filesDomain is None:
+            self.filesDomain = self._bindDomain(qualify('files'), create=create, block=block)
+        if self.filesBucket is None:
+            self.filesBucket = self._bindBucket(qualify('files'),
+                                                create=create,
+                                                block=block,
+                                                versioning=True)
 
-        # Now register this job store
-        for attempt in retry_sdb():
-            with attempt:
-                self.registry_domain.put_attributes(item_name=namePrefix,
-                                                    attributes=dict(exists='True'))
+    @property
+    def _registered(self):
+        """
+        A optional boolean property indidcating whether this job store is registered. The
+        registry is the authority on deciding if a job store exists or not. If True, this job
+        store exists, if None the job store is transitioning from True to False or vice versa,
+        if False the job store doesn't exist.
 
-        super(AWSJobStore, self).__init__(config=config)
+        :type: bool|None
+        """
+        # The weird mapping of the SDB item attribute value to the property value is due to
+        # backwards compatibility. 'True' becomes True, that's easy. Toil < 3.3.0 writes this at
+        # the end of job store creation. Absence of either the registry, the item or the
+        # attribute becomes False, representing a truly absent, non-existing job store. An
+        # attribute value of 'False', which is what Toil < 3.3.0 writes at the *beginning* of job
+        # store destruction, indicates a job store in transition, reflecting the fact that 3.3.0
+        # may leak buckets or domains even though the registry reports 'False' for them. We
+        # can't handle job stores that were partially created by 3.3.0, though.
+        registry_domain = self._bindDomain(domain_name='toil-registry',
+                                           create=False,
+                                           block=False)
+        if registry_domain is None:
+            return False
+        else:
+            for attempt in retry_sdb():
+                with attempt:
+                    attributes = registry_domain.get_attributes(item_name=self.namePrefix,
+                                                                attribute_name='exists',
+                                                                consistent_read=True)
+                    try:
+                        exists = attributes['exists']
+                    except KeyError:
+                        return False
+                    else:
+                        if exists == 'True':
+                            return True
+                        elif exists == 'False':
+                            return None
+                        else:
+                            assert False
 
-        self.sseKeyPath = self.config.sseKey
+    @_registered.setter
+    def _registered(self, value):
+
+        registry_domain = self._bindDomain(domain_name='toil-registry',
+                                           # Only create registry domain when registering or
+                                           # transitioning a store
+                                           create=value is not False,
+                                           block=False)
+        if registry_domain is None and value is False:
+            pass
+        else:
+            for attempt in retry_sdb():
+                with attempt:
+                    if value is False:
+                        registry_domain.delete_attributes(item_name=self.namePrefix)
+                    else:
+                        if value is True:
+                            attributes = dict(exists='True')
+                        elif value is None:
+                            attributes = dict(exists='False')
+                        else:
+                            assert False
+                        registry_domain.put_attributes(item_name=self.namePrefix,
+                                                       attributes=attributes)
 
     def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
         jobStoreID = self._newJobID()
@@ -391,7 +451,8 @@ class AWSJobStore(AbstractJobStore):
         # Get the bucket's region to avoid a redirect per request
         try:
             with closing(boto.connect_s3()) as s3:
-                region = bucket_location_to_region(s3.get_bucket(url.netloc).get_location())
+                location = s3.get_bucket(url.netloc).get_location()
+                region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
                 log.warn("Could not determine location of bucket hosting URL '%s', reverting "
@@ -574,63 +635,91 @@ class AWSJobStore(AbstractJobStore):
                              self.region)
         return s3
 
-    def _getOrCreateBucket(self, bucket_name, versioning=False):
+    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False):
         """
-        :rtype: Bucket
+        Return the Boto Bucket object representing the S3 bucket with the given name. If the
+        bucket does not exist and `create` is True, it will be created.
+
+        :param str bucket_name: the name of the bucket to bind to
+
+        :param bool create: Whether to create bucket the if it doesn't exist
+
+        :param bool block: If False, return None if the bucket doesn't exist. If True, wait until
+               bucket appears. Ignored if `create` is True.
+
+        :rtype: Bucket|None
+        :raises S3ResponseError: If `block` is True and the bucket still doesn't exist after the
+                retry timeout expires.
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        log.info("Setting up job store bucket '%s'.", bucket_name)
-        while True:
-            log.debug("Looking up job store bucket '%s'.", bucket_name)
-            try:
-                bucket = self.s3.get_bucket(bucket_name, validate=True)
-                assert self.__getBucketRegion(bucket) == self.region
-                assert versioning is self.__getBucketVersioning(bucket)
-                log.debug("Using existing job store bucket '%s'.", bucket_name)
-                return bucket
-            except S3ResponseError as e:
-                if e.error_code == 'NoSuchBucket':
-                    log.debug("Bucket '%s' does not exist. Creating it.", bucket_name)
-                    try:
-                        location = region_to_bucket_location(self.region)
-                        bucket = self.s3.create_bucket(bucket_name, location=location)
-                    except S3CreateError as e:
-                        if e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'):
-                            # https://github.com/BD2KGenomics/toil/issues/955
-                            # https://github.com/BD2KGenomics/toil/issues/995
-                            log.warn('Got %s, retrying.', e)
-                            # and loop
-                        else:
+        log.info("Binding to job store bucket '%s'.", bucket_name)
+
+        def bucket_creation_pending(e):
+            # https://github.com/BD2KGenomics/toil/issues/955
+            # https://github.com/BD2KGenomics/toil/issues/995
+            return (isinstance(e, S3CreateError)
+                    and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
+
+        for attempt in retry_s3(predicate=bucket_creation_pending):
+            with attempt:
+                try:
+                    bucket = self.s3.get_bucket(bucket_name, validate=True)
+                except S3ResponseError as e:
+                    if e.error_code == 'NoSuchBucket':
+                        log.debug("Bucket '%s' does not exist.", bucket_name)
+                        if create:
+                            log.debug("Creating bucket '%s'.", bucket_name)
+                            location = region_to_bucket_location(self.region)
+                            bucket = self.s3.create_bucket(bucket_name, location=location)
+                            assert self.__getBucketRegion(bucket) == self.region
+                            if versioning:
+                                bucket.configure_versioning(versioning)
+                            log.debug("Created new job store bucket '%s'.", bucket_name)
+                            return bucket
+                        elif block:
                             raise
+                        else:
+                            return None
                     else:
-                        assert self.__getBucketRegion(bucket) == self.region
-                        if versioning:
-                            bucket.configure_versioning(versioning)
-                        log.debug("Created new job store bucket '%s'.", bucket_name)
-                        return bucket
+                        raise
                 else:
-                    raise
+                    assert self.__getBucketRegion(bucket) == self.region
+                    assert versioning is self.__getBucketVersioning(bucket)
+                    log.debug("Using existing job store bucket '%s'.", bucket_name)
+                    return bucket
 
-    def _getOrCreateDomain(self, domain_name):
+    def _bindDomain(self, domain_name, create=False, block=True):
         """
-        Return the boto Domain object representing the SDB domain with the given name. If the
-        domain does not exist it will be created.
+        Return the Boto Domain object representing the SDB domain of the given name. If the
+        domain does not exist and `create` is True, it will be created.
 
-        :param domain_name: the unqualified name of the domain to be created
+        :param str domain_name: the name of the domain to bind to
 
-        :rtype : Domain
+        :param bool create: True if domain should be created if it doesn't exist
+
+        :param bool block: If False, return None if the domain doesn't exist. If True, wait until
+               domain appears. This parameter is ignored if create is True.
+
+        :rtype: Domain|None
+        :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
+                retry timeout expires.
         """
-        log.info("Setting up job store SDB domain '%s'.", domain_name)
-        try:
-            return self.db.get_domain(domain_name)
-        except SDBResponseError as e:
-            if no_such_sdb_domain(e):
-                for attempt in retry_sdb(predicate=sdb_unavailable):
-                    with attempt:
-                        return self.db.create_domain(domain_name)
-            else:
-                raise
+        log.info("Binding to job store domain '%s'.", domain_name)
+        for attempt in retry_sdb(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e)):
+            with attempt:
+                try:
+                    return self.db.get_domain(domain_name)
+                except SDBResponseError as e:
+                    if no_such_sdb_domain(e):
+                        if create:
+                            return self.db.create_domain(domain_name)
+                        elif block:
+                            raise
+                        else:
+                            return None
+                    else:
+                        raise
 
     def _newJobID(self):
         return str(uuid.uuid4())
@@ -733,10 +822,10 @@ class AWSJobStore(AbstractJobStore):
             return 'encrypted'
 
         @classmethod
-        def exists(cls,jobStoreFileID):
+        def exists(cls, jobStoreFileID):
             for attempt in retry_sdb():
                 with attempt:
-                    return bool( cls.outer.filesDomain.get_attributes(
+                    return bool(cls.outer.filesDomain.get_attributes(
                         item_name=jobStoreFileID,
                         attribute_name=[cls.presenceIndicator()],
                         consistent_read=True))
@@ -932,66 +1021,64 @@ class AWSJobStore(AbstractJobStore):
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
+            info = self
             store = self.outer
-            readable_fh, writable_fh = os.pipe()
-            with os.fdopen(readable_fh, 'r') as readable:
-                with os.fdopen(writable_fh, 'w') as writable:
-                    def multipartReader():
-                        buf = readable.read(store.partSize)
-                        if allowInlining and len(buf) <= self._maxInlinedSize():
-                            self.content = buf
-                        else:
-                            headers = self._s3EncryptionHeaders()
-                            for attempt in retry_s3():
-                                with attempt:
-                                    upload = store.filesBucket.initiate_multipart_upload(
-                                        key_name=self.fileID,
-                                        headers=headers)
-                            try:
-                                for part_num in itertools.count():
-                                    # There must be at least one part, even if the file is empty.
-                                    if len(buf) == 0 and part_num > 0:
-                                        break
-                                    for attempt in retry_s3():
-                                        with attempt:
-                                            upload.upload_part_from_file(fp=StringIO(buf),
-                                                                         # part numbers are 1-based
-                                                                         part_num=part_num + 1,
-                                                                         headers=headers)
-                                    if len(buf) == 0:
-                                        break
-                                    buf = readable.read(self.outer.partSize)
-                            except:
-                                with panic(log=log):
-                                    for attempt in retry_s3():
-                                        with attempt:
-                                            upload.cancel_upload()
-                            else:
+
+            class MultiPartPipe(WritablePipe):
+                def readFrom(self, readable):
+                    buf = readable.read(store.partSize)
+                    if allowInlining and len(buf) <= info._maxInlinedSize():
+                        info.content = buf
+                    else:
+                        headers = info._s3EncryptionHeaders()
+                        for attempt in retry_s3():
+                            with attempt:
+                                upload = store.filesBucket.initiate_multipart_upload(
+                                    key_name=info.fileID,
+                                    headers=headers)
+                        try:
+                            for part_num in itertools.count():
+                                # There must be at least one part, even if the file is empty.
+                                if len(buf) == 0 and part_num > 0:
+                                    break
                                 for attempt in retry_s3():
                                     with attempt:
-                                        self.version = upload.complete_upload().version_id
-
-                    def reader():
-                        buf = readable.read()
-                        if allowInlining and len(buf) <= self._maxInlinedSize():
-                            self.content = buf
+                                        upload.upload_part_from_file(fp=StringIO(buf),
+                                                                     # part numbers are 1-based
+                                                                     part_num=part_num + 1,
+                                                                     headers=headers)
+                                if len(buf) == 0:
+                                    break
+                                buf = readable.read(info.outer.partSize)
+                        except:
+                            with panic(log=log):
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        upload.cancel_upload()
                         else:
-                            key = store.filesBucket.new_key(key_name=self.fileID)
-                            buf = StringIO(buf)
-                            headers = self._s3EncryptionHeaders()
                             for attempt in retry_s3():
                                 with attempt:
-                                    assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                                 headers=headers)
-                            self.version = key.version_id
+                                    info.version = upload.complete_upload().version_id
 
-                    thread = ExceptionalThread(target=multipartReader if multipart else reader)
-                    thread.start()
-                    yield writable
-                # The writable is now closed. This will send EOF to the readable and cause that
-                # thread to finish.
-                thread.join()
-                assert bool(self.version) == (self.content is None)
+            class SinglePartPipe(WritablePipe):
+                def readFrom(self, readable):
+                    buf = readable.read()
+                    if allowInlining and len(buf) <= info._maxInlinedSize():
+                        info.content = buf
+                    else:
+                        key = store.filesBucket.new_key(key_name=info.fileID)
+                        buf = StringIO(buf)
+                        headers = info._s3EncryptionHeaders()
+                        for attempt in retry_s3():
+                            with attempt:
+                                assert buf.len == key.set_contents_from_file(fp=buf,
+                                                                             headers=headers)
+                        info.version = key.version_id
+
+            with MultiPartPipe() if multipart else SinglePartPipe() as writable:
+                yield writable
+
+            assert bool(self.version) == (self.content is None)
 
         def copyFrom(self, srcKey):
             """
@@ -1072,34 +1159,25 @@ class AWSJobStore(AbstractJobStore):
 
         @contextmanager
         def downloadStream(self):
-            readable_fh, writable_fh = os.pipe()
-            with os.fdopen(readable_fh, 'r') as readable:
-                with os.fdopen(writable_fh, 'w') as writable:
-                    def writer():
-                        try:
-                            if self.content is not None:
-                                writable.write(self.content)
-                            elif self.version:
-                                headers = self._s3EncryptionHeaders()
-                                key = self.outer.filesBucket.get_key(self.fileID, validate=False)
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        key.get_contents_to_file(writable,
-                                                                 headers=headers,
-                                                                 version_id=self.version)
-                            else:
-                                assert False
-                        finally:
-                            # This close() will send EOF to the reading end and ultimately cause
-                            # the yield to return. It also makes the implict .close() done by the
-                            #  enclosing "with" context redundant but that should be ok since
-                            # .close() on file objects are idempotent.
-                            writable.close()
+            info = self
 
-                    thread = ExceptionalThread(target=writer)
-                    thread.start()
-                    yield readable
-                    thread.join()
+            class DownloadPipe(ReadablePipe):
+                def writeTo(self, writable):
+                    if info.content is not None:
+                        writable.write(info.content)
+                    elif info.version:
+                        headers = info._s3EncryptionHeaders()
+                        key = info.outer.filesBucket.get_key(info.fileID, validate=False)
+                        for attempt in retry_s3():
+                            with attempt:
+                                key.get_contents_to_file(writable,
+                                                         headers=headers,
+                                                         version_id=info.version)
+                    else:
+                        assert False
+
+            with DownloadPipe() as readable:
+                yield readable
 
         def delete(self):
             store = self.outer
@@ -1174,31 +1252,50 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 return bucket_location_to_region(bucket.get_location())
 
-    def deleteJobStore(self):
-        self.registry_domain.put_attributes(self.namePrefix, dict(exists=str(False)))
+    def destroy(self):
+        # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
+        # See https://github.com/BD2KGenomics/toil/issues/1041
+        self._bind(create=False, block=False)
+        self._registered = None
         if self.filesBucket is not None:
-            for attempt in retry_s3():
-                with attempt:
-                    for upload in self.filesBucket.list_multipart_uploads():
-                        upload.cancel_upload()
-            if self.__getBucketVersioning(self.filesBucket) in (True, None):
-                for attempt in retry_s3():
-                    with attempt:
-                        for key in list(self.filesBucket.list_versions()):
-                            self.filesBucket.delete_key(key.name, version_id=key.version_id)
-            else:
-                for attempt in retry_s3():
-                    with attempt:
-                        for key in list(self.filesBucket.list()):
-                            key.delete()
-            for attempt in retry_s3():
-                with attempt:
-                    self.filesBucket.delete()
-        for domain in (self.filesDomain, self.jobsDomain):
+            self._delete_bucket(self.filesBucket)
+            self.filesBucket = None
+        for name in 'filesDomain', 'jobsDomain':
+            domain = getattr(self, name)
             if domain is not None:
-                for attempt in retry_sdb():
-                    with attempt:
-                        domain.delete()
+                self._delete_domain(domain)
+                setattr(self, name, None)
+        self._registered = False
+
+    def _delete_domain(self, domain):
+        for attempt in retry_sdb():
+            with attempt:
+                try:
+                    domain.delete()
+                except SDBResponseError as e:
+                    if no_such_sdb_domain(e):
+                        pass
+                    else:
+                        raise
+
+    def _delete_bucket(self, bucket):
+        for attempt in retry_s3():
+            with attempt:
+                try:
+                    for upload in bucket.list_multipart_uploads():
+                        upload.cancel_upload()
+                    if self.__getBucketVersioning(bucket) in (True, None):
+                        for key in list(bucket.list_versions()):
+                            bucket.delete_key(key.name, version_id=key.version_id)
+                    else:
+                        for key in list(bucket.list()):
+                            key.delete()
+                    bucket.delete()
+                except S3ResponseError as e:
+                    if e.error_code == 'NoSuchBucket':
+                        pass
+                    else:
+                        raise
 
 
 aRepr = reprlib.Repr()

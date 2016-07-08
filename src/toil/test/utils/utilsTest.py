@@ -177,11 +177,11 @@ class UtilsTest(ToilTest):
         options.clean = 'never'
         options.stats = True
         Job.Runner.startToil(RunTwoJobsPerWorker(), options)
-
-        jobStore = Toil.loadOrCreateJobStore(options.jobStore)
-        stats = getStats(options)
-        collatedStats =  processData(jobStore.config, stats, options)
-        self.assertTrue(len(collatedStats.job_types)==2,"Some jobs are not represented in the stats")
+        jobStore = Toil.resumeJobStore(options.jobStore)
+        stats = getStats(jobStore)
+        collatedStats = processData(jobStore.config, stats)
+        self.assertTrue(len(collatedStats.job_types) == 2,
+                        "Some jobs are not represented in the stats")
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

@@ -12,6 +12,7 @@ import time
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)
+from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobWrapper import JobWrapper
 
 log = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ GOOGLE_STORAGE = 'gs'
 class GoogleJobStore(AbstractJobStore):
 
     @classmethod
-    def createJobStore(cls, locator, config=None):
+    def initialize(cls, locator, config=None):
         try:
             projectID, namePrefix = locator.split(":", 1)
         except ValueError:
@@ -85,7 +86,7 @@ class GoogleJobStore(AbstractJobStore):
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
-    def deleteJobStore(self):
+    def destroy(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
@@ -421,57 +422,54 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def _uploadStream(self, key, update=False, encrypt=True):
-        readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
-                def writer():
-                    headers = self.encryptedHeaders if encrypt else self.headerValues
-                    if update:
-                        try:
-                            key.set_contents_from_stream(readable, headers=headers)
-                        except boto.exception.GSDataError:
-                            if encrypt:
-                                # https://github.com/boto/boto/issues/3518
-                                # see self._writeFile for more
-                                pass
+        store = self
+
+        class UploadPipe(WritablePipe):
+            def readFrom(self, readable):
+                headers = store.encryptedHeaders if encrypt else store.headerValues
+                if update:
+                    try:
+                        key.set_contents_from_stream(readable, headers=headers)
+                    except boto.exception.GSDataError:
+                        if encrypt:
+                            # https://github.com/boto/boto/issues/3518
+                            # see self._writeFile for more
+                            pass
+                        else:
+                            raise
+                else:
+                    try:
+                        # The if_generation argument insures that the existing key matches the
+                        # given generation, i.e. version, before modifying anything. Passing a
+                        # generation of 0 insures that the key does not exist remotely.
+                        key.set_contents_from_stream(readable, headers=headers, if_generation=0)
+                    except (boto.exception.GSResponseError, boto.exception.GSDataError) as e:
+                        if isinstance(e, boto.exception.GSResponseError):
+                            if e.status == 412:
+                                raise ConcurrentFileModificationException(key.name)
                             else:
-                                raise
-                    else:
-                        try:
-                            # The if_condition kwarg insures that the existing key matches given
-                            # generation (version) before modifying anything. Setting
-                            # if_generation=0 insures key does not exist remotely
-                            key.set_contents_from_stream(readable, headers=headers, if_generation=0)
-                        except (boto.exception.GSResponseError, boto.exception.GSDataError) as e:
-                            if isinstance(e, boto.exception.GSResponseError):
-                                if e.status == 412:
-                                    raise ConcurrentFileModificationException(key.name)
-                                else:
-                                    raise e
-                            elif encrypt:
-                                # https://github.com/boto/boto/issues/3518
-                                # see self._writeFile for more
-                                pass
-                            else:
-                                raise
-                thread = ExceptionalThread(target=writer)
-                thread.start()
-                yield writable
-            thread.join()
+                                raise e
+                        elif encrypt:
+                            # https://github.com/boto/boto/issues/3518
+                            # see self._writeFile for more
+                            pass
+                        else:
+                            raise
+
+        with UploadPipe() as writable:
+            yield writable
 
     @contextmanager
     def _downloadStream(self, key, encrypt=True):
-        readable_fh, writable_fh = os.pipe()
-        with os.fdopen(readable_fh, 'r') as readable:
-            with os.fdopen(writable_fh, 'w') as writable:
-                def writer():
-                    headers = self.encryptedHeaders if encrypt else self.headerValues
-                    try:
-                        key.get_file(writable, headers=headers)
-                    finally:
-                        writable.close()
+        store = self
 
-                thread = ExceptionalThread(target=writer)
-                thread.start()
-                yield readable
-                thread.join()
+        class DownloadPipe(ReadablePipe):
+            def writeTo(self, writable):
+                headers = store.encryptedHeaders if encrypt else store.headerValues
+                try:
+                    key.get_file(writable, headers=headers)
+                finally:
+                    writable.close()
+
+        with DownloadPipe() as readable:
+            yield readable

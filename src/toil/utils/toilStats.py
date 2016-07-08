@@ -12,24 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-""" Reports data about the given toil run.
 """
+Reports statistical data about a given Toil workflow.
+"""
+
 from __future__ import absolute_import
 from functools import partial
 import logging
 import json
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil
+from toil.common import Toil, jobStoreLocatorHelp
 from toil.version import version
 from bd2k.util.expando import Expando
 
 logger = logging.getLogger( __name__ )
 
+
 class ColumnWidths(object):
-    """ Convenience object that stores the width of columns for printing.
-    Helps make things pretty.
+    """
+    Convenience object that stores the width of columns for printing. Helps make things pretty.
     """
     def __init__(self):
         self.categories = ["time", "clock", "wait", "memory"]
@@ -56,16 +58,9 @@ class ColumnWidths(object):
                 print '%s %s %d' % (c, f, self.getWidth(c, f))
 
 def initializeOptions(parser):
-    ##########################################
-    # Construct the arguments.
-    ##########################################
     parser.add_argument("jobStore", type=str,
-              help=("Store in which to place job management files \
-              and the global accessed temporary files"
-              "(If this is a file path this needs to be globally accessible "
-              "by all machines running jobs).\n"
-              "If the store already exists and restart is false an"
-              " JobStoreCreationException exception will be thrown."))
+                        help="The location of the job store used by the workflow for which "
+                             "statistics should be reported. " + jobStoreLocatorHelp)
     parser.add_argument("--outputFile", dest="outputFile", default=None,
                       help="File in which to write results")
     parser.add_argument("--raw", action="store_true", default=False,
@@ -515,7 +510,8 @@ def createSummary(element, containingItems, containingItemName, getFn):
     element["min_number_per_%s" % containingItemName] = min(itemCounts)
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
-def getStats(options):
+
+def getStats(jobStore):
     """ Collect and return the stats and config data.
     """
     def aggregateStats(fileHandle,aggregateObject):
@@ -530,13 +526,13 @@ def getStats(options):
             logger.critical("File %s contains corrupted json. Skipping file." % fileHandle)
             pass  # The file is corrupted.
 
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
     aggregateObject = Expando()
     callBack = partial(aggregateStats, aggregateObject=aggregateObject)
     jobStore.readStatsAndLogging(callBack, readAll=True)
     return aggregateObject
 
-def processData(config, stats, options):
+
+def processData(config, stats):
     ##########################################
     # Collate the stats and report
     ##########################################
@@ -601,11 +597,7 @@ def main():
     initializeOptions(parser)
     options = parseBasicOptions(parser)
     checkOptions(options, parser)
-    jobStore = Toil.loadOrCreateJobStore(options.jobStore)
-    stats = getStats(options)
-    collatedStatsTag = processData(jobStore.config, stats, options)
+    jobStore = Toil.resumeJobStore(options.jobStore)
+    stats = getStats(jobStore)
+    collatedStatsTag = processData(jobStore.config, stats)
     reportData(collatedStatsTag, options)
-
-def _test():
-    import doctest
-    return doctest.testmod()
