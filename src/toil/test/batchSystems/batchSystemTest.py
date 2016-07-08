@@ -19,6 +19,7 @@ from inspect import getsource
 import logging
 import os
 import fcntl
+import itertools
 import tempfile
 from textwrap import dedent
 import time
@@ -576,6 +577,120 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
 
     def getBatchSystemName(self):
         return "singleMachine"
+
+    def testConcurrencyWithDisk(self):
+        """
+        Tests that the batch system is allocating disk resources properly
+        """
+        tempDir = self._createTempDir('testFiles')
+
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.workDir = tempDir
+        from toil import physicalDisk
+        availableDisk = physicalDisk('', toilWorkflowDir=options.workDir)
+        options.batchSystem = self.batchSystemName
+
+        counterPath = os.path.join(tempDir, 'counter')
+        resetCounters(counterPath)
+        value, maxValue = getCounters(counterPath)
+        assert (value, maxValue) == (0, 0)
+
+        root = Job()
+        # Physically, we're asking for 50% of disk and 50% of disk + 500bytes in the two jobs. The
+        # batchsystem should not allow the 2 child jobs to run concurrently.
+        root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
+                                    memory='1M', disk=availableDisk/2))
+        root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
+                                 memory='1M', disk=(availableDisk / 2) + 500))
+        Job.Runner.startToil(root, options)
+        _, maxValue = getCounters(counterPath)
+        self.assertEqual(maxValue, 1)
+
+    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
+    def testNestedResourcesDoNotBlock(self):
+        """
+        Resources are requested in the order Memory > Cpu > Disk.
+        Test that inavailability of cpus for one job that is scheduled does not block another job
+        that can run.
+        """
+        tempDir = self._createTempDir('testFiles')
+
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.workDir = tempDir
+        options.maxCores = 4
+        from toil import physicalMemory
+        availableMemory = physicalMemory()
+        options.batchSystem = self.batchSystemName
+
+        outFile = os.path.join(tempDir, 'counter')
+        open(outFile, 'w').close()
+
+        root = Job()
+
+        blocker = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=30, writeVal='b',
+                             cores=2, memory='1M', disk='1M')
+        firstJob = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5, writeVal='fJ',
+                              cores=1, memory='1M', disk='1M')
+        secondJob = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=10,
+                               writeVal='sJ', cores=1, memory='1M', disk='1M')
+
+        # Should block off 50% of memory while waiting for it's 3 cores
+        firstJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=0,
+                                   writeVal='fJC', cores=3, memory=(availableMemory/2), disk='1M')
+
+        # These two shouldn't be able to run before B because there should be only
+        # (50% of memory - 1M) available (firstJobChild should be blocking 50%)
+        secondJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
+                                    writeVal='sJC', cores=2, memory=(availableMemory/1.5),
+                                    disk='1M')
+        secondJobGrandChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
+                                         writeVal='sJGC', cores=2, memory=(availableMemory/1.5),
+                                         disk='1M')
+
+        root.addChild(blocker)
+        root.addChild(firstJob)
+        root.addChild(secondJob)
+
+        firstJob.addChild(firstJobChild)
+        secondJob.addChild(secondJobChild)
+
+        secondJobChild.addChild(secondJobGrandChild)
+        """
+        The tree is:
+                    root
+                  /   |   \
+                 b    fJ   sJ
+                      |    |
+                      fJC  sJC
+                           |
+                           sJGC
+        But the order of execution should be
+        root > b , fJ, sJ > sJC > sJGC > fJC
+        since fJC cannot run till bl finishes but sJC and sJGC can(fJC blocked by disk). If the
+        resource acquisition is written properly, then fJC which is scheduled before sJC and sJGC
+        should not block them, and should only run after they finish.
+        """
+        Job.Runner.startToil(root, options)
+        with open(outFile) as oFH:
+            outString = oFH.read()
+        # The ordering of b, fJ and sJ is non-deterministic since they are scheduled at the same
+        # time. We look for all possible permutations.
+        possibleStarts = tuple([''.join(x) for x in itertools.permutations(['b', 'fJ', 'sJ'])])
+        assert outString.startswith(possibleStarts)
+        assert outString.endswith('sJCsJGCfJC')
+
+
+def _resourceBlockTestAuxFn(outFile, sleepTime, writeVal):
+    """
+    Write a value to the out file and then sleep for requested seconds.
+    :param str outFile: File to write to
+    :param int sleepTime: Time to sleep for
+    :param str writeVal: Character to write
+    """
+    with open(outFile, 'a') as oFH:
+        fcntl.flock(oFH, fcntl.LOCK_EX)
+        oFH.write(writeVal)
+    time.sleep(sleepTime)
 
 
 @needs_mesos

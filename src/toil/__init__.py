@@ -77,3 +77,12 @@ def physicalMemory():
         return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
     except ValueError:
         return int(check_output(['sysctl', '-n', 'hw.memsize']).strip())
+
+
+def physicalDisk(config, toilWorkflowDir=None):
+    if toilWorkflowDir is None:
+        from toil.common import Toil
+        toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
+    diskStats = os.statvfs(toilWorkflowDir)
+    return diskStats.f_frsize * diskStats.f_bavail
+
