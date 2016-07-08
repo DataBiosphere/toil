@@ -389,7 +389,7 @@ class AbstractJobStoreTest:
         @classmethod
         def makeImportExportTests(cls):
 
-            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest]
+            testClasses = [FileJobStoreTest, AWSJobStoreTest, AzureJobStoreTest, GoogleJobStoreTest]
 
             activeTestClassesByName = {testCls.__name__: testCls
                                        for testCls in testClasses
