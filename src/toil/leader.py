@@ -464,10 +464,23 @@ class ToilState( object ):
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
 
 class FailedJobsException( Exception ):
-    def __init__(self, jobStoreLocator, numberOfFailedJobs):
-        super( FailedJobsException, self ).__init__( "The job store '%s' contains %i failed jobs" % (jobStoreLocator, numberOfFailedJobs))
+    def __init__(self, jobStoreLocator, failedJobs, jobStore):
+        msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
+        try:
+            msg += ": %s" % ", ".join(failedJobs)
+            for failedID in failedJobs:
+                job = jobStore.load(failedID)
+                if job.logJobStoreFileID:
+                    msg += "\n=========> Failed job %s\n" % failedID
+                    with job.getLogFileHandle(jobStore) as fH:
+                        msg += fH.read()
+                    msg += "<=========\n"
+        # catch failures to prepare more complex details and only return the basics
+        except:
+            logger.exception('Exception when compiling information about failed jobs')
+        super( FailedJobsException, self ).__init__(msg)
         self.jobStoreLocator = jobStoreLocator
-        self.numberOfFailedJobs = numberOfFailedJobs
+        self.numberOfFailedJobs = len(failedJobs)
 
 class ServiceManager( object ):
     """
@@ -691,7 +704,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
 
     # Cleanup
     if len(toilState.totalFailedJobs) > 0:
-        raise FailedJobsException( config.jobStore, len(toilState.totalFailedJobs) )
+        raise FailedJobsException(config.jobStore, toilState.totalFailedJobs, jobStore)
 
     # Parse out the return value from the root job
     with jobStore.readSharedFileStream("rootJobReturnValue") as jobStoreFileID:
@@ -700,7 +713,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
                 return cPickle.load(fH)  # rootJobReturnValue
             except EOFError:
                 logger.exception("Failed to unpickle root job return value")
-                raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs)
+                raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs, jobStore)
 
 
 
