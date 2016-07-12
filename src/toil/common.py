@@ -518,7 +518,7 @@ class Toil(object):
             if exc_type is None:
                 raise
             else:
-                logger.exception('The following error was raised during clean up:')
+                logger.exception('The following error was raised during cleanup:')
         self._inContextManager = False
         return False  # let exceptions through
 
