@@ -21,11 +21,13 @@ from toil.version import version
 from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
+import cwltool.load_tool
 import cwltool.main
 import cwltool.workflow
 import cwltool.expression
 import cwltool.builder
-from cwltool.process import adjustFiles, shortname, adjustFilesWithSecondary, fillInDefaults
+from cwltool.pathmapper import adjustFiles
+from cwltool.process import shortname, adjustFilesWithSecondary, fillInDefaults
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -165,6 +167,21 @@ def writeFile(writeFunc, index, x):
             raise
     return index[x]
 
+def locToPath(p):
+    """Back compatibility -- handle converting locations into paths.
+    """
+    if "path" not in p and "location" in p:
+        p["path"] = p["location"].replace("file:", "")
+
+def pathToLoc(p):
+    """Associate path with location.
+
+    v1.0 should be specifying location but older YAML uses path
+    provide back compatibility
+    """
+    if "path" in p:
+        p["location"] = p["path"]
+
 class ResolveIndirect(Job):
     def __init__(self, cwljob):
         super(ResolveIndirect, self).__init__()
@@ -211,11 +228,13 @@ class CWLJob(Job):
 
         # Run the tool
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                  os.getcwd(), None,
+                                                  basedir=os.getcwd(),
                                                   outdir=outdir,
                                                   tmpdir=tmpdir,
+                                                  tmpdir_prefix="tmp",
                                                   **self.executor_options)
-
+        cwltool.builder.adjustDirObjs(output, locToPath)
+        cwltool.builder.adjustFileObjs(output, locToPath)
         # Copy output files into the global file store.
         adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
 
@@ -238,42 +257,36 @@ class CWLScatter(Job):
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
-        self.valueFrom = {shortname(i["id"]): i["valueFrom"] for i in step.tool["inputs"] if "valueFrom" in i}
         self.executor_options = kwargs
 
-    def valueFromFunc(self, k, v):
-        if k in self.valueFrom:
-            return cwltool.expression.do_eval(self.valueFrom[k], self.vfinputs, self.step.requirements,
-                                              None, None, {}, context=v)
-        else:
-            return v
-
-    def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs):
+    def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
         for n in xrange(0, l):
             jo = copy.copy(joborder)
-            jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
+            jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
+                jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(self.step.embedded_tool, jo, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
-                self.flat_crossproduct_scatter(jo, scatter_keys[1:], outputs)
+                self.flat_crossproduct_scatter(jo, scatter_keys[1:], outputs, postScatterEval)
 
-    def nested_crossproduct_scatter(self, joborder, scatter_keys):
+    def nested_crossproduct_scatter(self, joborder, scatter_keys, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
         outputs = []
         for n in xrange(0, l):
             jo = copy.copy(joborder)
-            jo[scatter_key] = self.valueFromFunc(scatter_key, joborder[scatter_key][n])
+            jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
+                jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(self.step.embedded_tool, jo, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
-                outputs.append(self.nested_crossproduct_scatter(jo, scatter_keys[1:]))
+                outputs.append(self.nested_crossproduct_scatter(jo, scatter_keys[1:], postScatterEval))
         return outputs
 
     def run(self, fileStore):
@@ -289,25 +302,33 @@ class CWLScatter(Job):
             scatterMethod = "dotproduct"
         outputs = []
 
-        self.vfinputs = cwljob
+        valueFrom = {i["id"]: i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
+        def postScatterEval(io):
+            shortio = {shortname(k): v for k, v in io.iteritems()}
+            def valueFromFunc(k, v):
+                if k in valueFrom:
+                    return cwltool.expression.do_eval(
+                            valueFrom[k], shortio, self.step.requirements,
+                            None, None, {}, context=v)
+                else:
+                    return v
+            return {k: valueFromFunc(k, v) for k,v in io.items()}
 
-        shortscatter = [shortname(s) for s in scatter]
-        cwljob = {k: self.valueFromFunc(k, v) if k not in shortscatter else v
-                    for k,v in cwljob.items()}
 
         if scatterMethod == "dotproduct":
             for i in xrange(0, len(cwljob[shortname(scatter[0])])):
                 copyjob = copy.copy(cwljob)
-                for sc in scatter:
-                    scatter_key = shortname(sc)
-                    copyjob[scatter_key] = self.valueFromFunc(scatter_key, cwljob[scatter_key][i])
+                for sc in [shortname(x) for x in scatter]:
+                    copyjob[sc] = cwljob[sc][i]
+                import pprint
+                copyjob = postScatterEval(copyjob)
                 (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob, **self.executor_options)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
         elif scatterMethod == "nested_crossproduct":
-            outputs = self.nested_crossproduct_scatter(cwljob, scatter)
+            outputs = self.nested_crossproduct_scatter(cwljob, scatter, postScatterEval)
         elif scatterMethod == "flat_crossproduct":
-            self.flat_crossproduct_scatter(cwljob, scatter, outputs)
+            self.flat_crossproduct_scatter(cwljob, scatter, outputs, postScatterEval)
         else:
             if scatterMethod:
                 raise validate.ValidationException(
@@ -485,7 +506,7 @@ class CWLWorkflow(Job):
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
-            outobj[shortname(out["id"])] = (shortname(out["source"]), promises[out["source"]].rv())
+            outobj[shortname(out["id"])] = (shortname(out["outputSource"]), promises[out["outputSource"]].rv())
 
         return IndirectDict(outobj)
 
@@ -545,9 +566,7 @@ def main(args=None, stdout=sys.stdout):
     uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
 
     try:
-        t = cwltool.main.load_tool(options.cwltool, False, True,
-                                   cwltool.workflow.defaultMakeTool,
-        True)
+        t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
         return 33
@@ -560,6 +579,8 @@ def main(args=None, stdout=sys.stdout):
         loader = schema_salad.ref_resolver.Loader(jobloaderctx)
 
     job, _ = loader.resolve_ref(uri)
+    cwltool.builder.adjustDirObjs(job, pathToLoc)
+    cwltool.builder.adjustFileObjs(job, pathToLoc)
 
     if type(t) == int:
         return t
@@ -569,7 +590,8 @@ def main(args=None, stdout=sys.stdout):
     if options.conformance_test:
         adjustFiles(job, lambda x: x.replace("file://", ""))
         stdout.write(json.dumps(
-            cwltool.main.single_job_executor(t, job, options.basedir, options,
+            cwltool.main.single_job_executor(t, job, basedir=options.basedir,
+                                             tmpdir_prefix="tmp",
                                              conformance_test=True, use_container=use_container,
                                              preserve_environment=options.preserve_environment), indent=4))
         return 0
@@ -581,14 +603,22 @@ def main(args=None, stdout=sys.stdout):
 
     with Toil(options) as toil:
         def importDefault(tool):
+            cwltool.builder.adjustDirObjs(tool, locToPath)
+            cwltool.builder.adjustFileObjs(tool, locToPath)
             adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
             adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
             return tool
         t.visit(importDefault)
 
-        builder = t._init_job(job, os.path.dirname(os.path.abspath(options.cwljob)))
+        basedir = os.path.dirname(os.path.abspath(options.cwljob))
+        builder = t._init_job(job, basedir=basedir)
         (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
-        adjustFiles(builder.job, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
+        cwltool.builder.adjustDirObjs(builder.job, locToPath)
+        cwltool.builder.adjustFileObjs(builder.job, locToPath)
+        adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
+                    if not urlparse.urlparse(x).scheme else x)
+        cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
+        cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
 
