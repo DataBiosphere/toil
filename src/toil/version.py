@@ -13,3 +13,5 @@
 # limitations under the License.
 
 version = '3.4.0a1'
+
+cgcloud_version = '1.6.0a1.dev361'

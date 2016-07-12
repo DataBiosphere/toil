@@ -22,7 +22,8 @@ parallelizable_keywords = [
     'AwsJobStoreCacheTest',
     'AzureJobStoreCacheTest',
     'FileJobStoreCacheTest',
-    'GoogleJobStoreCacheTest']
+    'GoogleJobStoreCacheTest',
+    'AWSProvisionerTest']
 
 
 def run_tests(keywords, index, args):
