@@ -25,7 +25,7 @@ from threading import Lock, Condition
 from Queue import Queue, Empty
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +62,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if maxMemory > self.physicalMemory:
             log.warn('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
             maxMemory = self.physicalMemory
+        self.physicalDisk = toil.physicalDisk(config)
+        if maxDisk > self.physicalDisk:
+            log.warn('Limiting maxDisk to physically available disk (%i).', self.physicalDisk)
+            maxDisk = self.physicalDisk
         super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
@@ -94,12 +98,20 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         :type list[Thread]
         """
+        # Variables involved with non-blocking resource acquisition
+        self.acquisitionTimeout = 5
+        self.acquisitionRetryDelay = 10
+        self.aquisitionCondition = Condition()
+
         # A pool representing available CPU in units of minCores
-        self.coreFractions = ResourcePool(self.numWorkers)
+        self.coreFractions = ResourcePool(self.numWorkers, 'cores', self.acquisitionTimeout)
         # A lock to work around the lack of thread-safety in Python's subprocess module
         self.popenLock = Lock()
         # A pool representing available memory in bytes
-        self.memory = ResourcePool(self.maxMemory)
+        self.memory = ResourcePool(self.maxMemory, 'memory', self.acquisitionTimeout)
+        # A pool representing the available space in bytes
+        self.disk = ResourcePool(self.maxDisk, 'disk', self.acquisitionTimeout)
+
         log.info('Setting up the thread pool with %i workers, '
                  'given a minimum CPU fraction of %f '
                  'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
@@ -118,37 +130,56 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 log.debug('Received queue sentinel.')
                 break
             jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
-            try:
-                coreFractions = int(jobCores / self.minCores)
-                log.debug('Acquiring %i bytes of memory from a pool of %s.', jobMemory, self.memory)
-                with self.memory.acquisitionOf(jobMemory):
-                    log.debug('Acquiring %i fractional cores from a pool of %s to satisfy a '
-                              'request of %f cores', coreFractions, self.coreFractions, jobCores)
-                    with self.coreFractions.acquisitionOf(coreFractions):
-                        log.info("Executing command: '%s'.", jobCommand)
-                        startTime = time.time() #Time job is started
-                        with self.popenLock:
-                            popen = subprocess.Popen(jobCommand,
-                                                     shell=True,
-                                                     env=dict(os.environ, **environment))
-                        statusCode = None
-                        info = Info(time.time(), popen, killIntended=False)
-                        try:
-                            self.runningJobs[jobID] = info
-                            try:
-                                statusCode = popen.wait()
-                                if 0 != statusCode:
-                                    if statusCode != -9 or not info.killIntended:
-                                        log.error("Got exit code %i (indicating failure) from "
-                                                  "command '%s'.", statusCode, jobCommand)
-                            finally:
-                                self.runningJobs.pop(jobID)
-                        finally:
-                            if statusCode is not None and not info.killIntended:
-                                self.outputQueue.put((jobID, statusCode, time.time() - startTime))
-            finally:
-                log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
-                          self.coreFractions.value, self.memory.value)
+            while True:
+                try:
+                    coreFractions = int(jobCores / self.minCores)
+                    log.debug('Acquiring %i bytes of memory from a pool of %s.', jobMemory,
+                              self.memory)
+                    with self.memory.acquisitionOf(jobMemory):
+                        log.debug('Acquiring %i fractional cores from a pool of %s to satisfy a '
+                                  'request of %f cores', coreFractions, self.coreFractions,
+                                  jobCores)
+                        with self.coreFractions.acquisitionOf(coreFractions):
+                            with self.disk.acquisitionOf(jobDisk):
+                                log.info("Executing command: '%s'.", jobCommand)
+                                startTime = time.time() #Time job is started
+                                with self.popenLock:
+                                    popen = subprocess.Popen(jobCommand,
+                                                             shell=True,
+                                                             env=dict(os.environ, **environment))
+                                statusCode = None
+                                info = Info(time.time(), popen, killIntended=False)
+                                try:
+                                    self.runningJobs[jobID] = info
+                                    try:
+                                        statusCode = popen.wait()
+                                        if 0 != statusCode:
+                                            if statusCode != -9 or not info.killIntended:
+                                                log.error("Got exit code %i (indicating failure) "
+                                                          "from command '%s'.", statusCode,
+                                                          jobCommand)
+                                    finally:
+                                        self.runningJobs.pop(jobID)
+                                finally:
+                                    if statusCode is not None and not info.killIntended:
+                                        self.outputQueue.put((jobID, statusCode,
+                                                              time.time() - startTime))
+                except ResourcePool.AcquisitionTimeoutException as e:
+                    log.debug('Could not acquire enough (%s) to run job. Requested: (%s), '
+                              'Avaliable: %s. Sleeping for 10s.', e.resource, e.requested,
+                              e.available)
+                    with self.aquisitionCondition:
+                        # Make threads sleep for the given delay, or until another job finishes.
+                        # Whichever is sooner.
+                        self.aquisitionCondition.wait(timeout=self.acquisitionRetryDelay)
+                    continue
+                else:
+                    log.debug('Finished job. self.coreFractions ~ %s and self.memory ~ %s',
+                              self.coreFractions.value, self.memory.value)
+                    with self.aquisitionCondition:
+                        # Wake up sleeping threads
+                        self.aquisitionCondition.notifyAll()
+                    break
         log.debug('Exiting worker thread normally.')
 
     def issueBatchJob(self, command, memory, cores, disk, preemptable):
@@ -241,15 +272,28 @@ class Info(object):
 
 
 class ResourcePool(object):
-    def __init__(self, initial_value):
+    def __init__(self, initial_value, resourceType, timeout):
         super(ResourcePool, self).__init__()
         self.condition = Condition()
         self.value = initial_value
+        self.resourceType = resourceType
+        self.timeout = timeout
 
     def acquire(self, amount):
         with self.condition:
+            startTime = time.time()
             while amount > self.value:
-                self.condition.wait()
+                if time.time() - startTime >= self.timeout:
+                    # This means the thread timed out waiting for the resource.  We exit the nested
+                    # context managers in worker to prevent blocking of a resource due to
+                    # unavailability of a nested resource request.
+                    raise self.AcquisitionTimeoutException(resource=self.resourceType,
+                                                           requested=amount, available=self.value)
+                # Allow 5 seconds to get the resource, else quit through the above if condition.
+                # This wait + timeout is the last thing in the loop such that a request that takes
+                # longer than 5s due to multiple wakes under the 5 second threshold are still
+                # honored.
+                self.condition.wait(timeout=self.timeout)
             self.value -= amount
             self.__validate()
 
@@ -275,3 +319,26 @@ class ResourcePool(object):
             yield
         finally:
             self.release(amount)
+
+    class AcquisitionTimeoutException(Exception):
+        """
+        To be raised when a resource request times out.
+        """
+
+        def __init__(self, resource, requested, available):
+            """
+            Creates an instance of this exception that indicates which resource is insufficient for
+            current demands, as well as the amount requested and amount actually available.
+
+            :param str resource: string representing the resource type
+
+            :param int|float requested: the amount of the particular resource requested that resulted
+                   in this exception
+
+            :param int|float available: amount of the particular resource actually available
+            """
+            self.requested = requested
+            self.available = available
+            self.resource = resource
+
+
