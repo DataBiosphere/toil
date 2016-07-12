@@ -31,6 +31,8 @@ class CWLTest(ToilTest):
                             os.path.join(rootDir, jobfile)],
                      stdout=st)
         out = json.loads(st.getvalue())
+        # locations are internal objects in output for CWL
+        out["output"].pop("location", None)
         self.assertEquals(out, expect)
 
     def test_run_revsort(self):
@@ -42,6 +44,7 @@ class CWLTest(ToilTest):
             # less noisy diff in case the assertion fails.
             u'output': {
                 u'path': unicode(os.path.join(outDir, 'output.txt')),
+                u'basename': unicode("output.txt"),
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
@@ -54,6 +57,6 @@ class CWLTest(ToilTest):
             subprocess.call(["git", "fetch"], cwd=cwlSpec)
         else:
             subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
-        subprocess.check_call(["git", "checkout", "4daac6db94ccf626c4509fe0c3e645ceda23f50a"], cwd=cwlSpec)
+        subprocess.check_call(["git", "checkout", "c256c08247dc4feded93e5103a503c5459a8315e"], cwd=cwlSpec)
         subprocess.check_call(["git", "clean", "-f", "-x", "."], cwd=cwlSpec)
-        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=draft-3"], cwd=cwlSpec)
+        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec)
