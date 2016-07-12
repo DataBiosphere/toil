@@ -2,13 +2,13 @@
 # This is a two-step workflow which uses "revtool" and "sorttool" defined above.
 #
 class: Workflow
-description: "Reverse the lines in a document, then sort those lines."
-cwlVersion: "cwl:draft-3"
+doc: "Reverse the lines in a document, then sort those lines."
+cwlVersion: v1.0
 
-# Requirements specify prerequisites and extensions to the workflow.
+# Requirements & hints specify prerequisites and extensions to the workflow.
 # In this example, DockerRequirement specifies a default Docker container
 # in which the command line tools will execute.
-requirements:
+hints:
   - class: DockerRequirement
     dockerPull: debian:8
 
@@ -20,13 +20,13 @@ requirements:
 # field "reverse_sort" is not provided in the input object, the default value will
 # be used.
 inputs:
-  - id: "#input"
+  input:
     type: File
-    description: "The input file to be processed."
-  - id: "#reverse_sort"
+    doc: "The input file to be processed."
+  reverse_sort:
     type: boolean
     default: true
-    description: "If true, reverse (decending) sort"
+    doc: "If true, reverse (decending) sort"
 
 # The "outputs" array defines the structure of the output object that describes
 # the outputs of the workflow.
@@ -35,10 +35,10 @@ inputs:
 # steps using the "connect" field.  Here, the parameter "#output" of the
 # workflow comes from the "#sorted" output of the "sort" step.
 outputs:
-  - id: "#output"
+  output:
     type: File
-    source: "#sorted.output"
-    description: "The output with the lines reversed and sorted."
+    outputSource: sorted/output
+    doc: "The output with the lines reversed and sorted."
 
 # The "steps" array lists the executable steps that make up the workflow.
 # The tool to execute each step is listed in the "run" field.
@@ -51,17 +51,15 @@ outputs:
 # parameter "#reversed" from the first step to the input parameter of the
 # tool "sorttool.cwl#input".
 steps:
-  - id: "#rev"
-    inputs:
-      - { id: "#rev.input", source: "#input" }
-    outputs:
-      - { id: "#rev.output" }
-    run: { "$import": revtool.cwl }
+  rev:
+    in:
+      input: input
+    out: [output]
+    run: revtool.cwl
 
-  - id: "#sorted"
-    inputs:
-      - { id: "#sorted.input", source: "#rev.output" }
-      - { id: "#sorted.reverse", source: "#reverse_sort" }
-    outputs:
-      - { id: "#sorted.output" }
-    run: { "$import": sorttool.cwl }
+  sorted:
+    in:
+      input: rev/output
+      reverse: reverse_sort
+    out: [output]
+    run: sorttool.cwl
