@@ -155,17 +155,21 @@ def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, r
     return dstPath
 
 def writeFile(writeFunc, index, x):
-    if x not in index:
-        if not urlparse.urlparse(x).scheme:
-            rp = os.path.realpath(x)
-        else:
-            rp = x
-        try:
-            index[x] = (writeFunc(rp), os.path.basename(x))
-        except Exception as e:
-            cwllogger.error("Got exception '%s' while copying '%s'", e, x)
-            raise
-    return index[x]
+    # Toil fileStore references are tuples of pickle and internal file
+    if isinstance(x, tuple):
+        return x
+    else:
+        if x not in index:
+            if not urlparse.urlparse(x).scheme:
+                rp = os.path.realpath(x)
+            else:
+                rp = x
+            try:
+                index[x] = (writeFunc(rp), os.path.basename(x))
+            except Exception as e:
+                cwllogger.error("Got exception '%s' while copying '%s'", e, x)
+                raise
+        return index[x]
 
 def locToPath(p):
     """Back compatibility -- handle converting locations into paths.
@@ -302,7 +306,7 @@ class CWLScatter(Job):
             scatterMethod = "dotproduct"
         outputs = []
 
-        valueFrom = {i["id"]: i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
+        valueFrom = {shortname(i["id"]): i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
         def postScatterEval(io):
             shortio = {shortname(k): v for k, v in io.iteritems()}
             def valueFromFunc(k, v):
@@ -314,13 +318,11 @@ class CWLScatter(Job):
                     return v
             return {k: valueFromFunc(k, v) for k,v in io.items()}
 
-
         if scatterMethod == "dotproduct":
             for i in xrange(0, len(cwljob[shortname(scatter[0])])):
                 copyjob = copy.copy(cwljob)
                 for sc in [shortname(x) for x in scatter]:
                     copyjob[sc] = cwljob[sc][i]
-                import pprint
                 copyjob = postScatterEval(copyjob)
                 (subjob, followOn) = makeJob(self.step.embedded_tool, copyjob, **self.executor_options)
                 self.addChild(subjob)
@@ -528,7 +530,7 @@ def main(args=None, stdout=sys.stdout):
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     parser.add_argument("cwltool", type=str)
-    parser.add_argument("cwljob", type=str)
+    parser.add_argument("cwljob", type=str, nargs="?", default=None)
 
     # Will override the "jobStore" positional argument, enables
     # user to select jobStore or get a default from logic one below.
@@ -563,8 +565,6 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
-    uri = options.cwljob if urlparse.urlparse(options.cwljob).scheme else "file://" + os.path.abspath(options.cwljob)
-
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool)
     except cwltool.process.UnsupportedRequirement as e:
@@ -578,7 +578,12 @@ def main(args=None, stdout=sys.stdout):
         jobloaderctx.update(t.metadata.get("$namespaces", {}))
         loader = schema_salad.ref_resolver.Loader(jobloaderctx)
 
-    job, _ = loader.resolve_ref(uri)
+    if options.cwljob:
+        uri = (options.cwljob if urlparse.urlparse(options.cwljob).scheme
+               else "file://" + os.path.abspath(options.cwljob))
+        job, _ = loader.resolve_ref(uri, checklinks=False)
+    else:
+        job = {}
     cwltool.builder.adjustDirObjs(job, pathToLoc)
     cwltool.builder.adjustFileObjs(job, pathToLoc)
 
@@ -597,7 +602,7 @@ def main(args=None, stdout=sys.stdout):
         return 0
 
     if not options.basedir:
-        options.basedir = os.path.dirname(os.path.abspath(options.cwljob))
+        options.basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
 
     outdir = options.outdir
 
@@ -607,10 +612,9 @@ def main(args=None, stdout=sys.stdout):
             cwltool.builder.adjustFileObjs(tool, locToPath)
             adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
             adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
-            return tool
         t.visit(importDefault)
 
-        basedir = os.path.dirname(os.path.abspath(options.cwljob))
+        basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
         builder = t._init_job(job, basedir=basedir)
         (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
         cwltool.builder.adjustDirObjs(builder.job, locToPath)
