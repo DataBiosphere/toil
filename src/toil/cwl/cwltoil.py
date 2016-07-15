@@ -171,20 +171,34 @@ def writeFile(writeFunc, index, x):
                 raise
         return index[x]
 
+def addFilePartRefs(p):
+    """Provides new v1.0 functionality for referencing file parts.
+    """
+    if p.get("class") == "File" and p.get("path"):
+        dirname, basename = os.path.split(p["path"])
+        nameroot, nameext = os.path.splitext(basename)
+        for k, v in [("dirname", dirname,), ("basename", basename),
+                     ("nameroot", nameroot), ("nameext", nameext)]:
+            if k not in p:
+                p[k] = v
+    return p
+
 def locToPath(p):
     """Back compatibility -- handle converting locations into paths.
     """
     if "path" not in p and "location" in p:
         p["path"] = p["location"].replace("file:", "")
+    return p
 
 def pathToLoc(p):
     """Associate path with location.
 
     v1.0 should be specifying location but older YAML uses path
-    provide back compatibility
+    -- this provides back compatibility.
     """
     if "path" in p:
         p["location"] = p["path"]
+    return p
 
 class ResolveIndirect(Job):
     def __init__(self, cwljob):
@@ -584,6 +598,24 @@ def main(args=None, stdout=sys.stdout):
         job, _ = loader.resolve_ref(uri, checklinks=False)
     else:
         job = {}
+
+    def unsupportedCheck(p):
+        """Check for file inputs we don't current support in Toil:
+
+        - Directories
+        - File literals
+        """
+        if p.get("class") == "Directory":
+            raise cwltool.process.UnsupportedRequirement("CWL Directory inputs not yet supported in Toil")
+        if p.get("contents") and (not p.get("path") and not p.get("location")):
+            raise cwltool.process.UnsupportedRequirement("CWL File literals not yet supported in Toil")
+    try:
+        cwltool.builder.adjustDirObjs(job, unsupportedCheck)
+        cwltool.builder.adjustFileObjs(job, unsupportedCheck)
+    except cwltool.process.UnsupportedRequirement as e:
+        logging.error(e)
+        return 33
+
     cwltool.builder.adjustDirObjs(job, pathToLoc)
     cwltool.builder.adjustFileObjs(job, pathToLoc)
 
@@ -623,6 +655,7 @@ def main(args=None, stdout=sys.stdout):
                     if not urlparse.urlparse(x).scheme else x)
         cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
         cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
+        cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
         adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
         wf1.cwljob = builder.job
 

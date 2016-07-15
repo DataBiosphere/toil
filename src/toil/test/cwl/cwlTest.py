@@ -15,6 +15,7 @@ from __future__ import absolute_import
 import json
 import os
 import subprocess
+import re
 import StringIO
 
 from toil.test import ToilTest, needs_cwl
@@ -57,6 +58,21 @@ class CWLTest(ToilTest):
             subprocess.call(["git", "fetch"], cwd=cwlSpec)
         else:
             subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
-        subprocess.check_call(["git", "checkout", "c256c08247dc4feded93e5103a503c5459a8315e"], cwd=cwlSpec)
+        subprocess.check_call(["git", "checkout", "1d5714dc434ffd6ac45ec64f1535475fa163be09"], cwd=cwlSpec)
         subprocess.check_call(["git", "clean", "-f", "-x", "."], cwd=cwlSpec)
-        subprocess.check_call(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec)
+        try:
+            subprocess.check_output(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,
+                                    stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            only_unsupported = False
+            # check output -- if we failed but only have unsupported features, we're okay
+            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+            for line in e.output.split("\n"):
+                m = p.search(line)
+                if m:
+                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                        only_unsupported = True
+                        break
+            if not only_unsupported:
+                print(e.output)
+                raise e
