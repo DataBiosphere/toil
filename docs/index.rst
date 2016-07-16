@@ -12,8 +12,8 @@ Toil is a workflow engine entirely written in Python. It features:
 
 * `Common Workflow Language`_ (`CWL`_) support
 
-  Complete support for the draft-3 CWL specification, allowing it to execute
-  CWL workflows.
+  Nearly complete support for the stable CWL v1.0 specification,
+  allowing it to execute CWL workflows.
 
 * Cross platform support
 

@@ -44,11 +44,24 @@ workflows that are portable across multiple workflow engines and platforms.  To
 run workflows written using CWL, first ensure that Toil is installed with the
 "cwl" extra as described in :ref:`installation-ref`.  This will install the
 executables ``cwl-runner`` and ``cwltoil`` (these are identical, where
-``cwl-runner`` is the portable name for the default system CWL runner).  To
-learn more about CWL, see the `CWL User Guide`_.
+``cwl-runner`` is the portable name for the default system CWL runner).
 
-To run in local batch mode, simply provide the CWL file and the input object
-file::
+To learn more about CWL, see the `CWL User Guide`_. Toil has nearly full support
+for the stable v1.0 specification, only lacking the following features:
+
+- `Directory <http://www.commonwl.org/v1.0/CommandLineTool.html#Directory>`_
+  inputs and outputs in pipelines. Currently you need to enumerate directory
+  inputs as Files.
+- `InitialWorkDirRequirement
+  <http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement>`_
+  to create files together within a specific work directory. Collecting
+  associated files using `secondaryFiles
+  <http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter>`_ is
+  a good workaround.
+- `File literals <http://www.commonwl.org/v1.0/CommandLineTool.html#File>`_ that
+  specify only ``contents`` to a File without an explicit file name.
+
+To run in local batch mode, provide the CWL file and the input object file::
 
     cwltoil example.cwl example-job.yml
 
@@ -57,7 +70,7 @@ command line parameters to select and configure the batch system to use.
 Consult the appropriate sections.
 
 .. _Common Workflow Language: http://commonwl.org
-.. _CWL User Guide: http://commonwl.org/draft-3/UserGuide.html
+.. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
 
 .. _runningDetail:
 
