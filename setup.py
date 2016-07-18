@@ -44,7 +44,10 @@ setup(
         'cwl': [
             'cwltool==1.0.20160714182449']},
     package_dir={'': 'src'},
-    packages=find_packages('src', exclude=['*.test']),
+    packages=find_packages(where='src',
+                           # Note that we intentionally include the top-level `test` package for
+                           # functionality like the @experimental and @integrative decoratorss:
+                           exclude=['*.test.*']),
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',
