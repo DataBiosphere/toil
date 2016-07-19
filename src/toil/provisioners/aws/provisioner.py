@@ -8,7 +8,7 @@ import boto.ec2
 from bd2k.util import memoize
 from bd2k.util.iterables import concat
 from boto.ec2.instance import Instance
-from cgcloud.lib.ec2 import wait_for_spot_instances, ec2_instance_types, wait_transition
+from cgcloud.lib.ec2 import ec2_instance_types, wait_transition
 from cgcloud.lib.util import papply
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, AbstractBatchSystem

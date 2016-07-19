@@ -312,6 +312,24 @@ def experimental(test_item):
             'Set TOIL_TEST_EXPERIMENTAL="True" to include this experimental test.')(test_item)
 
 
+def integrative(test_item):
+    """
+    Use this to decorate integration tests so as to skip them during regular builds. We define
+    integration tests as A) involving other, non-Toil software components that we develop and/or
+    B) having a higher cost (time or money). Note that brittleness does not qualify a test for
+    being integrative. Neither does involvement of external services such as AWS, since that
+    would cover most of Toil's test.
+    """
+    # We'll pytest.mark_test the test as integrative but we'll also unittest.skip it via an
+    # environment variable.
+    test_item = _mark_test('integrative', test_item)
+    if less_strict_bool(os.getenv('TOIL_TEST_INTEGRATIVE')):
+        return test_item
+    else:
+        return unittest.skip(
+            'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test.')(test_item)
+
+
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 
 

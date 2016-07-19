@@ -71,7 +71,7 @@ clean_sdist:
 	- rm -rf dist
 
 
-test: check_venv check_build_reqs
+test: check_venv check_build_reqs sdist
 	$(python) run_tests.py $(tests)
 
 
