@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 @integrative
-class AWSProvisionerTest(ToilTest, CgcloudTestCase):
+class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     """
     Tests Toil on a Mesos cluster in AWS provisioned by CGCloud. Uses the RNASeq integration test
     workflow from toil-scripts.
@@ -52,10 +52,10 @@ class AWSProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def setUpClass(cls):
         logging.basicConfig(level=logging.INFO)
-        super(AWSProvisionerTest, cls).setUpClass()
+        super(CGCloudProvisionerTest, cls).setUpClass()
 
     def setUp(self):
-        super(AWSProvisionerTest, self).setUp()
+        super(CGCloudProvisionerTest, self).setUp()
         self.saved_cgcloud_plugins = os.environ.get('CGCLOUD_PLUGINS')
         os.environ['CGCLOUD_PLUGINS'] = 'cgcloud.toil'
         self.assertTrue(os.path.isfile(self.sdistPath),
@@ -65,7 +65,7 @@ class AWSProvisionerTest(ToilTest, CgcloudTestCase):
     def tearDown(self):
         if self.saved_cgcloud_plugins is not None:
             os.environ['CGCLOUD_PLUGINS'] = self.saved_cgcloud_plugins
-        super(AWSProvisionerTest, self).tearDown()
+        super(CGCloudProvisionerTest, self).tearDown()
 
     @integrative
     def test(self):
