@@ -636,15 +636,15 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
 
         # Should block off 50% of memory while waiting for it's 3 cores
         firstJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=0,
-                                   writeVal='fJC', cores=3, memory=(availableMemory/2), disk='1M')
+                                   writeVal='fJC', cores=3, memory=int(availableMemory/2), disk='1M')
 
         # These two shouldn't be able to run before B because there should be only
         # (50% of memory - 1M) available (firstJobChild should be blocking 50%)
         secondJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                    writeVal='sJC', cores=2, memory=(availableMemory/1.5),
+                                    writeVal='sJC', cores=2, memory=int(availableMemory/1.5),
                                     disk='1M')
         secondJobGrandChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                         writeVal='sJGC', cores=2, memory=(availableMemory/1.5),
+                                         writeVal='sJGC', cores=2, memory=int(availableMemory/1.5),
                                          disk='1M')
 
         root.addChild(blocker)

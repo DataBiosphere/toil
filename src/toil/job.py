@@ -63,10 +63,9 @@ class Job(object):
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
-        self.cores = cores
-        parse = lambda x : x if x is None else human2bytes(str(x))
-        self.memory = parse(memory)
-        self.disk = parse(disk)
+        self.cores = self._parseResource('cores', cores)
+        self.memory = self._parseResource('memory', memory)
+        self.disk = self._parseResource('disk', disk)
         self.checkpoint = checkpoint
         self.preemptable = preemptable
         #Private class variables
@@ -92,6 +91,49 @@ class Job(object):
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
 
+    @staticmethod
+    def _parseResource(name, value):
+        """
+        Parse a Toil job's resource requirement value and apply resource-specific type checks. If the
+        value is a string, a binary or metric unit prefix in it will be evaluated and the
+        corresponding integral value will be returned.
+
+        :param str name: The name of the resource
+
+        :param None|str|float|int value: The resource value
+
+        :rtype: int|float|None
+
+        >>> Job._parseResource('cores', None)
+        >>> Job._parseResource('cores', 1), Job._parseResource('disk', 1), \
+        Job._parseResource('memory', 1)
+        (1, 1, 1)
+        >>> Job._parseResource('cores', '1G'), Job._parseResource('disk', '1G'), \
+        Job._parseResource('memory', '1G')
+        (1073741824, 1073741824, 1073741824)
+        >>> Job._parseResource('cores', 1.1)
+        1.1
+        >>> Job._parseResource('disk', 1.1)
+        Traceback (most recent call last):
+        ...
+        TypeError: The 'disk' requirement does not accept values that are of <type 'float'>
+        >>> Job._parseResource('memory', object())
+        Traceback (most recent call last):
+        ...
+        TypeError: The 'memory' requirement does not accept values that are of <type 'object'>
+        """
+        assert name in ('memory', 'disk', 'cores')
+        if value is None:
+            return value
+        elif isinstance(value, str):
+            value = human2bytes(value)
+        if isinstance(value, int):
+            return value
+        elif isinstance(value, float) and name == 'cores':
+            return value
+        else:
+            raise TypeError("The '%s' requirement does not accept values that are of %s"
+                            % (name, type(value)))
 
     def run(self, fileStore):
         """
