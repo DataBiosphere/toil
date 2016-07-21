@@ -567,7 +567,7 @@ class Toil(object):
 
             if self.config.provisioner is None:
                 self._provisioner = None
-            if self.config.provisioner == 'cgcloud':
+            elif self.config.provisioner == 'cgcloud':
                 logger.info('Using cgcloud provisioner.')
                 from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
                 self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
