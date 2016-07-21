@@ -206,7 +206,7 @@ class GridengineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def supportsWorkerCleanup(cls):
-        return False
+        return True
 
     @classmethod
     def supportsHotDeployment(cls):
