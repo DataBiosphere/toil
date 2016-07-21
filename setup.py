@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from version import version as toil_version, cgcloud_version
+from version import version as toil_version, cgcloudVersion
 from setuptools import find_packages, setup
 
 botoRequirement = 'boto==2.38.0'
@@ -32,7 +32,7 @@ setup(
             'psutil==3.0.1'],
         'aws': [
             botoRequirement,
-            'cgcloud-lib==' + cgcloud_version,
+            'cgcloud-lib==' + cgcloudVersion,
             'futures==3.0.5'],
         'azure': [
             'azure==1.0.3'],

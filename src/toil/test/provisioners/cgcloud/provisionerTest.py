@@ -10,7 +10,7 @@ from bd2k.util.iterables import concat
 from cgcloud.lib.test import CgcloudTestCase
 
 from toil.test import integrative, ToilTest
-from toil.version import version as toil_version, cgcloud_version
+from toil.version import version as toil_version, cgcloudVersion
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @integrative
     def test(self):
         with self.cgcloudVenv():
-            self._run('pip', 'install', 'cgcloud-toil==' + cgcloud_version)
+            self._run('pip', 'install', 'cgcloud-toil==' + cgcloudVersion)
             if self.createImage:
                 self._cgcloud('create', '-IT',
                               '--option', 'toil_sdists=%s[aws,mesos]' % self.sdistPath,
