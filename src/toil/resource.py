@@ -364,8 +364,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         filePath = os.path.abspath(module.__file__)
         filePath = filePath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
-        require( extension in ('.py', '.pyc'),
-                 'The name of a user script/module must end in .py or .pyc.')
+        require(extension in ('.py', '.pyc'),
+                'The name of a user script/module must end in .py or .pyc.')
         if name == '__main__':
             # User script/module was invoked as the main program
             if module.__package__:
@@ -455,13 +455,16 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
             return self.__class__(dirPath=resource.localDirPath, name=self.name)
 
     def _runningOnWorker(self):
-        mainModule = sys.modules.get('__main__')
-        if mainModule:
-            mainModuleFile = mainModule.__file__
-            for extension in self.moduleExtensions:
-                if mainModuleFile.endswith('worker' + extension):
-                    return True
-        return False
+        try:
+            mainModule = sys.modules['__main__']
+        except KeyError:
+            log.warning('Cannot determine main program module.')
+            return False
+        else:
+            mainModuleFile = os.path.basename(mainModule.__file__)
+            workerModuleFiles = concat(('worker' + ext for ext in self.moduleExtensions),
+                                       '_toil_worker')  # the setuptools entry point
+            return mainModuleFile in workerModuleFiles
 
     def globalize(self):
         """

@@ -48,6 +48,9 @@ setup(
                            # Note that we intentionally include the top-level `test` package for
                            # functionality like the @experimental and @integrative decoratorss:
                            exclude=['*.test.*']),
+    # Unfortunately, the names of the entrypoints are hard-coded elsewhere in the code base so
+    # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
+    # easy to search for.
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',
