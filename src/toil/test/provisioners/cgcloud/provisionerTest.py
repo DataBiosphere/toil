@@ -2,7 +2,6 @@ import logging
 import os
 import pipes
 import subprocess
-from contextlib import contextmanager
 from urlparse import urlparse
 from uuid import uuid4
 
@@ -93,12 +92,29 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     def setUpClass(cls):
         logging.basicConfig(level=logging.INFO)
         super(CGCloudProvisionerTest, cls).setUpClass()
+        cls.saved_cgcloud_plugins = os.environ.get('CGCLOUD_PLUGINS')
+        os.environ['CGCLOUD_PLUGINS'] = 'cgcloud.toil'
+        cls.sdistPath = cls._getSourceDistribution()
+        path = cls._createTempDirEx('cgcloud-venv')
+        cls._run('virtualenv', path)
+        binPath = os.path.join(path, 'bin')
+        cls.oldPath = os.environ['PATH']
+        os.environ['PATH'] = os.pathsep.join(concat(binPath, cls.oldPath.split(os.pathsep)))
+        cls._run('pip', 'install', 'cgcloud-toil==' + cgcloudVersion)
+        if cls.createImage:
+            cls._cgcloud('create', '-IT',
+                         '--option', 'toil_sdists=%s[aws,mesos]' % cls.sdistPath,
+                         'toil-latest-box')
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.cleanup and cls.createImage:
+            cls._cgcloud('delete-image', 'toil-latest-box')
+        os.environ['PATH'] = cls.oldPath
+        super(CGCloudProvisionerTest, cls).tearDownClass()
 
     def setUp(self):
         super(CGCloudProvisionerTest, self).setUp()
-        self.saved_cgcloud_plugins = os.environ.get('CGCLOUD_PLUGINS')
-        os.environ['CGCLOUD_PLUGINS'] = 'cgcloud.toil'
-        self._checkSourceDistribution()
         self.jobStore = 'aws:%s:toil-it-%s' % (self.region, uuid4())
 
     def tearDown(self):
@@ -115,79 +131,54 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         self._test(autoScaled=True)
 
     def _test(self, autoScaled=False):
-        with self.cgcloudVenv():
-            self._run('pip', 'install', 'cgcloud-toil==' + cgcloudVersion)
-            if self.createImage:
-                self._cgcloud('create', '-IT',
-                              '--option', 'toil_sdists=%s[aws,mesos]' % self.sdistPath,
-                              'toil-latest-box')
-            try:
-                if self.createCluster:
-                    self._cgcloud('create-cluster',
-                                  '--leader-instance-type=' + self.leaderInstanceType,
-                                  '--instance-type=' + self.instanceType,
-                                  '--num-workers=%i' % (0 if autoScaled else self.numWorkers),
-                                  'toil')
-                try:
-                    # Update Toil unless we created a fresh image
-                    if not self.createImage:
-                        sdistName = os.path.basename(self.sdistPath)
-                        self._rsync('-a', 'toil-leader', '-v', self.sdistPath, ':' + sdistName)
-                        self._leader('sudo pip install --upgrade %s[aws,mesos]' % sdistName,
-                                     admin=True)
-                        self._leader('rm', sdistName, admin=True)
-                    if self.debugEggPath:
-                        self._rsync('toil-leader', '-v', self.debugEggPath, ':')
-                    self._leader('virtualenv', '--system-site-packages', '~/venv')
-                    toilScripts = urlparse(self.toilScripts)
-                    if toilScripts.netloc:
-                        self._leader('mkdir toil-scripts'
-                                     '; curl -L ' + toilScripts.geturl() +
-                                     '| tar -C toil-scripts -xvz --strip-components=1')
-                        self._leader('PATH=~/venv/bin:$PATH make -C toil-scripts develop')
-                    else:
-                        version = toilScripts.path
-                        self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
-                    toilOptions = ['--batchSystem=mesos',
-                                   '--mesosMaster=mesos-master:5050',
-                                   '--clean=always']
-                    if autoScaled:
-                        toilOptions.extend(['--provisioner=cgcloud',
-                                            '--nodeType=' + self.instanceType,
-                                            '--logDebug',
-                                            '--scaleInterval=10'])
-                    toilOptions = ' '.join(toilOptions)
-                    self._leader('PATH=~/venv/bin:$PATH',
-                                 'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
-                                 'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
-                                 'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
-                                 'python', '-m', 'unittest', '-v',
-                                 'toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest'
-                                 '.test_manifest')
-                finally:
-                    if self.cleanup and self.createCluster:
-                        self._cgcloud('terminate-cluster', 'toil')
-            finally:
-                if self.cleanup and self.createImage:
-                    self._cgcloud('delete-image', 'toil-latest-box')
-
-    @contextmanager
-    def cgcloudVenv(self):
-        path = self._createTempDir(purpose='cgcloud-venv')
-        self._run('virtualenv', path)
-        binPath = os.path.join(path, 'bin')
-        path = os.environ['PATH']
-        os.environ['PATH'] = os.pathsep.join(concat(binPath, path.split(os.pathsep)))
+        if self.createCluster:
+            self._cgcloud('create-cluster',
+                          '--leader-instance-type=' + self.leaderInstanceType,
+                          '--instance-type=' + self.instanceType,
+                          '--num-workers=%i' % (0 if autoScaled else self.numWorkers),
+                          'toil')
         try:
-            yield
+            # Update Toil unless we created a fresh image during setup
+            if not self.createImage:
+                sdistName = os.path.basename(self.sdistPath)
+                self._rsync('-a', 'toil-leader', '-v', self.sdistPath, ':' + sdistName)
+                self._leader('sudo pip install --upgrade %s[aws,mesos]' % sdistName,
+                             admin=True)
+                self._leader('rm', sdistName, admin=True)
+            if self.debugEggPath:
+                self._rsync('toil-leader', '-v', self.debugEggPath, ':')
+            self._leader('virtualenv', '--system-site-packages', '~/venv')
+            toilScripts = urlparse(self.toilScripts)
+            if toilScripts.netloc:
+                self._leader('mkdir toil-scripts'
+                             '; curl -L ' + toilScripts.geturl() +
+                             '| tar -C toil-scripts -xvz --strip-components=1')
+                self._leader('PATH=~/venv/bin:$PATH make -C toil-scripts develop')
+            else:
+                version = toilScripts.path
+                self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
+            toilOptions = ['--batchSystem=mesos',
+                           '--mesosMaster=mesos-master:5050',
+                           '--clean=always']
+            if autoScaled:
+                toilOptions.extend(['--provisioner=cgcloud',
+                                    '--nodeType=' + self.instanceType,
+                                    '--logDebug',
+                                    '--scaleInterval=10'])
+            toilOptions = ' '.join(toilOptions)
+            self._leader('PATH=~/venv/bin:$PATH',
+                         'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
+                         'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
+                         'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
+                         'python', '-m', 'unittest', '-v',
+                         'toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest'
+                         '.test_manifest')
         finally:
-            os.environ['PATH'] = path
+            if self.cleanup and self.createCluster:
+                self._cgcloud('terminate-cluster', 'toil')
 
-    @property
-    def sdistPath(self):
-        return os.path.join(self._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
-
-    def _run(self, *args, **kwargs):
+    @classmethod
+    def _run(cls, *args, **kwargs):
         log.info('Running %r', args)
         try:
             capture = kwargs['capture']
@@ -201,13 +192,15 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             subprocess.check_call(args, **kwargs)
             return None
 
-    def _cgcloud(self, *args):
-        if not self.dryRun:
-            self._run('cgcloud', *args)
+    @classmethod
+    def _cgcloud(cls, *args):
+        if not cls.dryRun:
+            cls._run('cgcloud', *args)
 
     sshOptions = ['-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no']
 
-    def _ssh(self, role, *args, **kwargs):
+    @classmethod
+    def _ssh(cls, role, *args, **kwargs):
         try:
             admin = kwargs['admin']
         except KeyError:
@@ -215,26 +208,31 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         else:
             del kwargs['admin']
 
-        self._cgcloud(
-            *filter(None, concat('ssh', '-a' if admin else None, role, self.sshOptions, args)))
+        cls._cgcloud(
+            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)))
 
-    def _rsync(self, role, *args):
-        self._cgcloud('rsync', '--ssh-opts=' + ' '.join(self.sshOptions), role, *args)
+    @classmethod
+    def _rsync(cls, role, *args):
+        cls._cgcloud('rsync', '--ssh-opts=' + ' '.join(cls.sshOptions), role, *args)
 
-    def _leader(self, *args, **kwargs):
-        self._ssh('toil-leader', *args, **kwargs)
+    @classmethod
+    def _leader(cls, *args, **kwargs):
+        cls._ssh('toil-leader', *args, **kwargs)
 
-    def _checkSourceDistribution(self):
-        self.assertTrue(os.path.isfile(self.sdistPath),
-                        'Cannot find source distribution of Toil (%s)' % self.sdistPath)
-        excluded = set(self._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
-                                 capture=True,
-                                 cwd=self._projectRootPath()).splitlines())
-        dirty = self._run('find', '.', '-type', 'f', '-newer', self.sdistPath,
-                          capture=True,
-                          cwd=self._projectRootPath()).splitlines()
-        self.assertTrue(all(path.startswith('./') for path in dirty))
+    @classmethod
+    def _getSourceDistribution(cls):
+        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
+        assert os.path.isfile(sdistPath), \
+            "Can't find source distribution for Toil at %s." % sdistPath
+        excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
+                                capture=True,
+                                cwd=cls._projectRootPath()).splitlines())
+        dirty = cls._run('find', '.', '-type', 'f', '-newer', sdistPath,
+                         capture=True,
+                         cwd=cls._projectRootPath()).splitlines()
+        assert all(path.startswith('./') for path in dirty)
         dirty = set(path[2:] for path in dirty if not path.startswith('./.git'))
         dirty.difference_update(excluded)
-        self.assertFalse(dirty, "You need to run 'make sdist'. "
-                                "Files newer than %s: %r" % (self.sdistPath, list(dirty)))
+        assert not dirty, \
+            "You need to run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        return sdistPath
