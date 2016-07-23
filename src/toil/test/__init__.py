@@ -20,6 +20,7 @@ import unittest
 import shutil
 import re
 from contextlib import contextmanager
+from unittest.util import strclass
 
 from bd2k.util import less_strict_bool
 from bd2k.util.files import mkdir_p
@@ -45,6 +46,7 @@ class ToilTest(unittest.TestCase):
     """
 
     _tempBaseDir = None
+    _tempDirs = None
 
     @classmethod
     def setUpClass(cls):
@@ -92,11 +94,15 @@ class ToilTest(unittest.TestCase):
         super(ToilTest, self).setUp()
 
     def _createTempDir(self, purpose=None):
-        prefix = ['toil', 'test', self.id()]
-        if purpose: prefix.append(purpose)
+        return self._createTempDirEx(self._testMethodName, purpose)
+
+    @classmethod
+    def _createTempDirEx(cls, *names):
+        prefix = ['toil', 'test', strclass(cls)]
+        prefix.extend(filter(None, names))
         prefix.append('')
-        temp_dir_path = tempfile.mkdtemp(dir=self._tempBaseDir, prefix='-'.join(prefix))
-        self._tempDirs.append(temp_dir_path)
+        temp_dir_path = tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix))
+        cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
 
     def tearDown(self):
@@ -124,6 +130,7 @@ else:
     def _mark_test(name, test_item):
         return MarkDecorator(name)(test_item)
 
+
 def needs_spark(test_item):
     """
     Use as a decorator before test classes or methods to only run them if Spark is usable.
@@ -139,6 +146,7 @@ def needs_spark(test_item):
         raise
     else:
         return test_item
+
 
 def needs_aws(test_item):
     """
@@ -404,6 +412,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     >>> assert f.test_hasOne__num_two() == f.hasOne(2)
 
     """
+
     def pop(d):
         """
         Pops an arbitrary key value pair from the dict
@@ -447,11 +456,13 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
         """
         Generates and inserts test methods.
         """
+
         def fx(self, prms=prms):
             if prms is not None:
                 return generalMethod(self, **prms)
             else:
                 return generalMethod(self)
+
         setattr(targetClass, 'test_%s%s' % (generalMethod.__name__, prmNames), fx)
 
     if len(kwargs) > 0:
