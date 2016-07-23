@@ -156,8 +156,7 @@ class JobBatcher:
 
     def issueJobs(self, jobs):
         """
-        Add a list of jobs, each represented as a tuple of
-        (jobStoreID, memory, cores, disk).
+        Add a list of jobs, each represented as a tuple of (jobStoreID, *resources).
         """
         for jobStoreID, memory, cores, disk, preemptable in jobs:
             self.issueJob(jobStoreID, memory, cores, disk, preemptable)
@@ -874,10 +873,12 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     # Remove the job
                     if jobWrapper.remainingRetryCount > 0:
                         jobBatcher.issueJob(jobWrapper.jobStoreID,
-                                            config.defaultMemory,
-                                            config.defaultCores,
-                                            config.defaultDisk,
-                                            True) #We allow this cleanup to potentially occur on a preemptable instance
+                                            memory=config.defaultMemory,
+                                            cores=config.defaultCores,
+                                            disk=config.defaultDisk,
+                                            # We allow this cleanup to potentially occur on a
+                                            # preemptable instance.
+                                            preemptable=True)
                         logger.debug("Job: %s is empty, we are scheduling to clean it up", jobWrapper.jobStoreID)
                     else:
                         jobBatcher.processTotallyFailedJob(jobWrapper)

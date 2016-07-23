@@ -97,8 +97,8 @@ class MesosBatchSystem(BatchSystemSupport,
         # The Mesos driver used by this scheduler
         self.driver = None
 
-        # A dictionary mapping a node's IP to an Expando object describing important properties
-        # of our executor running on that node. Only an approximation of the truth.
+        # A dictionary mapping a node's IP to an ExecutorInfo object describing important
+        # properties of our executor running on that node. Only an approximation of the truth.
         self.executors = {}
 
         # A set of Mesos slave IDs, one for each slave running on a non-preemptable node. Only an

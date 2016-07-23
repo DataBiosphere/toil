@@ -304,8 +304,8 @@ class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
     The memory attribute is a floating point value between 0 (no memory used) and 1 (all memory
     used), reflecting the memory pressure on the node.
 
-    The workers attribute is a integer reflecting the number workers currently active workers on
-    the node.
+    The workers attribute is an integer reflecting the number of workers currently active workers
+    on the node.
     """
 
 
