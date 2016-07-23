@@ -471,8 +471,8 @@ class FileStore(object):
                             os.remove(fileToDelete)
                         except OSError as err:
                             if err.errno == errno.ENOENT and fileSize == -1:
-                                logger.debug(fileToDelete, 'was read mutably and deleted by '
-                                                           'the user')
+                                logger.debug('%s was read mutably and deleted by the user',
+                                             fileToDelete)
                             else:
                                 raise IllegalDeletionCacheError(fileToDelete)
                     allOwnedFiles[fileToDelete].remove(fileStoreID)
