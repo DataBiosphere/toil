@@ -18,6 +18,7 @@ import logging
 import time
 from threading import Thread, Event, Lock
 
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.common import Config
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.abstractProvisioner import ProvisioningException
@@ -29,6 +30,10 @@ class RunningJobShapes(object):
     """
     Used to track the 'shapes' of the last N jobs run (see Shape).
     """
+
+    # FIXME: use collections.deque instead
+
+    # FIXME: rename to RecentJobShapes
 
     def __init__(self, config, nodeShape, N=1000):
         # As a prior we start of with 10 jobs each with the default memory, cores, and disk. To
@@ -46,7 +51,7 @@ class RunningJobShapes(object):
     def add(self, jobShape):
         """
         Adds a job shape as the last completed job.
-        
+
         :param Shape jobShape: The memory, core and disk requirements of the completed job
         """
         with self.lock:
@@ -68,25 +73,26 @@ class RunningJobShapes(object):
         """
         Use a first fit decreasing (FFD) bin packing like algorithm to calculate an approximate
         minimum number of nodes that will fit the given list of jobs.
-        
+
         :param Shape nodeShape: The properties of an atomic node allocation, in terms of
                wall-time, memory, cores and local disk.
 
         :param list[Shape] jobShapes: A list of shapes, each representing a job.
-        
+
         Let a *node reservation* be an interval of time that a node is reserved for, it is
         defined by an integer number of node-allocations.
-        
-        For a node reservation its *jobs* are the set of jobs that will be run within the 
+
+        For a node reservation its *jobs* are the set of jobs that will be run within the
         node reservation.
-        
+
         A minimal node reservation has time equal to one atomic node allocation, or the minimum
         number node allocations to run the longest running job in its jobs.
-        
+
         :rtype: int
         :returns: The minimum number of minimal node allocations estimated to be required to run
                   all the jobs in jobShapes.
         """
+        logger.debug("Running bin packing for node shape %s and %i jobs", nodeShape, len(jobShapes))
         # Sort in ascending order. The FFD like-strategy will schedule the jobs in order from
         # longest to shortest.
         jobShapes.sort()
@@ -121,9 +127,8 @@ class RunningJobShapes(object):
 
                 # Used to partition a node allocation into two
                 def split(x, y, t):
-                    return (
-                        Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk),
-                        NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk)))
+                    return (Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk),
+                            NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk)))
 
                 i = 0
                 while True:
@@ -175,9 +180,7 @@ class RunningJobShapes(object):
 
             addToReservation()
 
-        logger.debug("Ran bin packing algorithm, for node shape: "
-                     "%s needed %s nodes for %s jobs" % (nodeShape,
-                                                         len(nodeReservations), len(jobShapes)))
+        logger.debug("Done running bin packing, need %i node(s).", len(nodeReservations))
 
         return len(nodeReservations)
 
@@ -185,7 +188,7 @@ class RunningJobShapes(object):
 class ClusterScaler(object):
     def __init__(self, provisioner, jobBatcher, config):
         """
-        Class manages automatically scaling the number of worker nodes. 
+        Class manages automatically scaling the number of worker nodes.
 
         :param AbstractProvisioner provisioner: The provisioner instance to scale.
 
@@ -210,6 +213,7 @@ class ClusterScaler(object):
             self.preemptableScaler = Thread(target=self._scaler, args=args)
             self.preemptableScaler.start()
         else:
+            self.preemptableRunningJobShape = None
             self.preemptableScaler = None
 
         # Create scaling process for non-preemptable nodes
@@ -223,6 +227,7 @@ class ClusterScaler(object):
             self.scaler = Thread(target=self._scaler, args=args)
             self.scaler.start()
         else:
+            self.runningJobShape = None
             self.scaler = None
 
     def shutdown(self):
@@ -239,7 +244,7 @@ class ClusterScaler(object):
         """
         Adds the shape of a completed job to the queue, allowing the scalar to use the last N
         completed jobs in factoring how many nodes are required in the cluster.
-        
+
         :param IssuedJob issuedJob: The memory, core and disk requirements of the completed job
 
         :param int wallTime: The wall-time taken to complete the job in seconds.
@@ -248,26 +253,26 @@ class ClusterScaler(object):
                   memory=issuedJob.memory,
                   cores=issuedJob.cores,
                   disk=issuedJob.disk)
-        if issuedJob.preemptable:
+        if issuedJob.preemptable and self.preemptableRunningJobShape is not None:
             self.preemptableRunningJobShape.add(s)
         else:
             self.runningJobShape.add(s)
 
     @staticmethod
     def _scaler(provisioner, jobBatcher,
-               minNodes, maxNodes, runningJobShapes,
-               config, nodeShape,
-               stop, error, preemptable):
+                minNodes, maxNodes, runningJobShapes,
+                config, nodeShape,
+                stop, error, preemptable):
         """
         Automatically scales the number of worker nodes according to the number of jobs queued
         and the resource requirements of the last N completed jobs.
-        
+
         The scaling calculation is essentially as follows: Use the RunningJobShapes instance to
         calculate how many nodes, n, can be used to productively compute the last N completed
         jobs. Let M be the number of jobs issued to the batch system. The number of nodes
         required is then estimated to be alpha * n * M/N, where alpha is a scaling factor used to
         adjust the balance between under- and over- provisioning the cluster.
-        
+
         At each scaling decision point a comparison between the current, C, and newly estimated
         number of nodes is made. If the absolute difference is less than beta * C then no change
         is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
@@ -300,23 +305,28 @@ class ClusterScaler(object):
                non-preemptable nodes.
         """
         try:
-            totalNodes = minNodes
+            if isinstance(jobBatcher.batchSystem, AbstractScalableBatchSystem):
+                totalNodes = len(jobBatcher.batchSystem.getNodes(preemptable))
+            else:
+                totalNodes = 0
+
             # Setup a minimal cluster
-            if minNodes > 0:
+            if minNodes > totalNodes:
                 try:
-                    provisioner.addNodes(numNodes=minNodes, preemptable=preemptable)
-                except ProvisioningException as e:
-                    logger.debug("We tried to create a minimal cluster of %s nodes,"
-                                 " but got a provisioning exception: %s" % (minNodes, e))
+                    provisioner.addNodes(numNodes=minNodes - totalNodes, preemptable=preemptable)
+                except ProvisioningException:
+                    logger.exception("We tried to create a minimal cluster of %s nodes, but got a "
+                                     "provisioning exception:", minNodes)
                     raise
+                else:
+                    totalNodes = minNodes
 
-            # The scaling loop iterated until we get the stop signal
             while True:
-
                 # Check if we've got the cleanup signal       
                 if stop.is_set():  # Cleanup logic
                     try:
-                        provisioner.removeNodes(totalNodes, preemptable=preemptable)
+                        logger.info('Asking provisioner to remove all %i nodes.', int(totalNodes))
+                        provisioner.removeNodes(int(totalNodes), preemptable=preemptable)
                     except ProvisioningException as e:
                         logger.debug("We tried to stop the worker nodes (%s total) but got a "
                                      "provisioning exception: %s" % (totalNodes, e))
@@ -366,20 +376,21 @@ class ClusterScaler(object):
                 if nodesDelta != 0:
                     # Adjust the number of nodes in the cluster
                     try:
+                        nodesDelta = int(nodesDelta)
+                        logger.info('%s %i worker nodes %s the %s cluster',
+                                    ('Adding' if nodesDelta > 0 else 'Removing'),
+                                    abs(nodesDelta),
+                                    ('to' if nodesDelta > 0 else 'from'),
+                                    'preemptable' if preemptable else 'non-preemptable')
                         if nodesDelta > 0:
-                            provisioner.addNodes(numNodes=int(nodesDelta),
-                                                 preemptable=preemptable)
+                            provisioner.addNodes(numNodes=nodesDelta, preemptable=preemptable)
                         else:
-                            provisioner.removeNodes(numNodes=abs(int(nodesDelta)),
-                                                    preemptable=preemptable)
+                            provisioner.removeNodes(numNodes=-nodesDelta, preemptable=preemptable)
                         totalNodes += nodesDelta
-                        logger.debug("%s %s worker nodes %s the (preemptable: %s) cluster",
-                                     ("Added" if nodesDelta > 0 else "Removed"), abs(nodesDelta),
-                                     preemptable, ("from" if nodesDelta > 0 else "to"))
-                    except ProvisioningException as e:
-                        logger.debug("We tried to %s %s worker nodes but got a provisioning "
-                                     "exception: %s", "add" if nodesDelta > 0 else "remove",
-                                     abs(nodesDelta), e)
+                    except ProvisioningException:
+                        logger.exception('We tried to %s %s worker nodes but got a provisioning '
+                                         'exception: %s', "add" if nodesDelta > 0 else "remove",
+                                         abs(nodesDelta))
                 # FIXME: addNodes() and removeNodes() block, so only wait the difference
                 # Sleep to avoid thrashing
                 time.sleep(config.scaleInterval)

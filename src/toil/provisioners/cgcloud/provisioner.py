@@ -1,3 +1,4 @@
+import datetime
 import logging
 import re
 import time
@@ -5,16 +6,21 @@ from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize
+from bd2k.util import memoize, parse_iso_utc
 from boto.ec2.instance import Instance
 from cgcloud.lib.ec2 import (ec2_instance_types,
                              create_spot_instances,
-                             create_ondemand_instances, tag_object_persistently)
-from cgcloud.lib.util import allocate_cluster_ordinals, thread_pool
+                             create_ondemand_instances,
+                             tag_object_persistently)
+from cgcloud.lib.util import (allocate_cluster_ordinals,
+                              thread_pool)
+from itertools import islice
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, AbstractBatchSystem
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
+                                                   Shape)
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +96,7 @@ class CGCloudProvisioner(AbstractProvisioner):
                     security_group_ids=self._securityGroupIds,
                     ebs_optimized=self.ebsOptimized,
                     dry_run=False)
-        instances = list(self._getAllInstances())  # includes master
+        instances = list(self._getAllInstances())  # includes leader
         used_cluster_ordinals = {int(i.tags['cluster_ordinal']) for i in instances}
         assert len(used_cluster_ordinals) == len(instances)  # check for collisions
         cluster_ordinal = allocate_cluster_ordinals(num=numNodes, used=used_cluster_ordinals)
@@ -107,6 +113,8 @@ class CGCloudProvisioner(AbstractProvisioner):
                 yield create_ondemand_instances(self._ec2, self.imageId, spec,
                                                 num_instances=numNodes)
 
+        nodeAddresses = set()
+
         def handleInstance(instance):
             log.debug('Tagging instance %s.', instance.id)
             leader_tags = self._instance.tags
@@ -114,53 +122,76 @@ class CGCloudProvisioner(AbstractProvisioner):
             tag_object_persistently(instance, dict(leader_tags,
                                                    Name=name,
                                                    cluster_ordinal=next(cluster_ordinal)))
-            instances.add(instance.private_ip_address)
+            nodeAddresses.add(instance.private_ip_address)
 
-        instances = set()
-        with thread_pool(10) as pool:  # 10 concurrent requests
+        # Each instance gets a different ordinal so we can't tag an entire batch at once but
+        # instance have to tag each instance individually. It needs to be done quickly because
+        # the tags are crucial for the boot code running inside the instance to join the cluster.
+        # Hence we do it in a thread pool. If the pool is too large, we'll hit the EC2 limit on
+        # the number of of concurrent requests. If it is too small, we won't be able to tag all
+        # instances in time.
+        with thread_pool(min(numNodes, 32)) as pool:
             for batch in createInstances():
                 log.debug('Got a batch of %i instance(s).', len(batch))
                 for instance in batch:
                     pool.apply_async(handleInstance, (instance,))
 
-        log.info('Created and tagged %i instances.', len(instances))
-        # If the batch system is scalable, we can use it to wait for the nodes to join the cluster
+        numNodesAdded = len(nodeAddresses)
+        log.info('Created and tagged %i instances.', numNodesAdded)
+
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            while instances:
-                log.info('Waiting for batch system to report back %i node(s).', len(instances))
-                numNodes = self.batchSystem.getNodes()
-                for address in numNodes.keys():
-                    instances.remove(address)
+            while nodeAddresses:
+                log.debug('Waiting for batch system to report back %i node(s).', len(nodeAddresses))
+                # Get all nodes to be safe, not just the ones whose preemptability matches,
+                # in case there's a problem with a node determining its own preemptability.
+                nodes = self.batchSystem.getNodes()
+                nodeAddresses.difference_update(nodes.iterkeys())
                 time.sleep(10)
+            log.info('All %i nodes have joined the cluster.', numNodesAdded)
+        else:
+            log.warn("Can't wait for nodes to join the cluster since batch system isn't scalable.")
+
+    def _partialBillingInterval(self, instance):
+        """
+        Returns a floating point value between 0 and 1.0 representing how far we are into the
+        current billing cycle for the given instance. If the return value is .25, we are one
+        quarter into the billing cycle, with three quarters remaining before we will be charged
+        again for that instance.
+        """
+        launch_time = parse_iso_utc(instance.launch_time)
+        now = datetime.datetime.utcnow()
+        delta = now - launch_time
+        return delta.total_seconds() / 3600.0 % 1.0
 
     def removeNodes(self, numNodes=1, preemptable=False):
+        instances = (i for i in self._getAllInstances()
+                     if i.id != self._instanceId  # disregard leader
+                     and preemptable != i.spot_instance_request_id is None)
         # If the batch system is scalable, we can use the number of currently running workers on
-        # each node as the primary criterion to select which nodes to terminate. Otherwise,
-        # we terminate the oldest nodes.
-        instances = self._getAllInstances()
+        # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            # Index instances by private IP address
-            instances = {instance.private_ip_address: instance for instance in instances}
-            nodeLoad = self.batchSystem.getNodes(preemptable)
-            # Join nodes and instances on private IP address
-            nodes = [(nodeAddress, instances.get(nodeAddress), nodeInfo)
-                     for nodeAddress, nodeInfo in nodeLoad.iteritems()]
-
-            # Sort by # of workers, then CPU load and inverse instance age
-            def by_load_and_youth((nodeAddress, instance, nodeInfo )):
-                return nodeInfo.workers, nodeInfo.cores, instance.launchTime if instance else 0
-
-            nodes.sort(key=by_load_and_youth)
+            nodes = self.batchSystem.getNodes(preemptable)
+            # Join nodes and instances on private IP address. It is possible for the batch system
+            # to report stale nodes for which the corresponding instance was terminated already.
+            # There can also be instances that the batch system doesn't have nodes for yet.
+            nodes = [(instance, nodes.get(instance.private_ip_address))
+                     for instance in instances]
+            # Sort instances by # of workers and time left in billing cycle. Assume zero workers
+            # if the node info is missing. In the case of the Mesos batch system this can happen
+            # if 1) the node hasn't been discovered yet or 2) a node was first discovered through
+            #  an offer rather than a framework message. This is an acceptable approximation
+            # since the node is likely to be new.
+            nodes.sort(key=lambda (instance, nodeInfo): (
+                nodeInfo.workers if nodeInfo else 0,
+                1.0 - self._partialBillingInterval(instance)))
+            instanceIds = [instance.id for instance, nodeInfo in islice(nodes, numNodes)]
         else:
-            nodes = [(instance.private_ip_address, instance, None) for instance in instances]
-
-            def by_youth((nodeAddress, instance, nodeInfo )):
-                return instance.launch_time, nodeAddress
-
-            nodes.sort(key=by_youth)
-        assert numNodes <= len(nodes)
-        nodes = nodes[:numNodes]
-        instanceIds = [instance.id for nodeAddress, instance, nodeInfo in nodes]
+            # Without load info all we can do is sort instances by time left in billing cycle.
+            instances = sorted(instances,
+                               key=lambda instance: 1.0 - self._partialBillingInterval(instance))
+            instanceIds = [instance.id for instance in islice(instances, numNodes)]
+        log.info('Terminating %i instances.', len(instanceIds))
+        log.debug('IDs of terminated instances: %r', instanceIds)
         self._ec2.terminate_instances(instance_ids=instanceIds)
 
     def getNumberOfNodes(self, preemptable=False):
@@ -177,6 +208,8 @@ class CGCloudProvisioner(AbstractProvisioner):
 
     def _getAllInstances(self):
         """
+        ... including the leader.
+
         :rtype: Iterable[Instance]
         """
         return self._ec2.get_only_instances(filters={
@@ -266,6 +299,7 @@ class CGCloudProvisioner(AbstractProvisioner):
     @memoize
     def ebsOptimized(self):
         return self._instance.ebs_optimized
+
 
 """ Demo:
 cd ~/workspace/bd2k/toil

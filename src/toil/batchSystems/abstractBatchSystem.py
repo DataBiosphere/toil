@@ -317,13 +317,13 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable=False):
+    def getNodes(self, preemptable=None):
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
 
-        :param bool preemptable: If True only preemptable nodes will be returned. Otherwise
-        non-preemptable nodes will be returned.
+        :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
+               If None, all nodes will be returned.
 
         :rtype: dict[str,NodeInfo]
         """
