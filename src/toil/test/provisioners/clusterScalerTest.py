@@ -26,7 +26,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
                                                    AbstractBatchSystem)
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
+from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
 from toil.batchSystems.jobDispatcher import IssuedJob
 
@@ -62,7 +62,7 @@ class ClusterScalerTest(ToilTest):
             numberOfJobs = random.choice(range(1, 1000))
             randomJobShapes = map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs))
             startTime = time.time()
-            numberOfBins = RunningJobShapes.binPacking(randomJobShapes, nodeShape)
+            numberOfBins = binPacking(randomJobShapes, nodeShape)
             logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds",
                         nodeShape, numberOfJobs, numberOfBins, time.time() - startTime)
 
@@ -100,10 +100,9 @@ class ClusterScalerTest(ToilTest):
         logger.info("Waiting for jobs to be processed")
         startTime = time.time()
         # Wait while the cluster the process chunks through the jobs
-        while (mock.getNumberOfJobsIssued(preemptable=False) > 0 or
-                       mock.getNumberOfJobsIssued(preemptable=True) > 0 or
-                       mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(
-            preemptable=True) > 0):
+        while (mock.getNumberOfJobsIssued(preemptable=False) > 0
+               or mock.getNumberOfJobsIssued(preemptable=True) > 0
+               or mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(preemptable=True) > 0):
             logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s, "
                         "preemptable queue size: %s, preemptable workers: %s",
                         mock.getNumberOfJobsIssued(preemptable=False),
@@ -179,6 +178,7 @@ class ClusterScalerTest(ToilTest):
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100)
 
 
+# noinspection PyAbstractClass
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
     """
     Mimics a job batcher, provisioner and scalable batch system
