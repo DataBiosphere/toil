@@ -243,7 +243,7 @@ that performs merge-sort on a temporary file.
             if int(options.N) <= 0:
                 raise RuntimeError("Invalid value of N: %s" % options.N)
 
-            make_file_to_srt(file_name='file_to_sort.txt', lines=options.num_lines, line_length=options.line_length)
+            make_file_to_sort(file_name='file_to_sort.txt', lines=options.num_lines, line_length=options.line_length)
 
             # Now we are ready to run
             Job.Runner.startToil(Job.wrapJobFn(setup, 'file_to_sort.txt', int(options.N), False,
