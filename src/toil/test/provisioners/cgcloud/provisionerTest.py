@@ -177,8 +177,7 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             if autoScaled:
                 toilOptions.extend(['--provisioner=cgcloud',
                                     '--nodeType=' + self.instanceType,
-                                    '--logDebug',
-                                    '--scaleInterval=10'])
+                                    '--logDebug'])
             toilOptions = ' '.join(toilOptions)
             self._leader('PATH=~/venv/bin:$PATH',
                          'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,

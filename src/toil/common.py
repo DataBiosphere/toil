@@ -76,7 +76,7 @@ class Config(object):
         self.maxPreemptableNodes = 0
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
-        self.scaleInterval = 360
+        self.scaleInterval = 10
 
         #Resource requirements
         self.defaultMemory = 2147483648
