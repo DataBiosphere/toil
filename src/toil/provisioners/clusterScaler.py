@@ -88,7 +88,7 @@ def binPacking(jobShapes, nodeShape):
     :returns: The minimum number of minimal node allocations estimated to be required to run all
               the jobs in jobShapes.
     """
-    logger.debug('Running bin packing for node shape %s and %i job(s).', nodeShape, len(jobShapes))
+    logger.debug('Running bin packing for node shape %s and %s job(s).', nodeShape, len(jobShapes))
     # Sort in ascending order. The FFD like-strategy will schedule the jobs in order from longest
     # to shortest.
     jobShapes.sort()
@@ -183,7 +183,7 @@ def binPacking(jobShapes, nodeShape):
                 i += 1
 
         addToReservation()
-    logger.debug("Done running bin packing for node shape %s and %i job(s) resulting in %i node "
+    logger.debug("Done running bin packing for node shape %s and %s job(s) resulting in %s node "
                  "reservations.", nodeShape, len(jobShapes), len(nodeReservations))
     return len(nodeReservations)
 
@@ -288,6 +288,7 @@ class ScalerThread(Thread):
                 totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
             else:
                 totalNodes = 0
+            logger.info('Starting with cluster of %s node(s).', totalNodes)
             while not self.scaler.stop:
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
@@ -303,15 +304,16 @@ class ScalerThread(Thread):
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
-                logger.debug('Estimating cluster needs %s, node shape: %s, current worker nodes: '
-                             '%s, queue size: %s, jobs/node estimated required: %s, alpha: %s',
+                logger.debug('Estimating that cluster needs %s nodes of shape %s, from current '
+                             'size of %s, given a queue size of %s, the number of jobs per node '
+                             'estimated to be %s and an alpha parameter of %s.',
                              estimatedNodes, self.nodeShape, totalNodes, queueSize, fix_my_name,
                              self.scaler.config.alphaPacking)
 
                 # Use inertia parameter to stop small fluctuations
                 if estimatedNodes <= totalNodes * self.scaler.config.betaInertia <= estimatedNodes:
-                    logger.debug('Difference in new (%s) and previous estimates of number of '
-                                 'nodes (%s) required is within beta (%s), making no change',
+                    logger.debug('Difference in new (%s) and previous estimates in number of '
+                                 'nodes (%s) required is within beta (%s), making no change.',
                                  estimatedNodes, totalNodes, self.scaler.config.betaInertia)
                     estimatedNodes = totalNodes
 
@@ -326,19 +328,15 @@ class ScalerThread(Thread):
                     estimatedNodes = self.minNodes
 
                 if estimatedNodes != totalNodes:
-                    nodesDelta = estimatedNodes - totalNodes
-                    logger.info('%s %i worker nodes %s the %s cluster',
-                                ('Adding' if nodesDelta > 0 else 'Removing'),
-                                abs(nodesDelta),
-                                ('to' if nodesDelta > 0 else 'from'),
-                                'preemptable' if self.preemptable else 'non-preemptable')
+                    logger.info('Changing number of %spreemptable worker nodes from %s to %s.',
+                                '' if self.preemptable else 'non-', totalNodes, estimatedNodes)
                     totalNodes = self.scaler.provisioner.setNodeCount(numNodes=estimatedNodes,
                                                                       preemptable=self.preemptable)
                 # FIXME: setNodeCount() blocks, so only wait the difference
                 time.sleep(self.scaler.config.scaleInterval)
             logger.info('Asking provisioner to reduce cluster size to zero.')
-            actualNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
-            if actualNodes != 0:
+            totalNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
+            if totalNodes != 0:
                 # TODO: should we raise here?
                 logger.warn('Provisioner was not able to reduce cluster size to zero.')
         except:
