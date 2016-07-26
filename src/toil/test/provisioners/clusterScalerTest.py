@@ -191,6 +191,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.config = config
         self.secondsPerJob = secondsPerJob
         self.delegates = [self.Delegate(), self.Delegate()]
+        self.batchSystem = self
 
     def _pick(self, preemptable=False):
         """
@@ -224,11 +225,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getNodeShape(self, preemptable=False):
         return self.config.preemptableNodeType if preemptable else self.config.nodeType
 
-    def addNodes(self, numNodes=1, preemptable=False):
-        self._pick(preemptable).addNodes(numNodes=numNodes)
+    def setNodeCount(self, numNodes, preemptable=False):
+        return self._pick(preemptable).setNodeCount(numNodes=numNodes)
 
-    def removeNodes(self, numNodes=1, preemptable=False):
-        self._pick(preemptable).removeNodes(numNodes=numNodes)
+    # FIXME: Not part of AbstractScalableBatchSystem but used by the tests
 
     def getNumberOfNodes(self, preemptable=False):
         return self._pick(preemptable).getNumberOfNodes()
@@ -270,7 +270,16 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
         # AbstractProvisioner functionality
 
-        def addNodes(self, numNodes=1):
+        def setNodeCount(self, numNodes):
+            delta = numNodes - len(self.workers)
+            if delta > 0:
+                self._addNodes(numNodes=delta)
+            elif delta < 0:
+                self._removeNodes(numNodes=-delta)
+            assert len(self.workers) == numNodes
+            return numNodes
+
+        def _addNodes(self, numNodes):
             class Worker(object):
                 def __init__(self, jobQueue, secondsPerJob):
                     self.busyEvent = Event()
@@ -302,7 +311,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             if len(self.workers) > self.maxWorkers:
                 self.maxWorkers = len(self.workers)
 
-        def removeNodes(self, numNodes=1):
+        def _removeNodes(self, numNodes):
             while len(self.workers) > 0 and numNodes > 0:
                 worker = self.workers.pop()
                 self.totalWorkerTime += worker.stop()

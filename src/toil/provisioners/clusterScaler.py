@@ -24,7 +24,6 @@ from bd2k.util.exceptions import require
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.common import Config
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.abstractProvisioner import ProvisioningException
 
 logger = logging.getLogger(__name__)
 
@@ -289,44 +288,18 @@ class ScalerThread(Thread):
                 totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
             else:
                 totalNodes = 0
-
-            # Setup a minimal cluster
-            if self.minNodes > totalNodes:
-                try:
-                    self.scaler.provisioner.addNodes(numNodes=self.minNodes - totalNodes,
-                                                     preemptable=self.preemptable)
-                except ProvisioningException:
-                    logger.exception("We tried to create a minimal cluster of %s nodes, but got a "
-                                     "provisioning exception:", self.minNodes)
-                    raise
-                else:
-                    totalNodes = self.minNodes
-
-            while True:
-                if self.scaler.stop:
-                    try:
-                        logger.info('Asking provisioner to remove all %i nodes.', int(totalNodes))
-                        self.scaler.provisioner.removeNodes(int(totalNodes),
-                                                            preemptable=self.preemptable)
-                    except ProvisioningException as e:
-                        logger.debug("We tried to stop the worker nodes (%s total) but got a "
-                                     "provisioning exception: %s" % (totalNodes, e))
-                        raise
-                    logger.debug("Scalar (preemptable=%s) exiting normally" % self.preemptable)
-                    break
-
+            while not self.scaler.stop:
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
                 queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued()
                 recentJobShapes = self.jobShapes.get()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = binPacking(recentJobShapes, self.nodeShape)
-                estimatedNodes = 0 if queueSize == 0 else max(1, round(
+                estimatedNodes = 0 if queueSize == 0 else max(1, int(round(
                     self.scaler.config.alphaPacking
                     * nodesToRunRecentJobs
                     * float(queueSize)
-                    / len(recentJobShapes)))
-                nodesDelta = estimatedNodes - totalNodes
+                    / len(recentJobShapes))))
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
@@ -337,48 +310,40 @@ class ScalerThread(Thread):
 
                 # Use inertia parameter to stop small fluctuations
                 if estimatedNodes <= totalNodes * self.scaler.config.betaInertia <= estimatedNodes:
-                    logger.debug("Difference in new (%s) and previous estimates of number of "
-                                 "nodes (%s) required is within beta (%s), making no change",
+                    logger.debug('Difference in new (%s) and previous estimates of number of '
+                                 'nodes (%s) required is within beta (%s), making no change',
                                  estimatedNodes, totalNodes, self.scaler.config.betaInertia)
-                    nodesDelta = 0
+                    estimatedNodes = totalNodes
 
                 # Bound number using the max and min node parameters
-                if nodesDelta + totalNodes > self.maxNodes:
-                    logger.debug("The number of nodes estimated we need (%s) is larger than the "
-                                 "max allowed (%s).", nodesDelta + totalNodes, self.maxNodes)
-                    assert nodesDelta > 0
-                    nodesDelta -= totalNodes + nodesDelta - self.maxNodes
-                    assert nodesDelta >= 0
-                elif nodesDelta + totalNodes < self.minNodes:
-                    logger.debug("The number of nodes estimated we need (%s) is smaller than the "
-                                 "min allowed (%s).", nodesDelta + totalNodes, self.minNodes)
-                    assert nodesDelta < 0
-                    nodesDelta += self.minNodes - totalNodes - nodesDelta
-                    assert nodesDelta <= 0
+                if estimatedNodes > self.maxNodes:
+                    logger.info('Limiting the estimated number of necessary nodes (%s) to the '
+                                'configured maximum (%s).', estimatedNodes, self.maxNodes)
+                    estimatedNodes = self.maxNodes
+                elif estimatedNodes < self.minNodes:
+                    logger.info('Raising the estimated number of necessary nodes (%s) to the '
+                                'configured mininimum (%s).', estimatedNodes, self.minNodes)
+                    estimatedNodes = self.minNodes
 
-                if nodesDelta != 0:
-                    # Adjust the number of nodes in the cluster
-                    try:
-                        nodesDelta = int(nodesDelta)
-                        logger.info('%s %i worker nodes %s the %s cluster',
-                                    ('Adding' if nodesDelta > 0 else 'Removing'),
-                                    abs(nodesDelta),
-                                    ('to' if nodesDelta > 0 else 'from'),
-                                    'preemptable' if self.preemptable else 'non-preemptable')
-                        if nodesDelta > 0:
-                            self.scaler.provisioner.addNodes(numNodes=nodesDelta,
-                                                             preemptable=self.preemptable)
-                        else:
-                            self.scaler.provisioner.removeNodes(numNodes=-nodesDelta,
-                                                                preemptable=self.preemptable)
-                        totalNodes += nodesDelta
-                    except ProvisioningException:
-                        logger.exception('We tried to %s %s worker nodes but got a provisioning '
-                                         'exception: %s', "add" if nodesDelta > 0 else "remove",
-                                         abs(nodesDelta))
-                # FIXME: addNodes() and removeNodes() block, so only wait the difference
-                # Sleep to avoid thrashing
+                if estimatedNodes != totalNodes:
+                    nodesDelta = estimatedNodes - totalNodes
+                    logger.info('%s %i worker nodes %s the %s cluster',
+                                ('Adding' if nodesDelta > 0 else 'Removing'),
+                                abs(nodesDelta),
+                                ('to' if nodesDelta > 0 else 'from'),
+                                'preemptable' if self.preemptable else 'non-preemptable')
+                    totalNodes = self.scaler.provisioner.setNodeCount(numNodes=estimatedNodes,
+                                                                      preemptable=self.preemptable)
+                # FIXME: setNodeCount() blocks, so only wait the difference
                 time.sleep(self.scaler.config.scaleInterval)
+            logger.info('Asking provisioner to reduce cluster size to zero.')
+            actualNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
+            if actualNodes != 0:
+                # TODO: should we raise here?
+                logger.warn('Provisioner was not able to reduce cluster size to zero.')
         except:
+            # FIXME: use ExceptionalThread from BPL
             self.scaler.error = True
             raise
+        else:
+            logger.info("Scaler thread (preemptable=%s) exited normally." % self.preemptable)

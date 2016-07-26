@@ -30,15 +30,6 @@ node) in RAM or on disk (SSD or HDD), respectively.
 """
 
 
-class ProvisioningException(Exception):
-    """
-    A general provisioning exception.
-    """
-
-    def __init__(self, message):
-        super(ProvisioningException, self).__init__(message)
-
-
 class AbstractProvisioner(object):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
@@ -48,54 +39,31 @@ class AbstractProvisioner(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def addNodes(self, numNodes=1, preemptable=False):
+    def setNodeCount(self, numNodes, preemptable=False):
         """
-        Add worker nodes to the set of worker nodes. The function must block while the nodes are
-        being provisioned. It should to fail atomically, i.e. it should either add the requested
-        number of nodes or none at all.
+        Attempt to grow or shrink the number of prepemptable or non-preemptable worker nodes in
+        the cluster to the given value, or as close a value as possible, and, after performing
+        the necessary additions or removals of worker nodes, return the resulting number of
+        preemptable or non-preemptable nodes currently in the cluster.
 
         :param int numNodes: Number of nodes to add.
 
-        :param bool preemptable: whether the added nodes will be preemptable, i.e. if they may be
-               removed spontaneously by the underlying platform at any time.
-        
-        :raise ProvisioningException: If worker nodes can not be added.
-        """
-        raise NotImplementedError()
+        :param bool preemptable: whether the added nodes will be preemptable, i.e. whether they
+               may be removed spontaneously by the underlying platform at any time.
 
-    @abstractmethod
-    def removeNodes(self, numNodes=1, preemptable=False):
-        """
-        Removes worker nodes from the set of worker nodes. The function must block while the
-        nodes are being removed. It should to fail atomically, i.e. it should either add the
-        requested number of nodes or none at all.
-
-        :param int numNodes: Number of nodes to remove.
-
-        :param bool preemptable: if True, preemptable nodes will be removed,
-               otherwise non-preemptable nodes will be removed.
-
-        :raise ProvisioningException: If worker nodes can not be removed.
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def getNumberOfNodes(self, preemptable=False):
-        """
-        The total number of worker nodes in the cluster.
-
-        :param boolean preemptable: If True the return value is the number of preemptable workers
-               in the cluster, else is number of non-preemptable workers.
-
-        :rtype: int
+        :rtype: int :return: the number of nodes in the cluster after making the necessary
+                adjustments. This value should be, but is not guaranteed to be, close or equal to
+                the `numNodes` argument. It represents the closest possible approximation of the
+                actual cluster size at the time this method returns.
         """
         raise NotImplementedError()
 
     @abstractmethod
     def getNodeShape(self, preemptable=False):
         """
-        The shape of a node managed by this provisioner. The node shape defines key properties of
-        a machine, such as its number of cores or the time between billing intervals.
+        The shape of a preemptable or non-preemptable node managed by this provisioner. The node
+        shape defines key properties of a machine, such as its number of cores or the time
+        between billing intervals.
 
         :param preemptable: Whether to return the shape of preemptable nodes or that of
                non-preemptable ones.

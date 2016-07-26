@@ -38,9 +38,11 @@ from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
 
 log = logging.getLogger(__name__)
 
-
-def switch(false, true):
-    return {False: false, True: true}
+# The maximum time to allow for instance creation and nodes joining the cluster. Note that it may
+# take twice that time to provision preemptable instances since the timeout is reset after spot
+# instance creation.
+#
+provisioning_timeout = 10 * 60
 
 
 class CGCloudProvisioner(AbstractProvisioner):
@@ -53,12 +55,12 @@ class CGCloudProvisioner(AbstractProvisioner):
     * It is running the leader node, i.e. the EC2 instance that's running the Mesos master
       process and the Toil leader process.
 
-    * The leader node was recreated from a toil-box image using cgcloud.
+    * The leader node was recreated from a toil-box image using CGCloud.
 
     * The version of cgcloud used to create the toil-box image is compatible with the one this
       provisioner, and therefore Toil depend on.
 
-    * The SSH keypair, security group and userData applied to the leader also apply to the workers
+    * The SSH keypair, security group and user data applied to the leader also apply to the workers
 
     * An instance type with ephemeral volumes is being used (it asserts that assumption)
     """
@@ -81,7 +83,7 @@ class CGCloudProvisioner(AbstractProvisioner):
                 preemptableInstanceType, self.spotBid = None, None
         else:
             raise RuntimeError('Must pass --nodeType when using the cgcloud provisioner')
-        self.instanceType = switch(instanceType, preemptableInstanceType)
+        self.instanceType = {False: instanceType, True: preemptableInstanceType}
         # TODO: assert that leader has same number of ephemeral drives as workers or user_data won't match!!!
 
     @staticmethod
@@ -102,7 +104,29 @@ class CGCloudProvisioner(AbstractProvisioner):
             else:
                 return instanceType
 
-    def addNodes(self, numNodes=1, preemptable=False):
+    def setNodeCount(self, numNodes, preemptable=False):
+        instances = list(self._getAllRunningInstances())
+        workerInstances = [i for i in instances
+                           if i.id != self._instanceId  # exclude leader
+                           and preemptable != i.spot_instance_request_id is None]
+        numCurrentNodes = len(workerInstances)
+        delta = numNodes - numCurrentNodes
+        if delta > 0:
+            log.info('Adding %i nodes to get to desired cluster size of %i.', delta, numNodes)
+            numNodes = numCurrentNodes + self._addNodes(instances,
+                                                        numNodes=delta,
+                                                        preemptable=preemptable)
+        elif delta < 0:
+            log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
+            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
+                                                           numNodes=-delta,
+                                                           preemptable=preemptable)
+        else:
+            log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
+        return numNodes
+
+    def _addNodes(self, instances, numNodes, preemptable=False):
+        deadline = time.time() + provisioning_timeout
         spec = dict(key_name=self._keyName,
                     user_data=self._userData(),
                     instance_type=self.instanceType[preemptable].name,
@@ -110,7 +134,6 @@ class CGCloudProvisioner(AbstractProvisioner):
                     security_group_ids=self._securityGroupIds,
                     ebs_optimized=self.ebsOptimized,
                     dry_run=False)
-        instances = list(self._getAllInstances())  # includes leader
         used_cluster_ordinals = {int(i.tags['cluster_ordinal']) for i in instances}
         assert len(used_cluster_ordinals) == len(instances)  # check for collisions
         cluster_ordinal = allocate_cluster_ordinals(num=numNodes, used=used_cluster_ordinals)
@@ -121,13 +144,14 @@ class CGCloudProvisioner(AbstractProvisioner):
             """
             if preemptable:
                 for batch in create_spot_instances(self._ec2, self.spotBid, self.imageId, spec,
-                                                   num_instances=numNodes):
+                                                   num_instances=numNodes,
+                                                   timeout=deadline - time.time()):
                     yield batch
             else:
                 yield create_ondemand_instances(self._ec2, self.imageId, spec,
                                                 num_instances=numNodes)
 
-        nodeAddresses = set()
+        instancesByAddress = {}
 
         def handleInstance(instance):
             log.debug('Tagging instance %s.', instance.id)
@@ -136,34 +160,45 @@ class CGCloudProvisioner(AbstractProvisioner):
             tag_object_persistently(instance, dict(leader_tags,
                                                    Name=name,
                                                    cluster_ordinal=next(cluster_ordinal)))
-            nodeAddresses.add(instance.private_ip_address)
+            instancesByAddress[instance.private_ip_address] = instance
 
-        # Each instance gets a different ordinal so we can't tag an entire batch at once but
-        # instance have to tag each instance individually. It needs to be done quickly because
-        # the tags are crucial for the boot code running inside the instance to join the cluster.
-        # Hence we do it in a thread pool. If the pool is too large, we'll hit the EC2 limit on
-        # the number of of concurrent requests. If it is too small, we won't be able to tag all
-        # instances in time.
+        # Each instance gets a different ordinal so we can't tag an entire batch at once but have
+        # to tag each instance individually. It needs to be done quickly because the tags are
+        # crucial for the boot code running inside the instance to join the cluster. Hence we do
+        # it in a thread pool. If the pool is too large, we'll hit the EC2 limit on the number of
+        # of concurrent requests. If it is too small, we won't be able to tag all instances in
+        # time.
         with thread_pool(min(numNodes, 32)) as pool:
             for batch in createInstances():
                 log.debug('Got a batch of %i instance(s).', len(batch))
                 for instance in batch:
                     pool.apply_async(handleInstance, (instance,))
+        numInstancesAdded = len(instancesByAddress)
+        log.info('Created and tagged %i instances.', numInstancesAdded)
 
-        numNodesAdded = len(nodeAddresses)
-        log.info('Created and tagged %i instances.', numNodesAdded)
-
+        if preemptable:
+            # Reset deadline such that slow spot creation does not take away from instance boot-up
+            deadline = time.time() + provisioning_timeout
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            while nodeAddresses:
-                log.debug('Waiting for batch system to report back %i node(s).', len(nodeAddresses))
+            while instancesByAddress and time.time() < deadline:
+                log.debug('Waiting for batch system to report back %i node(s).',
+                          len(instancesByAddress))
                 # Get all nodes to be safe, not just the ones whose preemptability matches,
                 # in case there's a problem with a node determining its own preemptability.
                 nodes = self.batchSystem.getNodes()
-                nodeAddresses.difference_update(nodes.iterkeys())
+                for nodeAddress in nodes.iterkeys():
+                    instancesByAddress.pop(nodeAddress, None)
                 time.sleep(10)
-            log.info('All %i nodes have joined the cluster.', numNodesAdded)
+            if instancesByAddress:
+                log.warn('%i instances out of %i did not join the cluster as worker nodes. They '
+                         'will be terminated.', len(instancesByAddress), numInstancesAdded)
+                self._ec2.terminate_instances([i.id for i in instancesByAddress.itervalues()])
+                numInstancesAdded -= len(instancesByAddress)
+            else:
+                log.info('All %i node(s) joined the cluster.', numInstancesAdded)
         else:
-            log.warn("Can't wait for nodes to join the cluster since batch system isn't scalable.")
+            log.warn('Batch system is not scalable. Assuming all instances joined the cluster.')
+        return numInstancesAdded
 
     def _partialBillingInterval(self, instance):
         """
@@ -177,10 +212,7 @@ class CGCloudProvisioner(AbstractProvisioner):
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
 
-    def removeNodes(self, numNodes=1, preemptable=False):
-        instances = (i for i in self._getAllInstances()
-                     if i.id != self._instanceId  # disregard leader
-                     and preemptable != i.spot_instance_request_id is None)
+    def _removeNodes(self, workerInstances, numNodes, preemptable=False):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
@@ -189,7 +221,7 @@ class CGCloudProvisioner(AbstractProvisioner):
             # to report stale nodes for which the corresponding instance was terminated already.
             # There can also be instances that the batch system doesn't have nodes for yet.
             nodes = [(instance, nodes.get(instance.private_ip_address))
-                     for instance in instances]
+                     for instance in workerInstances]
             # Sort instances by # of workers and time left in billing cycle. Assume zero workers
             # if the node info is missing. In the case of the Mesos batch system this can happen
             # if 1) the node hasn't been discovered yet or 2) a node was first discovered through
@@ -201,17 +233,14 @@ class CGCloudProvisioner(AbstractProvisioner):
             instanceIds = [instance.id for instance, nodeInfo in islice(nodes, numNodes)]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances,
-                               key=lambda instance: 1.0 - self._partialBillingInterval(instance))
-            instanceIds = [instance.id for instance in islice(instances, numNodes)]
+            workerInstances = sorted(workerInstances,
+                                     key=lambda instance: 1.0 - self._partialBillingInterval(
+                                         instance))
+            instanceIds = [instance.id for instance in islice(workerInstances, numNodes)]
         log.info('Terminating %i instances.', len(instanceIds))
         log.debug('IDs of terminated instances: %r', instanceIds)
         self._ec2.terminate_instances(instance_ids=instanceIds)
-
-    def getNumberOfNodes(self, preemptable=False):
-        instanceIds = {instance.id for instance in self._getAllInstances()}
-        assert self._instanceId in instanceIds
-        return len(instanceIds) - 1
+        return len(instanceIds)
 
     def getNodeShape(self, preemptable=False):
         instanceType = self.instanceType[preemptable]
@@ -220,7 +249,7 @@ class CGCloudProvisioner(AbstractProvisioner):
                      cores=instanceType.cores,
                      disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
 
-    def _getAllInstances(self):
+    def _getAllRunningInstances(self):
         """
         ... including the leader.
 
