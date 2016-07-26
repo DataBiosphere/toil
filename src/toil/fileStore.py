@@ -92,6 +92,11 @@ class FileStore(object):
         # job if required.
         self._setupCache()
 
+    @staticmethod
+    def createFileStore(jobStore, jobWrapper, localTempDir, inputBlockFn, caching):
+        fileStoreCls = FileStore if caching else NonCachingFileStore
+        return fileStoreCls(jobStore, jobWrapper, localTempDir, inputBlockFn)
+
     @contextmanager
     def open(self, job):
         '''
@@ -442,8 +447,9 @@ class FileStore(object):
         # False.
         with self._CacheState.open(self) as cacheInfo:
             jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
-            assert fileStoreID in jobState.jobSpecificFiles.keys(), 'Attempting to delete ' + \
-                                                                    'a non-local file'
+            if fileStoreID not in jobState.jobSpecificFiles.keys():
+                # EOENT indicates that the file did not exist
+                raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
             # filesToDelete is a dictionary of file: fileSize
             filesToDelete = jobState.jobSpecificFiles[fileStoreID]
             allOwnedFiles = jobState.filesToFSIDs
@@ -1306,7 +1312,9 @@ class FileStore(object):
 
     def _blockFn(self):
         """
-        Blocks while _updateJobWhenDone is running.
+        Blocks while _updateJobWhenDone is running. This function is called by this job's
+        successor to insure that it does not begin modifying the job store until after this job has
+        finished doing so.
         """
         self.updateSemaphore.acquire()
         self.updateSemaphore.release()  # Release so that the block function can be recalled
@@ -1325,6 +1333,96 @@ class FileStore(object):
             thread.join()
         self.updateSemaphore.release()
 
+
+class NonCachingFileStore(FileStore):
+
+    def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
+        self.jobStore = jobStore
+        self.jobWrapper = jobWrapper
+        self.localTempDir = os.path.abspath(localTempDir)
+        self.inputBlockFn = inputBlockFn
+        self.jobsToDelete = set()
+        self.loggingMessages = []
+        self.localFileMap = {}
+        self.filesToDelete = set()
+
+    @contextmanager
+    def open(self, job):
+        startingDir = os.getcwd()
+        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        try:
+            os.chdir(self.localTempDir)
+            yield
+        finally:
+            os.chdir(startingDir)
+
+    def writeGlobalFile(self, localFileName, cleanup=False):
+        absLocalFileName = self._abspath(localFileName)
+        cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
+        return self.jobStore.writeFile(absLocalFileName, cleanupID)
+
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
+        if userPath is not None:
+            localFilePath = self._abspath(userPath)
+            if os.path.exists(localFilePath):
+                raise RuntimeError(' File %s ' % localFilePath + ' exists. Cannot Overwrite.')
+        else:
+            localFilePath = self.getLocalTempFileName()
+
+        self.jobStore.readFile(fileStoreID, localFilePath)
+        self.localFileMap[fileStoreID] = localFilePath
+        return localFilePath
+
+    @contextmanager
+    def readGlobalFileStream(self, fileStoreID):
+        with self.jobStore.readFileStream(fileStoreID) as f:
+            yield f
+
+    def deleteLocalFile(self, fileStoreID):
+        try:
+            localFilePath = self.localFileMap.pop(fileStoreID)
+        except KeyError:
+            raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
+        else:
+            os.remove(localFilePath)
+
+    def deleteGlobalFile(self, fileStoreID):
+        try:
+            self.deleteLocalFile(fileStoreID)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                # the file does not exist locally, so no local deletion necessary
+                pass
+            else:
+                raise
+        self.filesToDelete.add(fileStoreID)
+
+    def _blockFn(self):
+        # there is no asynchronicity in this file store so no need to block at all
+        return True
+
+    def _updateJobWhenDone(self):
+        try:
+            # Indicate any files that should be deleted once the update of
+            # the job wrapper is completed.
+            self.jobWrapper.filesToDelete = list(self.filesToDelete)
+            # Complete the job
+            self.jobStore.update(self.jobWrapper)
+            # Delete any remnant jobs
+            map(self.jobStore.delete, self.jobsToDelete)
+            # Delete any remnant files
+            map(self.jobStore.deleteFile, self.filesToDelete)
+            # Remove the files to delete list, having successfully removed the files
+            if len(self.filesToDelete) > 0:
+                self.jobWrapper.filesToDelete = []
+                # Update, removing emptying files to delete
+                self.jobStore.update(self.jobWrapper)
+        except:
+            self._terminateEvent.set()
+            raise
+
+    def __del__(self):
+        pass
 
 class FileID(str):
     """
