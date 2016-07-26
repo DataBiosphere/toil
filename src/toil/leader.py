@@ -657,31 +657,27 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
     toilState = ToilState(jobStore, rootJobWrapper, jobCache=jobCache)
 
     # Create a service manager to start and terminate services
+    serviceManager = ServiceManager(jobStore)
     try:
-        serviceManager = ServiceManager(jobStore)
-    
         assert len(batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
         logger.info("Checked batch system has no running jobs and no updated jobs")
-    
         # Load the jobBatcher class - used to track jobs submitted to the batch-system
         jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState, serviceManager)
         logger.info("Found %s jobs to start and %i jobs with successors to run",
                     len(toilState.updatedJobs), len(toilState.successorCounts))
-    
+        # Start the stats/logging aggregation process
+        statsAndLogging = StatsAndLogging(jobStore)
         try:
-            # Start the stats/logging aggregation process
-            statsAndLogging = StatsAndLogging(jobStore)
-            
+            # Create cluster scaling processes if the provisioner is not None
+            if provisioner is None:
+                clusterScaler = None
+            else:
+                clusterScaler = ClusterScaler(provisioner, jobBatcher, config)
+                jobBatcher.clusterScaler = clusterScaler
             try:
-                # Create cluster scaling processes if the provisioner is not None
-                if provisioner is None:
-                    clusterScaler = None
-                else:
-                    clusterScaler = ClusterScaler(provisioner, jobBatcher, config)
-                    jobBatcher.clusterScaler = clusterScaler
                 innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging)
             finally:
-                if provisioner is not None:
+                if clusterScaler is not None:
                     logger.info('Waiting for workers to shutdown')
                     startTime = time.time()
                     clusterScaler.shutdown()
@@ -691,7 +687,6 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
             statsAndLogging.shutdown()
     finally:
         serviceManager.shutdown()
-
 
     # Filter the failed jobs
     toilState.totalFailedJobs = set(filter(jobStore.exists, toilState.totalFailedJobs))
