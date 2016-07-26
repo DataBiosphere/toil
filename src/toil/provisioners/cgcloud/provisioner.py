@@ -21,6 +21,7 @@ from urllib2 import urlopen
 
 import boto.ec2
 from bd2k.util import memoize, parse_iso_utc
+from bd2k.util.exceptions import require
 from boto.ec2.instance import Instance
 from cgcloud.lib.ec2 import (ec2_instance_types,
                              create_spot_instances,
@@ -73,36 +74,38 @@ class CGCloudProvisioner(AbstractProvisioner):
         super(CGCloudProvisioner, self).__init__()
         self.batchSystem = batchSystem
         self.imageId = self._instance.image_id
-        if config.nodeType:
-            instanceType = self._resolveInstanceType(config.nodeType)
-            if config.preemptableNodeType:
-                preemptableInstanceType, spotBid = ':'.split(config.preemptableNodeType)
-                preemptableInstanceType = self._resolveInstanceType(preemptableInstanceType)
-                self.spotBid = float(spotBid)
-            else:
-                preemptableInstanceType, self.spotBid = None, None
+        require(config.nodeType, 'Must pass --nodeType when using the cgcloud provisioner')
+        instanceType = self._resolveInstanceType(config.nodeType)
+        self._requireEphemeralDrives(instanceType)
+        if config.preemptableNodeType:
+            preemptableInstanceType, spotBid = ':'.split(config.preemptableNodeType)
+            preemptableInstanceType = self._resolveInstanceType(preemptableInstanceType)
+            self._requireEphemeralDrives(preemptableInstanceType)
+            self.spotBid = float(spotBid)
         else:
-            raise RuntimeError('Must pass --nodeType when using the cgcloud provisioner')
+            preemptableInstanceType, self.spotBid = None, None
         self.instanceType = {False: instanceType, True: preemptableInstanceType}
-        # TODO: assert that leader has same number of ephemeral drives as workers or user_data won't match!!!
 
-    @staticmethod
-    def _resolveInstanceType(instanceType):
+    def _requireEphemeralDrives(self, workerType):
+        require(workerType.disks > 0,
+                "This provisioner only supports instance types with one or more ephemeral "
+                "volumes. The requested type '%s' does not have any.", workerType.name)
+        leaderType = self._resolveInstanceType(self._instance.instance_type)
+        require(workerType.disks == leaderType.disks,
+                'The instance type selected for worker nodes (%s) offers %i ephemeral volumes but '
+                'this type of leader (%s) has %i. The number of drives must match between leader '
+                'and worker nodes. Please specify a different worker node type or use a different '
+                'leader.', workerType.name, workerType.disks, leaderType.name, leaderType.disks)
+
+    def _resolveInstanceType(self, instanceType):
         """
         :param str instanceType: the instance type as a string, e.g. 'm3.large'
         :rtype: cgcloud.lib.ec2.InstanceType
         """
         try:
-            instanceType = ec2_instance_types[instanceType]
+            return ec2_instance_types[instanceType]
         except KeyError:
             raise RuntimeError("Invalid or unknown instance type '%s'" % instanceType)
-        else:
-            if instanceType.disks == 0:
-                raise RuntimeError("This provisioner only supports instance types with one or "
-                                   "more ephemeral volumes. The requested type '%s' does not "
-                                   "have any." % instanceType.name)
-            else:
-                return instanceType
 
     def setNodeCount(self, numNodes, preemptable=False):
         instances = list(self._getAllRunningInstances())
