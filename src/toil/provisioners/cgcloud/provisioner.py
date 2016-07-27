@@ -78,10 +78,19 @@ class CGCloudProvisioner(AbstractProvisioner):
         instanceType = self._resolveInstanceType(config.nodeType)
         self._requireEphemeralDrives(instanceType)
         if config.preemptableNodeType:
-            preemptableInstanceType, spotBid = ':'.split(config.preemptableNodeType)
+            try:
+                preemptableInstanceType, spotBid = config.preemptableNodeType.split(':')
+            except ValueError:
+                raise ValueError("Preemptible node type '%s' is not valid for this provisioner. "
+                                 "Use format INSTANCE_TYPE:SPOT_BID, e.g. m3.large:0.10 instead"
+                                 % config.preemptableNodeType)
             preemptableInstanceType = self._resolveInstanceType(preemptableInstanceType)
             self._requireEphemeralDrives(preemptableInstanceType)
+            try:
             self.spotBid = float(spotBid)
+            except ValueError:
+                raise ValueError("The spot bid '%s' is not valid. Use a floating point dollar "
+                                 "amount such as '0.42' instead." % spotBid)
         else:
             preemptableInstanceType, self.spotBid = None, None
         self.instanceType = {False: instanceType, True: preemptableInstanceType}
