@@ -87,7 +87,7 @@ class CGCloudProvisioner(AbstractProvisioner):
             preemptableInstanceType = self._resolveInstanceType(preemptableInstanceType)
             self._requireEphemeralDrives(preemptableInstanceType)
             try:
-            self.spotBid = float(spotBid)
+                self.spotBid = float(spotBid)
             except ValueError:
                 raise ValueError("The spot bid '%s' is not valid. Use a floating point dollar "
                                  "amount such as '0.42' instead." % spotBid)
@@ -146,9 +146,13 @@ class CGCloudProvisioner(AbstractProvisioner):
                     security_group_ids=self._securityGroupIds,
                     ebs_optimized=self.ebsOptimized,
                     dry_run=False)
-        used_cluster_ordinals = {int(i.tags['cluster_ordinal']) for i in instances}
-        assert len(used_cluster_ordinals) == len(instances)  # check for collisions
-        cluster_ordinal = allocate_cluster_ordinals(num=numNodes, used=used_cluster_ordinals)
+        # Offset the ordinals of the preemptable nodes to be disjunct from the non-preemptable
+        # ones. Without this, the two scaler threads would inevitably allocate colliding ordinals.
+        offset = 1000 if preemptable else 0
+        used_ordinals = {int(i.tags['cluster_ordinal']) - offset for i in instances}
+        assert len(used_ordinals) == len(instances)  # check for collisions
+        ordinals = (ordinal + offset for ordinal in allocate_cluster_ordinals(num=numNodes,
+                                                                              used=used_ordinals))
 
         def createInstances():
             """
@@ -171,7 +175,7 @@ class CGCloudProvisioner(AbstractProvisioner):
             name = leader_tags['Name'].replace('toil-leader', 'toil-worker')
             tag_object_persistently(instance, dict(leader_tags,
                                                    Name=name,
-                                                   cluster_ordinal=next(cluster_ordinal)))
+                                                   cluster_ordinal=next(ordinals)))
             instancesByAddress[instance.private_ip_address] = instance
 
         # Each instance gets a different ordinal so we can't tag an entire batch at once but have
