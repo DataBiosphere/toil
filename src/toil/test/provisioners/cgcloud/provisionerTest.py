@@ -235,17 +235,15 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def _getSourceDistribution(cls):
         sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
-        assert os.path.isfile(sdistPath), \
-            "Can't find source distribution for Toil at %s." % sdistPath
+        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s." % sdistPath
         excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
                                 capture=True,
                                 cwd=cls._projectRootPath()).splitlines())
-        dirty = cls._run('find', '.', '-type', 'f', '-newer', sdistPath,
+        dirty = cls._run('find', 'src', '-type', 'f', '-newer', sdistPath,
                          capture=True,
                          cwd=cls._projectRootPath()).splitlines()
-        assert all(path.startswith('./') for path in dirty)
-        dirty = set(path[2:] for path in dirty if not path.startswith('./.git'))
+        assert all(path.startswith('src') for path in dirty)
+        dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, \
-            "You need to run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
