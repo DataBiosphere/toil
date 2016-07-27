@@ -14,4 +14,4 @@
 
 version = '3.4.0a1'
 
-cgcloudVersion = '1.6.0a1.dev368'
+cgcloudVersion = '1.6.0a1.dev370'
