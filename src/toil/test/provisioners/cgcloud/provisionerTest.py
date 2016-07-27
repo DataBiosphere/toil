@@ -63,7 +63,8 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     #
     numSamples = 10
 
-    # The number of workers in a static cluster, ignored by auto-scaling tests
+    # The number of workers in a static cluster, the maximum number of prepemptable and
+    # non-preemptable workers each in an auto-scaled cluster.
     #
     numWorkers = 10
 
@@ -101,6 +102,10 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     #
     instanceType = 'm3.large'
     leaderInstanceType = instanceType
+
+    # The spot bid to use for preemptable instances. A safe bet is the on-demand price for the
+    # selected instance type.
+    spotBid = '0.133'
 
     @classmethod
     def setUpClass(cls):
@@ -144,7 +149,13 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     def testAutoScaledCluster(self):
         self._test(autoScaled=True)
 
-    def _test(self, autoScaled=False):
+    @integrative
+    def testAutoScaledSpotCluster(self):
+        self._test(autoScaled=True, spotInstances=True)
+
+    def _test(self, autoScaled=False, spotInstances=False):
+        self.assertTrue(not spotInstances or autoScaled,
+                        'This test does not support a static cluster of spot instances.')
         if self.createCluster:
             self._cgcloud('create-cluster',
                           '--leader-instance-type=' + self.leaderInstanceType,
@@ -173,11 +184,20 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                 self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
             toilOptions = ['--batchSystem=mesos',
                            '--mesosMaster=mesos-master:5050',
-                           '--clean=always']
+                           '--clean=always',
+                           '--retryCount=2']
             if autoScaled:
                 toilOptions.extend(['--provisioner=cgcloud',
                                     '--nodeType=' + self.instanceType,
+                                    '--maxNodes=%s' % self.numWorkers,
                                     '--logDebug'])
+            if spotInstances:
+                toilOptions.extend([
+                    '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),
+                    # The RNASeq pipeline does not specify a preemptability requirement so we
+                    # need to specify a default, otherwise jobs would never get scheduled.
+                    '--defaultPreemptable',
+                    '--maxPreemptableNodes=%s' % self.numWorkers])
             toilOptions = ' '.join(toilOptions)
             self._leader('PATH=~/venv/bin:$PATH',
                          'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
