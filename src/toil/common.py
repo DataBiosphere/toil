@@ -325,7 +325,7 @@ def _addOptions(addGroupFn, config):
 
         _addOptionFn('nodeType', metavar='TYPE',
                      help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                          "provisioner used. For the CGCloud provisioner this is the name of an "
+                          "provisioner used. For the cgcloud provisioner this is the name of an "
                           "EC2 instance type{|, followed by a colon and the price in dollar to "
                           "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
         _addOptionFn('nodeOptions', metavar='OPTIONS',
@@ -368,6 +368,8 @@ def _addOptions(addGroupFn, config):
                      'that do not specify an explicit value for this requirement. Standard '
                      'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
                      bytes2human( config.defaultDisk, symbols='iec' ))
+    assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
+    addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
     addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
                 action='store_true', default=None, help='Toil disallows modification of read '
                                                         'global files by default. This flag makes '
