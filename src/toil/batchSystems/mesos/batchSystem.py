@@ -28,6 +28,7 @@ from struct import unpack
 import itertools
 import mesos.interface
 import mesos.native
+from bd2k.util import strict_bool
 from mesos.interface import mesos_pb2
 
 from toil import resolveEntryPoint
@@ -133,7 +134,10 @@ class MesosBatchSystem(BatchSystemSupport,
         self.checkResourceRequest(memory, cores, disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
-                      resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
+                      resources=ResourceRequirement(memory=memory,
+                                                    cores=cores,
+                                                    disk=disk,
+                                                    preemptable=preemptable),
                       command=command,
                       userScript=self.userScript,
                       toilDistribution=self.toilDistribution,
@@ -284,10 +288,18 @@ class MesosBatchSystem(BatchSystemSupport,
             log.debug("Declining offer %s.", offer.id.value)
             driver.declineOffer(offer.id)
 
-    def _determineOfferResources(self, offer):
+    def _parseOffer(self, offer):
         cores = 0
         memory = 0
         disk = 0
+        preemptable = None
+        for attribute in offer.attributes:
+            if attribute.name == 'preemptable':
+                assert preemptable is None, "Attribute 'preemptable' occurs more than once."
+                preemptable = strict_bool(attribute.text.value)
+        if preemptable is None:
+            log.warn('Slave not marked as either preemptable or not. Assuming non-preemptable.')
+            preemptable = False
         for resource in offer.resources:
             if resource.name == "cpus":
                 cores += resource.scalar.value
@@ -295,7 +307,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 memory += resource.scalar.value
             elif resource.name == "disk":
                 disk += resource.scalar.value
-        return cores, memory, disk
+        return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer, index):
         # Get the first element to insure FIFO
@@ -335,9 +347,10 @@ class MesosBatchSystem(BatchSystemSupport,
         for offer in offers:
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCores, offerMemory, offerDisk = self._determineOfferResources(offer)
-            log.debug('Received offer %s with %.2f MiB memory, %.2f core(s) and %.2f MiB of disk.',
-                      offer.id.value, offerMemory, offerCores, offerDisk)
+            offerCores, offerMemory, offerDisk, offerPreemptable = self._parseOffer(offer)
+            log.debug('Got offer %s for a %spreemptable slave with %.2f MiB memory, %.2f core(s) '
+                      'and %.2f MiB of disk.', offer.id.value, '' if offerPreemptable else 'non-',
+                      offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
             remainingMemory = offerMemory
             remainingDisk = offerDisk
@@ -350,6 +363,9 @@ class MesosBatchSystem(BatchSystemSupport,
                 nextToLaunchIndex = 0
                 # Toil specifies disk and memory in bytes but Mesos uses MiB
                 while (len(self.jobQueues[jobType]) - nextToLaunchIndex > 0
+                       # On a non-preemptable node we can run any job, on a preemptable node we
+                       # can only run preemptable jobs:
+                       and (not offerPreemptable or jobType.preemptable)
                        and remainingCores >= jobType.cores
                        and remainingDisk >= toMiB(jobType.disk)
                        and remainingMemory >= toMiB(jobType.memory)):
@@ -366,12 +382,14 @@ class MesosBatchSystem(BatchSystemSupport,
                     nextToLaunchIndex += 1
                 if self.jobQueues[jobType] and not runnableTasksOfType:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
-                              '%(requirements)r. Mesos offered %(memory)s memory, %(cores)i cores '
-                              'and %(disk)s of disk.', dict(offer=offer.id.value,
-                                                            requirements=jobType,
-                                                            memory=fromMiB(offerMemory),
-                                                            cores=offerCores,
-                                                            disk=fromMiB(offerDisk)))
+                              '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
+                              'and %(disk)s of disk on a %(non)spreemptable slave.',
+                              dict(offer=offer.id.value,
+                                   requirements=jobType,
+                                   non='' if offerPreemptable else 'non-',
+                                   memory=fromMiB(offerMemory),
+                                   cores=offerCores,
+                                   disk=fromMiB(offerDisk)))
                 runnableTasks.extend(runnableTasksOfType)
             # Launch all runnable tasks together so we only call launchTasks once per offer
             if runnableTasks:
