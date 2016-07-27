@@ -131,7 +131,8 @@ def setLoggingFromOptions(options):
     """
     Sets the logging from a dictionary of name/value options.
     """
-    formatStr = socket.gethostname() + ': %(asctime)s %(levelname)s: %(name)s: %(message)s'
+    formatStr = ' '.join([socket.gethostname(), '%(asctime)s', '%(threadName)s',
+                          '%(levelname)s', '%(name)s:', '%(message)s'])
     logging.basicConfig(format=formatStr)
     rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:

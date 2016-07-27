@@ -271,7 +271,7 @@ class ScalerThread(Thread):
         """
         :param ClusterScaler scaler: the parent class
         """
-        super(ScalerThread, self).__init__()
+        super(ScalerThread, self).__init__(name='preemptable-scaler' if preemptable else 'scaler')
         self.scaler = scaler
         self.preemptable = preemptable
         # Resource requirements and wall-time of an atomic node allocation
