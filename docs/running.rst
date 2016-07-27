@@ -87,6 +87,7 @@ that performs merge-sort on a temporary file.
         import os
         import logging
         import random
+        import shutil
 
         from toil.job import Job
 
@@ -136,8 +137,9 @@ that performs merge-sort on a temporary file.
                 job.fileStore.logToMaster("Sorting file: %s of size: %s"
                                           % (input_file_store_id, length), level=logging.CRITICAL)
                 # Sort the copy and write back to the fileStore
-                sort(input_file)
-                return job.fileStore.writeGlobalFile(input_file)
+                output_file = job.fileStore.getLocalTempFile()
+                sort(input_file, output_file)
+                return job.fileStore.writeGlobalFile(output_file)
 
 
         def up(job, input_file_id_1, input_file_id_2):
@@ -158,19 +160,20 @@ that performs merge-sort on a temporary file.
         def cleanup(job, temp_output_id, output_file):
             """Copies back the temporary file to input once we've successfully sorted the temporary file.
             """
-            job.fileStore.readGlobalFile(temp_output_id, userPath=output_file)
+            tempFile = job.fileStore.readGlobalFile(temp_output_id)
+            shutil.copy(tempFile, output_file)
             job.fileStore.logToMaster("Finished copying sorted file to output: %s" % output_file)
 
 
         # convenience functions
-        def sort(file):
+        def sort(in_file, out_file):
             """Sorts the given file.
             """
-            filehandle = open(file, 'r')
+            filehandle = open(in_file, 'r')
             lines = filehandle.readlines()
             filehandle.close()
             lines.sort()
-            filehandle = open(file, 'w')
+            filehandle = open(out_file, 'w')
             for line in lines:
                 filehandle.write(line)
             filehandle.close()
@@ -246,7 +249,7 @@ that performs merge-sort on a temporary file.
             make_file_to_sort(file_name='file_to_sort.txt', lines=options.num_lines, line_length=options.line_length)
 
             # Now we are ready to run
-            Job.Runner.startToil(Job.wrapJobFn(setup, 'file_to_sort.txt', int(options.N), False,
+            Job.Runner.startToil(Job.wrapJobFn(setup, os.path.abspath('file_to_sort.txt'), int(options.N), False,
                                                memory='1000M'), options)
 
         if __name__ == '__main__':
