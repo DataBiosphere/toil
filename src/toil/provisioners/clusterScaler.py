@@ -15,11 +15,12 @@
 from __future__ import absolute_import
 
 import logging
-import time
 from collections import deque
-from threading import Thread, Lock
+from threading import Lock
 
 from bd2k.util.exceptions import require
+from bd2k.util.threading import ExceptionalThread
+from bd2k.util.throttle import throttle
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.common import Config
@@ -205,12 +206,10 @@ class ClusterScaler(object):
         self.config = config
         # Indicates that the scaling threads should shutdown
         self.stop = False
-        # Used by scaling threads to indicate failure
-        self.error = False
 
         assert config.maxPreemptableNodes >= 0 and config.maxNodes >= 0
         require(config.maxPreemptableNodes + config.maxNodes > 0,
-                "Either --maxNodes or --maxPreemptableNodes must be non-zero.")
+                'Either --maxNodes or --maxPreemptableNodes must be non-zero.')
 
         if config.maxPreemptableNodes > 0:
             self.preemptableScaler = ScalerThread(self, preemptable=True)
@@ -249,7 +248,7 @@ class ClusterScaler(object):
             self.scaler.jobShapes.add(s)
 
 
-class ScalerThread(Thread):
+class ScalerThread(ExceptionalThread):
     """
     A thread that automatically scales the number of either preemptable or non-preemptable worker
     nodes according to the number of jobs queued and the resource requirements of the last N
@@ -283,12 +282,13 @@ class ScalerThread(Thread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
 
     def run(self):
-        try:
-            if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
-                totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
-            else:
-                totalNodes = 0
-            logger.info('Starting with cluster of %s node(s).', totalNodes)
+        if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
+            totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
+        else:
+            totalNodes = 0
+        logger.info('Starting with %s %spreemptable node(s) in the cluster.', totalNodes,
+                    '' if self.preemptable else 'non-')
+        with throttle(self.scaler.config.scaleInterval):
             while not self.scaler.stop:
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
@@ -332,16 +332,8 @@ class ScalerThread(Thread):
                                 '' if self.preemptable else 'non-', totalNodes, estimatedNodes)
                     totalNodes = self.scaler.provisioner.setNodeCount(numNodes=estimatedNodes,
                                                                       preemptable=self.preemptable)
-                # FIXME: setNodeCount() blocks, so only wait the difference
-                time.sleep(self.scaler.config.scaleInterval)
-            logger.info('Asking provisioner to reduce cluster size to zero.')
-            totalNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
-            if totalNodes != 0:
-                # TODO: should we raise here?
-                logger.warn('Provisioner was not able to reduce cluster size to zero.')
-        except:
-            # FIXME: use ExceptionalThread from BPL
-            self.scaler.error = True
-            raise
-        else:
-            logger.info("Scaler thread (preemptable=%s) exited normally." % self.preemptable)
+        logger.info('Asking provisioner to reduce cluster size to zero.')
+        totalNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
+        if totalNodes != 0:
+            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
+        logger.info('%sreemptable scaler exited normally.', 'P' if self.preemptable else 'Non-p')
