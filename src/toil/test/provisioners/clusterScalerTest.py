@@ -225,7 +225,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getNodeShape(self, preemptable=False):
         return self.config.preemptableNodeType if preemptable else self.config.nodeType
 
-    def setNodeCount(self, numNodes, preemptable=False):
+    def setNodeCount(self, numNodes, preemptable=False, force=False):
         return self._pick(preemptable).setNodeCount(numNodes=numNodes)
 
     # FIXME: Not part of AbstractScalableBatchSystem but used by the tests

@@ -22,6 +22,7 @@ from urllib2 import urlopen
 import boto.ec2
 from bd2k.util import memoize, parse_iso_utc
 from bd2k.util.exceptions import require
+from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
 from cgcloud.lib.ec2 import (ec2_instance_types,
                              create_spot_instances,
@@ -184,6 +185,7 @@ class CGCloudProvisioner(AbstractProvisioner):
             tag_object_persistently(instance, dict(leader_tags,
                                                    Name=name,
                                                    cluster_ordinal=next(ordinals)))
+            assert instance.private_ip_address
             instancesByAddress[instance.private_ip_address] = instance
 
         # Each instance gets a different ordinal so we can't tag an entire batch at once but have
@@ -196,28 +198,30 @@ class CGCloudProvisioner(AbstractProvisioner):
             for batch in createInstances():
                 log.debug('Got a batch of %i instance(s).', len(batch))
                 for instance in batch:
+                    log.debug('Submitting instance %s to thread pool for tagging.', instance.id)
                     pool.apply_async(handleInstance, (instance,))
         numInstancesAdded = len(instancesByAddress)
-        log.info('Created and tagged %i instances.', numInstancesAdded)
+        log.info('Created and tagged %i instance(s).', numInstancesAdded)
 
         if preemptable:
             # Reset deadline such that slow spot creation does not take away from instance boot-up
             deadline = time.time() + provisioning_timeout
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
             while instancesByAddress and time.time() < deadline:
-                log.debug('Waiting for batch system to report back %i node(s).',
-                          len(instancesByAddress))
-                # Get all nodes to be safe, not just the ones whose preemptability matches,
-                # in case there's a problem with a node determining its own preemptability.
-                nodes = self.batchSystem.getNodes()
-                for nodeAddress in nodes.iterkeys():
-                    instancesByAddress.pop(nodeAddress, None)
-                time.sleep(10)
+                with throttle(10):
+                    log.debug('Waiting for batch system to report back %i node(s).',
+                              len(instancesByAddress))
+                    # Get all nodes to be safe, not just the ones whose preemptability matches,
+                    # in case there's a problem with a node determining its own preemptability.
+                    nodes = self.batchSystem.getNodes()
+                    for nodeAddress in nodes.iterkeys():
+                        instancesByAddress.pop(nodeAddress, None)
             if instancesByAddress:
-                log.warn('%i instances out of %i did not join the cluster as worker nodes. They '
+                log.warn('%i instance(s) out of %i did not join the cluster as worker nodes. They '
                          'will be terminated.', len(instancesByAddress), numInstancesAdded)
-                self._ec2.terminate_instances([i.id for i in instancesByAddress.itervalues()])
-                numInstancesAdded -= len(instancesByAddress)
+                instanceIds = [i.id for i in instancesByAddress.itervalues()]
+                self._logAndTerminate(instanceIds)
+                numInstancesAdded -= len(instanceIds)
             else:
                 log.info('All %i node(s) joined the cluster.', numInstancesAdded)
         else:
@@ -236,35 +240,47 @@ class CGCloudProvisioner(AbstractProvisioner):
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
 
-    def _removeNodes(self, workerInstances, numNodes, preemptable=False):
+    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
             nodes = self.batchSystem.getNodes(preemptable)
-            # Join nodes and instances on private IP address. It is possible for the batch system
-            # to report stale nodes for which the corresponding instance was terminated already.
-            # There can also be instances that the batch system doesn't have nodes for yet.
-            nodes = [(instance, nodes.get(instance.private_ip_address))
-                     for instance in workerInstances]
-            # Sort instances by # of workers and time left in billing cycle. Assume zero workers
-            # if the node info is missing. In the case of the Mesos batch system this can happen
-            # if 1) the node hasn't been discovered yet or 2) a node was first discovered through
-            #  an offer rather than a framework message. This is an acceptable approximation
-            # since the node is likely to be new.
+            # Join nodes and instances on private IP address.
+            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
+            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
+            # the batch system to report stale nodes for which the corresponding instance was
+            # terminated already. There can also be instances that the batch system doesn't have
+            # nodes for yet. We'll ignore those, too, unless forced.
+            nodes = [(instance, nodeInfo)
+                     for instance, nodeInfo in nodes
+                     if force or nodeInfo is not None and nodeInfo.workers < 1]
+            # Sort nodes by number of workers and time left in billing cycle
             nodes.sort(key=lambda (instance, nodeInfo): (
-                nodeInfo.workers if nodeInfo else 0,
-                1.0 - self._partialBillingInterval(instance)))
-            instanceIds = [instance.id for instance, nodeInfo in islice(nodes, numNodes)]
+                nodeInfo.workers if nodeInfo else 1,
+                self._remainingBillingInterval(instance)))
+            nodes = nodes[:numNodes]
+            if log.isEnabledFor(logging.DEBUG):
+                for instance, nodeInfo in nodes:
+                    log.debug("Instance %s is about to be terminated. Its node info is %r. It "
+                              "would be billed again in %s minutes.", instance.id, nodeInfo,
+                              60 * self._remainingBillingInterval(instance))
+            instanceIds = [instance.id for instance, nodeInfo in nodes]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            workerInstances = sorted(workerInstances,
-                                     key=lambda instance: 1.0 - self._partialBillingInterval(
-                                         instance))
-            instanceIds = [instance.id for instance in islice(workerInstances, numNodes)]
-        log.info('Terminating %i instances.', len(instanceIds))
+            instances = sorted(instances,
+                               key=lambda instance: (self._remainingBillingInterval(instance)))
+            instanceIds = [instance.id for instance in islice(instances, numNodes)]
+        log.info('Terminating %i instance(s).', len(instanceIds))
+        if instanceIds:
+            self._logAndTerminate(instanceIds)
+        return len(instanceIds)
+
+    def _remainingBillingInterval(self, instance):
+        return 1.0 - self._partialBillingInterval(instance)
+
+    def _logAndTerminate(self, instanceIds):
         log.debug('IDs of terminated instances: %r', instanceIds)
         self._ec2.terminate_instances(instance_ids=instanceIds)
-        return len(instanceIds)
 
     def getNodeShape(self, preemptable=False):
         instanceType = self.instanceType[preemptable]

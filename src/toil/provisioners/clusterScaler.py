@@ -327,12 +327,15 @@ class ScalerThread(ExceptionalThread):
                     estimatedNodes = self.minNodes
 
                 if estimatedNodes != totalNodes:
-                    logger.info('Changing number of %spreemptable worker nodes from %s to %s.',
-                                '' if self.preemptable else 'non-', totalNodes, estimatedNodes)
+                    logger.info('Changing the number of worker nodes from %s to %s.', totalNodes,
+                                estimatedNodes)
                     totalNodes = self.scaler.provisioner.setNodeCount(numNodes=estimatedNodes,
                                                                       preemptable=self.preemptable)
-        logger.info('Asking provisioner to reduce cluster size to zero.')
-        totalNodes = self.scaler.provisioner.setNodeCount(0, preemptable=self.preemptable)
+        logger.info('Forcing provisioner to reduce cluster size to zero.')
+        totalNodes = self.scaler.provisioner.setNodeCount(numNodes=0,
+                                                          preemptable=self.preemptable,
+                                                          force=True)
         if totalNodes != 0:
             raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
-        logger.info('%sreemptable scaler exited normally.', 'P' if self.preemptable else 'Non-p')
+        else:
+            logger.info('Scaler exited normally.')
