@@ -160,6 +160,9 @@ class CGCloudProvisioner(AbstractProvisioner):
             """
             if preemptable:
                 for batch in create_spot_instances(self._ec2, self.spotBid, self.imageId, spec,
+                                                   # Don't insist on spot requests and don't raise
+                                                   # if no requests were fulfilled:
+                                                   tentative=True,
                                                    num_instances=numNodes,
                                                    timeout=deadline - time.time()):
                     yield batch
