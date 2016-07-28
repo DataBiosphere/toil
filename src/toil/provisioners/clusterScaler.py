@@ -286,10 +286,9 @@ class ScalerThread(ExceptionalThread):
             totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
         else:
             totalNodes = 0
-        logger.info('Starting with %s %spreemptable node(s) in the cluster.', totalNodes,
-                    '' if self.preemptable else 'non-')
-        with throttle(self.scaler.config.scaleInterval):
-            while not self.scaler.stop:
+        logger.info('Starting with %s node(s) in the cluster.', totalNodes)
+        while not self.scaler.stop:
+            with throttle(self.scaler.config.scaleInterval):
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
                 queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued()
