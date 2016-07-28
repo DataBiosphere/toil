@@ -57,7 +57,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def _toilSort(self, jobStoreLocator, batchSystem,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
-                  retryCount=2, badWorker=0.5, downCheckpoints=False):
+                  retryCount=2, badWorker=0.5, downCheckpoints=False, disableCaching=False):
         """
         Generate a file consisting of the given number of random lines, each line of the given
         length. Sort the file with Toil by splitting the file recursively until each part is less
@@ -86,6 +86,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.clean = "never"
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
+                options.disableCaching = disableCaching
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
@@ -212,6 +213,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def testFileSingle(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine')
+
+    def testFileSingleNonCaching(self):
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+                       disableCaching=True)
 
     def testFileSingleCheckpoints(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine', retryCount=2, downCheckpoints=True)

@@ -14,6 +14,9 @@
 from __future__ import absolute_import
 import random
 import os
+import errno
+
+from toil.common import Toil
 from toil.job import Job
 from toil.test import ToilTest
 
@@ -23,7 +26,18 @@ class JobFileStoreTest(ToilTest):
     """
     Tests testing the Job.FileStore class
     """
-    def testJobFileStoreWithSmallCache(self, retryCount=0, badWorker=0.0, 
+    def testCachingFileStore(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        with Toil(options) as workflow:
+            workflow.start(Job.wrapJobFn(simpleFileStoreJob))
+
+    def testNonCachingFileStore(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.disableCaching = True
+        with Toil(options) as workflow:
+            workflow.start(Job.wrapJobFn(simpleFileStoreJob))
+
+    def testJobFileStoreWithSmallCache(self, retryCount=0, badWorker=0.0,
                          stringNo=1, stringLength=1000000, cacheSize=10000, testNo=2):
         """
         Creates a chain of jobs, each reading and writing files using the 
@@ -130,3 +144,45 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     if chainLength > 0:
         #Make a child that will read these files and check it gets the same results
         job.addChildJobFn(fileTestJob, outputFileStoreIds, testStrings, chainLength-1)
+
+
+fileStoreString = "Testing writeGlobalFile"
+streamingFileStoreString = "Testing writeGlobalFileStream"
+
+
+def simpleFileStoreJob(job):
+    localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "parentTemp.txt")
+    with open(localFilePath, 'w') as f:
+        f.write(fileStoreString)
+    testID1 = job.fileStore.writeGlobalFile(localFilePath)
+
+    testID2 = None
+    with job.fileStore.writeGlobalFileStream() as (f, fileID):
+        f.write(streamingFileStoreString)
+        testID2 = fileID
+
+    job.addChildJobFn(fileStoreChild, testID1, testID2)
+
+
+def fileStoreChild(job, testID1, testID2):
+    with job.fileStore.readGlobalFileStream(testID1) as f:
+        assert(f.read() == fileStoreString)
+
+    localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "childTemp.txt")
+    job.fileStore.readGlobalFile(testID2, localFilePath)
+    with open(localFilePath, 'r') as f:
+        assert(f.read() == streamingFileStoreString)
+
+    job.fileStore.deleteLocalFile(testID2)
+    try:
+        job.fileStore.deleteLocalFile(testID1)
+    except OSError as e:
+        if e.errno == errno.ENOENT:  # indicates that the file was not found
+            pass
+        else:
+            raise
+    else:
+        raise RuntimeError("Deleting a non-existant file did not throw an exception")
+
+    for fileID in (testID1, testID2):
+        job.fileStore.deleteGlobalFile(fileID)

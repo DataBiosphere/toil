@@ -319,7 +319,8 @@ def main():
                     jobWrapper.checkpoint = jobWrapper.command
 
                 # Create a fileStore object for the job
-                fileStore = FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
+                fileStore = FileStore.createFileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn,
+                                                      caching=not config.disableCaching)
                 with job._executor(jobWrapper=jobWrapper,
                                    stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
@@ -421,8 +422,9 @@ def main():
             assert jobWrapper.cores >= successorJobWrapper.cores
             
             #Build a fileStore to update the job
-            fileStore = FileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn)
-            
+            fileStore = FileStore.createFileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn,
+                                                  caching=not config.disableCaching)
+
             #Update blockFn
             blockFn = fileStore._blockFn
             

@@ -95,6 +95,7 @@ class Config(object):
         self.rescueJobsFrequency = 3600
 
         #Misc
+        self.disableCaching = False
         self.maxLogFileSize=50120
         self.sseKey = None
         self.cseKey = None
@@ -202,6 +203,7 @@ class Config(object):
         setOption("rescueJobsFrequency", int, iC(1))
 
         #Misc
+        setOption("disableCaching")
         setOption("maxLogFileSize", h2b, iC(1))
         def checkSse(sseKey):
             with open(sseKey) as f:
@@ -407,6 +409,10 @@ def _addOptions(addGroupFn, config):
     #Misc options
     #
     addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
+    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=False,
+                help='Disables caching in the file store. This flag must be set to use '
+                     'a batch system that does not support caching such as Grid Engine, Parasol, '
+                     'LSF, or Slurm')
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Default is 50 "
@@ -676,8 +682,8 @@ class Toil(object):
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
         if not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching.  Use Toil version '
-                               '3.1.6 along with the --disableSharedCache option if you want to '
+            raise RuntimeError('%s currently does not support shared caching.  Set the '
+                               '--disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
         logger.info('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
