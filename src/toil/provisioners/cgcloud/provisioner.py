@@ -116,23 +116,24 @@ class CGCloudProvisioner(AbstractProvisioner):
         except KeyError:
             raise RuntimeError("Invalid or unknown instance type '%s'" % instanceType)
 
-    def setNodeCount(self, numNodes, preemptable=False):
+    def setNodeCount(self, numNodes, preemptable=False, force=False):
         instances = list(self._getAllRunningInstances())
         workerInstances = [i for i in instances
                            if i.id != self._instanceId  # exclude leader
-                           and preemptable != i.spot_instance_request_id is None]
+                           and preemptable != (i.spot_instance_request_id is None)]
         numCurrentNodes = len(workerInstances)
         delta = numNodes - numCurrentNodes
         if delta > 0:
             log.info('Adding %i nodes to get to desired cluster size of %i.', delta, numNodes)
-            numNodes = numCurrentNodes + self._addNodes(instances,
+            numNodes = numCurrentNodes + self._addNodes(workerInstances,
                                                         numNodes=delta,
                                                         preemptable=preemptable)
         elif delta < 0:
             log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
             numNodes = numCurrentNodes - self._removeNodes(workerInstances,
                                                            numNodes=-delta,
-                                                           preemptable=preemptable)
+                                                           preemptable=preemptable,
+                                                           force=force)
         else:
             log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
