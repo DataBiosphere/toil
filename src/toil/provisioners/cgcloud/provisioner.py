@@ -151,7 +151,11 @@ class CGCloudProvisioner(AbstractProvisioner):
         # ones. Without this, the two scaler threads would inevitably allocate colliding ordinals.
         offset = 1000 if preemptable else 0
         used_ordinals = {int(i.tags['cluster_ordinal']) - offset for i in instances}
+        # Since leader is absent from the instances iterable, we need to explicitly reserve its
+        # ordinal unless we're allocating offset ordinals reserved for preemptable instances:
         assert len(used_ordinals) == len(instances)  # check for collisions
+        if not preemptable:
+            used_ordinals.add(0)
         ordinals = (ordinal + offset for ordinal in allocate_cluster_ordinals(num=numNodes,
                                                                               used=used_ordinals))
 
