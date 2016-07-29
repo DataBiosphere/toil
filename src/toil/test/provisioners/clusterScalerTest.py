@@ -26,7 +26,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
                                                    AbstractBatchSystem)
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import ClusterScaler, RunningJobShapes
+from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
 from toil.batchSystems.jobDispatcher import IssuedJob
 
@@ -62,7 +62,7 @@ class ClusterScalerTest(ToilTest):
             numberOfJobs = random.choice(range(1, 1000))
             randomJobShapes = map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs))
             startTime = time.time()
-            numberOfBins = RunningJobShapes.binPacking(randomJobShapes, nodeShape)
+            numberOfBins = binPacking(randomJobShapes, nodeShape)
             logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds",
                         nodeShape, numberOfJobs, numberOfBins, time.time() - startTime)
 
@@ -100,10 +100,9 @@ class ClusterScalerTest(ToilTest):
         logger.info("Waiting for jobs to be processed")
         startTime = time.time()
         # Wait while the cluster the process chunks through the jobs
-        while (mock.getNumberOfJobsIssued(preemptable=False) > 0 or
-                       mock.getNumberOfJobsIssued(preemptable=True) > 0 or
-                       mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(
-            preemptable=True) > 0):
+        while (mock.getNumberOfJobsIssued(preemptable=False) > 0
+               or mock.getNumberOfJobsIssued(preemptable=True) > 0
+               or mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(preemptable=True) > 0):
             logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s, "
                         "preemptable queue size: %s, preemptable workers: %s",
                         mock.getNumberOfJobsIssued(preemptable=False),
@@ -179,6 +178,7 @@ class ClusterScalerTest(ToilTest):
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100)
 
 
+# noinspection PyAbstractClass
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
     """
     Mimics a job batcher, provisioner and scalable batch system
@@ -191,6 +191,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.config = config
         self.secondsPerJob = secondsPerJob
         self.delegates = [self.Delegate(), self.Delegate()]
+        self.batchSystem = self
 
     def _pick(self, preemptable=False):
         """
@@ -224,11 +225,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getNodeShape(self, preemptable=False):
         return self.config.preemptableNodeType if preemptable else self.config.nodeType
 
-    def addNodes(self, numNodes=1, preemptable=False):
-        self._pick(preemptable).addNodes(numNodes=numNodes)
+    def setNodeCount(self, numNodes, preemptable=False, force=False):
+        return self._pick(preemptable).setNodeCount(numNodes=numNodes)
 
-    def removeNodes(self, numNodes=1, preemptable=False):
-        self._pick(preemptable).removeNodes(numNodes=numNodes)
+    # FIXME: Not part of AbstractScalableBatchSystem but used by the tests
 
     def getNumberOfNodes(self, preemptable=False):
         return self._pick(preemptable).getNumberOfNodes()
@@ -270,7 +270,16 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
         # AbstractProvisioner functionality
 
-        def addNodes(self, numNodes=1):
+        def setNodeCount(self, numNodes):
+            delta = numNodes - len(self.workers)
+            if delta > 0:
+                self._addNodes(numNodes=delta)
+            elif delta < 0:
+                self._removeNodes(numNodes=-delta)
+            assert len(self.workers) == numNodes
+            return numNodes
+
+        def _addNodes(self, numNodes):
             class Worker(object):
                 def __init__(self, jobQueue, secondsPerJob):
                     self.busyEvent = Event()
@@ -302,7 +311,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             if len(self.workers) > self.maxWorkers:
                 self.maxWorkers = len(self.workers)
 
-        def removeNodes(self, numNodes=1):
+        def _removeNodes(self, numNodes):
             while len(self.workers) > 0 and numNodes > 0:
                 worker = self.workers.pop()
                 self.totalWorkerTime += worker.stop()

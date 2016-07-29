@@ -28,7 +28,7 @@ from struct import unpack
 import itertools
 import mesos.interface
 import mesos.native
-from bd2k.util.expando import Expando
+from bd2k.util import strict_bool
 from mesos.interface import mesos_pb2
 
 from toil import resolveEntryPoint
@@ -61,6 +61,14 @@ class MesosBatchSystem(BatchSystemSupport,
     @classmethod
     def supportsWorkerCleanup(cls):
         return True
+
+    class ExecutorInfo(object):
+        def __init__(self, nodeAddress, slaveId, nodeInfo, lastSeen):
+            super(MesosBatchSystem.ExecutorInfo, self).__init__()
+            self.nodeAddress = nodeAddress
+            self.slaveId = slaveId
+            self.nodeInfo = nodeInfo
+            self.lastSeen = lastSeen
 
     def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
                  userScript=None, toilDistribution=None):
@@ -97,8 +105,8 @@ class MesosBatchSystem(BatchSystemSupport,
         # The Mesos driver used by this scheduler
         self.driver = None
 
-        # A dictionary mapping a node's IP to an Expando object describing important properties
-        # of our executor running on that node. Only an approximation of the truth.
+        # A dictionary mapping a node's IP to an ExecutorInfo object describing important
+        # properties of our executor running on that node. Only an approximation of the truth.
         self.executors = {}
 
         # A set of Mesos slave IDs, one for each slave running on a non-preemptable node. Only an
@@ -126,7 +134,10 @@ class MesosBatchSystem(BatchSystemSupport,
         self.checkResourceRequest(memory, cores, disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
-                      resources=ResourceRequirement(memory=memory, cores=cores, disk=disk),
+                      resources=ResourceRequirement(memory=memory,
+                                                    cores=cores,
+                                                    disk=disk,
+                                                    preemptable=preemptable),
                       command=command,
                       userScript=self.userScript,
                       toilDistribution=self.toilDistribution,
@@ -226,7 +237,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.driver = mesos.native.MesosSchedulerDriver(self,
                                                         framework,
                                                         self._resolveAddress(self.masterAddress),
-                                                        True) # enable implicit acknowledgements
+                                                        True)  # enable implicit acknowledgements
         assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
 
     @staticmethod
@@ -277,10 +288,18 @@ class MesosBatchSystem(BatchSystemSupport,
             log.debug("Declining offer %s.", offer.id.value)
             driver.declineOffer(offer.id)
 
-    def _determineOfferResources(self, offer):
+    def _parseOffer(self, offer):
         cores = 0
         memory = 0
         disk = 0
+        preemptable = None
+        for attribute in offer.attributes:
+            if attribute.name == 'preemptable':
+                assert preemptable is None, "Attribute 'preemptable' occurs more than once."
+                preemptable = strict_bool(attribute.text.value)
+        if preemptable is None:
+            log.warn('Slave not marked as either preemptable or not. Assuming non-preemptable.')
+            preemptable = False
         for resource in offer.resources:
             if resource.name == "cpus":
                 cores += resource.scalar.value
@@ -288,7 +307,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 memory += resource.scalar.value
             elif resource.name == "disk":
                 disk += resource.scalar.value
-        return cores, memory, disk
+        return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer, index):
         # Get the first element to insure FIFO
@@ -313,9 +332,9 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         Invoked when resources have been offered to this framework.
         """
-        jobTypes = self._sortJobsByResourceReq()
+        self._trackOfferedNodes(offers)
 
-        self._updatePreemptability(offers)
+        jobTypes = self._sortJobsByResourceReq()
 
         # TODO: We may want to assert that numIssued >= numRunning
         if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
@@ -328,9 +347,10 @@ class MesosBatchSystem(BatchSystemSupport,
         for offer in offers:
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCores, offerMemory, offerDisk = self._determineOfferResources(offer)
-            log.debug('Received offer %s with %.2f MiB memory, %.2f core(s) and %.2f MiB of disk.',
-                      offer.id.value, offerMemory, offerCores, offerDisk)
+            offerCores, offerMemory, offerDisk, offerPreemptable = self._parseOffer(offer)
+            log.debug('Got offer %s for a %spreemptable slave with %.2f MiB memory, %.2f core(s) '
+                      'and %.2f MiB of disk.', offer.id.value, '' if offerPreemptable else 'non-',
+                      offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
             remainingMemory = offerMemory
             remainingDisk = offerDisk
@@ -343,6 +363,9 @@ class MesosBatchSystem(BatchSystemSupport,
                 nextToLaunchIndex = 0
                 # Toil specifies disk and memory in bytes but Mesos uses MiB
                 while (len(self.jobQueues[jobType]) - nextToLaunchIndex > 0
+                       # On a non-preemptable node we can run any job, on a preemptable node we
+                       # can only run preemptable jobs:
+                       and (not offerPreemptable or jobType.preemptable)
                        and remainingCores >= jobType.cores
                        and remainingDisk >= toMiB(jobType.disk)
                        and remainingMemory >= toMiB(jobType.memory)):
@@ -359,12 +382,14 @@ class MesosBatchSystem(BatchSystemSupport,
                     nextToLaunchIndex += 1
                 if self.jobQueues[jobType] and not runnableTasksOfType:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
-                              '%(requirements)r. Mesos offered %(memory)s memory, %(cores)i cores '
-                              'and %(disk)s of disk.', dict(offer=offer.id.value,
-                                                            requirements=jobType,
-                                                            memory=fromMiB(offerMemory),
-                                                            cores=offerCores,
-                                                            disk=fromMiB(offerDisk)))
+                              '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
+                              'and %(disk)s of disk on a %(non)spreemptable slave.',
+                              dict(offer=offer.id.value,
+                                   requirements=jobType,
+                                   non='' if offerPreemptable else 'non-',
+                                   memory=fromMiB(offerMemory),
+                                   cores=offerCores,
+                                   disk=fromMiB(offerDisk)))
                 runnableTasks.extend(runnableTasksOfType)
             # Launch all runnable tasks together so we only call launchTasks once per offer
             if runnableTasks:
@@ -373,13 +398,15 @@ class MesosBatchSystem(BatchSystemSupport,
                     self._updateStateToRunning(offer, task)
                     log.info('Launched Mesos task %s.', task.task_id.value)
             else:
-                log.info('Although there are queued jobs, none of them could be run with the' +
-                         'offers extended to the framework. Enable debug logging to see details '
-                         'about tasks queued and offers made.')
+                log.info('Although there are queued jobs, none of them could be run with offer %s '
+                         'extended to the framework. Enable debug logging to see details '
+                         'about tasks queued and offers made.', offer.id)
                 driver.declineOffer(offer.id)
 
-    def _updatePreemptability(self, offers):
+    def _trackOfferedNodes(self, offers):
         for offer in offers:
+            nodeAddress = socket.gethostbyname(offer.hostname)
+            self._registerNode(nodeAddress, offer.slave_id.value)
             preemptable = False
             for attribute in offer.attributes:
                 if attribute.name == 'preemptable':
@@ -456,7 +483,7 @@ class MesosBatchSystem(BatchSystemSupport,
                             jobID, _exitStatus)
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            jobEnded(0, wallTime=unpack('d', update.data))
+            jobEnded(0, wallTime=unpack('d', update.data)[0])
         elif update.state == mesos_pb2.TASK_FAILED:
             try:
                 exitStatus = int(update.message)
@@ -475,15 +502,13 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         Invoked when an executor sends a message.
         """
+        log.debug('Got framework message from executor %s running on slave %s: %s',
+                  executorId.value, slaveId.value, message)
         message = ast.literal_eval(message)
         assert isinstance(message, dict)
         # Handle the mandatory fields of a message
         nodeAddress = message.pop('address')
-        executor = self.executors.get(nodeAddress)
-        if executor is None or executor.slaveId != slaveId:
-            executor = Expando(nodeAddress=nodeAddress, slaveId=slaveId, nodeInfo=None)
-            self.executors[nodeAddress] = executor
-        executor.lastSeen = time.time()
+        executor = self._registerNode(nodeAddress, slaveId.value)
         # Handle optional message fields
         for k, v in message.iteritems():
             if k == 'nodeInfo':
@@ -492,11 +517,24 @@ class MesosBatchSystem(BatchSystemSupport,
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
 
-    def getNodes(self, preemptable=False):
+    def _registerNode(self, nodeAddress, slaveId):
+        executor = self.executors.get(nodeAddress)
+        if executor is None or executor.slaveId != slaveId:
+            executor = self.ExecutorInfo(nodeAddress=nodeAddress,
+                                         slaveId=slaveId,
+                                         nodeInfo=None,
+                                         lastSeen=time.time())
+            self.executors[nodeAddress] = executor
+        else:
+            executor.lastSeen = time.time()
+        return executor
+
+    def getNodes(self, preemptable=None):
         return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors
+                for nodeAddress, executor in self.executors.iteritems()
                 if time.time() - executor.lastSeen < 600
-                and preemptable == (executor.slaveId not in self.nonPreemptibleNodes)}
+                and (preemptable is None
+                     or preemptable == (executor.slaveId not in self.nonPreemptibleNodes))}
 
     def reregistered(self, driver, masterInfo):
         """

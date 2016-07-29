@@ -22,13 +22,16 @@ TaskData = namedtuple('TaskData', (
     # Mesos' ID of the executor running the task
     'executorID'))
 
+
 class ResourceRequirement( namedtuple('_ResourceRequirement', (
     # Number of bytes (!) needed for a task
     'memory',
     # Number of CPU cores needed for a task
     'cores',
     # Number of bytes (!) needed for task on disk
-    'disk'))):
+    'disk',
+    # True, if job can be run on a preemptable node, False otherwise
+    'preemptable'))):
     def size(self):
         """
         The scalar size of an offer. Can be used to compare offers.

@@ -156,8 +156,7 @@ class JobBatcher:
 
     def issueJobs(self, jobs):
         """
-        Add a list of jobs, each represented as a tuple of
-        (jobStoreID, memory, cores, disk).
+        Add a list of jobs, each represented as a tuple of (jobStoreID, *resources).
         """
         for jobStoreID, memory, cores, disk, preemptable in jobs:
             self.issueJob(jobStoreID, memory, cores, disk, preemptable)
@@ -658,31 +657,27 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
     toilState = ToilState(jobStore, rootJobWrapper, jobCache=jobCache)
 
     # Create a service manager to start and terminate services
+    serviceManager = ServiceManager(jobStore)
     try:
-        serviceManager = ServiceManager(jobStore)
-    
         assert len(batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
         logger.info("Checked batch system has no running jobs and no updated jobs")
-    
         # Load the jobBatcher class - used to track jobs submitted to the batch-system
         jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState, serviceManager)
         logger.info("Found %s jobs to start and %i jobs with successors to run",
                     len(toilState.updatedJobs), len(toilState.successorCounts))
-    
+        # Start the stats/logging aggregation process
+        statsAndLogging = StatsAndLogging(jobStore)
         try:
-            # Start the stats/logging aggregation process
-            statsAndLogging = StatsAndLogging(jobStore)
-            
+            # Create cluster scaling processes if the provisioner is not None
+            if provisioner is None:
+                clusterScaler = None
+            else:
+                clusterScaler = ClusterScaler(provisioner, jobBatcher, config)
+                jobBatcher.clusterScaler = clusterScaler
             try:
-                # Create cluster scaling processes if the provisioner is not None
-                if provisioner is None:
-                    clusterScaler = None
-                else:
-                    clusterScaler = ClusterScaler(provisioner, jobBatcher, config)
-                    jobBatcher.clusterScaler = clusterScaler
                 innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging)
             finally:
-                if provisioner is not None:
+                if clusterScaler is not None:
                     logger.info('Waiting for workers to shutdown')
                     startTime = time.time()
                     clusterScaler.shutdown()
@@ -692,7 +687,6 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
             statsAndLogging.shutdown()
     finally:
         serviceManager.shutdown()
-
 
     # Filter the failed jobs
     toilState.totalFailedJobs = set(filter(jobStore.exists, toilState.totalFailedJobs))
@@ -874,10 +868,12 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     # Remove the job
                     if jobWrapper.remainingRetryCount > 0:
                         jobBatcher.issueJob(jobWrapper.jobStoreID,
-                                            config.defaultMemory,
-                                            config.defaultCores,
-                                            config.defaultDisk,
-                                            True) #We allow this cleanup to potentially occur on a preemptable instance
+                                            memory=config.defaultMemory,
+                                            cores=config.defaultCores,
+                                            disk=config.defaultDisk,
+                                            # We allow this cleanup to potentially occur on a
+                                            # preemptable instance.
+                                            preemptable=True)
                         logger.debug("Job: %s is empty, we are scheduling to clean it up", jobWrapper.jobStoreID)
                     else:
                         jobBatcher.processTotallyFailedJob(jobWrapper)

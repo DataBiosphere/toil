@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from version import version as toil_version, cgcloud_version
+from version import version as toil_version, cgcloudVersion
 from setuptools import find_packages, setup
 
 botoRequirement = 'boto==2.38.0'
@@ -25,14 +25,14 @@ setup(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib>=1.14a1.dev29',
+        'bd2k-python-lib>=1.14a1.dev33',
         'dill==0.2.5'],
     extras_require={
         'mesos': [
             'psutil==3.0.1'],
         'aws': [
             botoRequirement,
-            'cgcloud-lib==' + cgcloud_version,
+            'cgcloud-lib==' + cgcloudVersion,
             'futures==3.0.5'],
         'azure': [
             'azure==1.0.3'],
@@ -48,6 +48,9 @@ setup(
                            # Note that we intentionally include the top-level `test` package for
                            # functionality like the @experimental and @integrative decoratorss:
                            exclude=['*.test.*']),
+    # Unfortunately, the names of the entrypoints are hard-coded elsewhere in the code base so
+    # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
+    # easy to search for.
     entry_points={
         'console_scripts': [
             'toil = toil.utils.toilMain:main',

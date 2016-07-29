@@ -71,8 +71,11 @@ clean_sdist:
 	- rm -rf dist
 
 
-test: check_venv check_build_reqs sdist
-	$(python) run_tests.py $(tests)
+test: check_venv check_build_reqs
+	$(python) run_tests.py test $(tests)
+
+integration-test: check_venv check_build_reqs sdist
+	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins

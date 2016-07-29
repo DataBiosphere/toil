@@ -304,8 +304,8 @@ class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
     The memory attribute is a floating point value between 0 (no memory used) and 1 (all memory
     used), reflecting the memory pressure on the node.
 
-    The workers attribute is a integer reflecting the number workers currently active workers on
-    the node.
+    The workers attribute is an integer reflecting the number of workers currently active workers
+    on the node.
     """
 
 
@@ -317,13 +317,13 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable=False):
+    def getNodes(self, preemptable=None):
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
 
-        :param bool preemptable: If True only preemptable nodes will be returned. Otherwise
-        non-preemptable nodes will be returned.
+        :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
+               If None, all nodes will be returned.
 
         :rtype: dict[str,NodeInfo]
         """

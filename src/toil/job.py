@@ -802,7 +802,7 @@ class Job(object):
             memory=float(config.defaultMemory) if self.memory is None else self.memory,
             cores=float(config.defaultCores) if self.cores is None else self.cores,
             disk=float(config.defaultDisk) if self.disk is None else self.disk,
-            preemptable=float(config.defaultPreemptable) if self.preemptable is None else self.preemptable)
+            preemptable=config.defaultPreemptable if self.preemptable is None else self.preemptable)
         return requirements
 
     def _makeJobWrappers(self, jobWrapper, jobStore):

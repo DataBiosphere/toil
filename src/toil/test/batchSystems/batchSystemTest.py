@@ -51,7 +51,7 @@ log = logging.getLogger(__name__)
 
 numCores = 2
 
-preemptable = True
+preemptable = False
 
 defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
 
