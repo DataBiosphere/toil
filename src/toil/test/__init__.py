@@ -350,7 +350,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     function is the result of a unique combination of parameters applied to the generalMethod. Each of the
     parameters has a corresponding string that will be used to name the method. These generated functions
     are named in the scheme:
-        test_[generalMethodName]___[firstParamaterName]_[someValueName]__[secondParamaterName]_...
+    test_[generalMethodName]___[firstParamaterName]_[someValueName]__[secondParamaterName]_...
 
     The arguments following the generalMethodName should be a series of one or more dictionaries of the form
     {str : type, ...} where the key represents the name of the value. The names will be used to represent the

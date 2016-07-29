@@ -54,9 +54,9 @@ class Job(object):
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param preemptable: if the job can be run on a preemptable node.
         :param checkpoint: if any of this job's successor jobs completely fails,
-        exhausting all their retries, remove any successor jobs and rerun this job to restart the
-        subtree. Job must be a leaf vertex in the job graph when initially defined, see
-        :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
+            exhausting all their retries, remove any successor jobs and rerun this job to restart the
+            subtree. Job must be a leaf vertex in the job graph when initially defined, see
+            :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type preemptable: boolean
@@ -187,22 +187,22 @@ class Job(object):
         """
         Add a service.
 
-        The :func:`toil.job.Job.Service.start` method of the service will be called \
-        after the run method has completed but before any successors are run. \
-        The service's :func:`toil.job.Job.Service.stop` method will be called once \
+        The :func:`toil.job.Job.Service.start` method of the service will be called
+        after the run method has completed but before any successors are run.
+        The service's :func:`toil.job.Job.Service.stop` method will be called once
         the successors of the job have been run.
 
-        Services allow things like databases and servers to be started and accessed \
+        Services allow things like databases and servers to be started and accessed
         by jobs in a workflow.
 
         :raises toil.job.JobException: If service has already been made the child of a job or another service.
         :param toil.job.Job.Service service: Service to add.
         :param toil.job.Job.Service parentService: Service that will be started before 'service' is
-               started. Allows trees of services to be established. parentService must be a service
-               of this job.
+            started. Allows trees of services to be established. parentService must be a service
+            of this job.
         :return: a promise that will be replaced with the return value from
-                 :func:`toil.job.Job.Service.start` of service in any successor of the job.
-        :rtype:toil.job.Promise
+            :func:`toil.job.Job.Service.start` of service in any successor of the job.
+        :rtype: toil.job.Promise
         """
         if parentService is not None:
             # Do check to ensure that parentService is a service of this job
@@ -374,13 +374,13 @@ class Job(object):
 
     def checkJobGraphForDeadlocks(self):
         """
-        :raises toil.job.JobGraphDeadlockException: if the job graph \
-        is cyclic, contains multiple roots or contains checkpoint jobs that are
-        not leaf vertices when defined (see :func:`toil.job.Job.checkNewCheckpointsAreLeaves`).
-
-        See :func:`toil.job.Job.checkJobGraphConnected`, \
-        :func:`toil.job.Job.checkJobGraphAcyclic` and \
+        See :func:`toil.job.Job.checkJobGraphConnected`,
+        :func:`toil.job.Job.checkJobGraphAcyclic` and
         :func:`toil.job.Job.checkNewCheckpointsAreLeafVertices` for more info.
+
+        :raises toil.job.JobGraphDeadlockException: if the job graph
+            is cyclic, contains multiple roots or contains checkpoint jobs that are
+            not leaf vertices when defined (see :func:`toil.job.Job.checkNewCheckpointsAreLeaves`).
         """
         self.checkJobGraphConnected()
         self.checkJobGraphAcylic()
@@ -578,7 +578,7 @@ class Job(object):
             Stops the service. 
             
             :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
-            Function can block until complete.
+                Function can block until complete.
             """
             pass
 
@@ -588,8 +588,8 @@ class Job(object):
 
             :raise RuntimeError: If the service failed, this will cause the service job to be labeled failed.
             :returns: True if the service is still running, else False. If False then the service job will be terminated,
-            and considered a success. Important point: if the service job exits due to a failure, it should raise a
-            RuntimeError, not return False!
+                and considered a success. Important point: if the service job exits due to a failure, it should raise a
+                RuntimeError, not return False!
             """
             pass
 
@@ -1451,13 +1451,13 @@ class PromisedRequirement(object):
 
         For example, let f, g, and h be functions. Then a Toil workflow can be
         defined as follows::
-            A = Job.wrapFn(f)
-            B = A.addChildFn(g, cores=PromisedRequirement(A.rv())
-            C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
+        A = Job.wrapFn(f)
+        B = A.addChildFn(g, cores=PromisedRequirement(A.rv())
+        C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
 
         :param valueOrCallable: A single Promise instance or a function that
                                 takes \*args as input parameters.
-        :param int|Promise *args: variable length argument list
+        :param int|Promise \*args: variable length argument list
         """
         if hasattr(valueOrCallable, '__call__'):
             assert len(args) != 0, 'Need parameters for PromisedRequirement function.'

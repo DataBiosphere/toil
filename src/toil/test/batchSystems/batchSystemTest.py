@@ -726,7 +726,7 @@ def count(delta, file_path):
     """
     Increments counter file and returns the max number of times the file
     has been modified. Counter data must be in the form:
-     concurrent tasks, max concurrent tasks (counter should be initialized to 0,0)
+    concurrent tasks, max concurrent tasks (counter should be initialized to 0,0)
 
     :param int delta: increment value
     :param str file_path: path to shared counter file

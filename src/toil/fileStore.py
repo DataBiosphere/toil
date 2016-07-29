@@ -277,21 +277,21 @@ class FileStore(object):
 
         :param FileID fileStoreID: job store id for the file
 
-        :param string userPath: a path to the name of file to which the global \
-        file will be copied or hard-linked (see below).
+        :param string userPath: a path to the name of file to which the global
+            file will be copied or hard-linked (see below).
 
         :param boolean cache: If True, a copy of the file will be saved into a cache that can be
-        used by other workers. caching supports multiple concurrent workers requesting the same
-        file by allowing only one to download the file while the others wait for it to complete.
+            used by other workers. caching supports multiple concurrent workers requesting the same
+            file by allowing only one to download the file while the others wait for it to complete.
 
         :param boolean mutable: If True, the file path returned points to a file that is
-        modifiable by the user. Using False is recommended as it saves disk by making multiple
-        workers share a file via hard links. The value defaults to False unless backwards
-        compatibility was requested.
+            modifiable by the user. Using False is recommended as it saves disk by making multiple
+            workers share a file via hard links. The value defaults to False unless backwards
+            compatibility was requested.
 
-        :return: an absolute path to a local, temporary copy of the file keyed \
-        by fileStoreID.
-        :rtype : string
+        :return: an absolute path to a local, temporary copy of the file keyed
+            by fileStoreID.
+        :rtype: string
         """
         # Check that the file hasn't been deleted by the user
         if fileStoreID in self.filesToDelete:
@@ -757,7 +757,7 @@ class FileStore(object):
 
     def returnFileSize(self, fileStoreID, cachedFileSource, lockFileHandle,
                        fileAlreadyCached=False):
-        '''
+        """
         Returns the fileSize of the file described by fileStoreID to the job requirements pool
         if the file was recently added to, or read from cache (A job that reads n bytes from
         cache doesn't really use those n bytes as a part of it's job disk since cache is already
@@ -767,9 +767,9 @@ class FileStore(object):
         :param str cachedFileSource: File being added to cache
         :param file lockFileHandle: Open file handle to the cache lock file
         :param bool fileAlreadyCached: A flag to indicate whether the file was already cached or
-        not. If it was, then it means that you don't need to add the filesize to cache again.
+            not. If it was, then it means that you don't need to add the filesize to cache again.
         :return: None
-        '''
+        """
         fileSize = os.stat(cachedFileSource).st_size
         cacheInfo = self._CacheState._load(self.cacheStateFile)
         # If the file isn't cached, add the size of the file to the cache pool. However, if the
