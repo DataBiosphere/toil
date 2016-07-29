@@ -23,8 +23,6 @@ import logging
 import time
 from Queue import Queue, Empty
 from collections import namedtuple
-from multiprocessing import Event as ProcessEvent
-from multiprocessing import Process
 from threading import Thread, Event
 
 from bd2k.util.expando import Expando
@@ -41,21 +39,21 @@ logger = logging.getLogger( __name__ )
 
 class StatsAndLogging( object ):
     """
-    Class manages process to aggregate statistics and logging information on a toil run.
+    Class manages a thread that aggregates statistics and logging information on a toil run.
     """
 
     def __init__(self, jobStore):
-        # Start the stats/logging aggregation process
-        self._stop = ProcessEvent()
-        self._worker = Process(target=self.statsAndLoggingAggregatorProcess,
-                         args=(jobStore, self._stop))
+        # Start the stats/logging aggregation thread
+        self._stop = Event()
+        self._worker = Thread(target=self.statsAndLoggingAggregator,
+                              args=(jobStore, self._stop))
         self._worker.start()
 
     @staticmethod
-    def statsAndLoggingAggregatorProcess(jobStore, stop):
+    def statsAndLoggingAggregator(jobStore, stop):
         """
         The following function is used for collating stats/reporting log messages from the workers.
-        Works inside of a separate process, collates as long as the stop flag is not True.
+        Works inside of a thread, collates as long as the stop flag is not True.
         """
         #  Overall timing
         startTime = time.time()
@@ -82,7 +80,7 @@ class StatsAndLogging( object ):
                     logger.info("%s:    %s", log.jobStoreID, log.text)
 
         while True:
-            # This is a indirect way of getting a message to the process to exit
+            # This is a indirect way of getting a message to the thread to exit
             if stop.is_set():
                 jobStore.readStatsAndLogging(callback)
                 break
@@ -96,22 +94,20 @@ class StatsAndLogging( object ):
 
     def check(self):
         """
-        Check on the stats and logging process.
-        :raise RuntimeError: If the underlying process has quit.
+        Check on the stats and logging aggregator.
+        :raise RuntimeError: If the underlying thread has quit.
         """
         if not self._worker.is_alive():
-            raise RuntimeError("Stats and logging process has quit with exit code: %d." % self._worker.exitcode)
+            raise RuntimeError("Stats and logging thread has quit")
 
     def shutdown(self):
         """
-        Finish up the stats/logging aggregation process
+        Finish up the stats/logging aggregation thread
         """
-        logger.info('Waiting for stats and logging collator process to finish ...')
+        logger.info('Waiting for stats and logging collator thread to finish ...')
         startTime = time.time()
         self._stop.set()
         self._worker.join()
-        if self._worker.exitcode != 0:
-            raise RuntimeError('Stats/logging collator failed with exit code %d.' % self._worker.exitcode)
         logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
@@ -665,7 +661,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
         jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState, serviceManager)
         logger.info("Found %s jobs to start and %i jobs with successors to run",
                     len(toilState.updatedJobs), len(toilState.successorCounts))
-        # Start the stats/logging aggregation process
+        # Start the stats/logging aggregation thread
         statsAndLogging = StatsAndLogging(jobStore)
         try:
             # Create cluster scaling processes if the provisioner is not None
@@ -683,7 +679,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
                     clusterScaler.shutdown()
                     logger.info('Worker shutdown complete in %s seconds', time.time() - startTime)
         finally:
-            # Shutdown the stats and logging process
+            # Shutdown the stats and logging thread
             statsAndLogging.shutdown()
     finally:
         serviceManager.shutdown()
