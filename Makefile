@@ -92,7 +92,7 @@ clean_pypi:
 
 docs: check_venv check_build_reqs
 	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
-	cd docs && make html 2>&1 | grep -v "WARNING: duplicate object description of"
+	cd docs && make html
 clean_docs: check_venv
 	- cd docs && make clean
 

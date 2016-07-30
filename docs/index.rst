@@ -98,11 +98,9 @@ Contents:
    architecture
    batchSystem
    jobStore
-   generated_rst/modules
 
 Indices and tables
 ==================
 
 * :ref:`genindex`
-* :ref:`modindex`
 * :ref:`search`
