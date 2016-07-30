@@ -694,7 +694,7 @@ class Toil(object):
         else:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
-        if not batchSystemClass.supportsWorkerCleanup():
+        if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
             raise RuntimeError('%s currently does not support shared caching.  Set the '
                                '--disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
