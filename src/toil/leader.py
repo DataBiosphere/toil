@@ -30,6 +30,8 @@ from threading import Thread, Event
 from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
+from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.bioio import getTotalCpuTime, logStream
 from toil.provisioners.clusterScaler import ClusterScaler
 
@@ -265,13 +267,32 @@ class JobBatcher:
         """
         Function reads a processed jobWrapper file and updates it state.
         """
+        def processRemovedJob(jobStoreID):
+            if resultStatus != 0:
+                logger.warn("Despite the batch system claiming failure the "
+                            "jobWrapper %s seems to have finished and been removed", jobStoreID)
+            self._updatePredecessorStatus(jobStoreID)
+
         if wallTime is not None and self.clusterScaler is not None:
             issuedJob = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
             self.clusterScaler.addCompletedJob(issuedJob, wallTime)
         jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
             logger.debug("Job %s continues to exist (i.e. has more to do)" % jobStoreID)
-            jobWrapper = self.jobStore.load(jobStoreID)
+            try:
+                jobWrapper = self.jobStore.load(jobStoreID)
+            except NoSuchJobException:
+                if isinstance(self.jobStore, AWSJobStore):
+                    # We have a ghost job - the job has been deleted but a stale read from
+                    # SDB gave us a false positive when we checked for its existence.
+                    # Process the job from here as any other job removed from the job store.
+                    # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
+                    # is completed
+                    logger.warn('Got a stale read from SDB for job %s', jobStoreID)
+                    processRemovedJob(jobStoreID)
+                    return
+                else:
+                    raise
             if jobWrapper.logJobStoreFileID is not None:
                 logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
                 with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
@@ -292,10 +313,7 @@ class JobBatcher:
             #jobWrapper is done we can add it to the list of updated jobWrapper files
             logger.debug("Added jobWrapper: %s to active jobs", jobStoreID)
         else:  #The jobWrapper is done
-            if resultStatus != 0:
-                logger.warn("Despite the batch system claiming failure the "
-                            "jobWrapper %s seems to have finished and been removed", jobStoreID)
-            self._updatePredecessorStatus(jobStoreID)
+            processRemovedJob(jobStoreID)
 
     def processTotallyFailedJob(self, jobWrapper):
         """

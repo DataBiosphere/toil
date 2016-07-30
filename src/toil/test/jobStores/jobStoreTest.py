@@ -854,10 +854,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     self.assertEqual(s, f.read())
 
     def testInaccessableLocation(self):
-        # This could break if 1000genomes enables GetBucketLocation in their S3 bucket policy,
-        # see https://rt.sanger.ac.uk/Ticket/Display.html?id=534925. If that happens, we'll have
-        # to set up or mock a bucket that disallows it.
-        url = 's3://1000genomes/20131219.populations.tsv'
+        url = 's3://cgl-toil-test-disallow-getbucketlocation/README'
         with patch('toil.jobStores.aws.jobStore.log') as mock_log:
             jobStoreID = self.master.importFile(url)
             self.assertTrue(self.master.fileExists(jobStoreID))
