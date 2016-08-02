@@ -123,6 +123,13 @@ class MesosBatchSystem(BatchSystemSupport,
         self.unusedJobID = itertools.count()
         self.lastReconciliation = time.time()
         self.reconciliationPeriod = 120
+
+        # These control how frequently to log a message that would indicate if no jobs are
+        # currently able to run on the offers given. This can happen if the cluster is busy
+        # or if the nodes in the cluster simply don't have enough resources to run the jobs
+        self.lastTimeOfferLogged = 0
+        self.logPeriod = 30  # seconds
+
         self._startDriver()
 
     def issueBatchJob(self, command, memory, cores, disk, preemptable):
@@ -343,6 +350,7 @@ class MesosBatchSystem(BatchSystemSupport,
             self._declineAllOffers(driver, offers)
             return
 
+        unableToRun = True
         # Right now, gives priority to largest jobs
         for offer in offers:
             runnableTasks = []
@@ -393,15 +401,22 @@ class MesosBatchSystem(BatchSystemSupport,
                 runnableTasks.extend(runnableTasksOfType)
             # Launch all runnable tasks together so we only call launchTasks once per offer
             if runnableTasks:
+                unableToRun = False
                 driver.launchTasks(offer.id, runnableTasks)
                 for task in runnableTasks:
                     self._updateStateToRunning(offer, task)
                     log.info('Launched Mesos task %s.', task.task_id.value)
             else:
-                log.info('Although there are queued jobs, none of them could be run with offer %s '
-                         'extended to the framework. Enable debug logging to see details '
-                         'about tasks queued and offers made.', offer.id)
+                log.debug('Although there are queued jobs, none of them could be run with offer %s '
+                          'extended to the framework.', offer.id)
                 driver.declineOffer(offer.id)
+
+        if unableToRun and time.time() > (self.lastTimeOfferLogged + self.logPeriod):
+            self.lastTimeOfferLogged = time.time()
+            log.info('Although there are queued jobs, none of them were able to run in '
+                     'any of the offers extended to the framework. There are currently '
+                     '%i jobs running. Enable debug level logging to see more details about '
+                     'job types and offers received.', len(self.runningJobMap))
 
     def _trackOfferedNodes(self, offers):
         for offer in offers:
