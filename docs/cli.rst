@@ -87,3 +87,10 @@ Here are some additional useful arguments that don't fit into another category.
 * ``--sseKey`` accepts a path to a 32-byte key that is used for server-side encryption when using the AWS job store.
 * ``--cseKey`` accepts a path to a 256-bit key to be used for client-side encryption on Azure job store.
 * ``--setEnv <NAME=VALUE>`` sets an environment variable early on in the worker
+
+For implementation-specific flags for schedulers like timelimits, queues, accounts, etc.. An environment variable can be
+defined before launching the Job, i.e:
+
+```
+export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
+```

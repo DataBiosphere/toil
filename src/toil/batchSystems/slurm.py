@@ -193,6 +193,15 @@ class Worker(Thread):
         if cpu is not None:
             sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
+        # "Native extensions" for SLURM (see DRMAA or SAGA)
+        nativeConfig = os.getenv('TOIL_SLURM_ARGS')
+        if nativeConfig is not None:
+            logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_RESOURCES env. variable: {}".format(nativeConfig))
+            if "--mem" or "--cpus-per-task" in nativeConfig:
+                raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
+
+            sbatch_line.extend([nativeConfig])
+
         return sbatch_line
 
     def sbatch(self, sbatch_line):
