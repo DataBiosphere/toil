@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version = '3.4.0a1'
+version = '3.5.0a1'
 
 cgcloudVersion = '1.6.0a1.dev370'
