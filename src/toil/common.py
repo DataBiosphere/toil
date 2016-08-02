@@ -633,7 +633,7 @@ class Toil(object):
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
             account, namePrefix = rest.split(':', 1)
-            return AzureJobStore(account, namePrefix, config=config)
+            return AzureJobStore(rest)
 
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
