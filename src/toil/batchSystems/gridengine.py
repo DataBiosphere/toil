@@ -159,8 +159,8 @@ class Worker(Thread):
                 time.sleep(sleepSeconds)
 
     def prepareQsub(self, cpu, mem, jobID):
-        qsubline = ['qsub', '-b', 'y', '-terse', '-j', 'y', '-cwd', '-o', '/dev/null',
-                    '-e', '/dev/null', '-N', 'toil_job_' + str(jobID)]
+        qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
+                    '-N', 'toil_job_' + str(jobID)]
 
         if self.boss.environment:
             qsubline.append('-v')
@@ -173,13 +173,20 @@ class Worker(Thread):
             reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
         if len(reqline) > 0:
             qsubline.extend(['-hard', '-l', ','.join(reqline)])
+        sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
+        if sgeArgs:
+            sgeArgs = sgeArgs.split()
+            for arg in sgeArgs:
+                if arg.startswith(("vf=", "hvmem=", "-pe")):
+                    raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
+            qsubline.extend(sgeArgs)
         if cpu is not None and math.ceil(cpu) > 1:
             peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
             qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
         return qsubline
 
     def qsub(self, qsubline):
-        logger.debug("Running %r", qsubline)
+        logger.debug("Running %r", " ".join(qsubline))
         process = subprocess.Popen(qsubline, stdout=subprocess.PIPE)
         result = int(process.stdout.readline().strip().split('.')[0])
         return result

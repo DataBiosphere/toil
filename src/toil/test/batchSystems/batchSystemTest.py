@@ -544,6 +544,12 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
 
+    def tearDown(self):
+        super(GridEngineBatchSystemTest, self).tearDown()
+        # Cleanup Gridengine output log file from qsub
+        from glob import glob
+        for f in glob('toil_job*.o*'):
+            os.unlink(f)
 
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
