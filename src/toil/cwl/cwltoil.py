@@ -245,12 +245,15 @@ class CWLJob(Job):
         adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index))
 
         # Run the tool
+        opts = copy.deepcopy(self.executor_options)
+        # Exports temporary directory for batch systems that reset TMPDIR
+        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or tmpdir)
         output = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                   basedir=os.getcwd(),
                                                   outdir=outdir,
                                                   tmpdir=tmpdir,
                                                   tmpdir_prefix="tmp",
-                                                  **self.executor_options)
+                                                  **opts)
         cwltool.builder.adjustDirObjs(output, locToPath)
         cwltool.builder.adjustFileObjs(output, locToPath)
         # Copy output files into the global file store.
@@ -648,7 +651,7 @@ def main(args=None, stdout=sys.stdout):
 
         basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
         builder = t._init_job(job, basedir=basedir)
-        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment)
+        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
         cwltool.builder.adjustDirObjs(builder.job, locToPath)
         cwltool.builder.adjustFileObjs(builder.job, locToPath)
         adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
