@@ -136,6 +136,7 @@ class JobBatcher:
         # Optional parameter which may be set if doing autoscaling
         self.clusterScaler = None
         self.jobsIssued = 0
+        self._preemptableJobsIssued = 0
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
         self.serviceManager = serviceManager
 
@@ -144,6 +145,8 @@ class JobBatcher:
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
+        if preemptable:
+            self._preemptableJobsIssued += 1
         jobCommand = ' '.join((resolveEntryPoint('_toil_worker'), self.jobStoreLocator, jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobCommand, memory, cores, disk, preemptable)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = IssuedJob(jobStoreID, memory, cores, disk, preemptable)
@@ -158,13 +161,22 @@ class JobBatcher:
         for jobStoreID, memory, cores, disk, preemptable in jobs:
             self.issueJob(jobStoreID, memory, cores, disk, preemptable)
 
-    def getNumberOfJobsIssued(self):
+    def getNumberOfJobsIssued(self, preemptable=None):
         """
         Gets number of jobs that have been added by issueJob(s) and not
         removed by removeJobID
+
+        :param None or boolean preemptable: If none, return all types of jobs.
+          If true, return just the number of preemptable jobs. If false, return
+          just the number of non-preemptable jobs.
         """
-        assert self.jobsIssued >= 0
-        return self.jobsIssued
+        assert self.jobsIssued >= 0 and self._preemptableJobsIssued >= 0
+        if preemptable is None:
+            return self.jobsIssued
+        elif preemptable:
+            return self._preemptableJobsIssued
+        else:
+            return (self.jobsIssued - self._preemptableJobsIssued)
 
     def getJob(self, jobBatchSystemID):
         """
@@ -190,6 +202,8 @@ class JobBatcher:
         """
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
         self.jobsIssued -= 1
+        if self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].preemptable:
+            self._preemptableJobsIssued -= 1
         jobStoreID = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID).jobStoreID
         return jobStoreID
 

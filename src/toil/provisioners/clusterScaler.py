@@ -291,7 +291,7 @@ class ScalerThread(ExceptionalThread):
             with throttle(self.scaler.config.scaleInterval):
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
-                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued()
+                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
                 recentJobShapes = self.jobShapes.get()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = binPacking(recentJobShapes, self.nodeShape)
