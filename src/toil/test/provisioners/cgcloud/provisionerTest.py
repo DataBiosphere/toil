@@ -100,10 +100,6 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     instanceType = 'm3.large'
     leaderInstanceType = instanceType
 
-    # The spot bid to use for preemptable instances. A safe bet is the on-demand price for the
-    # selected instance type.
-    spotBid = '0.133'
-
     @classmethod
     def setUpClass(cls):
         logging.basicConfig(level=logging.INFO)
@@ -138,7 +134,11 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             os.environ['CGCLOUD_PLUGINS'] = self.saved_cgcloud_plugins
         super(AbstractCGCloudProvisionerTest, self).tearDown()
 
-    def _test(self, autoScaled=False, spotInstances=False):
+    def _test(self,
+              autoScaled=False,
+              spotInstances=False,
+              spotBid = '0.133',
+              slackPreference=None):
         self.assertTrue(not spotInstances or autoScaled,
                         'This test does not support a static cluster of spot instances.')
         if self.createCluster:
@@ -172,11 +172,14 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                                     '--logDebug'])
             if spotInstances:
                 toilOptions.extend([
-                    '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),
+                    '--preemptableNodeType=%s:%s' % (self.instanceType, spotBid),
                     # The RNASeq pipeline does not specify a preemptability requirement so we
                     # need to specify a default, otherwise jobs would never get scheduled.
                     '--defaultPreemptable',
                     '--maxPreemptableNodes=%s' % self.numWorkers])
+
+            if slackPreference:
+                toilOptions.extend(['--slackPreemptablePreference', slackPreference])
 
             self._runScript(toilOptions)
 
