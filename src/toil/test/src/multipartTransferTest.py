@@ -41,9 +41,9 @@ def openS3(keySize=None):
     """
     if keySize is not None and keySize < 0:
         raise ValueError('Key size must be greater than zero')
-    with closing(boto.s3.connect_to_region(AWSMultipartCopyTest.region)) as s3:
+    with closing(boto.s3.connect_to_region(AWSMultipartCopyTest.awsRegion())) as s3:
         bucket = s3.create_bucket('multipart-transfer-test-%s' % uuid.uuid4(),
-                                  location=region_to_bucket_location(AWSMultipartCopyTest.region))
+                                  location=region_to_bucket_location(AWSMultipartCopyTest.awsRegion()))
         try:
             keyName = 'test'
             if keySize is None:
@@ -61,7 +61,6 @@ def openS3(keySize=None):
 
 
 class AWSMultipartCopyTest(ToilTest):
-    region = 'us-west-2'
 
     @classmethod
     def makeTests(cls):

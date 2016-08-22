@@ -94,10 +94,6 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     else:
         toilScripts = 'https://api.github.com/repos/BD2KGenomics/toil-scripts/tarball/master'
 
-    # The AWS region to run everything in
-    #
-    region = 'us-west-2'
-
     # The instance types to use for leader and workers
     #
     instanceType = 'm3.large'
@@ -134,7 +130,7 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
 
     def setUp(self):
         super(CGCloudProvisionerTest, self).setUp()
-        self.jobStore = 'aws:%s:toil-it-%s' % (self.region, uuid4())
+        self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
         if self.saved_cgcloud_plugins is not None:

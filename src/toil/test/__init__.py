@@ -21,8 +21,9 @@ import shutil
 import re
 from contextlib import contextmanager
 from unittest.util import strclass
+from urllib2 import urlopen
 
-from bd2k.util import less_strict_bool
+from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
 
@@ -57,6 +58,39 @@ class ToilTest(unittest.TestCase):
             tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
             mkdir_p(tempBaseDir)
         cls._tempBaseDir = tempBaseDir
+
+    @classmethod
+    def awsRegion(cls):
+        """
+        Use us-west-2 unless running on EC2, in which case use the region in which
+        the instance is located
+        """
+        if runningOnEC2():
+            return cls._region()
+        else:
+            return 'us-west-2'
+
+
+    @classmethod
+    def _availabilityZone(cls):
+        """
+        Used only when running on EC2. Query this instance's metadata to determine
+        in which availability zone it is running
+        """
+        return urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+
+    @classmethod
+    @memoize
+    def _region(cls):
+        """
+        Used only when running on EC2. Determines in what region this instance is running.
+        The region will not change over the life of the instance so the result
+        is memoized to avoid unnecessary work.
+        """
+        m = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$',cls._availabilityZone())
+        assert m
+        region = m.group(1)
+        return region
 
     @classmethod
     def _getUtilScriptPath(cls, script_name):
@@ -162,12 +196,10 @@ def needs_aws(test_item):
         raise
     else:
         dot_aws_credentials_path = os.path.expanduser('~/.aws/credentials')
-        hv_uuid_path = '/sys/hypervisor/uuid'
         boto_credentials = config.get('Credentials', 'aws_access_key_id')
         if boto_credentials:
             return test_item
-        if (os.path.exists(dot_aws_credentials_path) or
-                (os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'))):
+        if os.path.exists(dot_aws_credentials_path) or runningOnEC2():
             # Assume that EC2 machines like the Jenkins slave that we run CI on will have IAM roles
             return test_item
         else:
@@ -178,6 +210,11 @@ def needs_aws(test_item):
 def file_begins_with(path, prefix):
     with open(path) as f:
         return f.read(len(prefix)) == prefix
+
+
+def runningOnEC2():
+    hv_uuid_path = '/sys/hypervisor/uuid'
+    return os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2')
 
 
 def needs_google(test_item):
