@@ -29,7 +29,6 @@ from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.bioio import getTotalCpuTime, logStream
 from toil.provisioners.clusterScaler import ClusterScaler
 
@@ -278,7 +277,8 @@ class JobBatcher:
             try:
                 jobWrapper = self.jobStore.load(jobStoreID)
             except NoSuchJobException:
-                if isinstance(self.jobStore, AWSJobStore):
+                # Avoid importing AWSJobStore as the corresponding extra might be missing
+                if self.jobStore.__class__.__name__ == 'AWSJobStore':
                     # We have a ghost job - the job has been deleted but a stale read from
                     # SDB gave us a false positive when we checked for its existence.
                     # Process the job from here as any other job removed from the job store.
