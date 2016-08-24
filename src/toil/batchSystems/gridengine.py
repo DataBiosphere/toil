@@ -189,6 +189,7 @@ class Worker(Thread):
         args = ["qacct", "-j", str(job)]
         if task is not None:
             args.extend(["-t", str(task)])
+        logger.debug("Running %r", args)
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
             if line.startswith("failed") and int(line.split()[1]) == 1:
