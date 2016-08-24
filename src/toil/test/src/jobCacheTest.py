@@ -880,7 +880,7 @@ class FileJobStoreCacheTest(hidden.AbstractCacheTest):
 @needs_aws
 class AwsJobStoreCacheTest(hidden.AbstractCacheTest):
     def _getTestJobStore(self):
-        return 'aws:us-west-2:cache-tests-' + str(uuid4())
+        return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
 
     @unittest.skipIf(testingIsAutomatic, "To save time")
     def testExtremeCacheSetup(self):

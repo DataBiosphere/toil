@@ -304,7 +304,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     # Support methods
 
     def _awsJobStore(self):
-        return "aws:us-west-2:sort-test-%s" % uuid4()
+        return 'aws:%s:sort-test-%s' % (self.awsRegion(), uuid4())
 
     def _azureJobStore(self):
         return "azure:toiltest:sort-test-%s" % uuid4()

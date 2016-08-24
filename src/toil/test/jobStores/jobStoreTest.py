@@ -826,14 +826,13 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
 @needs_aws
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
-    testRegion = 'us-west-2'
 
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        return AWSJobStore(self.testRegion + ':' + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion()+ ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -908,10 +907,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         import boto.s3
-        s3 = boto.s3.connect_to_region(self.testRegion)
+        s3 = boto.s3.connect_to_region(self.awsRegion())
         try:
             return s3.create_bucket(bucket_name='import-export-test-%s' % uuid.uuid4(),
-                                    location=region_to_bucket_location(self.testRegion))
+                                    location=region_to_bucket_location(self.awsRegion()))
         except:
             with panic(log=logger):
                 s3.close()
