@@ -16,6 +16,7 @@ from __future__ import absolute_import
 
 import os
 import sys
+import uuid
 from subprocess import CalledProcessError, check_call
 
 import toil
@@ -24,7 +25,7 @@ from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile
 from toil.lib.bioio import system
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -71,6 +72,23 @@ class UtilsTest(ToilTest):
     @property
     def statusCommand(self):
         return [self.toilMain, 'status', self.toilDir, '--failIfNotComplete']
+
+    @needs_aws
+    @integrative
+    def testAWSProvisionerUtils(self):
+        clusterName = 'cluster-utils-test' + str(uuid.uuid4())
+        try:
+            system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
+                '--clusterName', clusterName, '--provisioner=aws'])
+        finally:
+            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', '--clusterName', clusterName])
+        try:
+            # launch preemptable master with same name
+            system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
+                    '--clusterName', clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
+            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', '--clusterName', clusterName])
+        finally:
+            system([self.toilMain, 'destroy-cluster', '--provisioner=aws','--clusterName', clusterName])
 
     def testUtilsSort(self):
         """

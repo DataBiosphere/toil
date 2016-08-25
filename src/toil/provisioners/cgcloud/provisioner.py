@@ -35,6 +35,7 @@ from itertools import islice
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
+from toil.provisioners import BaseAWSProvisioner
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -47,7 +48,7 @@ log = logging.getLogger(__name__)
 provisioning_timeout = 10 * 60
 
 
-class CGCloudProvisioner(AbstractProvisioner):
+class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     """
     A provisioner that uses CGCloud's toil-box role to boot up worker nodes in EC2. It uses the
     spot market to provision preemptable instances, but defaults to on-demand instances.
@@ -139,6 +140,18 @@ class CGCloudProvisioner(AbstractProvisioner):
             log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
+    @classmethod
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
+        raise NotImplementedError
+
+    @classmethod
+    def sshLeader(cls, clusterName):
+        raise NotImplementedError
+
+    @classmethod
+    def destroyCluster(cls, clusterName):
+        raise NotImplementedError
+
     def _addNodes(self, instances, numNodes, preemptable=False):
         deadline = time.time() + provisioning_timeout
         spec = dict(key_name=self._keyName,
@@ -228,17 +241,6 @@ class CGCloudProvisioner(AbstractProvisioner):
             log.warn('Batch system is not scalable. Assuming all instances joined the cluster.')
         return numInstancesAdded
 
-    def _partialBillingInterval(self, instance):
-        """
-        Returns a floating point value between 0 and 1.0 representing how far we are into the
-        current billing cycle for the given instance. If the return value is .25, we are one
-        quarter into the billing cycle, with three quarters remaining before we will be charged
-        again for that instance.
-        """
-        launch_time = parse_iso_utc(instance.launch_time)
-        now = datetime.datetime.utcnow()
-        delta = now - launch_time
-        return delta.total_seconds() / 3600.0 % 1.0
 
     def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
         # If the batch system is scalable, we can use the number of currently running workers on
@@ -275,8 +277,6 @@ class CGCloudProvisioner(AbstractProvisioner):
             self._logAndTerminate(instanceIds)
         return len(instanceIds)
 
-    def _remainingBillingInterval(self, instance):
-        return 1.0 - self._partialBillingInterval(instance)
 
     def _logAndTerminate(self, instanceIds):
         log.debug('IDs of terminated instances: %r', instanceIds)

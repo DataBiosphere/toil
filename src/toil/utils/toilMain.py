@@ -4,6 +4,7 @@ import pkg_resources
 import os
 import sys
 
+
 def main():
     modules = loadModules()
     try:
@@ -32,9 +33,10 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import toilKill, toilStats, toilStatus, toilClean
-    return {name[4:].lower(): module for name, module in locals().iteritems()}
-
+    from toil.utils import toilKill, toilStats, toilStatus, toilClean, toilLaunchCluster, toilDestroyCluster, toilSSHCluster
+    commandMapping = {name[4:].lower(): module for name, module in locals().iteritems()}
+    commandMapping = {name[:-7]+'-'+name[-7:] if name.endswith('cluster') else name: module for name, module in commandMapping.iteritems()}
+    return commandMapping
 
 def printHelp(modules):
     usage = ("\n"

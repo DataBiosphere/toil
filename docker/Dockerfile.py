@@ -11,7 +11,11 @@ mesos_role = dict(leader='master', worker='slave')[options.role]
 
 dependencies = ' '.join(['libffi-dev',   # For client side encryption for 'azure' extra with PyNACL
                          'python-dev',   # For installing Python packages with native code
-                         'python-pip'])  # Bootstrap pip, but needs upgrading, see below
+                         'python-pip',  # Bootstrap pip, but needs upgrading, see below
+                         'libcurl4-openssl-dev',
+                         'libssl-dev',
+                         'wget',
+                         'curl'])
 
 print textwrap.dedent('''
     FROM mesosphere/mesos-{mesos_role}:1.0.0
@@ -23,6 +27,12 @@ print textwrap.dedent('''
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
     RUN pip install virtualenv==15.0.3
+
+    RUN virtualenv /home/s3am
+
+    RUN /home/s3am/bin/pip install s3am==2.0
+
+    RUN ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0

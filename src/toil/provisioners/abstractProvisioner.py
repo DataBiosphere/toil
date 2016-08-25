@@ -75,3 +75,18 @@ class AbstractProvisioner(object):
         :rtype: Shape
         """
         raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def sshLeader(cls, clusterName):
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def destroyCluster(cls, clusterName):
+        raise NotImplementedError
