@@ -30,6 +30,11 @@ sortMemory = human2bytes('1000M')
 def setup(job, inputFile, N, downCheckpoints):
     """Sets up the sort.
     """
+    # insure default resource requirements are being set correctly
+    assert job.cores is not None
+    assert job.disk is not None
+    # insure user specified resource requirements are being set correctly
+    assert job.memory is not None
     #Write the input file to the file store
     inputFileStoreID = job.fileStore.writeGlobalFile(inputFile, True)
     job.fileStore.logToMaster(" Starting the merge sort ")
