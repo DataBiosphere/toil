@@ -23,6 +23,7 @@ from collections import namedtuple
 from bd2k.util.objects import abstractclassmethod
 
 from toil.common import Toil, cacheDirName
+from toil.fileStore import shutdownCache
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -290,6 +291,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
         workflowDirContents = os.listdir(workflowDir)
+        shutdownCache(os.path.join(workflowDir, cacheDirName(info.workflowID)))
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
