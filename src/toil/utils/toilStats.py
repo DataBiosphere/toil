@@ -22,7 +22,7 @@ import logging
 import json
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp
+from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.version import version
 from bd2k.util.expando import Expando
 
@@ -597,7 +597,9 @@ def main():
     initializeOptions(parser)
     options = parseBasicOptions(parser)
     checkOptions(options, parser)
-    jobStore = Toil.resumeJobStore(options.jobStore)
+    config = Config()
+    config.setOptions(options)
+    jobStore = Toil.resumeJobStore(config.jobStore)
     stats = getStats(jobStore)
     collatedStatsTag = processData(jobStore.config, stats)
     reportData(collatedStatsTag, options)

@@ -43,7 +43,7 @@ class Config(object):
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
-        self.jobStore = os.path.abspath("./toil")
+        self.jobStore = None
         self.logLevel = getLogLevelString()
         self.workDir = None
         self.stats = False
@@ -144,9 +144,17 @@ class Config(object):
                 assert isinstance(maxValue, float)
                 return lambda x: minValue <= x < maxValue
 
+        def parseJobStore(s):
+            name, rest = Toil.parseLocator(s)
+            if name == 'file':
+                # We need to resolve relative paths early, on the leader, because the worker process
+                # may have a different working directory than the leader, e.g. under Mesos.
+                return Toil.buildLocator(name, os.path.abspath(rest))
+            else:
+                return s
+
         #Core options
-        setOption("jobStore",
-                  parsingFn=lambda x: os.path.abspath(x) if options.jobStore.startswith('.') else x)
+        setOption("jobStore", parsingFn=parseJobStore)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         setOption("stats")
@@ -604,8 +612,8 @@ class Toil(object):
         finally:
             self._shutdownBatchSystem()
 
-    @staticmethod
-    def getJobStore(locator):
+    @classmethod
+    def getJobStore(cls, locator):
         """
         Create an instance of the concrete job store implementation that matches the given locator.
 
@@ -614,14 +622,7 @@ class Toil(object):
         :return: an instance of a concrete subclass of AbstractJobStore
         :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
-        if locator[0] in '/.':
-            locator = 'file:' + locator
-
-        try:
-            name, rest = locator.split(':', 1)
-        except ValueError:
-            raise RuntimeError('Invalid job store locator syntax.')
-
+        name, rest = cls.parseLocator(locator)
         if name == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
@@ -641,6 +642,23 @@ class Toil(object):
             return GoogleJobStore(namePrefix, projectID, config=config)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
+
+    @staticmethod
+    def parseLocator(locator):
+        if locator[0] in '/.' or ':' not in locator:
+            return 'file', locator
+        else:
+            try:
+                name, rest = locator.split(':', 1)
+            except ValueError:
+                raise RuntimeError('Invalid job store locator syntax.')
+            else:
+                return name, rest
+
+    @staticmethod
+    def buildLocator(name, rest):
+        assert ':' not in name
+        return name + ':' + rest
 
     @classmethod
     def resumeJobStore(cls, locator):

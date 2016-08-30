@@ -60,7 +60,7 @@ class MesosTest(ToilTest, MesosTestSupport):
     def test_hello_world(self):
         system([sys.executable,
                 '-m', helloWorld.__name__,
-                './toilTest',
+                'file:./toilTest',
                 '--batchSystem=mesos',
                 '--logLevel', getLogLevelString()])
 

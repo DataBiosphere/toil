@@ -24,7 +24,7 @@ import sys
 from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp
+from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.leader import ToilState
 from toil.job import JobException
 from toil.version import version
@@ -67,12 +67,13 @@ def main():
     
     logger.info("Checking if we have files for Toil")
     assert options.jobStore is not None
-
+    config = Config()
+    config.setOptions(options)
     ##########################################
     #Survey the status of the job and report.
     ##########################################  
     
-    jobStore = Toil.resumeJobStore(options.jobStore)
+    jobStore = Toil.resumeJobStore(config.jobStore)
     try:
         rootJob = jobStore.loadRootJob()
     except JobException:
@@ -90,7 +91,7 @@ def main():
 
     print('There are %i active jobs, %i parent jobs with children, and %i totally failed jobs '
           'currently in %s.' % (len(toilState.updatedJobs), len(toilState.successorCounts),
-                                len(failedJobs), options.jobStore), file=sys.stderr)
+                                len(failedJobs), config.jobStore), file=sys.stderr)
     
     if options.verbose: #Verbose currently means outputting the files that have failed.
         for job in failedJobs:

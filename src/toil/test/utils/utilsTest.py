@@ -27,7 +27,7 @@ from toil.lib.bioio import system
 from toil.test import ToilTest
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.common import Toil
+from toil.common import Toil, Config
 
 
 class UtilsTest(ToilTest):
@@ -177,7 +177,9 @@ class UtilsTest(ToilTest):
         options.clean = 'never'
         options.stats = True
         Job.Runner.startToil(RunTwoJobsPerWorker(), options)
-        jobStore = Toil.resumeJobStore(options.jobStore)
+        config = Config()
+        config.setOptions(options)
+        jobStore = Toil.resumeJobStore(config.jobStore)
         stats = getStats(jobStore)
         collatedStats = processData(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2,
