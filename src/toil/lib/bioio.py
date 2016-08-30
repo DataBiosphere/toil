@@ -33,9 +33,13 @@ from xml.dom import minidom  # For making stuff pretty
 defaultLogLevel = logging.INFO
 logger = logging.getLogger(__name__)
 rootLogger = logging.getLogger()
+toilLogger = logging.getLogger('toil')
 
-def getLogLevelString():
-    return logging.getLevelName(rootLogger.getEffectiveLevel())
+
+def getLogLevelString(logger=None):
+    if logger is None:
+        logger = rootLogger
+    return logging.getLevelName(logger.getEffectiveLevel())
 
 __loggingFiles = []
 def addLoggingFileHandler(fileName, rotatingLogging=False):
@@ -49,11 +53,14 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
     rootLogger.addHandler(handler)
     return handler
 
-def setLogLevel(level, logger=rootLogger):
+
+def setLogLevel(level, logger=None):
     """
     Sets the log level to a given string level (like "INFO"). Operates on the
     root logger by default, but another logger can be specified instead.
     """
+    if logger is None:
+        logger = rootLogger
     level = level.upper()
     if level == "OFF": level = "CRITICAL"
     # Note that getLevelName works in both directions, numeric to textual and textual to numeric
@@ -137,10 +144,12 @@ def setLoggingFromOptions(options):
     rootLogger.setLevel(defaultLogLevel)
     if options.logLevel is not None:
         setLogLevel(options.logLevel)
-    logger.info("Logging set at level: %s" % getLogLevelString())
+    logger.info("Root logger is at level '%s', 'toil' logger at level '%s'.",
+                getLogLevelString(logger=rootLogger), getLogLevelString(logger=toilLogger))
     if options.logFile is not None:
-        addLoggingFileHandler(options.logFile, options.logRotating)
-        logger.info("Logging to file: %s" % options.logFile)
+        addLoggingFileHandler(options.logFile, rotatingLogging=options.logRotating)
+        logger.info("Logging to file '%s'." % options.logFile)
+
 
 def system(command):
     """
