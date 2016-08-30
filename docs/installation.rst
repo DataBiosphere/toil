@@ -243,30 +243,44 @@ Setting up clusters with CGCloud_ has the benefit of coming pre-packaged with To
 batch system for running on AWS. If you encounter any issues following these steps, check official documentation
 which contains Troubleshooting sections.
 
-1. ``virtualenv ~/cgcloud``
-2. ``source ~/cgcloud/bin/activate``
-3. ``pip install cgcloud-core``
-4. ``pip install cgcloud-toil``
-5. Add the following to your ``~/.profile``, use the appropriate region for your account.
-    5a. ``export CGCLOUD_ZONE=us-west-2a``
+#. Create and activate a virtualenv::
 
-    5b. ``export CGCLOUD_PLUGINS="cgcloud.toil:$CGCLOUD_PLUGINS"``
-6. Setup credentials for your AWS account in ``~/.aws/credentials``::
+      virtualenv ~/cgcloud
+      source ~/cgcloud/bin/activate
 
-    [default]
-    aws_access_key_id=PASTE_YOUR_FOO_ACCESS_KEY_ID_HERE
-    aws_secret_access_key=PASTE_YOUR_FOO_SECRET_KEY_ID_HERE
-    region=us-west-2
+#. Install CGCloud and the CGCloud Toil plugin::
 
-7. Register your SSH key. You can create one with ``ssh-keygen``.
-    7a. ``cgcloud register-key ~/.ssh/id_rsa.pub``
-8. Create a template *toil-box* which will contain necessary prerequisites
-    8a. ``cgcloud create -IT toil-box``
-9. Create a small leader/worker cluster
-    9a. ``cgcloud create-cluster toil -s 2 -t m3.large``
-10. SSH into the leader: ``cgcloud ssh toil-leader``
+      pip install cgcloud-toil
 
-At this point, any toil script can be run on the distributed AWS cluster following instructions in :ref:`runningAWS`.
+#. Add the following to your ``~/.profile``, use the appropriate region for your account::
+
+      export CGCLOUD_ZONE=us-west-2a
+      export CGCLOUD_PLUGINS="cgcloud.toil:$CGCLOUD_PLUGINS"
+
+#. Setup credentials for your AWS account in ``~/.aws/credentials``::
+
+      [default]
+      aws_access_key_id=PASTE_YOUR_FOO_ACCESS_KEY_ID_HERE
+      aws_secret_access_key=PASTE_YOUR_FOO_SECRET_KEY_ID_HERE
+      region=us-west-2
+
+#. Register your SSH key. If you don't have one, create it with ``ssh-keygen``::
+
+      cgcloud register-key ~/.ssh/id_rsa.pub
+
+#. Create a template *toil-box* which will contain necessary prerequisites::
+
+      cgcloud create -IT toil-box
+
+#. Create a small leader/worker cluster::
+
+      cgcloud create-cluster toil -s 2 -t m3.large
+
+#. SSH into the leader::
+
+      cgcloud ssh toil-leader
+
+At this point, any Toil script can be run on the distributed AWS cluster following instructions in :ref:`runningAWS`.
 
 .. _installationAzure:
 
