@@ -33,6 +33,7 @@ def setup(job, inputFile, N, downCheckpoints):
     # insure default resource requirements are being set correctly
     assert job.cores is not None
     assert job.disk is not None
+    assert job.preemptable is not None
     # insure user specified resource requirements are being set correctly
     assert job.memory is not None
     #Write the input file to the file store
