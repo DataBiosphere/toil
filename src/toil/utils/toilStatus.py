@@ -21,7 +21,7 @@ from __future__ import print_function
 import logging
 import sys
 
-from toil.lib.bioio import logStream
+from toil.lib.bioio import logStream, getOutputLogger
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp
@@ -31,9 +31,11 @@ from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
+
 def main():
     """Reports the state of the toil.
     """
+    outputLogger = getOutputLogger(__name__)
     
     ##########################################
     #Construct the arguments.
@@ -96,7 +98,7 @@ def main():
         for job in failedJobs:
             if job.logJobStoreFileID is not None:
                 with job.getLogFileHandle(jobStore) as logFileHandle:
-                    logStream(logFileHandle, job.jobStoreID, logger.warn)
+                    logStream(logFileHandle, job.jobStoreID, outputLogger.warn)
             else:
                 print('Log file for job %s is absent.' % job.jobStoreID, file=sys.stderr)
         if len(failedJobs) == 0:
