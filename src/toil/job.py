@@ -670,7 +670,15 @@ class Job(object):
         else:
             openFileStream = jobStore.readFileStream(pickleFile)
         with openFileStream as fileHandle:
-            return cls._unpickle(userModule, fileHandle)
+            job = cls._unpickle(userModule, fileHandle)
+            resources = job.effectiveRequirements(jobStore.config)
+            if job.cores is None:
+                job.cores = resources.cores
+            if job.disk is None:
+                job.disk = resources.disk
+            if job.memory is None:
+                job.memory = resources.memory
+            return job
 
     @classmethod
     def _unpickle(cls, userModule, fileHandle):
