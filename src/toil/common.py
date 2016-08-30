@@ -626,16 +626,12 @@ class Toil(object):
         if name == 'file':
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
-
         elif name == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
             return AWSJobStore(rest)
-
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
-            account, namePrefix = rest.split(':', 1)
             return AzureJobStore(rest)
-
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
             projectID, namePrefix = rest.split(':', 1)
