@@ -290,8 +290,6 @@ class ScalerThread(ExceptionalThread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
 
     def tryRun(self):
-
-        # we will make reference to the global preemptable slack variable
         global _preemptableQueueSlack
 
         if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
@@ -305,11 +303,6 @@ class ScalerThread(ExceptionalThread):
                 # TODO: Correct for jobs already running which can be considered fractions of a job
                 queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
 
-                # if we're in the non-preemptable queue, we need to see if we have any slack
-                # coming over from the preemptable queue
-                if not self.preemptable:
-                    queueSize += _preemptableQueueSlack
-
                 recentJobShapes = self.jobShapes.get()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = binPacking(recentJobShapes, self.nodeShape)
@@ -318,6 +311,11 @@ class ScalerThread(ExceptionalThread):
                     * nodesToRunRecentJobs
                     * float(queueSize)
                     / len(recentJobShapes))))
+
+                # if we're in the non-preemptable queue, we need to see if we have any slack
+                # coming over from the preemptable queue
+                if not self.preemptable:
+                    estimatedNodes += _preemptableQueueSlack
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
@@ -358,9 +356,9 @@ class ScalerThread(ExceptionalThread):
                         
                         # slack is derived from the delta (the number of nodes we did _not_ allocate)
                         # times a preference for preemptable nodes
-                        require(self.scaler.config.slackPreemptablePreference >= 0.0 and
-                                self.scaler.config.slackPreemptablePreference <= 1.0,
-                                "Slack preference for preemptable nodes (%f) must be >= 0.0 and <= 1.0" % self.scaler.config.slackPreemptablePreference)
+                        require(1.0 >= self.scaler.config.slackPreemptablePreference >= 0.0,
+                                "Slack preference for preemptable nodes (%f) must be >= 0.0 and <= 1.0",
+                                self.scaler.config.slackPreemptablePreference)
                         nonPreemptablePreference = 1.0 - self.scaler.config.slackPreemptablePreference
                         delta = estimatedNodes - totalNodes
                         _preemptableQueueSlack = int(round(delta * nonPreemptablePreference))
