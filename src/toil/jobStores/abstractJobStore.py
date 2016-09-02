@@ -467,7 +467,7 @@ class AbstractJobStore(object):
             reachableFromRoot.add(jobWrapper.jobStoreID)
             # Traverse jobs in stack
             for jobs in jobWrapper.stack:
-                for successorJobStoreID in map(lambda x: x[0], jobs):
+                for successorJobStoreID in map(lambda x: x.jobStoreID, jobs):
                     if (successorJobStoreID not in reachableFromRoot
                         and haveJob(successorJobStoreID)):
                         getConnectedJobs(getJob(successorJobStoreID))
@@ -518,7 +518,7 @@ class AbstractJobStore(object):
                 stackSizeFn = lambda: sum(map(len, jobWrapper.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
-                jobWrapper.stack = map(lambda x: filter(lambda y: self.exists(y[0]), x),
+                jobWrapper.stack = map(lambda x: filter(lambda y: self.exists(y.jobStoreID), x),
                                        jobWrapper.stack)
                 # Remove empty stuff from the stack
                 jobWrapper.stack = filter(lambda x: len(x) > 0, jobWrapper.stack)
@@ -603,25 +603,8 @@ class AbstractJobStore(object):
     ##########################################  
 
     @abstractmethod
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, issuableJob):
         """
-        Creates a jobWrapper with specified resources and command, adds it to the job store and
-        returns it.
-        
-        :param str command: the shell command that will be executed when the job is being run
-
-        :param int memory: the amount of RAM in bytes needed to run the job
-
-        :param float cores: the number of cores needed to run the job
-
-        :param int disk: the amount of disk in bytes needed to run the job
-
-        :param bool preemptable: whether the job can be run on a preemptable node
-
-        :param int predecessorNumber: argument to the job constructor. Specifies the number of
-               other jobWrappers that specify this job in their stack
-
-        :return: the newly created jobWrapper object
         :rtype: toil.jobWrapper.JobWrapper
         """
         raise NotImplementedError()

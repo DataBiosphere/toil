@@ -74,8 +74,6 @@ def main():
     from toil.lib.bioio import setLogLevel
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-    from toil.lib.bioio import makePublicDir
-    from toil.lib.bioio import system
     from toil.job import Job
     
     ########################################## 
@@ -223,7 +221,7 @@ def main():
         if jobWrapper.command == None:
             # Cleanup jobs already finished
             f = lambda jobs : filter(lambda x : len(x) > 0, map(lambda x :
-                                    filter(lambda y : jobStore.exists(y[0]), x), jobs))
+                                    filter(lambda y : jobStore.exists(y.jobStoreID), x), jobs))
             jobWrapper.stack = f(jobWrapper.stack)
             jobWrapper.services = f(jobWrapper.services)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -267,11 +265,11 @@ def main():
                     def recursiveDelete(jobWrapper2):
                         # Recursive walk the stack to delete all remaining jobs
                         for jobs in jobWrapper2.stack + jobWrapper2.services:
-                            for jobTuple in jobs:
-                                if jobStore.exists(jobTuple[0]):
-                                    recursiveDelete(jobStore.load(jobTuple[0]))
+                            for issuableJob in jobs:
+                                if jobStore.exists(issuableJob.jobStoreID):
+                                    recursiveDelete(jobStore.load(issuableJob.jobStoreID))
                                 else:
-                                    logger.debug("Job %s has already been deleted", jobTuple[0])
+                                    logger.debug("Job %s has already been deleted", issuableJob)
                         if jobWrapper2 != jobWrapper:
                             logger.debug("Checkpoint is deleting old successor job: %s", jobWrapper2.jobStoreID)
                             jobStore.delete(jobWrapper2.jobStoreID)
@@ -364,22 +362,22 @@ def main():
             
             #We check the requirements of the jobWrapper to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorsPreemptable, successorPredecessorID = jobs[0]
-            if successorMemory > jobWrapper.memory:
+            successorIssueableJob = jobs[0]
+            if successorIssueableJob.memory > jobWrapper.memory:
                 logger.debug("We need more memory for the next jobWrapper, so finishing")
                 break
-            if successorCores > jobWrapper.cores:
+            if successorIssueableJob.cores > jobWrapper.cores:
                 logger.debug("We need more cores for the next jobWrapper, so finishing")
                 break
-            if successorsDisk > jobWrapper.disk:
+            if successorIssueableJob.disk > jobWrapper.disk:
                 logger.debug("We need more disk for the next jobWrapper, so finishing")
                 break
-            if successorPredecessorID != None: 
+            if successorIssueableJob.predecessorID is not None:
                 logger.debug("The jobWrapper has multiple predecessors, we must return to the leader.")
                 break
 
             # Load the successor jobWrapper
-            successorJobWrapper = jobStore.load(successorJobStoreID)
+            successorJobWrapper = jobStore.load(successorIssueableJob.jobStoreID)
 
             # Somewhat ugly, but check if job is a checkpoint job and quit if
             # so
@@ -408,12 +406,12 @@ def main():
             jobWrapper.stack.pop()
 
             #These should all match up
-            assert successorJobWrapper.memory == successorMemory
-            assert successorJobWrapper.cores == successorCores
+            assert successorJobWrapper.memory == successorIssueableJob.memory
+            assert successorJobWrapper.cores == successorIssueableJob.cores
             assert successorJobWrapper.predecessorsFinished == set()
             assert successorJobWrapper.predecessorNumber == 1
-            assert successorJobWrapper.command != None
-            assert successorJobStoreID == successorJobWrapper.jobStoreID
+            assert successorJobWrapper.command is not None
+            assert successorIssueableJob.jobStoreID == successorJobWrapper.jobStoreID
             
             #Transplant the command and stack to the current jobWrapper
             jobWrapper.command = successorJobWrapper.command

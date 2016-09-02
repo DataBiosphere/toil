@@ -82,7 +82,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A dictionary mapping IDs of submitted jobs to the command line
         self.jobs = {}
         """
-        :type: dict[str,str]
+        :type: dict[str,toil.job.IssuableJob]
         """
         # A queue of jobs waiting to be executed. Consumed by the workers.
         self.inputQueue = Queue()
@@ -183,8 +183,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                         if 0 != statusCode:
                                             if statusCode != -9 or not info.killIntended:
                                                 log.error("Got exit code %i (indicating failure) "
-                                                          "from command '%s'.", statusCode,
-                                                          jobCommand)
+                                                          "from job %s.", statusCode,
+                                                          self.jobs[jobID])
                                     finally:
                                         self.runningJobs.pop(jobID)
                                 finally:
@@ -209,28 +209,29 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     break
         log.debug('Exiting worker thread normally.')
 
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, issuableJob):
         """
         Adds the command and resources to a queue to be run.
         """
         # Round cores to minCores and apply scale
-        cores = math.ceil(cores * self.scale / self.minCores) * self.minCores
+        cores = math.ceil(issuableJob.cores * self.scale / self.minCores) * self.minCores
         assert cores <= self.maxCores, ('The job is requesting {} cores, more than the maximum of '
                                         '{} cores this batch system was configured with. Scale is '
                                         'set to {}.'.format(cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+        assert issuableJob.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format(memory, self.maxMemory))
+                                          'with.'.format(issuableJob.memory, self.maxMemory))
 
-        self.checkResourceRequest(memory, cores, disk)
+        self.checkResourceRequest(issuableJob.memory, cores, issuableJob.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            command, memory, cores, disk))
+            issuableJob.command, issuableJob.memory, cores, issuableJob.disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = command
-        self.inputQueue.put((command, jobID, cores, memory, disk, self.environment.copy()))
+        self.jobs[jobID] = issuableJob
+        self.inputQueue.put((issuableJob.command, jobID, cores, issuableJob.memory,
+                             issuableJob.disk, self.environment.copy()))
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -279,9 +280,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         except Empty:
             return None
         jobID, exitValue, wallTime = item
-        self.jobs.pop(jobID)
+        job = self.jobs.pop(jobID)
         log.debug("Ran jobID: %s with exit value: %i", jobID, exitValue)
-        return jobID, exitValue, wallTime
+        return job, exitValue, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):

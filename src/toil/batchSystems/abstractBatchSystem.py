@@ -84,7 +84,7 @@ class AbstractBatchSystem(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, issuableJob):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
