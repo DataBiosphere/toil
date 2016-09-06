@@ -79,8 +79,18 @@ class hidden:
         def supportsWallTime(self):
             return False
 
-        def _createDummyConfig(self):
-            return Config()
+        @staticmethod
+        def _createDummyConfig():
+            """
+            Returns a dummy config for the batch system tests.  We need a workflowID to be set up
+            since we are running tests without setting up a jobstore.
+
+            :rtype: toil.common.Config
+            """
+            config = Config()
+            from uuid import uuid4
+            config.workflowID = str(uuid4())
+            return config
 
         @classmethod
         def setUpClass(cls):
@@ -374,12 +384,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     jobs = int(maxCores / coresPerJob * load)
                     if jobs >= 1 and minCores <= coresPerJob < maxCores:
                         self.assertEquals(maxCores, float(maxCores))
-                        bs = SingleMachineBatchSystem(config=Config(),
-                                                      maxCores=float(maxCores),
-                                                      # Ensure that memory or disk requirements
-                                                      # don't get in the way.
-                                                      maxMemory=jobs * 10,
-                                                      maxDisk=jobs * 10)
+                        bs = SingleMachineBatchSystem(
+                            config=hidden.AbstractBatchSystemTest._createDummyConfig(),
+                            maxCores=float(maxCores),
+                            # Ensure that memory or disk requirements don't get in the way.
+                            maxMemory=jobs * 10,
+                            maxDisk=jobs * 10)
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):

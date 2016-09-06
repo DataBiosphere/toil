@@ -15,7 +15,7 @@
 from __future__ import absolute_import, print_function
 
 import base64
-import cPickle
+import dill
 import collections
 import errno
 import logging
@@ -37,6 +37,14 @@ from toil.common import cacheDirName
 from toil.lib.bioio import makePublicDir
 
 logger = logging.getLogger( __name__ )
+
+DeferredFunction = collections.namedtuple('DeferredFunction', (
+    # The deferred action to take in the form of a function
+    'callable',
+    # Non-keyword arguments to the function
+    'args',
+    # Keyword arguments to the function
+    'kwargs'))
 
 
 class FileStore(object):
@@ -82,7 +90,9 @@ class FileStore(object):
         # a time on a worker, we can bookkeep the job's file store operated files in a
         # dictionary.
         self.jobSpecificFiles = {}
-        self.hashedJobCommand = sha1(self.jobWrapper.command.split()[1]).hexdigest()
+        self.jobName = self.jobWrapper.command.split()[1]
+        self.jobID = sha1(self.jobName).hexdigest()
+        logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
         self.nlinkThreshold = None
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -108,18 +118,11 @@ class FileStore(object):
         # Create a working directory for the job
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        # Figure out if this operation job already went through the process of writing it's info
-        # into the cache lock file.  If it has, restore the cache file to a state where the job
-        # doesn't exist.
+        # Check the status of all jobs on this node. If there are jobs that started and died before
+        # cleaning up their presence from the cache state file, restore the cache file to a state
+        # where the jobs don't exist.
         with self._CacheState.open(self) as cacheInfo:
-            if cacheInfo.jobState[self.hashedJobCommand]:
-                # Delete the old work directory if it still exists, to remove unwanted nlinks.
-                jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
-                assert jobState.jobDir != self.localTempDir
-                if os.path.exists(jobState.jobDir):
-                    shutil.rmtree(jobState.jobDir)  # Ignore_errors?
-                cacheInfo.sigmaJob -= jobState.jobReqs
-                cacheInfo.jobState.pop(self.hashedJobCommand)
+            self.findAndHandleDeadJobs(cacheInfo)
         # Get the requirements for the job and clean the cache if necessary. cleanCache will
         # ensure that the requirements for this job are stored in the state file.
         jobReqs = job.effectiveRequirements(self.jobStore.config).disk
@@ -131,7 +134,16 @@ class FileStore(object):
         finally:
             os.chdir(startingDir)
             self.cleanupInProgress = True
+            # Delete all the job specific files and return sizes to jobReqs
             self.returnJobReqs(jobReqs)
+            with self._CacheState.open(self) as cacheInfo:
+                # Carry out any user-defined cleanup actions
+                deferredFunctions = cacheInfo.jobState[self.jobID]['deferredFunctions']
+                failures = self._runDeferredFunctions(deferredFunctions)
+                for failure in failures:
+                    self.logToMaster('Deferred function "%s" failed.' % failure, logging.WARN)
+                # Finally delete the job from the cache state file
+                cacheInfo.jobState.pop(self.jobID)
 
     # Functions related to temp file and directories
     def getLocalTempDir(self):
@@ -201,7 +213,7 @@ class FileStore(object):
             # the two have distinct nlink counts.
             # Can read without a lock because we're only reading job-specific info.
             jobSpecificFiles = self._CacheState._load(self.cacheStateFile).jobState[
-                self.hashedJobCommand]['filesToFSIDs'].keys()
+                self.jobID]['filesToFSIDs'].keys()
             # Saying nlink is 2 implicitly means we are using the job file store, and it is on
             # the same device as the work dir.
             if self.nlinkThreshold == 2 and absLocalFileName not in jobSpecificFiles:
@@ -328,9 +340,9 @@ class FileStore(object):
                 if mutable:
                     shutil.copyfile(cachedFileName, localFilePath)
                     cacheInfo = self._CacheState._load(self.cacheStateFile)
-                    jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
+                    jobState = self._JobState(cacheInfo.jobState[self.jobID])
                     jobState.addToJobSpecFiles(fileStoreID, localFilePath, -1, None)
-                    cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+                    cacheInfo.jobState[self.jobID] = jobState.__dict__
                     cacheInfo.write(self.cacheStateFile)
                 else:
                     os.link(cachedFileName, localFilePath)
@@ -446,7 +458,7 @@ class FileStore(object):
         # dict item having key = fileStoreID. If it was cached, it holds the value True else
         # False.
         with self._CacheState.open(self) as cacheInfo:
-            jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
+            jobState = self._JobState(cacheInfo.jobState[self.jobID])
             if fileStoreID not in jobState.jobSpecificFiles.keys():
                 # EOENT indicates that the file did not exist
                 raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
@@ -459,7 +471,7 @@ class FileStore(object):
                 if fileToDelete is None:
                     filesToDelete.pop(fileToDelete)
                     allOwnedFiles[fileToDelete].remove(fileStoreID)
-                    cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+                    cacheInfo.jobState[self.jobID] = jobState.__dict__
                     cacheInfo.write(self.cacheStateFile)
                     continue
                 # If the file size is zero (copied into the local temp dir) or -1 (mutable), we
@@ -477,7 +489,7 @@ class FileStore(object):
                                 raise IllegalDeletionCacheError(fileToDelete)
                     allOwnedFiles[fileToDelete].remove(fileStoreID)
                     filesToDelete.pop(fileToDelete)
-                    cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+                    cacheInfo.jobState[self.jobID] = jobState.__dict__
                     cacheInfo.write(self.cacheStateFile)
                     continue
                 # If not, we need to do bookkeeping
@@ -496,7 +508,7 @@ class FileStore(object):
                 filesToDelete.pop(fileToDelete)
                 allOwnedFiles[fileToDelete].remove(fileStoreID)
                 jobState.updateJobReqs(fileSize, 'remove')
-                cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+                cacheInfo.jobState[self.jobID] = jobState.__dict__
             # If the job is not in the process of cleaning up, then we may need to remove the
             # cached copy of the file as well.
             if not self.cleanupInProgress:
@@ -523,9 +535,12 @@ class FileStore(object):
 
         :param fileStoreID: the job store ID of the file to be deleted.
         """
+        jobStateIsPopulated = False
         with self._CacheState.open(self) as cacheInfo:
-            jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
-        if jobState.isPopulated() and fileStoreID in jobState.jobSpecificFiles.keys():
+            if self.jobID in cacheInfo.jobState:
+                jobState = self._JobState(cacheInfo.jobState[self.jobID])
+                jobStateIsPopulated = True
+        if jobStateIsPopulated and fileStoreID in jobState.jobSpecificFiles.keys():
             # Use deleteLocalFile in the backend to delete the local copy of the file.
             self.deleteLocalFile(fileStoreID)
             # At this point, the local file has been deleted, and possibly the cached copy. If
@@ -633,7 +648,7 @@ class FileStore(object):
             'cached': 0,
             'sigmaJob': 0,
             'cacheDir': self.localCacheDir,
-            'jobState': collections.defaultdict(dict)})
+            'jobState': {}})
         cacheInfo.write(personalCacheStateFile)
 
     def encodedFileID(self, jobStoreFileID):
@@ -714,9 +729,9 @@ class FileStore(object):
                 else:
                     logger.info('CACHE: Added file with ID \'%s\' to the cache.' %
                                 jobStoreFileID)
-                jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
+                jobState = self._JobState(cacheInfo.jobState[self.jobID])
                 jobState.addToJobSpecFiles(jobStoreFileID, localFilePath, -1, False)
-                cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+                cacheInfo.jobState[self.jobID] = jobState.__dict__
                 cacheInfo.write(self.cacheStateFile)
             else:
                 # There are two possibilities, read and immutable, and write. both cases do
@@ -782,9 +797,9 @@ class FileStore(object):
             self.logToMaster('CACHE: The cache was not balanced on returning file size',
                              logging.WARN)
         # Add the info to the job specific cache info
-        jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
+        jobState = self._JobState(cacheInfo.jobState[self.jobID])
         jobState.addToJobSpecFiles(fileStoreID, cachedFileSource, fileSize, True)
-        cacheInfo.jobState[self.hashedJobCommand] = jobState.__dict__
+        cacheInfo.jobState[self.jobID] = jobState.__dict__
         cacheInfo.write(self.cacheStateFile)
 
     @staticmethod
@@ -817,13 +832,16 @@ class FileStore(object):
             # Initialize the job state here. we use a partial in the jobSpecificFiles call so
             # that this entire thing is pickleable. Based on answer by user Nathaniel Gentile at
             # http://stackoverflow.com/questions/2600790
-            assert not cacheInfo.jobState[self.hashedJobCommand]
-            cacheInfo.jobState[self.hashedJobCommand] = {
+            assert self.jobID not in cacheInfo.jobState
+            cacheInfo.jobState[self.jobID] = {
+                'jobName': self.jobName,
                 'jobReqs': newJobReqs,
                 'jobDir': self.localTempDir,
                 'jobSpecificFiles': collections.defaultdict(partial(collections.defaultdict,
                                                                     int)),
-                'filesToFSIDs': collections.defaultdict(set)}
+                'filesToFSIDs': collections.defaultdict(set),
+                'pid': os.getpid(),
+                'deferredFunctions': []}
             # If the caching equation is balanced, do nothing.
             if cacheInfo.isBalanced():
                 return None
@@ -906,12 +924,11 @@ class FileStore(object):
         # Since we are only reading this job's specific values from the state file, we don't
         # need a lock
         jobState = self._JobState(self._CacheState._load(self.cacheStateFile
-                                                         ).jobState[self.hashedJobCommand])
+                                                         ).jobState[self.jobID])
         for x in jobState.jobSpecificFiles.keys():
             self.deleteLocalFile(x)
         with self._CacheState.open(self) as cacheInfo:
             cacheInfo.sigmaJob -= jobReqs
-            cacheInfo.jobState.pop(self.hashedJobCommand)
             # assert cacheInfo.isBalanced() # commenting this out for now. God speed
 
     def _abspath(self, key):
@@ -962,7 +979,7 @@ class FileStore(object):
             # Read the value from the cache state file then initialize and instance of
             # _CacheState with it.
             with open(fileName, 'r') as fH:
-                cacheInfoDict = cPickle.load(fH)
+                cacheInfoDict = dill.load(fH)
             return cls(cacheInfoDict)
 
         def write(self, fileName):
@@ -977,7 +994,7 @@ class FileStore(object):
                 # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                 # We can't pickle nested classes. So we have to pickle the variables of the class
                 # If we ever change this, we need to ensure it doesn't break FileID
-                cPickle.dump(self.__dict__, fH, cPickle.HIGHEST_PROTOCOL)
+                dill.dump(self.__dict__, fH)
             os.rename(fileName + '.tmp', fileName)
 
         def isBalanced(self):
@@ -1001,6 +1018,79 @@ class FileStore(object):
             # totalFree = totalStats.f_bavail * totalStats.f_frsize
             # return totalFree < jobReqs
 
+    # Functions related to the deferred function logic
+    @classmethod
+    def findAndHandleDeadJobs(cls, cacheInfo, batchSystemShutdown=False):
+        """
+        This function looks at the state of all jobs registered in the cache state file and will
+        handle them (clean up the cache, and run any registered defer functions)
+
+        :param FileStore._CacheState cacheInfo: The state of the cache a _CacheState object
+        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
+        :return:
+        """
+        # A list of tuples of (hashed job id, pid or process running job)
+        registeredJobs = [(jid, state['pid']) for jid, state in cacheInfo.jobState.items()]
+        for jobID, jobPID in registeredJobs:
+            if not cls.HarbingerFile._pidExists(jobPID):
+                jobState = FileStore._JobState(cacheInfo.jobState[jobID])
+                logger.warning('Detected that job (%s) prematurely terminated.  Fixing the state '
+                               'of the cache.', jobState.jobName)
+                if not batchSystemShutdown:
+                    logger.debug("Returning dead job's used disk to cache.")
+                    # Delete the old work directory if it still exists, to remove unwanted nlinks.
+                    # Do this only during the life of the program and dont' do it during the
+                    # batch system cleanup.  Leave that to the batch system cleanup code.
+                    if os.path.exists(jobState.jobDir):
+                        shutil.rmtree(jobState.jobDir)  # Ignore_errors?
+                    cacheInfo.sigmaJob -= jobState.jobReqs
+                # Run any deferred functions associated with the job
+                logger.debug('Running user-defined deferred functions.')
+                deferredFunctions = jobState.deferredFunctions
+                cls._runDeferredFunctions(deferredFunctions)
+                # Remove it from the cache state file
+                cacheInfo.jobState.pop(jobID)
+
+    def _registerDeferredFunction(self, callable, *args, **kwargs):
+        """
+        This is the backend function to register a function that will be run after the completion of
+        the current job on the same node
+        :param function callable: The function to be run after this job.
+        :param list args: The arguments to the function
+        :param dict kwargs: The keyword arguments to the function
+        """
+        with self._CacheState.open(self) as cacheInfo:
+            deferredFunction = DeferredFunction(callable=callable,
+                                                args=args,
+                                                kwargs=kwargs)
+            cacheInfo.jobState[self.jobID]['deferredFunctions'].append(deferredFunction)
+            logger.info('Registered the deferred function "%s" to job "%s".', callable.__name__,
+                        self.jobName)
+
+    @staticmethod
+    def _runDeferredFunctions(deferredFunctions):
+        """
+        This function will run all the registered deferred functions for the job.
+
+        :param list deferredFunctions: A list of DeferredFunctions to run
+        the cache
+        :returns: list of failed functions
+        :rtype: list
+        """
+        failures = []
+        for deferredFunction in deferredFunctions:
+            #TODO: better representation of the callable in the output string
+            try:
+                logger.debug('Running deferred function "%s".', deferredFunction.callable.__name__)
+                deferredFunction.callable(*deferredFunction.args, **deferredFunction.kwargs)
+            except:
+                # This has to be generic because we don't know what is in the function
+                failures.append(deferredFunction.callable.__name__)
+                logger.exception('Deferred function "%s" failed.',
+                                 deferredFunction.callable.__name__)
+        return failures
+
+
     def _accountForNlinkEquals2(self, localFilePath):
         '''
         This is a utility function that accounts for the fact that if nlinkThreshold == 2, the
@@ -1013,7 +1103,7 @@ class FileStore(object):
         assert fileStats.st_nlink >= self.nlinkThreshold
         with self._CacheState.open(self) as cacheInfo:
             cacheInfo.sigmaJob -= fileStats.st_size
-            jobState = self._JobState(cacheInfo.jobState[self.hashedJobCommand])
+            jobState = self._JobState(cacheInfo.jobState[self.jobID])
             jobState.updateJobReqs(fileStats.st_size, 'remove')
 
     class _JobState(object):
@@ -1039,9 +1129,9 @@ class FileStore(object):
             :return: None
             '''
             with outer._CacheState.open(outer) as cacheInfo:
-                jobState = cls(cacheInfo.jobState[outer.hashedJobCommand])
+                jobState = cls(cacheInfo.jobState[outer.jobID])
                 jobState.addToJobSpecFiles(jobStoreFileID, filePath, fileSize, cached)
-                cacheInfo.jobState[outer.hashedJobCommand] = jobState.__dict__
+                cacheInfo.jobState[outer.jobID] = jobState.__dict__
 
         def addToJobSpecFiles(self, jobStoreFileID, filePath, fileSize, cached):
             '''
@@ -1439,6 +1529,29 @@ class FileID(str):
     @classmethod
     def forPath(cls, fileStoreID, filePath):
         return cls(fileStoreID, os.stat(filePath).st_size)
+
+
+def shutdownCache(cacheDir):
+    """
+    Run the deferred functions from any prematurely terminated jobs still lingering on the system
+    and delete the cache directory.
+
+    This is a destructive operation and it is important to ensure that there are no other running
+    processes on the system that are modifying or using the cache state file.
+
+    This is the intended to be the last call to the file store in a Toil run, called by the
+    batch system cleanup function upon batch system shutdown.
+
+    :param cacheDir: The path to the cache directory
+    :return: None
+    """
+    if os.path.exists(cacheDir):
+        # The presence of the cacheDir suggests this was a cached run. We don't need the cache lock
+        # for any of this since this is the final cleanup of a job and there should be  no other
+        # conflicting processes using the cache.
+        cacheInfo = FileStore._CacheState._load(os.path.join(cacheDir, '_cacheState'))
+        FileStore.findAndHandleDeadJobs(cacheInfo, batchSystemShutdown=True)
+        shutil.rmtree(cacheDir)
 
 
 class CacheError(Exception):
