@@ -33,9 +33,11 @@ logger = logging.getLogger(__name__)
 # up the number of non-preemptable nodes that we have. however, we may still
 # prefer waiting for preemptable instances to come available.
 #
-# to accomodate this, we set the slack to the delta between requested and
-# provisioned preemptable nodes times a preemptible node preference factor.
-_preemptableQueueSlack = 0
+# to accomodate this, we set the delta to the difference between the number of
+# provisioned preemptable nodes and the number of nodes that were requested.
+# when the non-preemptable thread wants to provision nodes, it will multiply
+# this delta times a preference for preemptable vs. non-preemptable nodes.
+_delta = 0
 
 class RecentJobShapes(object):
     """
@@ -290,7 +292,7 @@ class ScalerThread(ExceptionalThread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
 
     def tryRun(self):
-        global _preemptableQueueSlack
+        global _delta
 
         if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
             totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
@@ -315,7 +317,14 @@ class ScalerThread(ExceptionalThread):
                 # if we're in the non-preemptable queue, we need to see if we have any slack
                 # coming over from the preemptable queue
                 if not self.preemptable:
-                    estimatedNodes += _preemptableQueueSlack
+                    # slack is derived from the delta (the number of nodes we did _not_ allocate)
+                    # times a preference for preemptable nodes
+                    require(1.0 >= self.scaler.config.slackPreemptablePreference >= 0.0,
+                            "Slack preference for preemptable nodes (%f) must be >= 0.0 and <= 1.0",
+                            self.scaler.config.slackPreemptablePreference)
+                    nonPreemptablePreference = 1.0 - self.scaler.config.slackPreemptablePreference
+
+                    estimatedNodes += int(round(_delta * nonPreemptablePreference))
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
@@ -355,17 +364,10 @@ class ScalerThread(ExceptionalThread):
                     if totalNodes < estimatedNodes and self.preemptable:
                         
                         # slack is derived from the delta (the number of nodes we did _not_ allocate)
-                        # times a preference for preemptable nodes
-                        require(1.0 >= self.scaler.config.slackPreemptablePreference >= 0.0,
-                                "Slack preference for preemptable nodes (%f) must be >= 0.0 and <= 1.0",
-                                self.scaler.config.slackPreemptablePreference)
-                        nonPreemptablePreference = 1.0 - self.scaler.config.slackPreemptablePreference
-                        delta = estimatedNodes - totalNodes
-                        _preemptableQueueSlack = int(round(delta * nonPreemptablePreference))
-                        logger.debug('Had delta of %d, setting slack to %d.',
-                                     delta, _preemptableQueueSlack)
+                        _delta = estimatedNodes - totalNodes
+                        logger.debug('Preemptable thread had delta of %d.', _delta)
                     else:
-                        _preemptableQueueSlack = 0
+                        _delta = 0
                     
         logger.info('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.scaler.provisioner.setNodeCount(numNodes=0,
