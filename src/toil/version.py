@@ -15,3 +15,6 @@
 version = '3.5.0a1'
 
 cgcloudVersion = '1.6.0a1.dev370'
+
+if __name__ == '__main__':
+    print version
