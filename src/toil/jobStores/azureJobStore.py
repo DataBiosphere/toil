@@ -38,8 +38,9 @@ from azure.storage.table import TableService, EntityProperty
 import requests
 from bd2k.util import strict_bool, memoize
 from bd2k.util.exceptions import panic
+from bd2k.util.retry import retry
 
-from toil.jobStores.utils import retry, WritablePipe, ReadablePipe
+from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobWrapper import JobWrapper
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,

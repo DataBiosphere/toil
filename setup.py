@@ -25,7 +25,7 @@ setup(
     author_email='benedict@soe.usc.edu',
     url="https://github.com/BD2KGenomics/toil",
     install_requires=[
-        'bd2k-python-lib>=1.14a1.dev33',
+        'bd2k-python-lib>=1.14a1.dev35',
         'dill==0.2.5'],
     extras_require={
         'mesos': [
