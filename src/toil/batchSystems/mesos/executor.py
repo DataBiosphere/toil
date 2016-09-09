@@ -49,6 +49,10 @@ class MesosExecutor(mesos.interface.Executor):
         self.workerCleanupInfo = None
         Resource.prepareSystem()
         self.address = None
+        # Setting this value at this point will ensure that the toil workflow directory will go to
+        # the mesos sandbox if the user hasn't specified --workDir on the command line.
+        if not os.getenv('TOIL_WORKDIR'):
+            os.environ['TOIL_WORKDIR'] = os.getcwd()
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
