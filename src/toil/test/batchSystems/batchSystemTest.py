@@ -546,7 +546,7 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def _createDummyConfig(self):
         config = super(GridEngineBatchSystemTest, self)._createDummyConfig()
         # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
+        config.jobStore = 'file:'+ self._createTempDir('jobStore')
         return config
 
     def createBatchSystem(self):

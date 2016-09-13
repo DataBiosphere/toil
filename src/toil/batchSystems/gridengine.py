@@ -222,7 +222,9 @@ class GridengineBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(GridengineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        self.gridengineResultsFile = self._getResultsFileName(config.jobStore)
+        prefix = 'file:'
+        assert config.jobStore.startswith(prefix)
+        self.gridengineResultsFile = self._getResultsFileName(config.jobStore[len(prefix):])
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.gridengineResultsFileHandle = open(self.gridengineResultsFile, 'w')
         # We lose any previous state in this file, and ensure the files existence

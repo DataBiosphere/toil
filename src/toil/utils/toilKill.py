@@ -19,7 +19,7 @@ import logging
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp
+from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.version import version
 
 logger = logging.getLogger( __name__ )
@@ -32,10 +32,11 @@ def main():
                              "be killed." + jobStoreLocatorHelp)
     parser.add_argument("--version", action='version', version=version)
     options = parseBasicOptions(parser)
+    config = Config()
+    config.setOptions(options)
+    jobStore = Toil.resumeJobStore(config.jobStore)
 
-    jobStore = Toil.resumeJobStore(options.jobStore)
-
-    logger.info("Starting routine to kill running jobs in the toil workflow: %s" % options.jobStore)
+    logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
     ####This behaviour is now broken
     batchSystem = Toil.createBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.

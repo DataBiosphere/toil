@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
+
 import sys
 from argparse import ArgumentParser
 
@@ -63,7 +64,7 @@ def main(numJobs):
     # Boilerplate -- startToil requires options
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    options = parser.parse_args( args=["./toilTest"] )
+    options = parser.parse_args( args=['./toilTest'] )
     options.batchSystem="mesos"
     # Launch first toil Job
     i = LongTestJob( numJobs )

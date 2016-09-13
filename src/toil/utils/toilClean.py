@@ -19,7 +19,7 @@ import logging
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp
+from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.version import version
 
 logger = logging.getLogger( __name__ )
@@ -29,8 +29,9 @@ def main():
     parser.add_argument("jobStore", type=str,
                         help="The location of the job store to delete. " + jobStoreLocatorHelp)
     parser.add_argument("--version", action='version', version=version)
-    options = parseBasicOptions(parser)
+    config = Config()
+    config.setOptions(parseBasicOptions(parser))
     logger.info("Attempting to delete the job store")
-    jobStore = Toil.getJobStore(options.jobStore)
+    jobStore = Toil.getJobStore(config.jobStore)
     jobStore.destroy()
     logger.info("Successfully deleted the job store")
