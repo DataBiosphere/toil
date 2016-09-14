@@ -22,13 +22,12 @@ import types
 import errno
 from ssl import SSLError
 
+from bd2k.util.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
-
-from toil.jobStores.utils import retry
 
 log = logging.getLogger(__name__)
 

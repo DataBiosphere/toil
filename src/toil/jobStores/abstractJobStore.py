@@ -23,10 +23,12 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
+
+from bd2k.util.retry import retry_http
+
 from toil.job import JobException
 from bd2k.util import memoize
 from bd2k.util.objects import abstractclassmethod
-from toil.jobStores.utils import retry_http
 
 try:
     import cPickle
