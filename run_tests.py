@@ -28,7 +28,7 @@ test_suites = {
         'GoogleJobStoreCacheTest',
         None],
     'integration-test': [
-        'CGCloudProvisionerTest'
+        'CGCloudRNASeqTest'
     ]}
 
 

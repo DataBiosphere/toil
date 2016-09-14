@@ -16,6 +16,7 @@ import logging
 import os
 import pipes
 import subprocess
+from abc import abstractmethod, ABCMeta
 from urlparse import urlparse
 from uuid import uuid4
 
@@ -29,7 +30,8 @@ log = logging.getLogger(__name__)
 
 
 @integrative
-class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
+class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
+    __metaclass__ = ABCMeta
     """
     Tests Toil on a CGCloud-provisioned cluster in AWS. Uses the RNASeq integration test workflow
     from toil-scripts. Once case is testing a cluster with a fixed number of worker nodes,
@@ -58,10 +60,6 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     # Whether to skip all `cgcloud` invocations and just log them instead.
     #
     dryRun = False
-
-    # The number of samples to run the test workflow on
-    #
-    numSamples = 10
 
     # The number of workers in a static cluster, the maximum number of prepemptable and
     # non-preemptable workers each in an auto-scaled cluster.
@@ -106,7 +104,7 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def setUpClass(cls):
         logging.basicConfig(level=logging.INFO)
-        super(CGCloudProvisionerTest, cls).setUpClass()
+        super(AbstractCGCloudProvisionerTest, cls).setUpClass()
         cls.saved_cgcloud_plugins = os.environ.get('CGCLOUD_PLUGINS')
         os.environ['CGCLOUD_PLUGINS'] = 'cgcloud.toil'
         cls.sdistPath = cls._getSourceDistribution()
@@ -126,28 +124,16 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         if cls.cleanup and cls.createImage:
             cls._cgcloud('delete-image', 'toil-latest-box')
         os.environ['PATH'] = cls.oldPath
-        super(CGCloudProvisionerTest, cls).tearDownClass()
+        super(AbstractCGCloudProvisionerTest, cls).tearDownClass()
 
     def setUp(self):
-        super(CGCloudProvisionerTest, self).setUp()
+        super(AbstractCGCloudProvisionerTest, self).setUp()
         self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
         if self.saved_cgcloud_plugins is not None:
             os.environ['CGCLOUD_PLUGINS'] = self.saved_cgcloud_plugins
-        super(CGCloudProvisionerTest, self).tearDown()
-
-    @integrative
-    def testStaticCluster(self):
-        self._test(autoScaled=False)
-
-    @integrative
-    def testAutoScaledCluster(self):
-        self._test(autoScaled=True)
-
-    @integrative
-    def testAutoScaledSpotCluster(self):
-        self._test(autoScaled=True, spotInstances=True)
+        super(AbstractCGCloudProvisionerTest, self).tearDown()
 
     def _test(self, autoScaled=False, spotInstances=False):
         self.assertTrue(not spotInstances or autoScaled,
@@ -169,15 +155,9 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             if self.debugEggPath:
                 self._rsync('toil-leader', '-v', self.debugEggPath, ':')
             self._leader('virtualenv', '--system-site-packages', '~/venv')
-            toilScripts = urlparse(self.toilScripts)
-            if toilScripts.netloc:
-                self._leader('mkdir toil-scripts'
-                             '; curl -L ' + toilScripts.geturl() +
-                             '| tar -C toil-scripts -xvz --strip-components=1')
-                self._leader('PATH=~/venv/bin:$PATH make -C toil-scripts develop')
-            else:
-                version = toilScripts.path
-                self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
+
+            self._getScript()
+
             toilOptions = ['--batchSystem=mesos',
                            '--mesosMaster=mesos-master:5050',
                            '--clean=always',
@@ -194,17 +174,29 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                     # need to specify a default, otherwise jobs would never get scheduled.
                     '--defaultPreemptable',
                     '--maxPreemptableNodes=%s' % self.numWorkers])
-            toilOptions = ' '.join(toilOptions)
-            self._leader('PATH=~/venv/bin:$PATH',
-                         'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
-                         'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
-                         'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
-                         'python', '-m', 'unittest', '-v',
-                         'toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest'
-                         '.test_manifest')
+
+            self._runScript(toilOptions)
+
         finally:
             if self.cleanup and self.createCluster:
                 self._cgcloud('terminate-cluster', 'toil')
+
+    @abstractmethod
+    def _getScript(self):
+        """
+        Download the test script needed by the inheriting unit test class.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _runScript(self, toilOptions):
+        """
+        Modify the provided Toil options to suit the test Toil script, then run the script with those arguments.
+
+        :param toilOptions: List of Toil command line arguments. This list may need to be modified to suit
+            the test script's requirements.
+        """
+        raise NotImplementedError()
 
     @classmethod
     def _run(cls, *args, **kwargs):
@@ -251,7 +243,7 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def _getSourceDistribution(cls):
         sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
-        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s." % sdistPath
+        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
         excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
                                 capture=True,
                                 cwd=cls._projectRootPath()).splitlines())
@@ -263,3 +255,44 @@ class CGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         dirty.difference_update(excluded)
         assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
+
+
+class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
+    def __init__(self, name):
+        super(CGCloudRNASeqTest, self).__init__(name)
+        # The number of samples to run the test workflow on
+        #
+        self.numSamples = 10
+
+    def _getScript(self):
+        toilScripts = urlparse(self.toilScripts)
+        if toilScripts.netloc:
+            self._leader('mkdir toil-scripts'
+                         '; curl -L ' + toilScripts.geturl() +
+                         '| tar -C toil-scripts -xvz --strip-components=1')
+            self._leader('PATH=~/venv/bin:$PATH make -C toil-scripts develop')
+        else:
+            version = toilScripts.path
+            self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
+
+    def _runScript(self, toilOptions):
+        toilOptions = ' '.join(toilOptions)
+        self._leader('PATH=~/venv/bin:$PATH',
+                     'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
+                     'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
+                     'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
+                     'python', '-m', 'unittest', '-v',
+                     'toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest'
+                     '.test_manifest')
+
+    @integrative
+    def testStaticCluster(self):
+        self._test(autoScaled=False)
+
+    @integrative
+    def testAutoScaledCluster(self):
+        self._test(autoScaled=True)
+
+    @integrative
+    def testAutoScaledSpotCluster(self):
+        self._test(autoScaled=True, spotInstances=True)
