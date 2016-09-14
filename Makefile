@@ -122,8 +122,12 @@ docker: check_docker_registry docker/worker/Dockerfile docker/leader/Dockerfile
 	                 -f $${role}/Dockerfile \
 	                 . \
 	; done
-	docker tag -f $(docker_registry)/$(docker_base_name)-leader:$(docker_tag) \
-	              $(docker_registry)/$(docker_base_name):$(docker_tag)
+	# On versions of docker >= 1.10, the `docker rmi` invocation is redundant, their `docker tag`
+	# automatically removes the tag from previous images. In older versions, `docker tag -f` does
+	# the same. The only way that works on both version is to explicitly untag the old image.
+	-docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
+	docker tag $(docker_registry)/$(docker_base_name)-leader:$(docker_tag) \
+	           $(docker_registry)/$(docker_base_name):$(docker_tag)
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
