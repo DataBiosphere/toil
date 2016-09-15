@@ -361,13 +361,13 @@ class ScalerThread(ExceptionalThread):
                     # meet our target, we need to update the slack so that non-preemptable
                     # nodes will be allocated and we won't block. if we _did_ meet our target,
                     # we need to reset the slack to 0
-                    if totalNodes < estimatedNodes and self.preemptable:
-                        
-                        # slack is derived from the delta (the number of nodes we did _not_ allocate)
-                        _delta = estimatedNodes - totalNodes
-                        logger.debug('Preemptable thread had delta of %d.', _delta)
-                    else:
-                        _delta = 0
+                    if self.preemptable:
+                        if totalNodes < estimatedNodes:
+                            # slack is derived from the delta (the number of nodes we did _not_ allocate)
+                            _delta = estimatedNodes - totalNodes
+                            logger.debug('Preemptable thread had delta of %d.', _delta)
+                        else:
+                            _delta = 0
                     
         logger.info('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.scaler.provisioner.setNodeCount(numNodes=0,
