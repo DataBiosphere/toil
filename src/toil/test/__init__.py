@@ -15,17 +15,28 @@
 from __future__ import absolute_import
 import logging
 import os
+import subprocess
 import tempfile
+import threading
 import unittest
 import shutil
 import re
+import uuid
+from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from unittest.util import strclass
 from urllib2 import urlopen
 
+import multiprocessing
+
+import time
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
+from bd2k.util.iterables import concat
 from bd2k.util.processes import which
+from bd2k.util.threading import ExceptionalThread
+
+from toil.version import version as toil_version
 
 from toil import toilPackageDirPath
 
@@ -151,6 +162,61 @@ class ToilTest(unittest.TestCase):
         # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
         os.rmdir(path)
         return path
+
+    @classmethod
+    def _getSourceDistribution(cls):
+        """
+        Find the sdist tarball for this project, check whether it is up-to date and return the
+        path to it.
+
+        :rtype: str
+        """
+        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
+        assert os.path.isfile(
+            sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
+        excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
+                                capture=True,
+                                cwd=cls._projectRootPath()).splitlines())
+        dirty = cls._run('find', 'src', '-type', 'f', '-newer', sdistPath,
+                         capture=True,
+                         cwd=cls._projectRootPath()).splitlines()
+        assert all(path.startswith('src') for path in dirty)
+        dirty = set(dirty)
+        dirty.difference_update(excluded)
+        assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        return sdistPath
+
+    @classmethod
+    def _run(cls, command, *args, **kwargs):
+        """
+        Run a command. Convenience wrapper for subprocess.check_call and subprocess.check_output.
+
+        :param str command: The command to be run.
+
+        :param str args: Any arguments to be passed to the command.
+
+        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True to
+                           have the process' stdout returned.
+
+        :rtype: None|str
+
+        :return: The output of the process' stdout if capture=True was passed, None otherwise.
+        """
+        args = list(concat(command, args))
+        log.info('Running %r', args)
+        capture = kwargs.pop('capture', False)
+        _input = kwargs.pop('input', None)
+        if capture:
+            kwargs['stdout'] = subprocess.PIPE
+        if _input is not None:
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(args, **kwargs)
+        stdout, stderr = popen.communicate(input=_input)
+        assert stderr is None
+        if popen.returncode != 0:
+            raise subprocess.CalledProcessError(popen.returncode, args)
+        if capture:
+            return stdout
 
 
 try:
@@ -539,3 +605,136 @@ def tempFileContaining(content, suffix=''):
         yield path
     finally:
         os.unlink(path)
+
+
+class ApplianceTestSupport(ToilTest):
+    """
+    A Toil test that runs a user script on a minimal cluster of appliance containers,
+    i.e. one leader container and one worker container.
+    """
+
+    @contextmanager
+    def _applianceCluster(self, mounts=None, numCores=None):
+        """
+        A context manager for creating and tearing down an appliance cluster.
+
+        :param dict|None mounts: Dictionary mapping host paths to container paths. Both the leader
+               and the worker container will be started with one -v argument per dictionary entry,
+               as in -v KEY:VALUE
+
+        :param int numCores: The number of cores to be offered by the Mesos slave process running
+               in the worker container.
+
+        :rtype: (ApplianceTestSupport.Appliance, ApplianceTestSupport.Appliance)
+
+        :return: A tuple of the form `(leader, worker)` containing the Appliance instances
+                 representing the respective appliance containers
+        """
+        if numCores is None:
+            numCores = multiprocessing.cpu_count()
+        with self.LeaderThread(self, mounts) as leader:
+            with self.WorkerThread(self, mounts, numCores) as worker:
+                yield leader, worker
+
+    class Appliance(ExceptionalThread):
+        __metaclass__ = ABCMeta
+
+        @abstractmethod
+        def _getRole(self):
+            return 'leader'
+
+        @abstractmethod
+        def _containerCommand(self):
+            raise NotImplementedError
+
+        # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
+        lock = threading.Lock()
+
+        def __init__(self, outer, mounts):
+            super(ApplianceTestSupport.Appliance, self).__init__()
+            self.outer = outer
+            self.mounts = mounts
+            self.containerName = str(uuid.uuid4())
+            self.popen = None
+
+        def __enter__(self):
+            with self.lock:
+                image = self._getApplianceImage()
+                # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
+                args = list(concat('docker', 'run',
+                                   '--net=host',
+                                   '-i',
+                                   '--name=' + self.containerName,
+                                   ['--volume=%s:%s' % mount for mount in self.mounts.iteritems()],
+                                   image,
+                                   self._containerCommand()))
+                log.info('Running %r', args)
+                self.popen = subprocess.Popen(args)
+            self.start()
+            self.__wait_running()
+            return self
+
+        # noinspection PyUnusedLocal
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            try:
+                subprocess.check_call(['docker', 'stop', self.containerName])
+                self.join()
+            finally:
+                subprocess.check_call(['docker', 'rm', '-f', self.containerName])
+            return False  # don't swallow exception
+
+        def __wait_running(self):
+            log.info("Waiting for %s container process to appear. "
+                     "Expect to see 'Error: No such image or container'.", self._getRole())
+            while self.isAlive():
+                try:
+                    running = subprocess.check_output(
+                        ['docker', 'inspect', '--format={{ .State.Running }}',
+                         self.containerName]).strip()
+                except subprocess.CalledProcessError:
+                    pass
+                else:
+                    if 'true' == running:
+                        break
+                time.sleep(1)
+
+        def _getApplianceImage(self):
+            image, tag = os.environ['TOIL_APPLIANCE_SELF'].rsplit(':', 1)
+            return image + '-' + self._getRole() + ':' + tag
+
+        def tryRun(self):
+            self.popen.wait()
+            log.info('Exiting %s', self.__class__.__name__)
+
+        def runOnAppliance(self, *args, **kwargs):
+            # noinspection PyProtectedMember
+            self.outer._run('docker', 'exec', '-i', self.containerName, *args, **kwargs)
+
+        def writeToAppliance(self, path, contents):
+            self.runOnAppliance('tee', path, input=contents)
+
+    class LeaderThread(Appliance):
+        def _getRole(self):
+            return 'leader'
+
+        def _containerCommand(self):
+            return ['--registry=in_memory',
+                    '--ip=127.0.0.1',
+                    '--port=5050',
+                    '--allocation_interval=500ms']
+
+    class WorkerThread(Appliance):
+
+        def __init__(self, outer, mounts, numCores):
+            self.numCores = numCores
+            super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
+
+        def _getRole(self):
+            return 'worker'
+
+        def _containerCommand(self):
+            return ['--work_dir=/var/lib/mesos',
+                    '--ip=127.0.0.1',
+                    '--master=127.0.0.1:5050',
+                    '--attributes=preemptable:False',
+                    '--resources=cpus(*):%i' % self.numCores]
