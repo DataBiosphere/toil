@@ -21,6 +21,9 @@ print textwrap.dedent('''
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==8.1.2
 
+    # Include virtualenv, as it is still the recommended way to deploy pipelines
+    RUN pip install virtualenv==15.0.3
+
     # Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
 
