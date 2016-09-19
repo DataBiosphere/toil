@@ -19,13 +19,10 @@ print textwrap.dedent('''
     RUN apt-get update && apt-get install -y {dependencies}
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN pip install --upgrade pip
+    RUN pip install --upgrade pip==8.1.2
 
     # Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
-
-    COPY {options.sdist} .
-    RUN pip install {options.sdist}[aws,mesos,encryption,cwl]
 
     # Move the Mesos module onto the python path
     RUN ln -s /usr/lib/python2.7/site-packages/mesos /usr/local/lib/python2.7/dist-packages/mesos
@@ -36,4 +33,8 @@ print textwrap.dedent('''
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
     ENV TOIL_APPLIANCE_SELF {options.self}
+
+    # This component changes most frequently and keeping it last maximizes Docker cache hits.
+    COPY {options.sdist} .
+    RUN pip install {options.sdist}[aws,mesos,encryption,cwl]
 '''.format(**locals())).lstrip()
