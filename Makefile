@@ -92,8 +92,9 @@ clean_sdist:
 	- rm -rf dist
 
 
-test: check_venv check_build_reqs
-	$(python) run_tests.py test $(tests)
+test: check_venv check_build_reqs docker
+	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
+	    $(python) run_tests.py test $(tests)
 
 
 integration-test: check_venv check_build_reqs sdist push_docker
@@ -124,7 +125,8 @@ docker: check_docker_registry docker/worker/Dockerfile docker/leader/Dockerfile
 	; done
 	# On versions of docker >= 1.10, the `docker rmi` invocation is redundant, their `docker tag`
 	# automatically removes the tag from previous images. In older versions, `docker tag -f` does
-	# the same. The only way that works on both version is to explicitly untag the old image.
+	# the same. The only way that works on both version is to explicitly untag the old image. IOW,
+	# it is ok if the `rmi` command below fails.
 	-docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
 	docker tag $(docker_registry)/$(docker_base_name)-leader:$(docker_tag) \
 	           $(docker_registry)/$(docker_base_name):$(docker_tag)

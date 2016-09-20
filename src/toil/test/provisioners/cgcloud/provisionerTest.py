@@ -199,21 +199,6 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         raise NotImplementedError()
 
     @classmethod
-    def _run(cls, *args, **kwargs):
-        log.info('Running %r', args)
-        try:
-            capture = kwargs['capture']
-        except KeyError:
-            capture = False
-        else:
-            del kwargs['capture']
-        if capture:
-            return subprocess.check_output(args, **kwargs)
-        else:
-            subprocess.check_call(args, **kwargs)
-            return None
-
-    @classmethod
     def _cgcloud(cls, *args):
         if not cls.dryRun:
             cls._run('cgcloud', *args)
@@ -239,22 +224,6 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def _leader(cls, *args, **kwargs):
         cls._ssh('toil-leader', *args, **kwargs)
-
-    @classmethod
-    def _getSourceDistribution(cls):
-        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
-        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
-        excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
-                                capture=True,
-                                cwd=cls._projectRootPath()).splitlines())
-        dirty = cls._run('find', 'src', '-type', 'f', '-newer', sdistPath,
-                         capture=True,
-                         cwd=cls._projectRootPath()).splitlines()
-        assert all(path.startswith('src') for path in dirty)
-        dirty = set(dirty)
-        dirty.difference_update(excluded)
-        assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
-        return sdistPath
 
 
 class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
