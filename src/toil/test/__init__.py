@@ -24,6 +24,8 @@ import re
 import uuid
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
+from inspect import getsource
+from textwrap import dedent
 from unittest.util import strclass
 from urllib2 import urlopen
 
@@ -712,6 +714,30 @@ class ApplianceTestSupport(ToilTest):
 
         def writeToAppliance(self, path, contents):
             self.runOnAppliance('tee', path, input=contents)
+
+        def deployScript(self, path, packagePath, script):
+            """
+            Deploy a Python module on the appliance.
+
+            :param path: the path (absolute or relative to the WORDIR of the appliance container)
+                   to the root of the package hierarchy where the given module should be placed.
+                   The given directory should be on the Python path.
+
+            :param packagePath: the desired fully qualified module name (dotted form) of the module
+
+            :param str|callable script: the contents of the Python module. If a callable is given,
+                   its source code will be extracted. This is a convenience that lets you embed
+                   user scripts into test code as nested function.
+            """
+            if callable(script):
+                script = dedent('\n'.join(getsource(script).split('\n')[1:]))
+            packagePath = packagePath.split('.')
+            packages, module = packagePath[:-1], packagePath[-1]
+            for package in packages:
+                path += '/' + package
+                self.runOnAppliance('mkdir', path)
+                self.writeToAppliance(path + '/__init__.py', '')
+            self.writeToAppliance(path + '/' + module + '.py', script)
 
     class LeaderThread(Appliance):
         def _getRole(self):

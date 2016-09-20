@@ -1,7 +1,6 @@
 import logging
-from inspect import getsource
+from contextlib import contextmanager
 from subprocess import CalledProcessError
-from textwrap import dedent
 
 from bd2k.util.iterables import concat
 
@@ -16,15 +15,32 @@ class HotDeploymentTest(ApplianceTestSupport):
         logging.basicConfig(level=logging.INFO)
         super(HotDeploymentTest, self).setUp()
 
-    def test(self):
+    @contextmanager
+    def _venvApplianceCluster(self):
+        """
+        Creates an appliance cluster with a virtualenv at './venv' on the leader and a temporary
+        directory on the host mounted at /data in the leader and worker containers.
+        """
         dataDirPath = self._createTempDir(purpose='data')
         with self._applianceCluster(mounts={dataDirPath: '/data'}) as (leader, worker):
-            leader.runOnAppliance('virtualenv',
-                                  '--system-site-packages',
-                                  '--never-download',
-                                  'venv')
-            leader.runOnAppliance('venv/bin/pip', 'list')
+            try:
+                leader.runOnAppliance('virtualenv',
+                                      '--system-site-packages',
+                                      '--never-download',
+                                      'venv')
+                leader.runOnAppliance('venv/bin/pip', 'list') # For diagnostic purposes
+                yield leader, worker
+            finally:
+                # Without this step, we would leak files owned by root on the host's file system
+                leader.runOnAppliance('rm', '-rf', '/data/*')
 
+    sitePackages = 'venv/lib/python2.7/site-packages'
+
+    def testRestart(self):
+        """
+        Test whether hot-deployment works on restart.
+        """
+        with self._venvApplianceCluster() as (leader, worker):
             def userScript():
                 from toil.job import Job
                 from toil.common import Toil
@@ -42,11 +58,10 @@ class HotDeploymentTest(ApplianceTestSupport):
                         else:
                             toil.start(Job.wrapJobFn(job))
 
-            package = 'venv/lib/python2.7/site-packages/foo'
-            leader.runOnAppliance('mkdir', '-p', package)
-            leader.writeToAppliance(package + '/__init__.py', '')
-            script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
-            leader.writeToAppliance(package + '/bar.py', script)
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+
             pythonArgs = ['venv/bin/python', '-m', 'foo.bar']
             toilArgs = ['--logDebug',
                         '--batchSystem=mesos',
