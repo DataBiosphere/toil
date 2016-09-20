@@ -158,6 +158,11 @@ class Config(object):
         setOption("jobStore", parsingFn=parseJobStore)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
+        if self.workDir is not None:
+            self.workDir = os.path.abspath(self.workDir)
+            if not os.path.exists(self.workDir):
+                raise RuntimeError("The path provided to --workDir (%s) does not exist."
+                                   % self.workDir)
         setOption("stats")
         setOption("cleanWorkDir")
         setOption("clean")
