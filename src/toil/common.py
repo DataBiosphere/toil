@@ -27,6 +27,7 @@ from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
+from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -606,7 +607,6 @@ class Toil(object):
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
-
             rootJob = self._jobStore.clean(jobCache=self._jobCache)
             return self._runMainLoop(rootJob)
         finally:
@@ -635,7 +635,7 @@ class Toil(object):
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
             projectID, namePrefix = rest.split(':', 1)
-            return GoogleJobStore(namePrefix, projectID, config=config)
+            return GoogleJobStore(namePrefix, projectID)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
@@ -669,9 +669,13 @@ class Toil(object):
         a user script are given then the user script can be hot deployed into the workflow.
 
         :param toil.common.Config config: the current configuration
-        :param jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
-        :param ModuleDescriptor userScript: a user supplied script to use for hot development
+
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
+
+        :param ModuleDescriptor userScript: a handle to the Python module defining the root job
+
         :return: an instance of a concrete subclass of AbstractBatchSystem
+
         :rtype: batchSystems.abstractBatchSystem.AbstractBatchSystem
         """
         kwargs = dict(config=config,
@@ -715,9 +719,21 @@ class Toil(object):
         logger.info('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
-        if jobStore is not None and userScript is not None:
-            if not userScript.belongsToToil and batchSystemClass.supportsHotDeployment():
-                kwargs['userScript'] = userScript.saveAsResourceTo(jobStore)
+        if jobStore is not None:
+            if userScript is not None:
+                if not userScript.belongsToToil and batchSystemClass.supportsHotDeployment():
+                    userScriptResource = userScript.saveAsResourceTo(jobStore)
+                    with jobStore.writeSharedFileStream('userScript') as f:
+                        f.write(userScriptResource.pickle())
+                    kwargs['userScript'] = userScriptResource
+            else:
+                from toil.jobStores.abstractJobStore import NoSuchFileException
+                try:
+                    with jobStore.readSharedFileStream('userScript') as f:
+                        userScriptResource = Resource.unpickle(f.read())
+                    kwargs['userScript'] = userScriptResource
+                except NoSuchFileException:
+                    pass
 
         return batchSystemClass(**kwargs)
 
