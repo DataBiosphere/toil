@@ -30,6 +30,7 @@ from tempfile import mkdtemp
 from urllib2 import urlopen
 from zipfile import ZipFile, PyZipFile
 
+from bd2k.util import strict_bool
 from bd2k.util.iterables import concat
 from bd2k.util.exceptions import require
 
@@ -70,30 +71,18 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
         :rtype: Resource
         """
-        if os.path.isdir(leaderPath):
-            if inVirtualEnv() and leaderPath.startswith(sys.prefix):
-                subcls = VirtualEnvResource
-            else:
-                subcls = DirectoryResource
-        elif os.path.isfile(leaderPath):
-            subcls = FileResource
-        elif os.path.exists(leaderPath):
-            raise AssertionError("Neither a file or a directory: '%s'" % leaderPath)
-        else:
-            raise AssertionError("No such file or directory: '%s'" % leaderPath)
-
-        pathHash = subcls._pathHash(leaderPath)
+        pathHash = cls._pathHash(leaderPath)
         contentHash = hashlib.md5()
         # noinspection PyProtectedMember
-        with subcls._load(leaderPath) as src:
+        with cls._load(leaderPath) as src:
             with jobStore.writeSharedFileStream(pathHash, isProtected=False) as dst:
                 userScript = src.read()
                 contentHash.update(userScript)
                 dst.write(userScript)
-        return subcls(name=os.path.basename(leaderPath),
-                      pathHash=pathHash,
-                      url=(jobStore.getSharedPublicUrl(pathHash)),
-                      contentHash=contentHash.hexdigest())
+        return cls(name=os.path.basename(leaderPath),
+                   pathHash=pathHash,
+                   url=(jobStore.getSharedPublicUrl(pathHash)),
+                   contentHash=contentHash.hexdigest())
 
     @classmethod
     def prepareSystem(cls):
@@ -297,7 +286,7 @@ class VirtualEnvResource(DirectoryResource):
 
     @classmethod
     def _load(cls, path):
-        sitePackages = os.path.dirname(path)
+        sitePackages = path
         assert os.path.basename(sitePackages) == 'site-packages'
         bytesIO = BytesIO()
         with PyZipFile(file=bytesIO, mode='w') as zipFile:
@@ -312,7 +301,7 @@ class VirtualEnvResource(DirectoryResource):
         return bytesIO
 
 
-class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
+class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromVirtualEnv'))):
     """
     A path to a Python module decomposed into a namedtuple of three elements, namely
 
@@ -324,7 +313,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
 
     >>> import toil.resource
     >>> ModuleDescriptor.forModule('toil.resource') # doctest: +ELLIPSIS
-    ModuleDescriptor(dirPath='/.../src', name='toil.resource')
+    ModuleDescriptor(dirPath='/.../src', name='toil.resource', fromVirtualEnv=False)
 
     >>> import subprocess, tempfile, os
     >>> dirPath = tempfile.mkdtemp()
@@ -333,7 +322,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
     ...     f.write('from toil.resource import ModuleDescriptor\\n'
     ...             'print ModuleDescriptor.forModule(__name__)')
     >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS
-    "ModuleDescriptor(dirPath='...', name='foo')\\n"
+    "ModuleDescriptor(dirPath='...', name='foo', fromVirtualEnv=False)\\n"
 
     Now test a collision. As funny as it sounds, the robotparser module is included in the Python
     standard library.
@@ -389,7 +378,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
         assert os.path.isdir(dirPath)
-        return cls(dirPath=dirPath, name=name)
+        fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
+        return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
     @classmethod
     def _check_conflict(cls, dirPath, name):
@@ -429,7 +419,23 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         :type jobStore: toil.jobStores.abstractJobStore.AbstractJobStore
         :rtype: toil.resource.Resource
         """
-        return Resource.create(jobStore, self._resourcePath)
+        return self._getResourceClass().create(jobStore, self._resourcePath)
+
+    def _getResourceClass(self):
+        """
+        Return the concrete subclass of Resource that's appropriate for hot-deploying this module.
+        """
+        if self.fromVirtualEnv:
+            subcls = VirtualEnvResource
+        elif os.path.isdir(self._resourcePath):
+            subcls = DirectoryResource
+        elif os.path.isfile(self._resourcePath):
+            subcls = FileResource
+        elif os.path.exists(self._resourcePath):
+            raise AssertionError("Neither a file or a directory: '%s'" % self._resourcePath)
+        else:
+            raise AssertionError("No such file or directory: '%s'" % self._resourcePath)
+        return subcls
 
     def localize(self):
         """
@@ -448,11 +454,14 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         else:
             def stash(tmpDirPath):
                 # Save the original dirPath such that we can restore it in globalize()
-                with open(os.path.join(tmpDirPath, '.dirPath'), 'w') as f:
+                with open(os.path.join(tmpDirPath, '.stash'), 'w') as f:
+                    f.write('1' if self.fromVirtualEnv else '0')
                     f.write(self.dirPath)
 
             resource.download(callback=stash)
-            return self.__class__(dirPath=resource.localDirPath, name=self.name)
+            return self.__class__(dirPath=resource.localDirPath,
+                                  name=self.name,
+                                  fromVirtualEnv=self.fromVirtualEnv)
 
     def _runningOnWorker(self):
         try:
@@ -471,7 +480,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         Reverse the effect of localize().
         """
         try:
-            with open(os.path.join(self.dirPath, '.dirPath')) as f:
+            with open(os.path.join(self.dirPath, '.stash')) as f:
+                fromVirtualEnv = [False, True][int(f.read(1))]
                 dirPath = f.read()
         except IOError as e:
             if e.errno == errno.ENOENT:
@@ -481,7 +491,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
             else:
                 raise
         else:
-            return self.__class__(dirPath=dirPath, name=self.name)
+            return self.__class__(dirPath=dirPath,
+                                  name=self.name,
+                                  fromVirtualEnv=fromVirtualEnv)
 
     @property
     def _resourcePath(self):
@@ -489,7 +501,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
         The path to the directory that should be used when shipping this module and its siblings
         around as a resource.
         """
-        if '.' in self.name:
+        if self.fromVirtualEnv:
+            return self.dirPath
+        elif '.' in self.name:
             return os.path.join(self.dirPath, self._rootPackage())
         else:
             initName = self._initModuleName(self.dirPath)
@@ -518,6 +532,14 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name'))):
             raise ValueError('%r is stand-alone module.' % self)
         else:
             return head
+
+    def toCommand(self):
+        return tuple(map(str,self))
+
+    @classmethod
+    def fromCommand(cls, command):
+        assert len(command) == 3
+        return cls( dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
 
 
 class ResourceException(Exception):

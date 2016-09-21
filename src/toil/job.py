@@ -690,7 +690,7 @@ class Job(object):
         """
         commandTokens = command.split()
         assert "_toil" == commandTokens[0]
-        userModule = ModuleDescriptor(*(commandTokens[2:]))
+        userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
@@ -909,7 +909,7 @@ class Job(object):
         # and FunctionWrappingJob overrides getUserScript() to give us just that. Only then can
         # filter_main() in _unpickle( ) do its job of resolving any user-defined type or function.
         userScript = self.getUserScript().globalize()
-        jobsToJobWrappers[self].command = ' '.join( ('_toil', fileStoreID) + userScript)
+        jobsToJobWrappers[self].command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
         #Update the status of the jobWrapper on disk
         jobStore.update(jobsToJobWrappers[self])
 
