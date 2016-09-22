@@ -31,7 +31,8 @@ test_suites = {
         'CGCloudRNASeqTest',
         'CGCloudRestartTest',
         'PremptableDeficitCompensationTest',
-        'UtilsTest'
+        'UtilsTest and testAWSProvisionerUtils',
+        'AWSProvisionerTest'
     ]}
 
 
