@@ -41,55 +41,76 @@ from toil.resource import ModuleDescriptor
 logger = logging.getLogger( __name__ )
 
 
-class Job(object):
+class ResourceRequirementMixin(object):
     """
-    Class represents a unit of work in toil.
+    Inherit from this class to add requirement properties to a job (or job-like) object.
+    If the object doesn't specify explicit requirements, these properties will fall back
+    to the configured defaults. If the value cannot be determined, an AttributeError is raised.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, checkpoint=False):
-        """
-        This method must be called by any overriding constructor.
-        
-        :param memory: the maximum number of bytes of memory the job will require to run.
-        :param cores: the number of CPU cores required.
-        :param disk: the amount of local disk space required by the job, expressed in bytes.
-        :param preemptable: if the job can be run on a preemptable node.
-        :param checkpoint: if any of this job's successor jobs completely fails,
-            exhausting all their retries, remove any successor jobs and rerun this job to restart the
-            subtree. Job must be a leaf vertex in the job graph when initially defined, see
-            :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
-        :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type preemptable: boolean
-        :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        """
-        self.cores = self._parseResource('cores', cores)
-        self.memory = self._parseResource('memory', memory)
-        self.disk = self._parseResource('disk', disk)
-        self.checkpoint = checkpoint
-        self.preemptable = preemptable
-        #Private class variables
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
+        self._cores = self._parseResource('cores', cores)
+        self._memory = self._parseResource('memory', memory)
+        self._disk = self._parseResource('disk', disk)
+        self._preemptable = preemptable
+        self._config = None
 
-        #See Job.addChild
-        self._children = []
-        #See Job.addFollowOn
-        self._followOns = []
-        #See Job.addService
-        self._services = []
-        #A follow-on, service or child of a job A, is a "direct successor" of A, if B
-        #is a direct successor of A, then A is a "direct predecessor" of B.
-        self._directPredecessors = set()
-        # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
-        # defining the class self is an instance of, which may be a subclass of Job that may be
-        # defined in a different module.
-        self.userModule = ModuleDescriptor.forModule(self.__module__)
-        # Maps index paths into composite return values to lists of IDs of files containing
-        # promised values for those return value items. An index path is a tuple of indices that
-        # traverses a nested data structure of lists, dicts, tuples or any other type supporting
-        # the __getitem__() protocol.. The special key `()` (the empty tuple) represents the
-        # entire return value.
-        self._rvs = collections.defaultdict(list)
-        self._promiseJobStore = None
+    @property
+    def disk(self):
+        """
+        The maximum number of bytes of disk the job will require to run.
+        """
+        if self._disk is not None:
+            return self._disk
+        elif self._config is not None:
+            return self._config.defaultDisk
+        else:
+            raise AttributeError("Default value for 'disk' cannot be determined")
+
+    @property
+    def memory(self):
+        """
+        The maximum number of bytes of memory the job will require to run.
+        """
+        if self._memory is not None:
+            return self._memory
+        elif self._config is not None:
+            return self._config.defaultMemory
+        else:
+            raise AttributeError("Default value for 'memory' cannot be determined")
+
+    @property
+    def cores(self):
+        """
+        The number of CPU cores required.
+        """
+        if self._cores is not None:
+            return self._cores
+        elif self._config is not None:
+            return self._config.defaultCores
+        else:
+            raise AttributeError("Default value for 'cores' cannot be determined")
+
+    @property
+    def preemptable(self):
+        """
+        Whether the job can be run on a preemptable node.
+        """
+        if self._preemptable is not None:
+            return self._preemptable
+        elif self._config is not None:
+            return self._config.defaultPreemptable
+        else:
+            raise AttributeError("Default value for 'preemptable' cannot be determined")
+
+    @property
+    def _requirements(self):
+        """
+        Gets a dictionary of all the object's resource requirements. Unset values are defaulted to None
+        """
+        return {'memory':getattr(self, 'memory', None),
+                'cores': getattr(self, 'cores', None),
+                'disk': getattr(self, 'disk', None),
+                'preemptable': getattr(self, 'preemptable', None)}
 
     @staticmethod
     def _parseResource(name, value):
@@ -134,6 +155,54 @@ class Job(object):
         else:
             raise TypeError("The '%s' requirement does not accept values that are of %s"
                             % (name, type(value)))
+
+
+class Job(ResourceRequirementMixin):
+    """
+    Class represents a unit of work in toil.
+    """
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, checkpoint=False):
+        """
+        This method must be called by any overriding constructor.
+        
+        :param memory: the maximum number of bytes of memory the job will require to run.
+        :param cores: the number of CPU cores required.
+        :param disk: the amount of local disk space required by the job, expressed in bytes.
+        :param preemptable: if the job can be run on a preemptable node.
+        :param checkpoint: if any of this job's successor jobs completely fails,
+            exhausting all their retries, remove any successor jobs and rerun this job to restart the
+            subtree. Job must be a leaf vertex in the job graph when initially defined, see
+            :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
+        :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type preemptable: boolean
+        :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        """
+        super(Job, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
+        self.checkpoint = checkpoint
+        #Private class variables
+
+        #See Job.addChild
+        self._children = []
+        #See Job.addFollowOn
+        self._followOns = []
+        #See Job.addService
+        self._services = []
+        #A follow-on, service or child of a job A, is a "direct successor" of A, if B
+        #is a direct successor of A, then A is a "direct predecessor" of B.
+        self._directPredecessors = set()
+        # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
+        # defining the class self is an instance of, which may be a subclass of Job that may be
+        # defined in a different module.
+        self.userModule = ModuleDescriptor.forModule(self.__module__)
+        # Maps index paths into composite return values to lists of IDs of files containing
+        # promised values for those return value items. An index path is a tuple of indices that
+        # traverses a nested data structure of lists, dicts, tuples or any other type supporting
+        # the __getitem__() protocol.. The special key `()` (the empty tuple) represents the
+        # entire return value.
+        self._rvs = collections.defaultdict(list)
+        self._promiseJobStore = None
 
     def run(self, fileStore):
         """
@@ -572,7 +641,7 @@ class Job(object):
                 else:
                     return toil.restart()
 
-    class Service:
+    class Service(ResourceRequirementMixin):
         """
         Abstract class used to define the interface to a service.
         """
@@ -582,12 +651,9 @@ class Job(object):
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-            self.memory = memory
-            self.cores = cores
-            self.disk = disk
+            super(Job.Service, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
             self._childServices = []
             self._hasParent = False
-            self.preemptable = preemptable
 
         @abstractmethod
         def start(self, fileStore):
@@ -699,10 +765,11 @@ class Job(object):
         else:
             openFileStream = jobStore.readFileStream(pickleFile)
         with openFileStream as fileHandle:
-            return cls._unpickle(userModule, fileHandle)
+            return cls._unpickle(userModule, fileHandle, jobStore.config)
+
 
     @classmethod
-    def _unpickle(cls, userModule, fileHandle):
+    def _unpickle(cls, userModule, fileHandle, config):
         """
         Unpickles an object graph from the given file handle while loading symbols \
         referencing the __main__ module from the given userModule instead.
@@ -722,7 +789,10 @@ class Job(object):
                 return getattr(importlib.import_module(module_name), class_name)
 
         unpickler.find_global = filter_main
-        return unpickler.load()
+        runnable = unpickler.load()
+        assert isinstance(runnable, ResourceRequirementMixin)
+        runnable._config = config
+        return runnable
 
     def getUserScript(self):
         return self.userModule
@@ -816,23 +886,11 @@ class Job(object):
         """
         Create an empty job for the job.
         """
-        requirements = self.effectiveRequirements(jobStore.config)
-        return jobStore.create(command=command, predecessorNumber=predecessorNumber, **requirements)
-
-    def effectiveRequirements(self, config):
-        """
-        Determine and validate the effective requirements for this job, substituting a missing
-        explict requirement with a default from the configuration.
-
-        :rtype: Expando
-        :return: a dictionary/object hybrid with one entry/attribute for each requirement
-        """
-        requirements = Expando(
-            memory=float(config.defaultMemory) if self.memory is None else self.memory,
-            cores=float(config.defaultCores) if self.cores is None else self.cores,
-            disk=float(config.defaultDisk) if self.disk is None else self.disk,
-            preemptable=config.defaultPreemptable if self.preemptable is None else self.preemptable)
-        return requirements
+        # set _config to determine user determined default values for resource requirements
+        self._config = jobStore.config
+        return jobStore.create(command=command, predecessorNumber=predecessorNumber,
+                               cores=self.cores, disk=self.disk, memory=self.memory,
+                               preemptable=self.preemptable)
 
     def _makeJobWrappers(self, jobWrapper, jobStore):
         """
@@ -1282,7 +1340,7 @@ class EncapsulatedJob(Job):
         :param toil.job.Job job: the job to encapsulate.
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
-        Job.__init__(self, disk=job.disk, memory=job.memory, cores=job.cores)
+        Job.__init__(self, **job._requirements)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
@@ -1313,8 +1371,7 @@ class ServiceJob(Job):
         :param service: The service to wrap in a job.
         :type service: toil.job.Job.Service
         """
-        Job.__init__(self, memory=service.memory, cores=service.cores, disk=service.disk,
-                     preemptable=service.preemptable)
+        Job.__init__(self, **service._requirements)
         # service.__module__ is the module defining the class service is an instance of.
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
 
@@ -1330,7 +1387,7 @@ class ServiceJob(Job):
         # Unpickle the service
         logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
-        service = self._unpickle( userModule, BytesIO( self.pickledService ) )
+        service = self._unpickle( userModule, BytesIO( self.pickledService ), fileStore.jobStore.config )
         #Start the service
         startCredentials = service.start(fileStore)
         try:

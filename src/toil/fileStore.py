@@ -125,7 +125,7 @@ class FileStore(object):
             self.findAndHandleDeadJobs(cacheInfo)
         # Get the requirements for the job and clean the cache if necessary. cleanCache will
         # ensure that the requirements for this job are stored in the state file.
-        jobReqs = job.effectiveRequirements(self.jobStore.config).disk
+        jobReqs = job.disk
         # Cleanup the cache to free up enough space for this job (if needed)
         self.cleanCache(jobReqs)
         try:

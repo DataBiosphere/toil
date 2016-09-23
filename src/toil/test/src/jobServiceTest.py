@@ -201,6 +201,9 @@ class TestService(Job.Service):
         self.messageInt = messageInt
 
     def start(self, fileStore):
+        assert self.disk is not None
+        assert self.memory is not None
+        assert self.cores is not None
         self.terminate = Event()
         self.error = Event()
         inJobStoreID = fileStore.jobStore.getEmptyFileStoreID()
