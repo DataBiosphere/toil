@@ -4,7 +4,7 @@
 # separated list of Makefile targets to invoke.
 
 # Passing --system-site-packages ensures that mesos.native and mesos.interface are included
-virtualenv --system-site-packages venv
+virtualenv --system-site-packages --never-download venv
 . venv/bin/activate
 
 # Install build requirements 
