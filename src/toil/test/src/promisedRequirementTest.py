@@ -74,7 +74,7 @@ class hidden:
                 _, maxValue = batchSystemTest.getCounters(counterPath)
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
-        def getOptions(self, tempDir):
+        def getOptions(self, tempDir, caching=True):
             """
             Configures options for Toil workflow and makes job store.
             :param str tempDir: path to test directory
@@ -85,6 +85,8 @@ class hidden:
             options.batchSystem = self.batchSystemName
             options.workDir = tempDir
             options.maxCores = self.cpuCount
+            if not caching:
+                options.disableCaching = True
             return options
 
         def getCounterPath(self, tempDir):
@@ -103,7 +105,7 @@ class hidden:
         def testJobConcurrency(self):
             pass
 
-        def testPromisesWithJobStoreFileObjects(self):
+        def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
             Check whether FileID objects are being pickled properly when used as return
             values of functions.  Then ensure that lambdas of promised FileID objects can be
@@ -121,8 +123,10 @@ class hidden:
             F1.addChild(F2)
             F2.addChild(G)
 
-            Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles')))
+            Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
 
+        def testPromisesWithNonCachingFileStore(self):
+            self.testPromisesWithJobStoreFileObjects(caching=False)
 
         def testPromiseRequirementRaceStatic(self):
             """
