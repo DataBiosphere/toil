@@ -127,7 +127,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         Register this resource for later retrieval via lookup(), possibly in a child process.
         """
-        os.environ[self.resourceEnvNamePrefix + self.pathHash] = self._pickle()
+        os.environ[self.resourceEnvNamePrefix + self.pathHash] = self.pickle()
 
     @classmethod
     def lookup(cls, leaderPath):
@@ -147,7 +147,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             log.warn("Can't find resource for leader path '%s'", leaderPath)
             return None
         else:
-            self = cls._unpickle(s)
+            self = cls.unpickle(s)
             assert self.pathHash == pathHash
             return self
 
@@ -189,11 +189,11 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         rootDirPath = os.environ[self.rootDirPathEnvName]
         return os.path.join(rootDirPath, self.contentHash)
 
-    def _pickle(self):
+    def pickle(self):
         return self.__class__.__module__ + "." + self.__class__.__name__ + ':' + json.dumps(self)
 
     @classmethod
-    def _unpickle(cls, s):
+    def unpickle(cls, s):
         """
         :rtype: Resource
         """
