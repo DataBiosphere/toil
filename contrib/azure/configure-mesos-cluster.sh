@@ -336,6 +336,10 @@ if isagent ; then
   hostname -I | sed 's/ /\n/' | grep "^10." | sudo tee /etc/mesos-slave/ip
   hostname | sudo tee /etc/mesos-slave/hostname
   
+  # Mark the node as non-preemptable so Toil won't complain that it doesn't know
+  # whether the node is preemptable or not
+  echo "preemptable:False" | sudo tee /etc/mesos-slave/attributes
+
   # Set up the Mesos salve work directory in the ephemeral /mnt
   echo "/mnt" | sudo tee /etc/mesos-slave/work_dir
 
