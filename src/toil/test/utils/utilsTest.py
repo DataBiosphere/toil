@@ -79,16 +79,16 @@ class UtilsTest(ToilTest):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         try:
             system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
-                '--clusterName', clusterName, '--provisioner=aws'])
+                 clusterName, '--provisioner=aws'])
         finally:
-            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', '--clusterName', clusterName])
+            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
-                    '--clusterName', clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
-            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', '--clusterName', clusterName])
+                    clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
+            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
         finally:
-            system([self.toilMain, 'destroy-cluster', '--provisioner=aws','--clusterName', clusterName])
+            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 
     def testUtilsSort(self):
         """

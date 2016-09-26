@@ -23,16 +23,15 @@ logger = logging.getLogger( __name__ )
 def main():
     parser = getBasicOptionParser()
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument("--provisioner", dest='provisioner', choices=['aws'], required=True,
-                        help="The provisioner for cluster auto-scaling. Only aws is currently"
-                             "supported")
     parser.add_argument("--nodeType", dest='nodeType', required=True,
                         help="Node type for {non-|}preemptable nodes. The syntax depends on the "
                              "provisioner used. For the aws provisioner this is the name of an "
                              "EC2 instance type followed by a colon and the price in dollar to "
                              "bid for a spot instance, for example 'c3.8xlarge:0.42'.")
-    parser.add_argument("--clusterName", dest='clusterName', required=True,
-                        help="The name that the cluster will be identifiable by")
+    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
+                        help="The provisioner for cluster auto-scaling. Only aws is currently"
+                             "supported")
+    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
                         help="The name of the AWS key pair to include on the instance")
     config = parseBasicOptions(parser)
