@@ -1449,7 +1449,7 @@ class NonCachingFileStore(FileStore):
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._abspath(localFileName)
         cleanupID = None if not cleanup else self.jobWrapper.jobStoreID
-        return self.jobStore.writeFile(absLocalFileName, cleanupID)
+        return FileID.forPath(self.jobStore.writeFile(absLocalFileName, cleanupID), absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
         if userPath is not None:
