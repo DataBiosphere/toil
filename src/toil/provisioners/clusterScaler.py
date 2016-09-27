@@ -28,6 +28,16 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 
 logger = logging.getLogger(__name__)
 
+# slack exists when we have more jobs that can run on preemptable nodes than
+# we have preemptable nodes. in order to not block these jobs, we want to scale
+# up the number of non-preemptable nodes that we have. however, we may still
+# prefer waiting for preemptable instances to come available.
+#
+# to accomodate this, we set the delta to the difference between the number of
+# provisioned preemptable nodes and the number of nodes that were requested.
+# when the non-preemptable thread wants to provision nodes, it will multiply
+# this delta times a preference for preemptable vs. non-preemptable nodes.
+_delta = 0
 
 class RecentJobShapes(object):
     """
@@ -282,6 +292,8 @@ class ScalerThread(ExceptionalThread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
 
     def tryRun(self):
+        global _delta
+
         if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
             totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
         else:
@@ -291,7 +303,8 @@ class ScalerThread(ExceptionalThread):
             with throttle(self.scaler.config.scaleInterval):
                 # Calculate the approx. number nodes needed
                 # TODO: Correct for jobs already running which can be considered fractions of a job
-                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued()
+                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
+
                 recentJobShapes = self.jobShapes.get()
                 assert len(recentJobShapes) > 0
                 nodesToRunRecentJobs = binPacking(recentJobShapes, self.nodeShape)
@@ -300,6 +313,18 @@ class ScalerThread(ExceptionalThread):
                     * nodesToRunRecentJobs
                     * float(queueSize)
                     / len(recentJobShapes))))
+
+                # if we're in the non-preemptable queue, we need to see if we have any slack
+                # coming over from the preemptable queue
+                if not self.preemptable:
+                    # slack is derived from the delta (the number of nodes we did _not_ allocate)
+                    # times a preference for preemptable nodes
+                    require(1.0 >= self.scaler.config.slackPreemptablePreference >= 0.0,
+                            "Slack preference for preemptable nodes (%f) must be >= 0.0 and <= 1.0",
+                            self.scaler.config.slackPreemptablePreference)
+                    nonPreemptablePreference = 1.0 - self.scaler.config.slackPreemptablePreference
+
+                    estimatedNodes += int(round(_delta * nonPreemptablePreference))
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
@@ -331,6 +356,19 @@ class ScalerThread(ExceptionalThread):
                                 estimatedNodes)
                     totalNodes = self.scaler.provisioner.setNodeCount(numNodes=estimatedNodes,
                                                                       preemptable=self.preemptable)
+                    
+                    # if we were scaling up the number of preemptable nodes and failed to
+                    # meet our target, we need to update the slack so that non-preemptable
+                    # nodes will be allocated and we won't block. if we _did_ meet our target,
+                    # we need to reset the slack to 0
+                    if self.preemptable:
+                        if totalNodes < estimatedNodes:
+                            # slack is derived from the delta (the number of nodes we did _not_ allocate)
+                            _delta = estimatedNodes - totalNodes
+                            logger.debug('Preemptable thread had delta of %d.', _delta)
+                        else:
+                            _delta = 0
+                    
         logger.info('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.scaler.provisioner.setNodeCount(numNodes=0,
                                                           preemptable=self.preemptable,

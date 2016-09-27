@@ -78,6 +78,7 @@ class Config(object):
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 10
+        self.slackPreemptablePreference = 0.0
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -196,6 +197,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
+        setOption("slackPreemptablePreference", float)
 
         #Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -354,6 +356,12 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
+    addOptionFn("--slackPreemptablePreference", dest="slackPreemptablePreference",
+                default=None,
+                help=("The preference for the autoscaler to replace non-preemptable nodes"
+                      " with preemptable nodes, when preemptable nodes cannot be started."
+                      " Defaults to %s. This value must be between 0 and 1,"
+                      " inclusive." % config.slackPreemptablePreference))
 
     #
     #Resource requirements
