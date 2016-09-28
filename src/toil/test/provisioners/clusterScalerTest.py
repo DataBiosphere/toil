@@ -28,7 +28,8 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
-from toil.batchSystems.jobDispatcher import IssuedJob
+from toil.leader import IssuedJob
+
 
 logger = logging.getLogger(__name__)
 
