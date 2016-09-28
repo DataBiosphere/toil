@@ -29,7 +29,7 @@ from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.lib.bioio import getTotalCpuTime, logStream
+from toil.lib.bioio import getTotalCpuTime
 from toil.provisioners.clusterScaler import ClusterScaler
 
 logger = logging.getLogger( __name__ )
@@ -77,8 +77,13 @@ class StatsAndLogging( object ):
             except AttributeError:
                 pass
             else:
-                for log in logs:
-                    logger.info("%s:    %s", log.jobStoreID, log.text)
+                jobStoreIDs = {log.jobStoreID for log in logs}
+                # we may have multiple jobs per worker
+                for jobStoreID in jobStoreIDs:
+                    jobLogs = [log.text for log in filter(lambda log: log.jobStoreID == jobStoreID, logs)]
+                    logFormat = '\n%s    ' % jobStoreID
+                    logger.info('Received Toil worker log. Disable debug level '
+                                'logging to hide this output\n%s', logFormat.join(jobLogs))
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -290,9 +295,11 @@ class JobBatcher:
                 else:
                     raise
             if jobWrapper.logJobStoreFileID is not None:
-                logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
                 with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
-                    logStream( logFileStream, jobStoreID, logger.warn )
+                    messages = logFileStream.read().splitlines()
+                logFormat = '\n%s    ' % jobStoreID
+                logger.warn('The jobWrapper seems to have left a log file, indicating failure: %s\n%s',
+                            jobStoreID, logFormat.join(messages))
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
