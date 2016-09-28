@@ -21,12 +21,13 @@
 from __future__ import absolute_import
 import logging
 from toil import resolveEntryPoint
-from toil.lib.bioio import logStream
+from toil.lib.bioio import logStream, getOutputLogger
 from collections import namedtuple
 import time
 from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
+
 
 # Represents a job and its requirements as issued to the batch system
 IssuedJob = namedtuple("IssuedJob", "jobStoreID memory cores disk preemptable")
@@ -313,13 +314,14 @@ class JobDispatcher(object):
         """
         Function reads a processed jobWrapper file and updates it state.
         """
+        outputLogger = getOutputLogger(__name__)
         jobStoreID = self.removeJob(jobBatchSystemID).jobStoreID
         if self.jobStore.exists(jobStoreID):
             jobWrapper = self.jobStore.load(jobStoreID)
             if jobWrapper.logJobStoreFileID is not None:
                 logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
                 with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
-                    logStream( logFileStream, jobStoreID, logger.warn )
+                    logStream( logFileStream, jobStoreID, outputLogger.warn )
             if resultStatus != 0:
                 if jobWrapper.logJobStoreFileID is None:
                     logger.warn("No log file is present, despite jobWrapper failing: %s", jobStoreID)

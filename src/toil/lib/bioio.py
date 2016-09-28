@@ -98,6 +98,31 @@ def logStream(fileHandle, shortName, printFunction=logger.info):
         line = fileHandle.readline()
     fileHandle.close()
 
+
+setHandlers = []
+
+
+def getOutputLogger(fileName):
+    handlers = rootLogger.handlers
+    # create new logger for worker output logs so we can format them appropriately
+    outputLogger = logging.getLogger(fileName + '.workerOutput')
+    if fileName in setHandlers:
+        return outputLogger
+    else:
+        setHandlers.append(fileName)
+    loggerHandler = logging.StreamHandler()
+    # print only the log message to avoid cluttering the worker output
+    loggerHandler.setFormatter(logging.Formatter('    %(message)s'))
+    outputLogger.addHandler(loggerHandler)
+    for handler in handlers:
+        if isinstance(handler, logging.FileHandler):
+            # adding multiple streamhandlers results in duplicate logging messages
+            outputLogger.addHandler(handler)
+    # don't propagate the log back to the root logger to avoid duplicate output
+    outputLogger.propagate = 0
+    return outputLogger
+
+
 def addLoggingOptions(parser):
     # Wrapper function that allows toil to be used with both the optparse and
     # argparse option parsing modules

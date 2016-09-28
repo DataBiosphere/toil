@@ -29,10 +29,12 @@ from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.lib.bioio import getTotalCpuTime, logStream
+from toil.lib.bioio import getTotalCpuTime, logStream, getOutputLogger
 from toil.provisioners.clusterScaler import ClusterScaler
 
 logger = logging.getLogger( __name__ )
+
+
 
 ####################################################
 ##Stats/logging aggregation
@@ -56,6 +58,7 @@ class StatsAndLogging( object ):
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
         """
+        outputLogger = getOutputLogger(__name__)
         #  Overall timing
         startTime = time.time()
         startClock = getTotalCpuTime()
@@ -70,15 +73,14 @@ class StatsAndLogging( object ):
             else:
                 for message in logs:
                     logger.log(int(message.level),
-                               'Got message from job at time %s: %s',
-                               time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+                               'Got message from job: %s', message.text)
             try:
                 logs = stats.logs
             except AttributeError:
                 pass
             else:
                 for log in logs:
-                    logger.info("%s:    %s", log.jobStoreID, log.text)
+                    outputLogger.info("%s:    %s", log.jobStoreID, log.text)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -262,6 +264,7 @@ class JobBatcher:
         """
         Function reads a processed jobWrapper file and updates it state.
         """
+        outputLogger = getOutputLogger(__name__)
         def processRemovedJob(jobStoreID):
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
@@ -292,7 +295,7 @@ class JobBatcher:
             if jobWrapper.logJobStoreFileID is not None:
                 logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
                 with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
-                    logStream( logFileStream, jobStoreID, logger.warn )
+                    logStream( logFileStream, jobStoreID, outputLogger.warn )
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
