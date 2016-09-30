@@ -23,6 +23,7 @@ import socket
 import time
 from Queue import Queue, Empty
 from collections import defaultdict
+from operator import attrgetter
 from struct import unpack
 
 import itertools
@@ -286,7 +287,13 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def _sortJobsByResourceReq(self):
         jobTypes = self.jobQueues.keys()
-        jobTypes.sort(key=ResourceRequirement.size)
+        # The dominant criteria is preemptability of jobs. Non-preemptable (NP) jobs should be
+        # considered first because they can only be run on on NP nodes while P jobs can run on
+        # both. Without this prioritization of NP jobs, P jobs could steal NP cores from NP jobs,
+        # leaving subsequently offered P cores unused. Despite the prioritization of NP jobs,
+        # NP jobs can not steal P cores from P jobs, simply because the offer-acceptance logic
+        # would not accept a P offer with a NP job.
+        jobTypes.sort(key=attrgetter('preemptable', 'size'))
         jobTypes.reverse()
         return jobTypes
 
