@@ -199,8 +199,9 @@ class ToilTest(unittest.TestCase):
 
         :param str args: Any arguments to be passed to the command.
 
-        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True to
-                           have the process' stdout returned.
+        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True
+               to have the process' stdout returned. Pass input='some string' to feed input to the
+               process' stdin.
 
         :rtype: None|str
 
