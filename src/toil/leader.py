@@ -221,6 +221,7 @@ class JobBatcher:
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
         self.jobsIssued -= 1
         if self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].preemptable:
+            assert self._preemptableJobsIssued > 0
             self._preemptableJobsIssued -= 1
         jobStoreID = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID).jobStoreID
         return jobStoreID

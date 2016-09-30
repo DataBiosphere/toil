@@ -23,6 +23,7 @@ import tempfile
 import time
 from argparse import ArgumentParser
 
+from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
@@ -78,7 +79,7 @@ class Config(object):
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 10
-        self.slackPreemptablePreference = 0.0
+        self.preemptableCompensation = 0.0
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -197,9 +198,13 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-        setOption("slackPreemptablePreference", float)
 
-        #Resource requirements
+        setOption("preemptableCompensation", float)
+        require(0.0 <= self.preemptableCompensation <= 1.0,
+                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
+                self.preemptableCompensation)
+
+        # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
         setOption("defaultCores", float, fC(1.0))
         setOption("defaultDisk", h2b, iC(1))
@@ -266,13 +271,14 @@ def _addOptions(addGroupFn, config):
                      "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
                      "all machines running jobs.")
     addOptionFn("--stats", dest="stats", action="store_true", default=None,
-                      help="Records statistics about the toil workflow to be used by 'toil stats'.")
-    addOptionFn("--clean", dest="clean", choices=['always', 'onError','never', 'onSuccess'], default=None,
-                      help=("Determines the deletion of the jobStore upon completion of the program. "
-                            "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
-                            "information from the jobStore upon completion so the jobStore will never be deleted with"
-                            "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
-                            "Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise"))
+                help="Records statistics about the toil workflow to be used by 'toil stats'.")
+    addOptionFn("--clean", dest="clean", choices=['always', 'onError', 'never', 'onSuccess'],
+                default=None,
+                help=("Determines the deletion of the jobStore upon completion of the program. "
+                      "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
+                      "information from the jobStore upon completion so the jobStore will never be deleted with"
+                      "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
+                      "Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise"))
     addOptionFn("--cleanWorkDir", dest="cleanWorkDir",
                 choices=['always', 'never', 'onSuccess', 'onError'], default='always',
                 help=("Determines deletion of temporary worker directory upon completion of a job. Choices: 'always', "
@@ -356,12 +362,15 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
-    addOptionFn("--slackPreemptablePreference", dest="slackPreemptablePreference",
+    addOptionFn("--preemptableCompensation", dest="preemptableCompensation",
                 default=None,
-                help=("The preference for the autoscaler to replace non-preemptable nodes"
-                      " with preemptable nodes, when preemptable nodes cannot be started."
-                      " Defaults to %s. This value must be between 0 and 1,"
-                      " inclusive." % config.slackPreemptablePreference))
+                help=("The preference of the autoscaler to replace preemptable nodes with "
+                      "non-preemptable nodes, when preemptable nodes cannot be started for some "
+                      "reason. Defaults to %s. This value must be between 0.0 and 1.0, inclusive. "
+                      "A value of 0.0 disables such compensation, a value of 0.5 compensates two "
+                      "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
+                      "replaces every missing pre-emptable node with a non-preemptable one." %
+                      config.preemptableCompensation))
 
     #
     #Resource requirements
