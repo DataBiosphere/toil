@@ -186,7 +186,8 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, \
+            "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
 
     @classmethod
