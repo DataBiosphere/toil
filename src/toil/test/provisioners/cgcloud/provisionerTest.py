@@ -18,6 +18,8 @@ import pipes
 import subprocess
 
 from abc import abstractmethod, ABCMeta
+from inspect import getsource
+from textwrap import dedent
 from urlparse import urlparse
 from uuid import uuid4
 
@@ -268,33 +270,33 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
         self._test(autoScaled=True, spotInstances=True)
 
 
-restartScript = """\"from toil.job import Job
-import argparse
-import os
+def restartScript():
+    from toil.job import Job
+    import argparse
+    import os
 
+    def f0(job):
+        if 'FAIL' in os.environ:
+            raise RuntimeError('failed on purpose')
 
-def f0(job):
-    if 'FAIL' in os.environ:
-        raise RuntimeError('failed on purpose')
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    Job.Runner.addToilOptions(parser)
-    options = parser.parse_args()
-    i = Job.Runner.startToil(Job.wrapJobFn(f0), options)
-\""""
+    if __name__ == '__main__':
+        parser = argparse.ArgumentParser()
+        Job.Runner.addToilOptions(parser)
+        options = parser.parse_args()
+        i = Job.Runner.startToil(Job.wrapJobFn(f0), options)
 
 
 class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
 
     def _getScript(self):
         self.scriptName= "restartScript.py"
-        self._leader('echo %s > %s' % (restartScript, 'restartScript.py'), shell=True)
+        self._leader('tee %s' % self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
+                     shell=True)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
-        restartCompatible = lambda x : ('clean' not in x and 'retryCount' not in x)
-        newOptions = [option for option in toilOptions if restartCompatible(option)]
+        disallowedOptions = ['clean', 'retryCount']
+        newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             self._leader('python', self.scriptName, self.jobStore, '-e', 'FAIL=true', *newOptions)
         except subprocess.CalledProcessError:
@@ -302,7 +304,7 @@ class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
         else:
             self.fail('Command succeeded when we expected failure')
         with timeLimit(300):
-            self._leader('python', self.scriptName, self.jobStore, '--restart', *newOptions)
+            self._leader('python', self.scriptName, self.jobStore, '--restart', *toilOptions)
 
     @integrative
     def testAutoScaledCluster(self):
