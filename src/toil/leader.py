@@ -90,7 +90,6 @@ class StatsAndLogging( object ):
                     if jobStoreID == currentJobStoreID:
                         # aggregate all the job's logs into 1 list
                         jobLogs.append(log.text)
-                        continue
                     else:
                         # we have reached the next job, output the aggregated logs and continue
                         logWithFormatting(currentJobStoreID, jobLogs)
@@ -313,10 +312,10 @@ class JobBatcher:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    messages = [line.rstrip('\n') for line in logFileStream]
-                logFormat = '\n%s    ' % jobStoreID
-                logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
-                            jobStoreID, logFormat.join(messages))
+                    messages = (line.rstrip('\n') for line in logFileStream)
+                    logFormat = '\n%s    ' % jobStoreID
+                    logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
+                                jobStoreID, logFormat.join(messages))
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
