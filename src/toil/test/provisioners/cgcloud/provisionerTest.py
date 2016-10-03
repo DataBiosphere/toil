@@ -202,9 +202,9 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         raise NotImplementedError()
 
     @classmethod
-    def _cgcloud(cls, *args):
+    def _cgcloud(cls, *args, **kwargs):
         if not cls.dryRun:
-            cls._run('cgcloud', *args)
+            cls._run('cgcloud', *args, **kwargs)
 
     sshOptions = ['-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no']
 
@@ -218,7 +218,7 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             del kwargs['admin']
 
         cls._cgcloud(
-            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)))
+            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)), **kwargs)
 
     @classmethod
     def _rsync(cls, role, *args):
