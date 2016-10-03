@@ -283,19 +283,27 @@ def restartScript():
         parser = argparse.ArgumentParser()
         Job.Runner.addToilOptions(parser)
         options = parser.parse_args()
-        i = Job.Runner.startToil(Job.wrapJobFn(f0), options)
+        i = Job.Runner.startToil(Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M'),
+                                 options)
 
 
 class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
+    """
+    This test insures autoscaling works on a restarted Toil run
+    """
+    def setUp(self):
+        super(CGCloudRestartTest, self).setUp()
+        self.instanceType = 't2.micro'
+        self.leaderInstanceType = 't2.micro'
 
     def _getScript(self):
         self.scriptName= "restartScript.py"
-        self._leader('tee %s' % self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
-                     shell=True)
+        self._leader('tee', self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
+)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
-        disallowedOptions = ['clean', 'retryCount']
+        disallowedOptions = ['--clean=always', '--retryCount=2']
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             self._leader('python', self.scriptName, self.jobStore, '-e', 'FAIL=true', *newOptions)
