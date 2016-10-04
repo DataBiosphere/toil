@@ -33,7 +33,8 @@ from hashlib import sha1
 from Queue import Queue, Empty
 from threading import Thread, Semaphore, Event
 
-from toil.common import cacheDirName
+from bd2k.util.humanize import bytes2human
+from toil.common import cacheDirName, getDirSizeRecursively
 from toil.lib.bioio import makePublicDir
 
 logger = logging.getLogger( __name__ )
@@ -132,6 +133,22 @@ class FileStore(object):
             os.chdir(self.localTempDir)
             yield
         finally:
+            diskUsed = getDirSizeRecursively(self.localTempDir)
+            logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
+                         "{humanRequestedDisk}B [{requestedDisk}B] requested) at the end of "
+                         "its run.".format(jobName=self.jobName,
+                                           percent=(float(diskUsed) / jobReqs * 100 if
+                                                    jobReqs > 0 else 0.0),
+                                           humanDisk=bytes2human(diskUsed),
+                                           disk=diskUsed,
+                                           humanRequestedDisk=bytes2human(jobReqs),
+                                           requestedDisk=jobReqs))
+            self.logToMaster(logString, level=logging.INFO)
+            if diskUsed > jobReqs:
+                self.logToMaster("Job used more disk than requested. Please reconsider modifying "
+                                 "the user script to avoid the chance  of failure due to "
+                                 "incorrectly requested resources. " + logString,
+                                 level=logging.WARNING)
             os.chdir(startingDir)
             self.cleanupInProgress = True
             # Delete all the job specific files and return sizes to jobReqs
@@ -1429,6 +1446,7 @@ class NonCachingFileStore(FileStore):
     def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
         self.jobStore = jobStore
         self.jobWrapper = jobWrapper
+        self.jobName = self.jobWrapper.command.split()[1]
         self.localTempDir = os.path.abspath(localTempDir)
         self.inputBlockFn = inputBlockFn
         self.jobsToDelete = set()
@@ -1438,12 +1456,24 @@ class NonCachingFileStore(FileStore):
 
     @contextmanager
     def open(self, job):
+        jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         try:
             os.chdir(self.localTempDir)
             yield
         finally:
+            diskUsed = getDirSizeRecursively(self.localTempDir)
+            logString = "Job %s used %.2f%% (%sB [%sB] used, %sB [%sB] requested) at the end of " \
+                        "its run." % (self.jobName,
+                                      float(diskUsed) / jobReqs * 100 if jobReqs > 0 else 0.0,
+                                      bytes2human(diskUsed), diskUsed, bytes2human(jobReqs),
+                                      jobReqs)
+            self.logToMaster(logString, level=logging.INFO)
+            if diskUsed > jobReqs:
+                self.logToMaster("Job used more disk than requested. Cconsider modifying the user "
+                                 "script to avoid the chance of failure due to incorrectly "
+                                 "requested resources. " + logString, level=logging.WARNING)
             os.chdir(startingDir)
 
     def writeGlobalFile(self, localFileName, cleanup=False):
