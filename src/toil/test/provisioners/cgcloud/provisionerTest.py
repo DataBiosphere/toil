@@ -293,8 +293,10 @@ class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
     """
     def setUp(self):
         super(CGCloudRestartTest, self).setUp()
-        self.instanceType = 't2.micro'
-        self.leaderInstanceType = 't2.micro'
+        # CGCloud provisioner requires that the node has at least 1 ephemeral drive so this is the
+        # smallest instance we can use
+        self.instanceType = 'm3.medium'
+        self.leaderInstanceType = 'm3.medium'
 
     def _getScript(self):
         self.scriptName= "restartScript.py"
