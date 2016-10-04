@@ -32,6 +32,10 @@ from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
 
+# This constant is set to the default value used on unix for block size (in bytes) when
+# os.stat(<file>).st_blocks is called.
+unixBlockSize = 512
+
 
 class Config(object):
     """
@@ -927,3 +931,34 @@ def cacheDirName(workflowID):
     :return: Name of the cache directory.
     """
     return 'cache-' + workflowID
+
+
+def getDirSizeRecursively(dirPath):
+    """
+    This method will walk through a directory and return the cumulative filesize in bytes of all
+    the files in the directory and its subdirectories.
+
+    :param dirPath: Path to a directory.
+    :return: cumulative size in bytes of all files in the directory.
+    :rtype: int
+    """
+    totalSize = 0
+    # The value from running stat on each linked file is equal. To prevent the same file
+    # from being counted multiple times, we save the inodes of files that have more than one
+    # nlink associated with them.
+    seenInodes = set()
+    for dirPath, dirNames, fileNames in os.walk(dirPath):
+        folderSize = 0
+        for f in fileNames:
+            fp = os.path.join(dirPath, f)
+            fileStats = os.stat(fp)
+            if fileStats.st_nlink > 1:
+                if fileStats.st_ino not in seenInodes:
+                    folderSize += fileStats.st_blocks * unixBlockSize
+                    seenInodes.add(fileStats.st_ino)
+                else:
+                    continue
+            else:
+                folderSize += fileStats.st_blocks * unixBlockSize
+        totalSize += folderSize
+    return totalSize
