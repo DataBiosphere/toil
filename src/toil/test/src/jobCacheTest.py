@@ -350,7 +350,8 @@ class hidden:
                 for line in logFileHandle:
                     line = line.strip()
                     if workerLogName is None:
-                        if line.startswith('Reporting'):
+                        if line.startswith('The job seems to have left '
+                                           'a log file, indicating failure:'):
                             workerLogName = line.split()[-1]
                         continue
                     if not line.startswith(workerLogName):

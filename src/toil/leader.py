@@ -29,7 +29,7 @@ from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.lib.bioio import getTotalCpuTime, logStream
+from toil.lib.bioio import getTotalCpuTime
 from toil.provisioners.clusterScaler import ClusterScaler
 
 logger = logging.getLogger( __name__ )
@@ -77,8 +77,26 @@ class StatsAndLogging( object ):
             except AttributeError:
                 pass
             else:
+                def logWithFormatting(jobStoreID, jobLogs):
+                    logFormat = '\n%s    ' % jobStoreID
+                    logger.debug('Received Toil worker log. Disable debug level '
+                                 'logging to hide this output\n%s', logFormat.join(jobLogs))
+                # we may have multiple jobs per worker
+                # logs[0] is guaranteed to exist in this branch
+                currentJobStoreID = logs[0].jobStoreID
+                jobLogs = []
                 for log in logs:
-                    logger.info("%s:    %s", log.jobStoreID, log.text)
+                    jobStoreID = log.jobStoreID
+                    if jobStoreID == currentJobStoreID:
+                        # aggregate all the job's logs into 1 list
+                        jobLogs.append(log.text)
+                    else:
+                        # we have reached the next job, output the aggregated logs and continue
+                        logWithFormatting(currentJobStoreID, jobLogs)
+                        jobLogs = []
+                        currentJobStoreID = jobStoreID
+                # output the last job's logs
+                logWithFormatting(currentJobStoreID, jobLogs)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -290,9 +308,14 @@ class JobBatcher:
                 else:
                     raise
             if jobWrapper.logJobStoreFileID is not None:
-                logger.warn("The jobWrapper seems to have left a log file, indicating failure: %s", jobStoreID)
                 with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
-                    logStream( logFileStream, jobStoreID, logger.warn )
+                    # more memory efficient than read().striplines() while leaving off the
+                    # trailing \n left when using readlines()
+                    # http://stackoverflow.com/a/15233739
+                    messages = (line.rstrip('\n') for line in logFileStream)
+                    logFormat = '\n%s    ' % jobStoreID
+                    logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
+                                jobStoreID, logFormat.join(messages))
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
