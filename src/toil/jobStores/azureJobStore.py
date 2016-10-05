@@ -41,7 +41,7 @@ from bd2k.util.exceptions import panic
 from bd2k.util.retry import retry
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -740,7 +740,7 @@ class AzureBlobContainer(object):
         return f
 
 
-class AzureJob(JobWrapper):
+class AzureJob(JobGraph):
     """
     Serialize and unserialize a job for storage on Azure.
 

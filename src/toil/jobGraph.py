@@ -14,12 +14,12 @@
 from __future__ import absolute_import
 import logging
 
-from toil.job import IssuableJob
+from toil.job import JobNode
 
 logger = logging.getLogger( __name__ )
 
 
-class JobWrapper( IssuableJob ):
+class JobGraph(JobNode):
     """
     A class encapsulating the minimal state of a Toil job. Instances of this class are persisted
     in the job store and held in memory by the master. The actual state of job objects in user
@@ -36,16 +36,16 @@ class JobWrapper( IssuableJob ):
                   checkpoint=None,
                   checkpointFilesToDelete=None ):
 
-        super(JobWrapper, self).__init__(command=command, memory=memory, cores=cores, disk=disk,
-                                         name=name, preemptable=preemptable, jobStoreID=jobStoreID,
-                                         job=job, predecessorNumber=predecessorNumber)
+        super(JobGraph, self).__init__(command=command, memory=memory, cores=cores, disk=disk,
+                                       name=name, preemptable=preemptable, jobStoreID=jobStoreID,
+                                       job=job, predecessorNumber=predecessorNumber)
 
         # The number of times the job should be retried if it fails This number is reduced by
         # retries until it is zero and then no further retries are made
         self.remainingRetryCount = remainingRetryCount
         
         # This variable is used in creating a graph of jobs. If a job crashes after an update to
-        # the jobWrapper but before the list of files to remove is deleted then this list can be
+        # the jobGraph but before the list of files to remove is deleted then this list can be
         # used to clean them up.
         self.filesToDelete = filesToDelete or []
         
@@ -56,9 +56,8 @@ class JobWrapper( IssuableJob ):
         # predecessorNumber then the job can be run.
         self.predecessorsFinished = predecessorsFinished or set()
         
-        # The list of successor jobs to run. Successor jobs are stored as IssuableJobs 5-tuples of the form (
-        # jobStoreId, memory, cores, disk, predecessorNumber). Successor jobs are run in reverse
-        # order from the stack.
+        # The list of successor jobs to run. Successor jobs are stored as jobNodes. Successor
+        # jobs are run in reverse order from the stack.
         self.stack = stack or []
         
         # A jobStoreFileID of the log file for a job. This will be none unless the job failed and
@@ -93,7 +92,7 @@ class JobWrapper( IssuableJob ):
         # make all these non constructor args properties?
         # only have to filter on _
         # or maybe inner class for state
-        d = super(JobWrapper, cls)._filterArgDict(d)
+        d = super(JobGraph, cls)._filterArgDict(d)
         for key, value in dict(d).iteritems():
             if key == 'predecessorID':
                 del d[key]

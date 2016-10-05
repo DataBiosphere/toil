@@ -631,8 +631,8 @@ class AbstractJobStoreTest:
             noCacheTime = noCacheEnd - noCacheStart
 
             # See how long it takes to clean with cache
-            jobCache = {jobWrapper.jobStoreID: jobWrapper
-                        for jobWrapper in master.jobs()}
+            jobCache = {jobGraph.jobStoreID: jobGraph
+                        for jobGraph in master.jobs()}
             cacheStart = time.time()
             master.clean(jobCache)
             cacheEnd = time.time()

@@ -185,7 +185,7 @@ class AbstractJobStore(object):
         :raises toil.job.JobException: If no root job is set or if the root job doesn't exist in
                 this job store
         :return: The root job.
-        :rtype: toil.jobWrapper.JobWrapper
+        :rtype: toil.jobGraph.JobGraph
         """
         try:
             with self.readSharedFileStream(self.rootJobStoreIDFileName) as f:
@@ -203,7 +203,7 @@ class AbstractJobStore(object):
         """
         Create a new job and set it as the root job in this job store
 
-        :rtype : toil.jobWrapper.JobWrapper
+        :rtype : toil.jobGraph.JobGraph
         """
         rootJob = self.create(*args, **kwargs)
         self.setRootJob(rootJob.jobStoreID)
@@ -423,8 +423,8 @@ class AbstractJobStore(object):
         Fixes jobs that might have been partially updated. Resets the try counts and removes jobs
         that are not successors of the current root job.
 
-        :param dict[str,toil.jobWrapper.JobWrapper] jobCache: if a value it must be a dict
-               from job ID keys to JobWrapper object values. Jobs will be loaded from the cache
+        :param dict[str,toil.jobGraph.JobGraph] jobCache: if a value it must be a dict
+               from job ID keys to JobGraph object values. Jobs will be loaded from the cache
                (which can be downloaded from the job store in a batch) instead of piecemeal when 
                recursed into.
         """
@@ -457,22 +457,22 @@ class AbstractJobStore(object):
             else:
                 return self.jobs()
 
-        # Iterate from the root jobWrapper and collate all jobs that are reachable from it
+        # Iterate from the root jobGraph and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
         reachableFromRoot = set()
 
-        def getConnectedJobs(jobWrapper):
-            if jobWrapper.jobStoreID in reachableFromRoot:
+        def getConnectedJobs(jobGraph):
+            if jobGraph.jobStoreID in reachableFromRoot:
                 return
-            reachableFromRoot.add(jobWrapper.jobStoreID)
+            reachableFromRoot.add(jobGraph.jobStoreID)
             # Traverse jobs in stack
-            for jobs in jobWrapper.stack:
+            for jobs in jobGraph.stack:
                 for successorJobStoreID in map(lambda x: x.jobStoreID, jobs):
                     if (successorJobStoreID not in reachableFromRoot
                         and haveJob(successorJobStoreID)):
                         getConnectedJobs(getJob(successorJobStoreID))
             # Traverse service jobs
-            for jobs in jobWrapper.services:
+            for jobs in jobGraph.services:
                 for serviceJobStoreID in map(lambda x: x[0], jobs):
                     if haveJob(serviceJobStoreID):
                         assert serviceJobStoreID not in reachableFromRoot
@@ -484,44 +484,44 @@ class AbstractJobStore(object):
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
         jobsToDelete = filter(lambda x: x.jobStoreID not in reachableFromRoot, getJobs())
-        for jobWrapper in jobsToDelete:
+        for jobGraph in jobsToDelete:
             # clean up any associated files before deletion
-            for fileID in jobWrapper.filesToDelete:
+            for fileID in jobGraph.filesToDelete:
                 # Delete any files that should already be deleted
                 logger.warn("Deleting file '%s'. It is marked for deletion but has not yet been "
                             "removed.", fileID)
                 self.deleteFile(fileID)
             # Delete the job
-            self.delete(jobWrapper.jobStoreID)
+            self.delete(jobGraph.jobStoreID)
 
         # Clean up jobs that are in reachable from the root
-        for jobWrapper in (getJob(x) for x in reachableFromRoot):
-            # jobWrappers here are necessarily in reachable from root.
+        for jobGraph in (getJob(x) for x in reachableFromRoot):
+            # jobGraphs here are necessarily in reachable from root.
 
-            changed = [False]  # This is a flag to indicate the jobWrapper state has
+            changed = [False]  # This is a flag to indicate the jobGraph state has
             # changed
 
             # If the job has files to delete delete them.
-            if len(jobWrapper.filesToDelete) != 0:
+            if len(jobGraph.filesToDelete) != 0:
                 # Delete any files that should already be deleted
-                for fileID in jobWrapper.filesToDelete:
+                for fileID in jobGraph.filesToDelete:
                     logger.critical("Removing file in job store: %s that was "
                                     "marked for deletion but not previously removed" % fileID)
                     self.deleteFile(fileID)
-                jobWrapper.filesToDelete = []
+                jobGraph.filesToDelete = []
                 changed[0] = True
 
             # For a job whose command is already executed, remove jobs from the stack that are
-            # already deleted. This cleans up the case that the jobWrapper had successors to run,
+            # already deleted. This cleans up the case that the jobGraph had successors to run,
             # but had not been updated to reflect this.
-            if jobWrapper.command is None:
-                stackSizeFn = lambda: sum(map(len, jobWrapper.stack))
+            if jobGraph.command is None:
+                stackSizeFn = lambda: sum(map(len, jobGraph.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
-                jobWrapper.stack = map(lambda x: filter(lambda y: self.exists(y.jobStoreID), x),
-                                       jobWrapper.stack)
+                jobGraph.stack = map(lambda x: filter(lambda y: self.exists(y.jobStoreID), x),
+                                       jobGraph.stack)
                 # Remove empty stuff from the stack
-                jobWrapper.stack = filter(lambda x: len(x) > 0, jobWrapper.stack)
+                jobGraph.stack = filter(lambda x: len(x) > 0, jobGraph.stack)
                 # Check if anything got removed
                 if stackSizeFn() != startStackSize:
                     changed[0] = True
@@ -537,57 +537,57 @@ class AbstractJobStore(object):
                 # Make a new flag
                 newFlag = self.getEmptyFileStoreID()
 
-                # Load the jobWrapper for the service and initialise the link
-                serviceJobWrapper = getJob(jobStoreID)
+                # Load the jobGraph for the service and initialise the link
+                serviceJobGraph = getJob(jobStoreID)
 
                 if flag == 1:
                     logger.debug("Recreating a start service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
-                    serviceJobWrapper.startJobStoreID = newFlag
+                    serviceJobGraph.startJobStoreID = newFlag
                 elif flag == 2:
                     logger.debug("Recreating a terminate service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
-                    serviceJobWrapper.terminateJobStoreID = newFlag
+                    serviceJobGraph.terminateJobStoreID = newFlag
                 else:
                     logger.debug("Recreating a error service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
                     assert flag == 3
-                    serviceJobWrapper.errorJobStoreID = newFlag
+                    serviceJobGraph.errorJobStoreID = newFlag
 
                 # Update the service job on disk
-                self.update(serviceJobWrapper)
+                self.update(serviceJobGraph)
 
                 changed[0] = True
 
                 return newFlag
 
-            servicesSizeFn = lambda: sum(map(len, jobWrapper.services))
+            servicesSizeFn = lambda: sum(map(len, jobGraph.services))
             startServicesSize = servicesSizeFn()
-            jobWrapper.services = filter(
+            jobGraph.services = filter(
                 lambda z: len(z) > 0,
                 map(lambda serviceJobList:
                     map(lambda x: x[:4] + (subFlagFile(x[0], x[4], 1),
                                            subFlagFile(x[0], x[5], 2),
                                            subFlagFile(x[0], x[6], 3)),
-                        filter(lambda y: self.exists(y[0]), serviceJobList)), jobWrapper.services))
+                        filter(lambda y: self.exists(y[0]), serviceJobList)), jobGraph.services))
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
-            # Reset the retry count of the jobWrapper
-            if jobWrapper.remainingRetryCount != self._defaultTryCount():
-                jobWrapper.remainingRetryCount = self._defaultTryCount()
+            # Reset the retry count of the jobGraph
+            if jobGraph.remainingRetryCount != self._defaultTryCount():
+                jobGraph.remainingRetryCount = self._defaultTryCount()
                 changed[0] = True
 
             # This cleans the old log file which may
-            # have been left if the jobWrapper is being retried after a jobWrapper failure.
-            if jobWrapper.logJobStoreFileID != None:
-                self.delete(jobWrapper.logJobStoreFileID)
-                jobWrapper.logJobStoreFileID = None
+            # have been left if the jobGraph is being retried after a jobGraph failure.
+            if jobGraph.logJobStoreFileID != None:
+                self.delete(jobGraph.logJobStoreFileID)
+                jobGraph.logJobStoreFileID = None
                 changed[0] = True
 
             if changed[0]:  # Update, but only if a change has occurred
-                logger.critical("Repairing job: %s" % jobWrapper.jobStoreID)
-                self.update(jobWrapper)
+                logger.critical("Repairing job: %s" % jobGraph.jobStoreID)
+                self.update(jobGraph)
 
         # Remove any crufty stats/logging files from the previous run
         logger.info("Discarding old statistics and logs...")
@@ -603,9 +603,9 @@ class AbstractJobStore(object):
     ##########################################  
 
     @abstractmethod
-    def create(self, issuableJob):
+    def create(self, jobNode):
         """
-        :rtype: toil.jobWrapper.JobWrapper
+        :rtype: toil.jobGraph.JobGraph
         """
         raise NotImplementedError()
 
@@ -663,7 +663,7 @@ class AbstractJobStore(object):
 
         :raise NoSuchJobException: if there is no job with the given ID
 
-        :rtype: toil.jobWrapper.JobWrapper
+        :rtype: toil.jobGraph.JobGraph
         """
         raise NotImplementedError()
 
@@ -672,7 +672,7 @@ class AbstractJobStore(object):
         """
         Persists the job in this store atomically.
 
-        :param toil.jobWrapper.JobWrapper job: the job to write to this job store
+        :param toil.jobGraph.JobGraph job: the job to write to this job store
         """
         raise NotImplementedError()
 
@@ -698,7 +698,7 @@ class AbstractJobStore(object):
 
         :return: Returns iterator on jobs in the store. The iterator may or may not contain all jobs and may contain
                  invalid jobs
-        :rtype: Iterator[toil.jobWrapper.JobWrapper]
+        :rtype: Iterator[toil.jobGraph.JobGraph]
         """
         raise NotImplementedError()
 

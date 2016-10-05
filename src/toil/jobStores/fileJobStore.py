@@ -32,7 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 
 logger = logging.getLogger( __name__ )
 
@@ -83,19 +83,19 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ########################################## 
 
-    def create(self, issuableJob):
+    def create(self, jobNode):
         # The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         # Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         # Make the job
-        job = JobWrapper(command=issuableJob.command, memory=issuableJob.memory,
-                         cores=issuableJob.cores, disk=issuableJob.disk,
-                         preemptable=issuableJob.preemptable,
-                         jobStoreID=self._getRelativePath(absJobDir),
-                         remainingRetryCount=self._defaultTryCount( ),
-                         predecessorNumber=issuableJob.predecessorNumber,
-                         name=issuableJob.name, job=issuableJob.job)
+        job = JobGraph(command=jobNode.command, memory=jobNode.memory,
+                       cores=jobNode.cores, disk=jobNode.disk,
+                       preemptable=jobNode.preemptable,
+                       jobStoreID=self._getRelativePath(absJobDir),
+                       remainingRetryCount=self._defaultTryCount( ),
+                       predecessorNumber=jobNode.predecessorNumber,
+                       name=jobNode.name, job=jobNode.job)
         # Write job file to disk
         self.update(job)
         return job
@@ -123,7 +123,7 @@ class FileJobStore(AbstractJobStore):
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            job = JobWrapper.fromDict(pickler.load(fileHandle))
+            job = JobGraph.fromDict(pickler.load(fileHandle))
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -353,7 +353,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFileName(self, jobStoreID):
         """
-        Return the path to the file containing the serialised JobWrapper instance for the given
+        Return the path to the file containing the serialised JobGraph instance for the given
         job.
 
         :rtype: str

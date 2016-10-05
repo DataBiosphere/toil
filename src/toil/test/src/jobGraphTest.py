@@ -18,12 +18,12 @@ from argparse import ArgumentParser
 from toil.common import Toil
 from toil.job import Job
 from toil.test import ToilTest
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 
-class JobWrapperTest(ToilTest):
+class JobGraphTest(ToilTest):
     
     def setUp(self):
-        super(JobWrapperTest, self).setUp()
+        super(JobGraphTest, self).setUp()
         self.jobStorePath = self._getTestJobStorePath()
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
@@ -35,7 +35,7 @@ class JobWrapperTest(ToilTest):
         self.toil.__exit__(None, None, None)
         self.toil._jobStore.destroy()
         self.assertFalse(os.path.exists(self.jobStorePath))
-        super(JobWrapperTest, self).tearDown()
+        super(JobGraphTest, self).tearDown()
     
     def testJob(self):       
         """
@@ -51,8 +51,8 @@ class JobWrapperTest(ToilTest):
         remainingRetryCount = 5
         predecessorNumber = 0
         
-        j = JobWrapper(command, memory, cores, disk, preemptable, jobStoreID, 
-                       remainingRetryCount, predecessorNumber)
+        j = JobGraph(command, memory, cores, disk, preemptable, jobStoreID,
+                     remainingRetryCount, predecessorNumber)
         
         #Check attributes
         #
@@ -69,8 +69,8 @@ class JobWrapperTest(ToilTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = JobWrapper(command, memory, cores, disk, preemptable, jobStoreID, 
-                        remainingRetryCount, predecessorNumber)
+        j2 = JobGraph(command, memory, cores, disk, preemptable, jobStoreID,
+                      remainingRetryCount, predecessorNumber)
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}

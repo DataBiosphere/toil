@@ -82,7 +82,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A dictionary mapping IDs of submitted jobs to the command line
         self.jobs = {}
         """
-        :type: dict[str,toil.job.IssuableJob]
+        :type: dict[str,toil.job.JobNode]
         """
         # A queue of jobs waiting to be executed. Consumed by the workers.
         self.inputQueue = Queue()
@@ -209,29 +209,29 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     break
         log.debug('Exiting worker thread normally.')
 
-    def issueBatchJob(self, issuableJob):
+    def issueBatchJob(self, jobNode):
         """
         Adds the command and resources to a queue to be run.
         """
         # Round cores to minCores and apply scale
-        cores = math.ceil(issuableJob.cores * self.scale / self.minCores) * self.minCores
+        cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
         assert cores <= self.maxCores, ('The job is requesting {} cores, more than the maximum of '
                                         '{} cores this batch system was configured with. Scale is '
                                         'set to {}.'.format(cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert issuableJob.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+        assert jobNode.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format(issuableJob.memory, self.maxMemory))
+                                          'with.'.format(jobNode.memory, self.maxMemory))
 
-        self.checkResourceRequest(issuableJob.memory, cores, issuableJob.disk)
+        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            issuableJob.command, issuableJob.memory, cores, issuableJob.disk))
+            jobNode.command, jobNode.memory, cores, jobNode.disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = issuableJob
-        self.inputQueue.put((issuableJob.command, jobID, cores, issuableJob.memory,
-                             issuableJob.disk, self.environment.copy()))
+        self.jobs[jobID] = jobNode
+        self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
+                             jobNode.disk, self.environment.copy()))
         return jobID
 
     def killBatchJobs(self, jobIDs):

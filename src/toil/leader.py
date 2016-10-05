@@ -28,8 +28,8 @@ from bd2k.util.expando import Expando
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.jobWrapper import IssuableJob
-from toil.lib.bioio import getTotalCpuTime
+from toil.jobGraph import JobNode
+from toil.lib.bioio import getTotalCpuTime, logStream
 from toil.provisioners.clusterScaler import ClusterScaler
 
 logger = logging.getLogger( __name__ )
@@ -175,7 +175,7 @@ class JobBatcher:
 
     def issueJobs(self, jobs):
         """
-        Add a list of jobs, each represented as a issuable job object
+        Add a list of jobs, each represented as a jobNode object
         """
         for job in jobs:
             self.issueJob(job)
@@ -294,12 +294,12 @@ class JobBatcher:
 
     def processFinishedJob(self, jobBatchSystemID, resultStatus, wallTime=None):
         """
-        Function reads a processed jobWrapper file and updates it state.
+        Function reads a processed jobGraph file and updates it state.
         """
         def processRemovedJob(jobStoreID):
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
-                            "jobWrapper %s seems to have finished and been removed", jobStoreID)
+                            "jobGraph %s seems to have finished and been removed", jobStoreID)
             self._updatePredecessorStatus(jobStoreID)
 
         if wallTime is not None and self.clusterScaler is not None:
@@ -309,7 +309,7 @@ class JobBatcher:
         if self.jobStore.exists(jobStoreID):
             logger.debug("Job %s continues to exist (i.e. has more to do)" % jobStoreID)
             try:
-                jobWrapper = self.jobStore.load(jobStoreID)
+                jobGraph = self.jobStore.load(jobStoreID)
             except NoSuchJobException:
                 # Avoid importing AWSJobStore as the corresponding extra might be missing
                 if self.jobStore.__class__.__name__ == 'AWSJobStore':
@@ -323,73 +323,74 @@ class JobBatcher:
                     return
                 else:
                     raise
-            if jobWrapper.logJobStoreFileID is not None:
-                with jobWrapper.getLogFileHandle( self.jobStore ) as logFileStream:
+            if jobGraph.logJobStoreFileID is not None:
+                logger.warn("The jobGraph seems to have left a log file, indicating failure: %s, %s", jobStoreID)
+                with jobGraph.getLogFileHandle( self.jobStore ) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
                     messages = (line.rstrip('\n') for line in logFileStream)
                     logFormat = '\n%s    ' % jobStoreID
                     logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
-                                jobWrapper, logFormat.join(messages))
+                                jobGraph, logFormat.join(messages))
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the retry count here.
-                if jobWrapper.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite job failing: %s", jobWrapper)
-                jobWrapper.setupJobAfterFailure(self.config)
-                self.jobStore.update(jobWrapper)
+                if jobGraph.logJobStoreFileID is None:
+                    logger.warn("No log file is present, despite job failing: %s", jobGraph)
+                jobGraph.setupJobAfterFailure(self.config)
+                self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
                 self.toilState.hasFailedSuccessors.remove(jobStoreID)
 
-            self.toilState.updatedJobs.add((jobWrapper, resultStatus)) #Now we know the
-            #jobWrapper is done we can add it to the list of updated jobWrapper files
-            logger.debug("Added jobWrapper: %s to active jobs", jobStoreID)
-        else:  #The jobWrapper is done
+            self.toilState.updatedJobs.add((jobGraph, resultStatus)) #Now we know the
+            #jobGraph is done we can add it to the list of updated jobGraph files
+            logger.debug("Added jobGraph: %s to active jobs", jobStoreID)
+        else:  #The jobGraph is done
             processRemovedJob(jobStoreID)
 
-    def processTotallyFailedJob(self, jobWrapper):
+    def processTotallyFailedJob(self, jobGraph):
         """
         Processes a totally failed job.
         """
         # Mark job as a totally failed job
-        self.toilState.totalFailedJobs.add(jobWrapper.jobStoreID)
+        self.toilState.totalFailedJobs.add(jobGraph.jobStoreID)
 
-        if jobWrapper.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
+        if jobGraph.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
             # a service job
-            logger.debug("Service job is being processed as a totally failed job: %s" % jobWrapper.jobStoreID)
+            logger.debug("Service job is being processed as a totally failed job: %s" % jobGraph.jobStoreID)
 
-            predecessorJobWrapper = self.toilState.serviceJobStoreIDToPredecessorJob[jobWrapper.jobStoreID]
+            predecesssorJobGraph = self.toilState.serviceJobStoreIDToPredecessorJob[jobGraph.jobStoreID]
 
             # This removes the service job as a service of the predecessor
             # and potentially makes the predecessor active
-            self._updatePredecessorStatus(jobWrapper.jobStoreID)
+            self._updatePredecessorStatus(jobGraph.jobStoreID)
 
             # Remove the start flag, if it still exists. This indicates
             # to the service manager that the job has "started", this prevents
             # the service manager from deadlocking while waiting
-            self.jobStore.deleteFile(jobWrapper.startJobStoreID)
+            self.jobStore.deleteFile(jobGraph.startJobStoreID)
 
             # Signal to any other services in the group that they should
             # terminate. We do this to prevent other services in the set
             # of services from deadlocking waiting for this service to start properly
-            if predecessorJobWrapper.jobStoreID in self.toilState.servicesIssued:
-                self.serviceManager.killServices(self.toilState.servicesIssued[predecessorJobWrapper.jobStoreID], error=True)
-                logger.debug("Job: %s is instructing all the services of its parent job to quit", jobWrapper.jobStoreID)
+            if predecesssorJobGraph.jobStoreID in self.toilState.servicesIssued:
+                self.serviceManager.killServices(self.toilState.servicesIssued[predecesssorJobGraph.jobStoreID], error=True)
+                logger.debug("Job: %s is instructing all the services of its parent job to quit", jobGraph.jobStoreID)
 
-            self.toilState.hasFailedSuccessors.add(predecessorJobWrapper.jobStoreID) # This ensures that the
+            self.toilState.hasFailedSuccessors.add(predecesssorJobGraph.jobStoreID) # This ensures that the
             # job will not attempt to run any of it's successors on the stack
         else:
-            assert jobWrapper.jobStoreID not in self.toilState.servicesIssued
+            assert jobGraph.jobStoreID not in self.toilState.servicesIssued
 
             # Is a non-service job, walk up the tree killing services of any jobs with nothing left to do.
-            if jobWrapper.jobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
-                for predecessorJobWrapper in self.toilState.successorJobStoreIDToPredecessorJobs[jobWrapper.jobStoreID]:
-                    self.toilState.hasFailedSuccessors.add(predecessorJobWrapper.jobStoreID)
-                    logger.debug("Totally failed job: %s is marking direct predecessors %s as having failed jobs", jobWrapper.jobStoreID, predecessorJobWrapper.jobStoreID)
-                self._updatePredecessorStatus(jobWrapper.jobStoreID)
+            if jobGraph.jobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
+                for predecesssorJobGraph in self.toilState.successorJobStoreIDToPredecessorJobs[jobGraph.jobStoreID]:
+                    self.toilState.hasFailedSuccessors.add(predecesssorJobGraph.jobStoreID)
+                    logger.debug("Totally failed job: %s is marking direct predecessors %s as having failed jobs", jobGraph.jobStoreID, predecesssorJobGraph.jobStoreID)
+                self._updatePredecessorStatus(jobGraph.jobStoreID)
 
     def _updatePredecessorStatus(self, jobStoreID):
         """
@@ -466,12 +467,12 @@ class ToilState( object ):
         logger.info("(Re)building internal scheduler state")
         self._buildToilState(rootJob, jobStore, jobCache)
 
-    def _buildToilState(self, jobWrapper, jobStore, jobCache=None):
+    def _buildToilState(self, jobGraph, jobStore, jobCache=None):
         """
-        Traverses tree of jobs from the root jobWrapper (rootJob) building the
+        Traverses tree of jobs from the root jobGraph (rootJob) building the
         ToilState class.
 
-        If jobCache is passed, it must be a dict from job ID to JobWrapper
+        If jobCache is passed, it must be a dict from job ID to JobGraph
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
         """
@@ -485,35 +486,35 @@ class ToilState( object ):
             else:
                 return jobStore.load(jobId)
 
-        # If the jobWrapper has a command, is a checkpoint, has services or is ready to be
+        # If the jobGraph has a command, is a checkpoint, has services or is ready to be
         # deleted it is ready to be processed
-        if (jobWrapper.command is not None
-            or jobWrapper.checkpoint is not None
-            or len(jobWrapper.services) > 0
-            or len(jobWrapper.stack) == 0):
+        if (jobGraph.command is not None
+            or jobGraph.checkpoint is not None
+            or len(jobGraph.services) > 0
+            or len(jobGraph.stack) == 0):
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
-                         'with  services: %s, with stack: %s', jobWrapper.jobStoreID,
-                         jobWrapper.command is not None, jobWrapper.checkpoint is not None,
-                         len(jobWrapper.services) > 0, len(jobWrapper.stack) == 0)
-            self.updatedJobs.add((jobWrapper, 0))
+                         'with  services: %s, with stack: %s', jobGraph.jobStoreID,
+                         jobGraph.command is not None, jobGraph.checkpoint is not None,
+                         len(jobGraph.services) > 0, len(jobGraph.stack) == 0)
+            self.updatedJobs.add((jobGraph, 0))
 
-            if jobWrapper.checkpoint is not None:
-                jobWrapper.command = jobWrapper.checkpoint
+            if jobGraph.checkpoint is not None:
+                jobGraph.command = jobGraph.checkpoint
 
         else: # There exist successors
-            self.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
-            for successorIssuedJob in jobWrapper.stack[-1]:
+            self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
+            for successorIssuedJob in jobGraph.stack[-1]:
                 successorJobStoreID = successorIssuedJob.jobStoreID
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
-                    #Given that the successor jobWrapper does not yet point back at a
+                    #Given that the successor jobGraph does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
                     #on the successor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobGraph]
                     self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
                 else:
                     #We have already looked at the successor, so we don't recurse,
                     #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
 
 class FailedJobsException( Exception ):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
@@ -541,63 +542,63 @@ class ServiceManager( object ):
     def __init__(self, jobStore):
         self.jobStore = jobStore
 
-        self.jobWrappersWithServicesBeingStarted = set()
+        self.jobGraphsWithServicesBeingStarted = set()
 
         self._terminate = Event() # This is used to terminate the thread associated
         # with the service manager
 
-        self._jobWrappersWithServicesToStart = Queue() # This is the input queue of
-        # jobWrappers that have services that need to be started
+        self._jobGraphsWithServicesToStart = Queue() # This is the input queue of
+        # jobGraphs that have services that need to be started
 
-        self._jobWrappersWithServicesThatHaveStarted = Queue() # This is the output queue
-        # of jobWrappers that have services that are already started
+        self._jobGraphsWithServicesThatHaveStarted = Queue() # This is the output queue
+        # of jobGraphs that have services that are already started
 
-        self._serviceJobWrappersToStart = Queue() # This is the queue of services for the
+        self._serviceJobGraphsToStart = Queue() # This is the queue of services for the
         # batch system to start
 
         self.serviceJobsIssuedToServiceManager = 0 # The number of jobs the service manager
         # is scheduling
 
-        # Start a thread that starts the services of jobWrappers in the
-        # jobsWithServicesToStart input queue and puts the jobWrappers whose services
-        # are running on the jobWrappersWithServicesThatHaveStarted output queue
+        # Start a thread that starts the services of jobGraphs in the
+        # jobsWithServicesToStart input queue and puts the jobGraphs whose services
+        # are running on the jobGraphssWithServicesThatHaveStarted output queue
         self._serviceStarter = Thread(target=self._startServices,
-                                     args=(self._jobWrappersWithServicesToStart,
-                                           self._jobWrappersWithServicesThatHaveStarted,
-                                           self._serviceJobWrappersToStart, self._terminate,
+                                     args=(self._jobGraphsWithServicesToStart,
+                                           self._jobGraphsWithServicesThatHaveStarted,
+                                           self._serviceJobGraphsToStart, self._terminate,
                                            self.jobStore))
         self._serviceStarter.start()
 
-    def scheduleServices(self, jobWrapper):
+    def scheduleServices(self, jobGraph):
         """
         Schedule the services of a job asynchronously.
-        When the job's services are running the jobWrapper for the job will
-        be returned by toil.leader.ServiceManager.getJobWrappersWhoseServicesAreRunning.
+        When the job's services are running the jobGraph for the job will
+        be returned by toil.leader.ServiceManager.getJobGraphsWhoseServicesAreRunning.
 
-        :param toil.jobWrapper.JobWrapper jobWrapper: wrapper of job with services to schedule.
+        :param toil.jobGraph.JobGraph jobGraph: wrapper of job with services to schedule.
         """
-        # Add jobWrapper to set being processed by the service manager
-        self.jobWrappersWithServicesBeingStarted.add(jobWrapper)
+        # Add jobGraph to set being processed by the service manager
+        self.jobGraphsWithServicesBeingStarted.add(jobGraph)
 
         # Add number of jobs managed by ServiceManager
-        self.serviceJobsIssuedToServiceManager += sum(map(len, jobWrapper.services)) + 1 # The plus one accounts for the root job
+        self.serviceJobsIssuedToServiceManager += sum(map(len, jobGraph.services)) + 1 # The plus one accounts for the root job
 
         # Asynchronously schedule the services
-        self._jobWrappersWithServicesToStart.put(jobWrapper)
+        self._jobGraphsWithServicesToStart.put(jobGraph)
 
-    def getJobWrapperWhoseServicesAreRunning(self, maxWait):
+    def getJobGraphWhoseServicesAreRunning(self, maxWait):
         """
-        :param float maxWait: Time in seconds to wait to get a jobWrapper before returning
-        :return: a jobWrapper added to scheduleServices whose services are running, or None if
+        :param float maxWait: Time in seconds to wait to get a jobGraph before returning
+        :return: a jobGraph added to scheduleServices whose services are running, or None if
         no such job is available.
-        :rtype: JobWrapper
+        :rtype: JobGraph
         """
         try:
-            jobWrapper = self._jobWrappersWithServicesThatHaveStarted.get(timeout=maxWait)
-            self.jobWrappersWithServicesBeingStarted.remove(jobWrapper)
+            jobGraph = self._jobGraphsWithServicesThatHaveStarted.get(timeout=maxWait)
+            self.jobGraphsWithServicesBeingStarted.remove(jobGraph)
             assert self.serviceJobsIssuedToServiceManager >= 0
             self.serviceJobsIssuedToServiceManager -= 1
-            return jobWrapper
+            return jobGraph
         except Empty:
             return None
 
@@ -609,7 +610,7 @@ class ServiceManager( object ):
         :rtype: (str, float, float, float)
         """
         try:
-            jobTuple = self._serviceJobWrappersToStart.get(timeout=maxWait)
+            jobTuple = self._serviceJobGraphsToStart.get(timeout=maxWait)
             assert self.serviceJobsIssuedToServiceManager >= 0
             self.serviceJobsIssuedToServiceManager -= 1
             return jobTuple
@@ -646,8 +647,8 @@ class ServiceManager( object ):
         logger.info('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
 
     @staticmethod
-    def _startServices(jobWrappersWithServicesToStart,
-                       jobWrappersWithServicesThatHaveStarted,
+    def _startServices(jobGraphsWithServicesToStart,
+                       jobGraphsWithServicesThatHaveStarted,
                        serviceJobsToStart,
                        terminate, jobStore):
         """
@@ -655,8 +656,8 @@ class ServiceManager( object ):
         """
         while True:
             try:
-                # Get a jobWrapper with services to start, waiting a short period
-                jobWrapper = jobWrappersWithServicesToStart.get(timeout=1.0)
+                # Get a jobGraph with services to start, waiting a short period
+                jobGraph = jobGraphsWithServicesToStart.get(timeout=1.0)
             except:
                 # Check if the thread should quit
                 if terminate.is_set():
@@ -664,12 +665,12 @@ class ServiceManager( object ):
                     break
                 continue
 
-            if jobWrapper is None: # Nothing was ready, loop again
+            if jobGraph is None: # Nothing was ready, loop again
                 continue
 
             # Start the service jobs in batches, waiting for each batch
             # to become established before starting the next batch
-            for serviceJobList in jobWrapper.services:
+            for serviceJobList in jobGraph.services:
                 for serviceJobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID, errorJobStoreID in serviceJobList:
                     logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJobStoreID, startJobStoreID)
                     assert jobStore.fileExists(startJobStoreID)
@@ -687,16 +688,16 @@ class ServiceManager( object ):
                             logger.debug('Received signal to quit starting services.')
                             break
 
-            # Add the jobWrapper to the output queue of jobs whose services have been started
-            jobWrappersWithServicesThatHaveStarted.put(jobWrapper)
+            # Add the jobGraph to the output queue of jobs whose services have been started
+            jobGraphsWithServicesThatHaveStarted.put(jobGraph)
 
 
-def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCache=None):
+def mainLoop(config, batchSystem, provisioner, jobStore, rootJobGraph, jobCache=None):
     """
     This is the main loop from which jobs are issued and processed.
     
     If jobCache is passed, it must be a dict from job ID to pre-existing
-    JobWrapper objects. Jobs will be loaded from the cache (which can be
+    JobGraph objects. Jobs will be loaded from the cache (which can be
     downloaded from the jobStore in a batch).
 
     :raises: toil.leader.FailedJobsException if at the end of function their remain \
@@ -707,7 +708,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
     """
 
     # Get a snap shot of the current state of the jobs in the jobStore
-    toilState = ToilState(jobStore, rootJobWrapper, jobCache=jobCache)
+    toilState = ToilState(jobStore, rootJobGraph, jobCache=jobCache)
 
     # Create a service manager to start and terminate services
     serviceManager = ServiceManager(jobStore)
@@ -776,7 +777,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
     """
     # Putting this in separate function for easier reading
 
-    # Sets up the timing of the jobWrapper rescuing method
+    # Sets up the timing of the jobGraph rescuing method
     timeSinceJobsLastRescued = time.time()
 
     logger.info("Starting the main loop")
@@ -789,126 +790,126 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
             updatedJobs = toilState.updatedJobs # The updated jobs to consider below
             toilState.updatedJobs = set() # Resetting the list for the next set
 
-            for jobWrapper, resultStatus in updatedJobs:
+            for jobGraph, resultStatus in updatedJobs:
 
                 logger.debug('Updating status of job %s with ID %s: with result status: %s',
-                             jobWrapper, jobWrapper.jobStoreID, resultStatus)
+                             jobGraph, jobGraph.jobStoreID, resultStatus)
 
                 # This stops a job with services being issued by the serviceManager from
                 # being considered further in this loop. This catch is necessary because
                 # the job's service's can fail while being issued, causing the job to be
                 # added to updated jobs.
-                if jobWrapper in serviceManager.jobWrappersWithServicesBeingStarted:
+                if jobGraph in serviceManager.jobGraphsWithServicesBeingStarted:
                     logger.debug("Got a job to update which is still owned by the service "
-                                 "manager: %s", jobWrapper.jobStoreID)
+                                 "manager: %s", jobGraph.jobStoreID)
                     continue
 
                 # If some of the jobs successors failed then either fail the job
                 # or restart it if it has retries left and is a checkpoint job
-                if jobWrapper.jobStoreID in toilState.hasFailedSuccessors:
+                if jobGraph.jobStoreID in toilState.hasFailedSuccessors:
 
                     # If the job has services running, signal for them to be killed
-                    # once they are killed then the jobWrapper will be re-added to the
+                    # once they are killed then the jobGraph will be re-added to the
                     # updatedJobs set and then scheduled to be removed
-                    if jobWrapper.jobStoreID in toilState.servicesIssued:
+                    if jobGraph.jobStoreID in toilState.servicesIssued:
                         logger.debug("Telling job: %s to terminate its services due to successor failure",
-                                     jobWrapper.jobStoreID)
-                        serviceManager.killServices(toilState.servicesIssued[jobWrapper.jobStoreID],
+                                     jobGraph.jobStoreID)
+                        serviceManager.killServices(toilState.servicesIssued[jobGraph.jobStoreID],
                                                     error=True)
 
                     # If the job has non-service jobs running wait for them to finish
                     # the job will be re-added to the updated jobs when these jobs are done
-                    elif jobWrapper.jobStoreID in toilState.successorCounts:
+                    elif jobGraph.jobStoreID in toilState.successorCounts:
                         logger.debug("Job %s with ID: %s with failed successors still has successor jobs running",
-                                     jobWrapper, jobWrapper.jobStoreID)
+                                     jobGraph, jobGraph.jobStoreID)
                         continue
 
                     # If the job is a checkpoint and has remaining retries then reissue it.
-                    elif jobWrapper.checkpoint is not None and jobWrapper.remainingRetryCount > 0:
+                    elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 0:
                         logger.warn('Job: %s is being restarted as a checkpoint after the total '
-                                    'failure of jobs in its subtree.', jobWrapper.jobStoreID)
-                        jobBatcher.issueJob(IssuableJob.fromJobWrapper(jobWrapper))
+                                    'failure of jobs in its subtree.', jobGraph.jobStoreID)
+                        jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
                     else: # Mark it totally failed
-                        logger.debug("Job %s is being processed as completely failed", jobWrapper.jobStoreID)
-                        jobBatcher.processTotallyFailedJob(jobWrapper)
+                        logger.debug("Job %s is being processed as completely failed", jobGraph.jobStoreID)
+                        jobBatcher.processTotallyFailedJob(jobGraph)
 
-                # If the jobWrapper has a command it must be run before any successors.
+                # If the jobGraph has a command it must be run before any successors.
                 # Similarly, if the job previously failed we rerun it, even if it doesn't have a
                 # command to run, to eliminate any parts of the stack now completed.
-                elif jobWrapper.command is not None or resultStatus != 0:
-                    isServiceJob = jobWrapper.jobStoreID in toilState.serviceJobStoreIDToPredecessorJob
+                elif jobGraph.command is not None or resultStatus != 0:
+                    isServiceJob = jobGraph.jobStoreID in toilState.serviceJobStoreIDToPredecessorJob
 
                     # If the job has run out of retries or is a service job whose error flag has
                     # been indicated, fail the job.
-                    if (jobWrapper.remainingRetryCount == 0
-                        or isServiceJob and not jobStore.fileExists(jobWrapper.errorJobStoreID)):
-                        jobBatcher.processTotallyFailedJob(jobWrapper)
+                    if (jobGraph.remainingRetryCount == 0
+                        or isServiceJob and not jobStore.fileExists(jobGraph.errorJobStoreID)):
+                        jobBatcher.processTotallyFailedJob(jobGraph)
                         logger.warn("Job %s with ID %s is completely failed",
-                                    jobWrapper, jobWrapper.jobStoreID)
+                                    jobGraph, jobGraph.jobStoreID)
                     else:
                         # Otherwise try the job again
-                        jobBatcher.issueJob(IssuableJob.fromJobWrapper(jobWrapper))
+                        jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
 
                 # If the job has services to run, which have not been started, start them
-                elif len(jobWrapper.services) > 0:
+                elif len(jobGraph.services) > 0:
                     # Build a map from the service jobs to the job and a map
                     # of the services created for the job
-                    assert jobWrapper.jobStoreID not in toilState.servicesIssued
-                    toilState.servicesIssued[jobWrapper.jobStoreID] = {}
-                    for serviceJobList in jobWrapper.services:
+                    assert jobGraph.jobStoreID not in toilState.servicesIssued
+                    toilState.servicesIssued[jobGraph.jobStoreID] = {}
+                    for serviceJobList in jobGraph.services:
                         for serviceTuple in serviceJobList:
                             serviceID = serviceTuple[0]
                             assert serviceID not in toilState.serviceJobStoreIDToPredecessorJob
-                            toilState.serviceJobStoreIDToPredecessorJob[serviceID] = jobWrapper
-                            toilState.servicesIssued[jobWrapper.jobStoreID][serviceID] = serviceTuple[4:7]
+                            toilState.serviceJobStoreIDToPredecessorJob[serviceID] = jobGraph
+                            toilState.servicesIssued[jobGraph.jobStoreID][serviceID] = serviceTuple[4:7]
 
                     # Use the service manager to start the services
-                    serviceManager.scheduleServices(jobWrapper)
+                    serviceManager.scheduleServices(jobGraph)
 
-                    logger.debug("Giving job: %s to service manager to schedule its jobs", jobWrapper.jobStoreID)
+                    logger.debug("Giving job: %s to service manager to schedule its jobs", jobGraph.jobStoreID)
 
                 # There exist successors to run
-                elif len(jobWrapper.stack) > 0:
-                    assert len(jobWrapper.stack[-1]) > 0
+                elif len(jobGraph.stack) > 0:
+                    assert len(jobGraph.stack[-1]) > 0
                     logger.debug("Job: %s has %i successors to schedule",
-                                 jobWrapper.jobStoreID, len(jobWrapper.stack[-1]))
+                                 jobGraph.jobStoreID, len(jobGraph.stack[-1]))
                     #Record the number of successors that must be completed before
-                    #the jobWrapper can be considered again
-                    assert jobWrapper.jobStoreID not in toilState.successorCounts
-                    toilState.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
+                    #the jobGraph can be considered again
+                    assert jobGraph.jobStoreID not in toilState.successorCounts
+                    toilState.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
                     #List of successors to schedule
                     successors = []
                     #For each successor schedule if all predecessors have been completed
-                    for issuableJob in jobWrapper.stack[-1]:
-                        successorJobStoreID = issuableJob.jobStoreID
+                    for jobNode in jobGraph.stack[-1]:
+                        successorJobStoreID = jobNode.jobStoreID
                         #Build map from successor to predecessors.
                         if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
-                        toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
-                        #Case that the jobWrapper has multiple predecessors
-                        if issuableJob.predecessorID is not None:
-                            #Load the wrapped jobWrapper
+                        toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
+                        #Case that the jobGraph has multiple predecessors
+                        if jobNode.predecessorID is not None:
+                            #Load the wrapped jobGraph
                             job2 = jobStore.load(successorJobStoreID)
                             #Remove the predecessor from the list of predecessors
-                            job2.predecessorsFinished.add(issuableJob.predecessorID)
+                            job2.predecessorsFinished.add(jobNode.predecessorID)
                             #Checkpoint
                             jobStore.update(job2)
                             #If the jobs predecessors have all not all completed then
-                            #ignore the jobWrapper
+                            #ignore the jobGraph
                             assert len(job2.predecessorsFinished) >= 1
                             assert len(job2.predecessorsFinished) <= job2.predecessorNumber
                             if len(job2.predecessorsFinished) < job2.predecessorNumber:
                                 continue
-                        successors.append(issuableJob)
+                        successors.append(jobNode)
                     jobBatcher.issueJobs(successors)
 
-                elif jobWrapper.jobStoreID in toilState.servicesIssued:
+                elif jobGraph.jobStoreID in toilState.servicesIssued:
                     logger.debug("Telling job: %s to terminate its due to the successful completion of its successor jobs",
-                                 jobWrapper.jobStoreID)
-                    serviceManager.killServices(toilState.servicesIssued[jobWrapper.jobStoreID],
+                                 jobGraph.jobStoreID)
+                    serviceManager.killServices(toilState.servicesIssued[jobGraph.jobStoreID],
                                                 error=False)
 
-                #There are no remaining tasks to schedule within the jobWrapper, but
+                #There are no remaining tasks to schedule within the jobGraph, but
                 #we schedule it anyway to allow it to be deleted.
 
                 #TODO: An alternative would be simple delete it here and add it to the
@@ -917,12 +918,12 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                 #of jobs to be processed
                 else:
                     # Remove the job
-                    if jobWrapper.remainingRetryCount > 0:
-                        jobBatcher.issueJob(IssuableJob.fromJobWrapper(jobWrapper))
-                        logger.debug("Job: %s is empty, we are scheduling to clean it up", jobWrapper.jobStoreID)
+                    if jobGraph.remainingRetryCount > 0:
+                        jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
+                        logger.debug("Job: %s is empty, we are scheduling to clean it up", jobGraph.jobStoreID)
                     else:
-                        jobBatcher.processTotallyFailedJob(jobWrapper)
-                        logger.warn("Job: %s is empty but completely failed - something is very wrong", jobWrapper.jobStoreID)
+                        jobBatcher.processTotallyFailedJob(jobGraph)
+                        logger.warn("Job: %s is empty but completely failed - something is very wrong", jobGraph.jobStoreID)
 
         # The exit criterion
         if len(toilState.updatedJobs) == 0 and jobBatcher.getNumberOfJobsIssued() == 0 and serviceManager.serviceJobsIssuedToServiceManager == 0:
@@ -943,42 +944,42 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
 
         # Get jobs whose services have started
         while True:
-            jobWrapper = serviceManager.getJobWrapperWhoseServicesAreRunning(0)
-            if jobWrapper is None: # Stop trying to get jobs when function returns None
+            jobGraph = serviceManager.getJobGraphWhoseServicesAreRunning(0)
+            if jobGraph is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', jobWrapper.jobStoreID)
-            jobWrapper.services = []
-            toilState.updatedJobs.add((jobWrapper, 0))
+            logger.debug('Job: %s has established its services.', jobGraph.jobStoreID)
+            jobGraph.services = []
+            toilState.updatedJobs.add((jobGraph, 0))
 
-        # Gather any new, updated jobWrapper from the batch system
+        # Gather any new, updated jobGraph from the batch system
         updatedJobTuple = batchSystem.getUpdatedBatchJob(2)
         if updatedJobTuple is not None:
             updatedJob, result, wallTime = updatedJobTuple
             if jobBatcher.hasJob(updatedJob.batchSystemID):
                 if result == 0:
-                    logger.debug('Batch system is reporting that the jobWrapper with '
-                                 'batch system ID: %s and jobWrapper store ID: %s ended successfully',
+                    logger.debug('Batch system is reporting that the jobGraph with '
+                                 'batch system ID: %s and jobGraph store ID: %s ended successfully',
                                  updatedJob.batchSystemID, jobBatcher.getJob(updatedJob.batchSystemID))
                 else:
                     logger.warn('Batch system is reporting that the job %s with '
-                                'batch system ID: %s and jobWrapper store ID: %s failed with exit value %i',
+                                'batch system ID: %s and jobGraph store ID: %s failed with exit value %i',
                                 updatedJob.batchSystemID, updatedJob, updatedJob.jobStoreID, result)
                 jobBatcher.processFinishedJob(updatedJob.batchSystemID, result, wallTime=wallTime)
             else:
                 logger.warn("A result seems to already have been processed "
-                            "for jobWrapper with batch system ID: %i", updatedJob.batchSystemID)
+                            "for jobGraph with batch system ID: %i", updatedJob.batchSystemID)
         else:
             # Process jobs that have gone awry
 
             #In the case that there is nothing happening
-            #(no updated jobWrapper to gather for 10 seconds)
+            #(no updated jobGraph to gather for 10 seconds)
             #check if their are any jobs that have run too long
             #(see JobBatcher.reissueOverLongJobs) or which
             #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
             if (time.time() - timeSinceJobsLastRescued >=
                 config.rescueJobsFrequency): #We only
                 #rescue jobs every N seconds, and when we have
-                #apparently exhausted the current jobWrapper supply
+                #apparently exhausted the current jobGraph supply
                 jobBatcher.reissueOverLongJobs()
                 logger.info("Reissued any over long jobs")
 

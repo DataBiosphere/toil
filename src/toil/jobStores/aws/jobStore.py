@@ -59,7 +59,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       region_to_bucket_location)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
@@ -1326,7 +1326,7 @@ aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quo
 custom_repr = aRepr.repr
 
 
-class AWSJob(JobWrapper, SDBHelper):
+class AWSJob(JobGraph, SDBHelper):
     """
     A Job that can be converted to and from an SDB item.
     """
