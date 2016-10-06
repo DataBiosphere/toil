@@ -75,7 +75,11 @@ def main():
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.job import Job
-    
+    # import sys as _sys
+    # _sys.path.append('/Applications/PyCharm.app/Contents/debug-eggs/pycharm-debug.egg')
+    # import pydevd
+    # pydevd.settrace('127.0.0.1', port=21212, suspend=True, stdoutToServer=True, stderrToServer=True,
+    #                 trace_only_current_thread=False)
     ########################################## 
     #Input args
     ##########################################
@@ -436,7 +440,7 @@ def main():
             #not interfere with this update
             jobGraph = copy.deepcopy(jobGraph)
             
-            logger.debug("Starting the next jobGraph")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
@@ -456,7 +460,7 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed jobGraph on host %s", socket.gethostname())
+        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         FileStore._terminateEvent.set()
     
     ##########################################

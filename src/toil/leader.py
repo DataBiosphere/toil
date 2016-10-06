@@ -166,7 +166,6 @@ class JobBatcher:
         issueableJob.command = ' '.join((resolveEntryPoint('_toil_worker'),
                                          self.jobStoreLocator, issueableJob.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(issueableJob)
-        issueableJob.run(jobBatchSystemID)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = issueableJob
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
@@ -197,11 +196,25 @@ class JobBatcher:
         else:
             return (self.jobsIssued - self._preemptableJobsIssued)
 
-    def getJob(self, jobBatchSystemID):
+    def getJobStoreID(self, jobBatchSystemID):
         """
         Gets the job file associated the a given id
         """
         return self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
+
+    def getJob(self, jobBatchSystemID):
+        return self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
+
+    def removeJob(self, jobBatchSystemID):
+        """
+        Removes a job from the jobBatcher.
+        """
+        assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
+        self.jobsIssued -= 1
+        if self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].preemptable:
+            assert self._preemptableJobsIssued > 0
+            self._preemptableJobsIssued -= 1
+        return self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID)
 
     def hasJob(self, jobBatchSystemID):
         """
@@ -214,18 +227,6 @@ class JobBatcher:
         Gets the set of jobs currently issued.
         """
         return self.jobBatchSystemIDToIssuedJob.keys()
-
-    def removeJobID(self, jobBatchSystemID):
-        """
-        Removes a job from the jobBatcher.
-        """
-        assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
-        self.jobsIssued -= 1
-        if self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].preemptable:
-            assert self._preemptableJobsIssued > 0
-            self._preemptableJobsIssued -= 1
-        jobStoreID = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID).jobStoreID
-        return jobStoreID
 
     def killJobs(self, jobsToKill):
         """
@@ -253,7 +254,7 @@ class JobBatcher:
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it",
-                                str(self.getJob(jobBatchSystemID)),
+                                str(self.getJobStoreID(jobBatchSystemID)),
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
@@ -277,7 +278,7 @@ class JobBatcher:
         #no unexpected jobs running
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
-            jobStoreID = self.getJob(jobBatchSystemID)
+            jobStoreID = self.getJobStoreID(jobBatchSystemID)
             if self.reissueMissingJobs_missingHash.has_key(jobBatchSystemID):
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1
             else:
@@ -292,22 +293,21 @@ class JobBatcher:
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
-    def processFinishedJob(self, jobBatchSystemID, resultStatus, wallTime=None):
+    def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None):
         """
         Function reads a processed jobGraph file and updates it state.
         """
-        def processRemovedJob(jobStoreID):
+        def processRemovedJob(issuedJob):
             if resultStatus != 0:
                 logger.warn("Despite the batch system claiming failure the "
-                            "jobGraph %s seems to have finished and been removed", jobStoreID)
-            self._updatePredecessorStatus(jobStoreID)
-
+                            "job %s seems to have finished and been removed", issuedJob)
+            self._updatePredecessorStatus(issuedJob.jobStoreID)
+        issuedJob = self.removeJob(batchSystemID)
+        jobStoreID = issuedJob.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
-            issuedJob = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
             self.clusterScaler.addCompletedJob(issuedJob, wallTime)
-        jobStoreID = self.removeJobID(jobBatchSystemID)
         if self.jobStore.exists(jobStoreID):
-            logger.debug("Job %s continues to exist (i.e. has more to do)" % jobStoreID)
+            logger.debug("Job %s continues to exist (i.e. has more to do)" % issuedJob)
             try:
                 jobGraph = self.jobStore.load(jobStoreID)
             except NoSuchJobException:
@@ -318,13 +318,13 @@ class JobBatcher:
                     # Process the job from here as any other job removed from the job store.
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
-                    logger.warn('Got a stale read from SDB for job %s', jobStoreID)
-                    processRemovedJob(jobStoreID)
+                    logger.warn('Got a stale read from SDB for job %s', issuedJob)
+                    processRemovedJob(issuedJob)
                     return
                 else:
                     raise
             if jobGraph.logJobStoreFileID is not None:
-                logger.warn("The jobGraph seems to have left a log file, indicating failure: %s, %s", jobStoreID)
+                logger.warn("The job %s seems to have left a log file, indicating failure", issuedJob)
                 with jobGraph.getLogFileHandle( self.jobStore ) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
@@ -338,7 +338,7 @@ class JobBatcher:
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the retry count here.
                 if jobGraph.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite job failing: %s", jobGraph)
+                    logger.warn("No log file is present, despite job failing: %s", issuedJob)
                 jobGraph.setupJobAfterFailure(self.config)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
@@ -347,9 +347,9 @@ class JobBatcher:
 
             self.toilState.updatedJobs.add((jobGraph, resultStatus)) #Now we know the
             #jobGraph is done we can add it to the list of updated jobGraph files
-            logger.debug("Added jobGraph: %s to active jobs", jobStoreID)
+            logger.debug("Added job: %s to active jobs", jobGraph)
         else:  #The jobGraph is done
-            processRemovedJob(jobStoreID)
+            processRemovedJob(issuedJob)
 
     def processTotallyFailedJob(self, jobGraph):
         """
@@ -360,7 +360,7 @@ class JobBatcher:
 
         if jobGraph.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
             # a service job
-            logger.debug("Service job is being processed as a totally failed job: %s" % jobGraph.jobStoreID)
+            logger.debug("Service job is being processed as a totally failed job: %s" % jobGraph)
 
             predecesssorJobGraph = self.toilState.serviceJobStoreIDToPredecessorJob[jobGraph.jobStoreID]
 
@@ -378,7 +378,7 @@ class JobBatcher:
             # of services from deadlocking waiting for this service to start properly
             if predecesssorJobGraph.jobStoreID in self.toilState.servicesIssued:
                 self.serviceManager.killServices(self.toilState.servicesIssued[predecesssorJobGraph.jobStoreID], error=True)
-                logger.debug("Job: %s is instructing all the services of its parent job to quit", jobGraph.jobStoreID)
+                logger.debug("Job: %s is instructing all the services of its parent job to quit", jobGraph)
 
             self.toilState.hasFailedSuccessors.add(predecesssorJobGraph.jobStoreID) # This ensures that the
             # job will not attempt to run any of it's successors on the stack
@@ -389,7 +389,7 @@ class JobBatcher:
             if jobGraph.jobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
                 for predecesssorJobGraph in self.toilState.successorJobStoreIDToPredecessorJobs[jobGraph.jobStoreID]:
                     self.toilState.hasFailedSuccessors.add(predecesssorJobGraph.jobStoreID)
-                    logger.debug("Totally failed job: %s is marking direct predecessors %s as having failed jobs", jobGraph.jobStoreID, predecesssorJobGraph.jobStoreID)
+                    logger.debug("Totally failed job: %s is marking direct predecessors %s as having failed jobs", jobGraph, predecesssorJobGraph)
                 self._updatePredecessorStatus(jobGraph.jobStoreID)
 
     def _updatePredecessorStatus(self, jobStoreID):
@@ -954,26 +954,28 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
         # Gather any new, updated jobGraph from the batch system
         updatedJobTuple = batchSystem.getUpdatedBatchJob(2)
         if updatedJobTuple is not None:
-            updatedJob, result, wallTime = updatedJobTuple
-            if jobBatcher.hasJob(updatedJob.batchSystemID):
-                if result == 0:
-                    logger.debug('Batch system is reporting that the jobGraph with '
-                                 'batch system ID: %s and jobGraph store ID: %s ended successfully',
-                                 updatedJob.batchSystemID, jobBatcher.getJob(updatedJob.batchSystemID))
-                else:
-                    logger.warn('Batch system is reporting that the job %s with '
-                                'batch system ID: %s and jobGraph store ID: %s failed with exit value %i',
-                                updatedJob.batchSystemID, updatedJob, updatedJob.jobStoreID, result)
-                jobBatcher.processFinishedJob(updatedJob.batchSystemID, result, wallTime=wallTime)
-            else:
+            jobID, result, wallTime = updatedJobTuple
+            # easy, track different state
+            try:
+                updatedJob = jobBatcher.jobBatchSystemIDToIssuedJob[jobID]
+            except KeyError:
                 logger.warn("A result seems to already have been processed "
-                            "for jobGraph with batch system ID: %i", updatedJob.batchSystemID)
+                            "for job %s", jobID)
+            else:
+                if result == 0:
+                    logger.debug('Batch system is reporting that the job %s ended successfully',
+                                 updatedJob)
+                else:
+                    logger.warn('Batch system is reporting that the job %s failed with exit value %i',
+                                updatedJob, result)
+                jobBatcher.processFinishedJob(jobID, result, wallTime=wallTime)
+
         else:
             # Process jobs that have gone awry
 
             #In the case that there is nothing happening
-            #(no updated jobGraph to gather for 10 seconds)
-            #check if their are any jobs that have run too long
+            #(no updated jobs to gather for 10 seconds)
+            #check if there are any jobs that have run too long
             #(see JobBatcher.reissueOverLongJobs) or which
             #have gone missing from the batch system (see JobBatcher.reissueMissingJobs)
             if (time.time() - timeSinceJobsLastRescued >=

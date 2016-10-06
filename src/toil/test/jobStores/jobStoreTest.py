@@ -37,7 +37,7 @@ from bd2k.util.exceptions import panic
 from mock import patch
 
 from toil.common import Config, Toil
-from toil.job import Job
+from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
@@ -104,6 +104,9 @@ class AbstractJobStoreTest:
             self.master = self._createJobStore()
             self.config = self._createConfig()
             self.master.initialize(self.config)
+            self.arbitraryRequirements = {'memory':1, 'disk':2, 'cores':1, 'preemptable':False}
+            self.arbitraryJob = JobNode(command='command', jobStoreID=None, job='arbitrary', name=None,
+                                        **self.arbitraryRequirements)
 
         def tearDown(self):
             self.master.destroy()
@@ -124,13 +127,17 @@ class AbstractJobStoreTest:
 
             # Create parent job and verify its existence/properties
             #
-            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
+            jobNodeOnMaster = JobNode(command='master1', memory=12, cores=34, disk=35, preemptable=True,
+                                      job='test1', name='onMaster', jobStoreID=None)
+            jobOnMaster = master.create(jobNodeOnMaster)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
             self.assertEquals(jobOnMaster.memory, 12)
             self.assertEquals(jobOnMaster.cores, 34)
             self.assertEquals(jobOnMaster.disk, 35)
             self.assertEquals(jobOnMaster.preemptable, True)
+            self.assertEquals(jobOnMaster.job, 'test1')
+            self.assertEquals(jobOnMaster.name, 'onMaster')
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
@@ -156,13 +163,17 @@ class AbstractJobStoreTest:
             worker.update(jobOnWorker)
             # Check jobs to delete persisted
             self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
-            # Create children    
-            child1 = worker.create('child1', 23, 45, 46, preemptable=True)
-            child2 = worker.create('child2', 34, 56, 57, preemptable=False)
+            # Create children
+            jobNodeOnChild1 = JobNode(command='child1', memory=23, cores=45, disk=46,
+                                      preemptable=True,
+                                      job='test2', name='onChild1', jobStoreID=None)
+            jobNodeOnChild2 = JobNode(command='master1', memory=34, cores=56, disk=57,
+                                      preemptable=False,
+                                      job='test3', name='onChild2', jobStoreID=None)
+            child1 = worker.create(jobNodeOnChild1)
+            child2 = worker.create(jobNodeOnChild2)
             # Update parent
-            jobOnWorker.stack.append((
-                (child1.jobStoreID, 23, 45, 46, 1),
-                (child2.jobStoreID, 34, 56, 57, 1)))
+            jobOnWorker.stack.append((child1, child2))
             jobOnWorker.filesToDelete = []
             worker.update(jobOnWorker)
 
@@ -241,7 +252,7 @@ class AbstractJobStoreTest:
             # Test per-job files: Create empty file on master, ...
             #
             # First recreate job
-            jobOnMaster = master.create('master1', 12, 34, 35, preemptable=True)
+            jobOnMaster = master.create(jobNodeOnMaster)
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
             # Check file exists
             self.assertTrue(worker.fileExists(fileOne))
@@ -476,7 +487,7 @@ class AbstractJobStoreTest:
             master = self.master
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
-                job = master.create('1', 2, 3, 4, preemptable=True)
+                job = master.create(self.arbitraryJob)
                 fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
@@ -494,7 +505,7 @@ class AbstractJobStoreTest:
             bufSize = 65536
             partSize = self._partSize()
             self.assertEquals(partSize % bufSize, 0)
-            job = self.master.create('1', 2, 3, 4, preemptable=False)
+            job = self.master.create(self.arbitraryJob)
 
             # Test file/stream ending on part boundary and within a part
             #
@@ -569,7 +580,7 @@ class AbstractJobStoreTest:
             self.master.delete(job.jobStoreID)
 
         def testZeroLengthFiles(self):
-            job = self.master.create('1', 2, 3, 4, preemptable=True)
+            job = self.master.create(self.arbitraryJob)
             nullFile = self.master.writeFile('/dev/null', job.jobStoreID)
             with self.master.readFileStream(nullFile) as f:
                 self.assertEquals(f.read(), "")
@@ -588,7 +599,7 @@ class AbstractJobStoreTest:
                     buf = os.urandom(self._partSize())
                     f.write(buf)
                     hashIn.update(buf)
-            job = self.master.create('1', 2, 3, 4, preemptable=False)
+            job = self.master.create(self.arbitraryJob)
             jobStoreFileID = self.master.writeFile(filePath, job.jobStoreID)
             os.unlink(filePath)
             self.master.readFile(jobStoreFileID, filePath)
@@ -616,11 +627,11 @@ class AbstractJobStoreTest:
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
+            rootJob = master.createRootJob(self.arbitraryJob)
             # Create a bunch of child jobs
             for i in range(100):
-                child = master.create("child%s" % i, 23, 45, 46, False, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
+                child = master.create(self.arbitraryJob)
+                rootJob.stack.append(child)
             master.update(rootJob)
 
             # See how long it takes to clean with no cache
@@ -652,12 +663,12 @@ class AbstractJobStoreTest:
             master = self.master
 
             # Create parent job
-            rootJob = master.createRootJob('rootjob', 12, 34, 35, False)
+            rootJob = master.createRootJob(self.arbitraryJob)
 
             # Create a bunch of child jobs
             for i in range(3000):
-                child = master.create("child%s" % i, 23, 45, 46, False, 1)
-                rootJob.stack.append(((child.jobStoreID, 23, 45, 46, False, 1),))
+                child = master.create(self.arbitraryJob)
+                rootJob.stack.append(child)
             master.update(rootJob)
 
             # Pull them all back out again
@@ -1020,7 +1031,9 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
     def testLargeJob(self):
         from toil.jobStores.azureJobStore import maxAzureTablePropertySize
         command = os.urandom(maxAzureTablePropertySize * 2)
-        job1 = self.master.create(command=command, memory=0, cores=0, disk=0, preemptable=False)
+        jobNode1 = self.arbitraryJob
+        jobNode1.command=command
+        job1 = self.master.create(jobNode1)
         self.assertEqual(job1.command, command)
         job2 = self.master.load(job1.jobStoreID)
         self.assertIsNot(job1, job2)

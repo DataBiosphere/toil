@@ -165,13 +165,19 @@ class JobLikeObject(ResourceRequirementMixin):
         self.name = name
         self.job = job or self.__class__.__name__
 
+    def __str__(self):
+        printedName = '\''+self.job + '\''
+        if self.name:
+            printedName += ' '+self.name
+        return str(printedName)
+
 class JobNode(JobLikeObject):
     """
     This object bridges the job graph, job, and batchsystem classes. This polymorphism
     creates some unpleasant complexity.
     """
     def __init__(self, memory, cores, disk, preemptable, job, name, jobStoreID,
-                 command, batchSystemID=None, predecessorID=None, predecessorNumber=None):
+                 command, predecessorID=None, predecessorNumber=None):
         # check what predecessorID is used for
         assert predecessorID is not None or predecessorNumber is not None
         assert not (predecessorNumber and predecessorID)
@@ -182,18 +188,6 @@ class JobNode(JobLikeObject):
             else predecessorID
         self.predecessorNumber = predecessorNumber
         self.command = command
-        self.batchSystemID = None
-
-    def run(self, batchSystemID):
-        self.batchSystemID = batchSystemID
-
-    @property
-    def commalnd(self):
-        if self.jobStoreID is not None:
-            # created by fromJob
-            # assert inspect.currentframe().f_back().
-            pass
-        return None
 
     # Serialization support methods
 
@@ -227,12 +221,6 @@ class JobNode(JobLikeObject):
 
     def __repr__(self):
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
-
-    def __str__(self):
-        printedName = '\''+self.job + '\''
-        if self.name:
-            printedName += ' '+self.name
-        return str(printedName)
 
     @classmethod
     def fromJobGraph(cls, jobGraph):

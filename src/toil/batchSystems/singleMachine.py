@@ -229,7 +229,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = jobNode
+        self.jobs[jobID] = jobNode.command
         self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
                              jobNode.disk, self.environment.copy()))
         return jobID
@@ -280,9 +280,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         except Empty:
             return None
         jobID, exitValue, wallTime = item
-        job = self.jobs.pop(jobID)
+        jobCommand = self.jobs.pop(jobID)
         log.debug("Ran jobID: %s with exit value: %i", jobID, exitValue)
-        return job, exitValue, wallTime
+        return jobID, exitValue, wallTime
 
     @classmethod
     def getRescueBatchJobFrequency(cls):

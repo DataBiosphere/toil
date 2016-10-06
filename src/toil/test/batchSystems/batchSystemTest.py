@@ -36,7 +36,7 @@ from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    AbstractBatchSystem,
                                                    BatchSystemSupport)
-from toil.job import Job
+from toil.job import Job, JobNode
 from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
@@ -112,9 +112,12 @@ class hidden:
 
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
-
-            job1 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
-            job2 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
+            jobNode1 = JobNode(command='sleep 1000', job='test1', name=None,
+                              jobStoreID=None, **defaultRequirements)
+            jobNode2 = JobNode(command='sleep 1000', job='test2', name=None,
+                              jobStoreID=None, **defaultRequirements)
+            job1 = self.batchSystem.issueBatchJob(jobNode1)
+            job2 = self.batchSystem.issueBatchJob(jobNode2)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -130,15 +133,18 @@ class hidden:
             # Issue a job and then allow it to finish by itself, causing it to be added to the
             # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
-            job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
+            job3Name = 'test3'
+            jobNode3 = JobNode(command="touch %s" % testPath, job='test3', name=None,
+                               jobStoreID=None, **defaultRequirements)
+            job3 = self.batchSystem.issueBatchJob(jobNode3)
 
-            updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
-            # fail with updatedID being equal to job1 or job2.
+            # fail with updatedJobNode being equal to job1 or job2.
             self.assertEqual(exitStatus, 0)
-            self.assertEqual(updatedID, job3)
+            self.assertEqual(updatedJobNode.job, job3Name)
             if self.supportsWallTime():
                 self.assertTrue(wallTime > 0)
             else:
@@ -163,16 +169,20 @@ class hidden:
             with tempFileContaining(script_body, suffix='.py') as script_path:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
-                job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobNode4 = JobNode(command=command, job='test4', name=None,
+                                   jobStoreID=None, **defaultRequirements)
+                job4 = self.batchSystem.issueBatchJob(jobNode4)
+                updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
-                self.assertEqual(updatedID, job4)
+                self.assertEqual(updatedJobNode.job, 'test4')
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
-                job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobNode5 = JobNode(command=command, job='test5', name=None,
+                                   jobStoreID=None, **defaultRequirements)
+                job5 = self.batchSystem.issueBatchJob(jobNode5)
+                updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
-                self.assertEqual(updatedID, job5)
+                self.assertEqual(updatedJobNode, 'test5')
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
@@ -497,11 +507,15 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        jobNode1 = JobNode(command="sleep 1000", memory=1 << 30, cores=1, disk=1000,
+                           preemptable=preemptable, job='testResourceLimits', jobStoreID=None,
+                           name=None)
+        job1 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job1)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        jobNode2 = JobNode(command="sleep 1000", memory=2 << 30, cores=1, disk=1000,
+                           preemptable=preemptable, job='testResourceLimits', jobStoreID=None,
+                           name=None)
+        job2 = self.batchSystem.issueBatchJob(jobNode2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -510,8 +524,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        job3 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job3)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
