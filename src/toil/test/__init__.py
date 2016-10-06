@@ -32,6 +32,7 @@ from urllib2 import urlopen
 import multiprocessing
 
 import time
+import signal
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
 from bd2k.util.iterables import concat
@@ -444,6 +445,35 @@ def integrative(test_item):
 
 
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
+
+
+@contextmanager
+def timeLimit(seconds):
+    """
+    http://stackoverflow.com/a/601168
+    Use to limit the execution time of a function. Raises an exception if the execution of the
+    function takes more than the specified amount of time.
+
+    :param seconds: maximum allowable time, in seconds
+    >>> import time
+    >>> with timeLimit(5):
+    ...    time.sleep(4)
+    >>> import time
+    >>> with timeLimit(5):
+    ...    time.sleep(6)
+    Traceback (most recent call last):
+        ...
+    RuntimeError: Timed out
+    """
+    def signal_handler(signum, frame):
+        raise RuntimeError('Timed out')
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
 
 
 # FIXME: move to bd2k-python-lib

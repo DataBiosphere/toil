@@ -16,15 +16,18 @@ import logging
 import os
 import pipes
 import subprocess
+
 from abc import abstractmethod, ABCMeta
+from inspect import getsource
+from textwrap import dedent
 from urlparse import urlparse
 from uuid import uuid4
 
 from bd2k.util.iterables import concat
 from cgcloud.lib.test import CgcloudTestCase
 
-from toil.test import integrative, ToilTest
-from toil.version import version as toil_version, cgcloudVersion
+from toil.test import integrative, ToilTest, timeLimit
+from toil.version import cgcloudVersion
 
 log = logging.getLogger(__name__)
 
@@ -199,9 +202,9 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         raise NotImplementedError()
 
     @classmethod
-    def _cgcloud(cls, *args):
+    def _cgcloud(cls, *args, **kwargs):
         if not cls.dryRun:
-            cls._run('cgcloud', *args)
+            cls._run('cgcloud', *args, **kwargs)
 
     sshOptions = ['-o', 'UserKnownHostsFile=/dev/null', '-o', 'StrictHostKeyChecking=no']
 
@@ -215,7 +218,7 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             del kwargs['admin']
 
         cls._cgcloud(
-            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)))
+            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)), **kwargs)
 
     @classmethod
     def _rsync(cls, role, *args):
@@ -265,3 +268,54 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
     @integrative
     def testAutoScaledSpotCluster(self):
         self._test(autoScaled=True, spotInstances=True)
+
+
+def restartScript():
+    from toil.job import Job
+    import argparse
+    import os
+
+    def f0(job):
+        if 'FAIL' in os.environ:
+            raise RuntimeError('failed on purpose')
+
+    if __name__ == '__main__':
+        parser = argparse.ArgumentParser()
+        Job.Runner.addToilOptions(parser)
+        options = parser.parse_args()
+        i = Job.Runner.startToil(Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M'),
+                                 options)
+
+
+class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
+    """
+    This test insures autoscaling works on a restarted Toil run
+    """
+    def setUp(self):
+        super(CGCloudRestartTest, self).setUp()
+        # CGCloud provisioner requires that the node has at least 1 ephemeral drive so this is the
+        # smallest instance we can use
+        self.instanceType = 'm3.medium'
+        self.leaderInstanceType = 'm3.medium'
+
+    def _getScript(self):
+        self.scriptName= "restartScript.py"
+        self._leader('tee', self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
+)
+
+    def _runScript(self, toilOptions):
+        # clean = onSuccess
+        disallowedOptions = ['--clean=always', '--retryCount=2']
+        newOptions = [option for option in toilOptions if option not in disallowedOptions]
+        try:
+            self._leader('python', self.scriptName, self.jobStore, '-e', 'FAIL=true', *newOptions)
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            self.fail('Command succeeded when we expected failure')
+        with timeLimit(300):
+            self._leader('python', self.scriptName, self.jobStore, '--restart', *toilOptions)
+
+    @integrative
+    def testAutoScaledCluster(self):
+        self._test(autoScaled=True)
