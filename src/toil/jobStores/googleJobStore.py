@@ -110,13 +110,12 @@ class GoogleJobStore(AbstractJobStore):
                 except boto.exception.GSResponseError:
                     pass
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newID()
-        job = JobGraph(jobStoreID=jobStoreID,
-                       command=command, memory=memory, cores=cores, disk=disk,
-                       remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                       preemptable=preemptable,
-                       predecessorNumber=predecessorNumber)
+        job = JobGraph(jobStoreID=jobStoreID, name=jobNode.name, job=jobNode.job,
+                       command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
+                       logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
+                       **jobNode._requirements)
         self._writeString(jobStoreID, cPickle.dumps(job))
         return job
 

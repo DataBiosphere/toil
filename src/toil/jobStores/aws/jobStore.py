@@ -306,14 +306,13 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if command is None else command)
-        job = AWSJob(jobStoreID=jobStoreID, command=command,
-                     memory=memory, cores=cores, disk=disk, preemptable=preemptable,
+                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        job = AWSJob(job=jobNode.job, name=jobNode.name, jobStoreID=jobStoreID, command=jobNode.command,
                      remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     predecessorNumber=predecessorNumber)
+                     predecessorNumber=jobNode.predecessorNumber, **jobNode._requirements)
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(*job.toItem())
