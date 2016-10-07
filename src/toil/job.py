@@ -177,7 +177,7 @@ class JobNode(JobLikeObject):
     creates some unpleasant complexity.
     """
     def __init__(self, memory, cores, disk, preemptable, job, name, jobStoreID,
-                 command, predecessorID=None, predecessorNumber=None):
+                 command, predecessorID='', predecessorNumber=None):
         # check what predecessorID is used for
         assert predecessorID is not None or predecessorNumber is not None
         assert not (predecessorNumber and predecessorID)
