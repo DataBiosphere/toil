@@ -283,38 +283,38 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
         self._test(autoScaled=True, spotBid=self.safeSpotBid)
 
 
-def restartScript():
-    from toil.job import Job
-    import argparse
-    import os
-
-    def f0(job):
-        if 'FAIL' in os.environ:
-            raise RuntimeError('failed on purpose')
-
-    if __name__ == '__main__':
-        parser = argparse.ArgumentParser()
-        Job.Runner.addToilOptions(parser)
-        options = parser.parse_args()
-        i = Job.Runner.startToil(Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M'),
-                                 options)
-
-
 class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
     """
     This test insures autoscaling works on a restarted Toil run
     """
+
     def setUp(self):
         super(CGCloudRestartTest, self).setUp()
         # CGCloud provisioner requires that the node has at least 1 ephemeral drive so this is the
         # smallest instance we can use
         self.instanceType = 'm3.medium'
         self.leaderInstanceType = 'm3.medium'
+        self.scriptName = "restartScript.py"
 
     def _getScript(self):
-        self.scriptName= "restartScript.py"
-        self._leader('tee', self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
-)
+        def restartScript():
+            from toil.job import Job
+            import argparse
+            import os
+
+            def f0(job):
+                if 'FAIL' in os.environ:
+                    raise RuntimeError('failed on purpose')
+
+            if __name__ == '__main__':
+                parser = argparse.ArgumentParser()
+                Job.Runner.addToilOptions(parser)
+                options = parser.parse_args()
+                rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')
+                Job.Runner.startToil(rootJob, options)
+
+        script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
+        self._leader('tee', self.scriptName, input=script)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
@@ -332,6 +332,7 @@ class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
     @integrative
     def testAutoScaledCluster(self):
         self._test(autoScaled=True)
+
 
 class PremptableDeficitCompensationTest(AbstractCGCloudProvisionerTest):
     def test(self):
