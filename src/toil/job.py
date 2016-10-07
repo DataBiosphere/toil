@@ -656,11 +656,12 @@ class Job(ResourceRequirementMixin):
             self._hasParent = False
 
         @abstractmethod
-        def start(self, fileStore):
+        def start(self, job):
             """
             Start the service.
             
-            :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
+            :param toil.job.Job job: The underlying job that is being run. Can be used to register
+            deferred functions, or to access the fileStore for creating temporary files.
 
             :returns: An object describing how to access the service. The object must be pickleable \
             and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
@@ -668,12 +669,12 @@ class Job(ResourceRequirementMixin):
             pass
 
         @abstractmethod
-        def stop(self, fileStore):
+        def stop(self, job):
             """
-            Stops the service. 
+            Stops the service. Function can block until complete.
             
-            :param toil.job.Job.FileStore fileStore: A fileStore object to create temporary files with.
-                Function can block until complete.
+            :param toil.job.Job job: The underlying job that is being run. Can be used to register
+            deferred functions, or to access the fileStore for creating temporary files.
             """
             pass
 
@@ -1402,12 +1403,16 @@ class ServiceJob(Job):
         self.jobWrapper = None
 
     def run(self, fileStore):
+        
+        # we need access to the filestore from underneath the service job
+        self.fileStore = fileStore
+
         # Unpickle the service
         logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
         service = self._unpickle( userModule, BytesIO( self.pickledService ), fileStore.jobStore.config )
         #Start the service
-        startCredentials = service.start(fileStore)
+        startCredentials = service.start(self)
         try:
             #The start credentials  must be communicated to processes connecting to
             #the service, to do this while the run method is running we
@@ -1445,16 +1450,13 @@ class ServiceJob(Job):
 
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
 
-            #Now kill the service
-            #service.stop(fileStore)
-
             # Remove link to the jobWrapper
             self.jobWrapper = None
 
             logger.debug("Service is done")
         finally:
             # The stop function is always called
-            service.stop(fileStore)
+            service.stop(self)
 
     def _run(self, jobWrapper, fileStore):
         # Set the jobWrapper for the job

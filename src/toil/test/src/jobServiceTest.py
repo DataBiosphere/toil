@@ -200,22 +200,22 @@ class TestService(Job.Service):
         Job.Service.__init__(self, *args, **kwargs)
         self.messageInt = messageInt
 
-    def start(self, fileStore):
+    def start(self, job):
         assert self.disk is not None
         assert self.memory is not None
         assert self.cores is not None
         self.terminate = Event()
         self.error = Event()
-        inJobStoreID = fileStore.jobStore.getEmptyFileStoreID()
-        outJobStoreID = fileStore.jobStore.getEmptyFileStoreID()
+        inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
+        outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
         self.serviceThread = Thread(target=self.serviceWorker,
-                                    args=(fileStore.jobStore, self.terminate, self.error,
+                                    args=(job.fileStore.jobStore, self.terminate, self.error,
                                           inJobStoreID, outJobStoreID,
                                           self.messageInt))
         self.serviceThread.start()
         return (inJobStoreID, outJobStoreID)
 
-    def stop(self, fileStore):
+    def stop(self, job):
         self.terminate.set()
         self.serviceThread.join()
 
@@ -301,10 +301,10 @@ class TestServiceSerialization(Job.Service):
         Job.Service.__init__(self, *args, **kwargs)
         self.messageInt = messageInt
 
-    def start(self, fileStore):
+    def start(self, job):
         return self.messageInt
 
-    def stop(self, fileStore):
+    def stop(self, job):
         pass
 
     def check(self):
