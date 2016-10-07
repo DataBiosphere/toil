@@ -111,7 +111,9 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         binPath = os.path.join(path, 'bin')
         cls.oldPath = os.environ['PATH']
         os.environ['PATH'] = os.pathsep.join(concat(binPath, cls.oldPath.split(os.pathsep)))
-        cls._run('pip', 'install', 'cgcloud-toil==' + cgcloudVersion)
+        # Suppress pip's cache to avoid concurrency issues. Keep in mind that the concrete
+        # subclasses may be run concurrently. See run_tests.sh.
+        cls._run('pip', 'install', '--no-cache', 'cgcloud-toil==' + cgcloudVersion)
         if cls.createImage:
             cls._cgcloud('create', '-IT',
                          '--option', 'toil_sdists=%s[aws,mesos]' % cls.sdistPath,
