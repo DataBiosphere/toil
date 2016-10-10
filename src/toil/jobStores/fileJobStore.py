@@ -89,13 +89,8 @@ class FileJobStore(AbstractJobStore):
         # Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         # Make the job
-        job = JobGraph(command=jobNode.command, memory=jobNode.memory,
-                       cores=jobNode.cores, disk=jobNode.disk,
-                       preemptable=jobNode.preemptable,
-                       jobStoreID=self._getRelativePath(absJobDir),
-                       remainingRetryCount=self._defaultTryCount( ),
-                       predecessorNumber=jobNode.predecessorNumber,
-                       name=jobNode.name, job=jobNode.job)
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
+                                   tryCount=self._defaultTryCount())
         # Write job file to disk
         self.update(job)
         return job

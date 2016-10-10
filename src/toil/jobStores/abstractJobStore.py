@@ -473,7 +473,7 @@ class AbstractJobStore(object):
                         getConnectedJobs(getJob(successorJobStoreID))
             # Traverse service jobs
             for jobs in jobGraph.services:
-                for serviceJobStoreID in map(lambda x: x[0], jobs):
+                for serviceJobStoreID in map(lambda x: x.jobStoreID, jobs):
                     if haveJob(serviceJobStoreID):
                         assert serviceJobStoreID not in reachableFromRoot
                         reachableFromRoot.add(serviceJobStoreID)
@@ -563,13 +563,15 @@ class AbstractJobStore(object):
 
             servicesSizeFn = lambda: sum(map(len, jobGraph.services))
             startServicesSize = servicesSizeFn()
+            def fn(serviceJobNode):
+                serviceJobNode.startJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.startJobStoreID, 1)
+                serviceJobNode.terminateJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.terminateJobStoreID, 2)
+                serviceJobNode.errorJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.errorJobStoreID, 3)
             jobGraph.services = filter(
                 lambda z: len(z) > 0,
                 map(lambda serviceJobList:
-                    map(lambda x: x[:4] + (subFlagFile(x[0], x[4], 1),
-                                           subFlagFile(x[0], x[5], 2),
-                                           subFlagFile(x[0], x[6], 3)),
-                        filter(lambda y: self.exists(y[0]), serviceJobList)), jobGraph.services))
+                    filter(lambda x: x is not None, map(fn,
+                        filter(lambda y: self.exists(y.jobStoreID), serviceJobList))), jobGraph.services))
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 

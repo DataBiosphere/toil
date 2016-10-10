@@ -607,13 +607,13 @@ class ServiceManager( object ):
         :param float maxWait: Time in seconds to wait to get a job before returning.
         :return: a tuple of (serviceJobStoreID, memory, cores, disk, ..) representing
         a service job to start.
-        :rtype: (str, float, float, float)
+        :rtype: toil.job.ServiceJobProxy
         """
         try:
-            jobTuple = self._serviceJobGraphsToStart.get(timeout=maxWait)
+            serviceJob = self._serviceJobGraphsToStart.get(timeout=maxWait)
             assert self.serviceJobsIssuedToServiceManager >= 0
             self.serviceJobsIssuedToServiceManager -= 1
-            return jobTuple
+            return serviceJob
         except Empty:
             return None
 
@@ -622,10 +622,10 @@ class ServiceManager( object ):
         :param dict services: Maps service jobStoreIDs to the communication flags for the service
         """
         for serviceJobStoreID in services:
-            startJobStoreID, terminateJobStoreID, errorJobStoreID = services[serviceJobStoreID]
+            serviceJob = services[serviceJobStoreID]
             if error:
-                self.jobStore.deleteFile(errorJobStoreID)
-            self.jobStore.deleteFile(terminateJobStoreID)
+                self.jobStore.deleteFile(serviceJob.errorJobStoreID)
+            self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
 
     def check(self):
         """
@@ -671,15 +671,15 @@ class ServiceManager( object ):
             # Start the service jobs in batches, waiting for each batch
             # to become established before starting the next batch
             for serviceJobList in jobGraph.services:
-                for serviceJobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID, errorJobStoreID in serviceJobList:
-                    logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJobStoreID, startJobStoreID)
-                    assert jobStore.fileExists(startJobStoreID)
+                for serviceJob in serviceJobList:
+                    logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJob, serviceJob.startJobStoreID)
+                    assert jobStore.fileExists(serviceJob.startJobStoreID)
                     # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
-                    serviceJobsToStart.put((serviceJobStoreID, memory, cores, disk))
+                    serviceJobsToStart.put(serviceJob)
 
                 # Wait until all the services of the batch are running
                 for serviceTuple in serviceJobList:
-                    while jobStore.fileExists(serviceTuple[4]):
+                    while jobStore.fileExists(serviceTuple.startJobStoreID):
                         # Sleep to avoid thrashing
                         time.sleep(1.0)
 
@@ -858,10 +858,10 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     toilState.servicesIssued[jobGraph.jobStoreID] = {}
                     for serviceJobList in jobGraph.services:
                         for serviceTuple in serviceJobList:
-                            serviceID = serviceTuple[0]
+                            serviceID = serviceTuple.jobStoreID
                             assert serviceID not in toilState.serviceJobStoreIDToPredecessorJob
                             toilState.serviceJobStoreIDToPredecessorJob[serviceID] = jobGraph
-                            toilState.servicesIssued[jobGraph.jobStoreID][serviceID] = serviceTuple[4:7]
+                            toilState.servicesIssued[jobGraph.jobStoreID][serviceID] = serviceTuple
 
                     # Use the service manager to start the services
                     serviceManager.scheduleServices(jobGraph)
@@ -932,15 +932,15 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
 
         # Start any service jobs available from the service manager
         while True:
-            serviceJobTuple = serviceManager.getServiceJobsToStart(0)
+            serviceJob = serviceManager.getServiceJobsToStart(0)
             # Stop trying to get jobs when function returns None
-            if serviceJobTuple is None:
+            if serviceJob is None:
                 break
-            serviceJobStoreID, memory, cores, disk = serviceJobTuple
-            logger.debug('Launching service job: %s', serviceJobStoreID)
+            logger.debug('Launching service job: %s', serviceJob)
             # This loop issues the jobs to the batch system because the batch system is not
             # thread-safe. FIXME: don't understand this comment
-            jobBatcher.issueJob(serviceJobStoreID, memory, cores, disk, False)
+            # x = JobNode(jobStoreID=serviceJobStoreID, job=
+            jobBatcher.issueJob(serviceJob)
 
         # Get jobs whose services have started
         while True:

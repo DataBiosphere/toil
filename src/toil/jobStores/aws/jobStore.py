@@ -310,9 +310,7 @@ class AWSJobStore(AbstractJobStore):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = AWSJob(job=jobNode.job, name=jobNode.name, jobStoreID=jobStoreID, command=jobNode.command,
-                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     predecessorNumber=jobNode.predecessorNumber, **jobNode._requirements)
+        job = AWSJob.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(*job.toItem())

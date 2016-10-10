@@ -27,7 +27,7 @@ class JobGraph(JobNode):
     class and should therefore only be held in memory for brief periods of time.
     """
     def __init__( self, command, memory, cores, disk, name, job, preemptable,
-                  jobStoreID, remainingRetryCount, predecessorNumber,
+                  jobStoreID, remainingRetryCount, predecessorNumber, predecessorID,
                   filesToDelete=None, predecessorsFinished=None, 
                   stack=None, services=None, 
                   startJobStoreID=None, terminateJobStoreID=None,
@@ -38,7 +38,8 @@ class JobGraph(JobNode):
 
         super(JobGraph, self).__init__(command=command, memory=memory, cores=cores, disk=disk,
                                        name=name, preemptable=preemptable, jobStoreID=jobStoreID,
-                                       job=job, predecessorNumber=predecessorNumber)
+                                       job=job, predecessorNumber=predecessorNumber,
+                                       predecessorID=predecessorID)
 
         # The number of times the job should be retried if it fails This number is reduced by
         # retries until it is zero and then no further retries are made
@@ -94,8 +95,6 @@ class JobGraph(JobNode):
         # or maybe inner class for state
         d = super(JobGraph, cls)._filterArgDict(d)
         for key, value in dict(d).iteritems():
-            if key == 'predecessorID':
-                del d[key]
             if key == 'config':
                 del d[key]
             if key == 'batchSystemID':
@@ -124,6 +123,17 @@ class JobGraph(JobNode):
         Returns a context manager that yields a file handle to the log file
         """
         return jobStore.readFileStream( self.logJobStoreFileID )
+
+    @classmethod
+    def fromJobNode(cls, jobNode, jobStoreID, tryCount):
+        return cls(command=jobNode.command, memory=jobNode.memory,
+                   cores=jobNode.cores, disk=jobNode.disk,
+                   preemptable=jobNode.preemptable,
+                   jobStoreID=jobStoreID,
+                   remainingRetryCount=tryCount,
+                   predecessorNumber=jobNode.predecessorNumber,
+                   name=jobNode.name, job=jobNode.job, predecessorID=jobNode.predecessorID
+                   )
 
     def __eq__(self, other):
         return (

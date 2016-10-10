@@ -177,15 +177,14 @@ class JobNode(JobLikeObject):
     creates some unpleasant complexity.
     """
     def __init__(self, memory, cores, disk, preemptable, job, name, jobStoreID,
-                 command, predecessorID='', predecessorNumber=None):
+                 command, predecessorID, predecessorNumber=None):
         # check what predecessorID is used for
         assert predecessorID is not None or predecessorNumber is not None
-        assert not (predecessorNumber and predecessorID)
         super(JobNode, self).__init__(memory=memory, cores=cores, disk=disk,
                                       preemptable=preemptable, name=name, job=job)
         self.jobStoreID = jobStoreID
         self.predecessorID = None if predecessorNumber is not None and predecessorNumber<= 1 \
-            else predecessorID
+            else str(uuid.uuid4())
         self.predecessorNumber = predecessorNumber
         self.command = command
 
@@ -230,7 +229,8 @@ class JobNode(JobLikeObject):
                    command=jobGraph.command,
                    job=jobGraph.job,
                    name=jobGraph.name,
-                   predecessorNumber=jobGraph.predecessorNumber)
+                   predecessorNumber=jobGraph.predecessorNumber,
+                   predecessorID=jobGraph.predecessorID)
 
     @classmethod
     def fromJob(cls, job, command, predecessorNumber):
@@ -240,7 +240,8 @@ class JobNode(JobLikeObject):
                    command=command,
                    job=job.job,
                    name=job.name,
-                   predecessorNumber=predecessorNumber)
+                   predecessorNumber=predecessorNumber,
+                   predecessorID=str(uuid.uuid4()) if (predecessorNumber>1) else None)
 
 
 class Job(JobLikeObject):
@@ -1080,10 +1081,14 @@ class Job(JobLikeObject):
             assert jobStore.fileExists(serviceJobGraph.errorJobStoreID)
 
             # Create the service job tuple
-            j = (serviceJobGraph.jobStoreID, serviceJobGraph.memory,
-                 serviceJobGraph.cores, serviceJobGraph.disk,
-                 serviceJobGraph.startJobStoreID, serviceJobGraph.terminateJobStoreID,
-                 serviceJobGraph.errorJobStoreID)
+            j = ServiceJobProxy(jobStoreID=serviceJobGraph.jobStoreID,
+                                memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
+                                disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
+                                terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
+                                errorJobStoreID=serviceJobGraph.errorJobStoreID,
+                                job=serviceJobGraph.job, name=serviceJobGraph.name,
+                                command=serviceJobGraph.command, predecessorID=serviceJobGraph.predecessorID,
+                                predecessorNumber=serviceJobGraph.predecessorNumber)
 
             # Add the service job tuple to the list of services to run
             jobGraph.services[depth].append(j)
@@ -1462,6 +1467,18 @@ class EncapsulatedJob(Job):
 
     def rv(self, *path):
         return self.encapsulatedJob.rv(*path)
+
+
+class ServiceJobProxy(JobNode):
+    def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
+                 errorJobStoreID, name, job, command, predecessorID, predecessorNumber):
+        super(ServiceJobProxy, self).__init__(name=name, job=job, memory=memory, cores=cores,
+                                              disk=disk, preemptable=False, jobStoreID=jobStoreID,
+                                              command=command, predecessorID=predecessorID,
+                                              predecessorNumber=predecessorNumber)
+        self.startJobStoreID = startJobStoreID
+        self.terminateJobStoreID = terminateJobStoreID
+        self.errorJobStoreID = errorJobStoreID
 
 
 class ServiceJob(Job):
