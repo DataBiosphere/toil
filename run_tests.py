@@ -29,7 +29,8 @@ test_suites = {
         None],
     'integration-test': [
         'CGCloudRNASeqTest',
-        'CGCloudRestartTest'
+        'CGCloudRestartTest',
+        'PremptableDeficitCompensationTest'
     ]}
 
 

@@ -186,7 +186,8 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, "Run 'make sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, \
+            "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
 
     @classmethod
@@ -198,8 +199,9 @@ class ToilTest(unittest.TestCase):
 
         :param str args: Any arguments to be passed to the command.
 
-        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True to
-                           have the process' stdout returned.
+        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True
+               to have the process' stdout returned. Pass input='some string' to feed input to the
+               process' stdin.
 
         :rtype: None|str
 

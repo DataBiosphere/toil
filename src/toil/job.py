@@ -1199,41 +1199,59 @@ class JobGraphDeadlockException( JobException ):
 
 class FunctionWrappingJob(Job):
     """
-    Job used to wrap a function. In its run method the wrapped function is called.
+    Job used to wrap a function. In its `run` method the wrapped function is called.
     """
     def __init__(self, userFunction, *args, **kwargs):
         """
-        :param userFunction: The function to wrap. The userFunction will be called \
-        with the ``*args`` and ``**kwargs`` as arguments.
+        :param callable userFunction: The function to wrap. It will be called with ``*args`` and
+               ``**kwargs`` as arguments.
 
-        The keywords "memory", "cores", "disk", "cache" are reserved keyword arguments \
-        that if specified will be used to determine the resources for the job, \
-        as :func:`toil.job.Job.__init__`. If they are keyword arguments to the function
-        they will be extracted from the function definition, but may be overridden by
-        the user (as you would expect).
+        The keywords ``memory``, ``cores``, ``disk``, ``preemptable`` and ``checkpoint`` are
+        reserved keyword arguments that if specified will be used to determine the resources
+        required for the job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
+        the function they will be extracted from the function definition, but may be overridden
+        by the user (as you would expect).
         """
-        # Use the user specified resource argument, if specified, else
-        # grab the default argument from the function, if specified, else default to None
+        # Use the user-specified requirements, if specified, else grab the default argument
+        # from the function, if specified, else default to None
         argSpec = inspect.getargspec(userFunction)
-        argDict = dict(zip(argSpec.args[-len(argSpec.defaults):],argSpec.defaults)) \
-                        if argSpec.defaults != None else {}
-        argFn = lambda x : kwargs.pop(x) if x in kwargs else \
-                            (human2bytes(str(argDict[x])) if x in argDict.keys() else None)
-        Job.__init__(self, memory=argFn("memory"), cores=argFn("cores"),
-                     disk=argFn("disk"), preemptable=argFn("preemptable"),
-                     checkpoint=kwargs.pop("checkpoint") if "checkpoint" in kwargs else False)
-        #If dill is installed pickle the user function directly
-        #TODO: Add dill support
-        #else use indirect method
+        if argSpec.defaults is None:
+            argDict = {}
+        else:
+            argDict = dict(zip(argSpec.args[-len(argSpec.defaults):], argSpec.defaults))
+
+        def resolve(key, default=None, dehumanize=False):
+            try:
+                # First, try constructor arguments, ...
+                value = kwargs.pop(key)
+            except KeyError:
+                try:
+                    # ..., then try default value for function keyword arguments, ...
+                    value = argDict[key]
+                except KeyError:
+                    # ... and finally fall back to a default value.
+                    value = default
+            # Optionally, convert strings with metric or binary prefixes.
+            if dehumanize and isinstance(value, basestring):
+                value = human2bytes(value)
+            return value
+
+        Job.__init__(self,
+                     memory=resolve('memory', dehumanize=True),
+                     cores=resolve('cores', dehumanize=True),
+                     disk=resolve('disk', dehumanize=True),
+                     preemptable=resolve('preemptable'),
+                     checkpoint=resolve('checkpoint', default=False))
+
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self._args=args
-        self._kwargs=kwargs
+        self._args = args
+        self._kwargs = kwargs
 
     def _getUserFunction(self):
         logger.debug('Loading user function %s from module %s.',
                      self.userFunctionName,
-                     self.userFunctionModule) 
+                     self.userFunctionModule)
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 

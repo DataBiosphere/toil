@@ -86,15 +86,6 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     else:
         debugEggPath = '/Applications/PyCharm 2016.1.app/Contents/debug-eggs/pycharm-debug.egg'
 
-    # A pip-installable release of toil-scripts or a URL pointing to a source distribution.
-    # Typically you would specify a GitHub archive URL of a specific branch, tag or commit. The
-    # first path component of each tarball entry will be stripped.
-    #
-    if True:
-        toilScripts = '2.1.0a1.dev455'
-    else:
-        toilScripts = 'https://api.github.com/repos/BD2KGenomics/toil-scripts/tarball/master'
-
     # The instance types to use for leader and workers
     #
     instanceType = 'm3.large'
@@ -102,7 +93,11 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
 
     # The spot bid to use for preemptable instances. A safe bet is the on-demand price for the
     # selected instance type.
-    spotBid = '0.133'
+    safeSpotBid = '0.133'
+
+    # The spot market should never fulfill a spot bid of one hundredth of one cent for m3.large
+    # (the average bid price is ~$0.02).
+    unfullfillableSpotBid = "0.001"
 
     @classmethod
     def setUpClass(cls):
@@ -116,7 +111,9 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         binPath = os.path.join(path, 'bin')
         cls.oldPath = os.environ['PATH']
         os.environ['PATH'] = os.pathsep.join(concat(binPath, cls.oldPath.split(os.pathsep)))
-        cls._run('pip', 'install', 'cgcloud-toil==' + cgcloudVersion)
+        # Suppress pip's cache to avoid concurrency issues. Keep in mind that the concrete
+        # subclasses may be run concurrently. See run_tests.sh.
+        cls._run('pip', 'install', '--no-cache', 'cgcloud-toil==' + cgcloudVersion)
         if cls.createImage:
             cls._cgcloud('create', '-IT',
                          '--option', 'toil_sdists=%s[aws,mesos]' % cls.sdistPath,
@@ -138,8 +135,8 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             os.environ['CGCLOUD_PLUGINS'] = self.saved_cgcloud_plugins
         super(AbstractCGCloudProvisionerTest, self).tearDown()
 
-    def _test(self, autoScaled=False, spotInstances=False):
-        self.assertTrue(not spotInstances or autoScaled,
+    def _test(self, autoScaled=False, spotBid=None, preemptableCompensation=None):
+        self.assertTrue(spotBid is None or autoScaled,
                         'This test does not support a static cluster of spot instances.')
         if self.createCluster:
             self._cgcloud('create-cluster',
@@ -170,13 +167,16 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                                     '--nodeType=' + self.instanceType,
                                     '--maxNodes=%s' % self.numWorkers,
                                     '--logDebug'])
-            if spotInstances:
+            if spotBid is not None:
                 toilOptions.extend([
-                    '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),
+                    '--preemptableNodeType=%s:%s' % (self.instanceType, spotBid),
                     # The RNASeq pipeline does not specify a preemptability requirement so we
                     # need to specify a default, otherwise jobs would never get scheduled.
                     '--defaultPreemptable',
                     '--maxPreemptableNodes=%s' % self.numWorkers])
+
+            if preemptableCompensation:
+                toilOptions.extend(['--preemptableCompensation', preemptableCompensation])
 
             self._runScript(toilOptions)
 
@@ -194,10 +194,11 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @abstractmethod
     def _runScript(self, toilOptions):
         """
-        Modify the provided Toil options to suit the test Toil script, then run the script with those arguments.
+        Modify the provided Toil options to suit the test Toil script, then run the script with
+        those arguments.
 
-        :param toilOptions: List of Toil command line arguments. This list may need to be modified to suit
-            the test script's requirements.
+        :param toilOptions: List of Toil command line arguments. This list may need to be
+               modified to suit the test script's requirements.
         """
         raise NotImplementedError()
 
@@ -216,9 +217,11 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
             admin = False
         else:
             del kwargs['admin']
-
-        cls._cgcloud(
-            *filter(None, concat('ssh', '-a' if admin else None, role, cls.sshOptions, args)), **kwargs)
+        cls._cgcloud(*filter(None, concat('ssh',
+                                          '-a' if admin else None,
+                                          role,
+                                          cls.sshOptions,
+                                          args)), **kwargs)
 
     @classmethod
     def _rsync(cls, role, *args):
@@ -230,6 +233,18 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
 
 
 class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
+    """
+    Test the CGCloud autoscaler.
+    """
+    # A pip-installable release of toil-scripts or a URL pointing to a source distribution.
+    # Typically you would specify a GitHub archive URL of a specific branch, tag or commit. The
+    # first path component of each tarball entry will be stripped.
+    #
+    if True:
+        toilScripts = '2.1.0a1.dev455'
+    else:
+        toilScripts = 'https://api.github.com/repos/BD2KGenomics/toil-scripts/tarball/master'
+
     def __init__(self, name):
         super(CGCloudRNASeqTest, self).__init__(name)
         # The number of samples to run the test workflow on
@@ -267,41 +282,41 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
 
     @integrative
     def testAutoScaledSpotCluster(self):
-        self._test(autoScaled=True, spotInstances=True)
-
-
-def restartScript():
-    from toil.job import Job
-    import argparse
-    import os
-
-    def f0(job):
-        if 'FAIL' in os.environ:
-            raise RuntimeError('failed on purpose')
-
-    if __name__ == '__main__':
-        parser = argparse.ArgumentParser()
-        Job.Runner.addToilOptions(parser)
-        options = parser.parse_args()
-        i = Job.Runner.startToil(Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M'),
-                                 options)
+        self._test(autoScaled=True, spotBid=self.safeSpotBid)
 
 
 class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
     """
     This test insures autoscaling works on a restarted Toil run
     """
+
     def setUp(self):
         super(CGCloudRestartTest, self).setUp()
         # CGCloud provisioner requires that the node has at least 1 ephemeral drive so this is the
         # smallest instance we can use
         self.instanceType = 'm3.medium'
         self.leaderInstanceType = 'm3.medium'
+        self.scriptName = "restartScript.py"
 
     def _getScript(self):
-        self.scriptName= "restartScript.py"
-        self._leader('tee', self.scriptName, input=dedent('\n'.join(getsource(restartScript).split('\n')[1:])),
-)
+        def restartScript():
+            from toil.job import Job
+            import argparse
+            import os
+
+            def f0(job):
+                if 'FAIL' in os.environ:
+                    raise RuntimeError('failed on purpose')
+
+            if __name__ == '__main__':
+                parser = argparse.ArgumentParser()
+                Job.Runner.addToilOptions(parser)
+                options = parser.parse_args()
+                rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')
+                Job.Runner.startToil(rootJob, options)
+
+        script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
+        self._leader('tee', self.scriptName, input=script)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
@@ -319,3 +334,39 @@ class CGCloudRestartTest(AbstractCGCloudProvisionerTest):
     @integrative
     def testAutoScaledCluster(self):
         self._test(autoScaled=True)
+
+
+class PremptableDeficitCompensationTest(AbstractCGCloudProvisionerTest):
+    def test(self):
+        self._test(autoScaled=True, spotBid=self.unfullfillableSpotBid)
+
+    def _getScript(self):
+        def userScript():
+            from toil.job import Job
+            from toil.common import Toil
+
+            # Because this is the only job in the pipeline and because it is preemptable,
+            # there will be no non-preemptable jobs. The non-preemptable scaler will therefore
+            # not request any nodes initially. And since we made it impossible for the
+            # preemptable scaler to allocate any nodes (using an abnormally low spot bid),
+            # we will observe a deficit of preemptable nodes that the non-preemptable scaler will
+            # compensate for by spinning up non-preemptable nodes instead.
+            #
+            def job(job, disk='10M', cores=1, memory='10M', preemptable=True):
+                pass
+
+            if __name__ == '__main__':
+                options = Job.Runner.getDefaultArgumentParser().parse_args()
+                with Toil(options) as toil:
+                    if toil.config.restart:
+                        toil.restart()
+                    else:
+                        toil.start(Job.wrapJobFn(job))
+
+        script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
+        self._leader('tee userScript.py', input=script)
+
+    def _runScript(self, toilOptions):
+        toilOptions.extend([
+            '--preemptableCompensation=1.0', self.jobStore])
+        self._leader('python', 'userScript.py', *toilOptions)
