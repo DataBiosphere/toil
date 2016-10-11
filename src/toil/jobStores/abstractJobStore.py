@@ -100,9 +100,12 @@ class JobStoreExistsException(Exception):
             "the job store with 'toil clean' to start the workflow from scratch" % locator)
 
 
-class JobStoreBucketExistsException(Exception):
-    def __init__(self, message):
-        super(JobStoreBucketExistsException, self).__init__(message)
+class BucketLocationConflictException(Exception):
+    def __init__(self, bucketRegion):
+        message = ('A bucket with the same name as the jobstore was found in another region (%s). '
+                   'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)
+        super(BucketLocationConflictException, self).__init__(message)
+
 
 class AbstractJobStore(object):
     """ 
