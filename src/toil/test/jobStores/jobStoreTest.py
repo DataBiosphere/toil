@@ -36,10 +36,11 @@ from bd2k.util.exceptions import panic
 # (installed by `make prepare`)
 from mock import patch
 
-from toil.common import Config
+from toil.common import Config, Toil
+from toil.job import Job
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
-                                             NoSuchFileException)
+                                             NoSuchFileException, JobStoreBucketExistsException)
 from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
@@ -838,6 +839,49 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import AWSJobStore
         assert isinstance(self.master, AWSJobStore)  # type hinting
         self.master.filesBucket.delete()
+
+    def testSDBDomainsDeletedOnFailedJobstoreBucketCreation(self):
+        """
+        This test ensures that SDB domains bound to a jobstore are deleted if the jobstore bucket
+        failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
+        different region with the same name.
+
+        :returns: None
+        """
+        from boto.sdb import connect_to_region
+        from boto.s3.connection import Location, S3Connection
+        aws_west_regions = {'us-west-1': Location.USWest,
+                            'us-west-2': Location.USWest2}
+        externalAWSRegion = [R for r, R in aws_west_regions.items() if r != self.awsRegion()][0]
+
+        testJobStoreUUID = str(uuid.uuid4())
+        # Create the nucket at the external region
+        s3 = S3Connection()
+        bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
+                                  location=externalAWSRegion)
+        options = Job.Runner.getDefaultOptions('aws:' + self.awsRegion() + ':domain-test-' +
+                                               testJobStoreUUID)
+        try:
+            with Toil(options) as toil:
+                pass
+        except JobStoreBucketExistsException:
+            # Catch the expected JobStoreBucketExistsException and ensure that the bound domains
+            # don't exist in SDB
+            sdb = connect_to_region(self.awsRegion())
+            next_token = None
+            allDomainNames = []
+            while True:
+                domains = sdb.get_all_domains(max_domains=100, next_token=next_token)
+                allDomainNames.extend([x.name for x in domains])
+                next_token = domains.next_token
+                if next_token is None:
+                    break
+            # Will the user ever have 0 domains?
+            self.assertTrue(allDomainNames)
+            self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])
+        finally:
+            s3.delete_bucket(bucket=bucket)
+
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
