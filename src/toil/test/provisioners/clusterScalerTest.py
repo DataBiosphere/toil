@@ -21,6 +21,7 @@ import random
 
 from bd2k.util.objects import InnerClass
 
+from toil.job import JobNode
 from toil.test import ToilTest
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
@@ -28,7 +29,6 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
-from toil.leader import IssuedJob
 
 
 logger = logging.getLogger(__name__)
@@ -92,10 +92,11 @@ class ClusterScalerTest(ToilTest):
                 # Add a 1000 random jobs
                 for i in xrange(1000):
                     x = mock.getNodeShape(preemptable)
-                    iJ = IssuedJob(1, memory=random.choice(range(1, x.memory)),
+                    iJ = JobNode(jobStoreID=1, memory=random.choice(range(1, x.memory)),
                                    cores=random.choice(range(1, x.cores)),
                                    disk=random.choice(range(1, x.disk)),
-                                   preemptable=preemptable)
+                                   preemptable=preemptable, command=None,
+                                 job='testClusterScaling', name='')
                     clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
 
         logger.info("Waiting for jobs to be processed")

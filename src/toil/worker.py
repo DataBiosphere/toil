@@ -376,7 +376,7 @@ def main():
             if successorIssueableJob.disk > jobGraph.disk:
                 logger.debug("We need more disk for the next job, so finishing")
                 break
-            if successorIssueableJob.predecessorID is not None:
+            if successorIssueableJob.predecessorNumber > 1:
                 logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
                 break
 

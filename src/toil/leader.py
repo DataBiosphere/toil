@@ -887,11 +887,11 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
                         toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
                         #Case that the jobGraph has multiple predecessors
-                        if jobNode.predecessorID is not None:
+                        if jobNode.predecessorNumber > 1:
                             #Load the wrapped jobGraph
                             job2 = jobStore.load(successorJobStoreID)
                             #Remove the predecessor from the list of predecessors
-                            job2.predecessorsFinished.add(jobNode.predecessorID)
+                            job2.predecessorsFinished.add(jobGraph.jobStoreID)
                             #Checkpoint
                             jobStore.update(job2)
                             #If the jobs predecessors have all not all completed then

@@ -173,18 +173,13 @@ class JobLikeObject(ResourceRequirementMixin):
 
 class JobNode(JobLikeObject):
     """
-    This object bridges the job graph, job, and batchsystem classes. This polymorphism
-    creates some unpleasant complexity.
+    This object bridges the job graph, job, and batchsystem classes
     """
     def __init__(self, memory, cores, disk, preemptable, job, name, jobStoreID,
-                 command, predecessorID, predecessorNumber=None):
-        # check what predecessorID is used for
-        assert predecessorID is not None or predecessorNumber is not None
+                 command, predecessorNumber=1):
         super(JobNode, self).__init__(memory=memory, cores=cores, disk=disk,
                                       preemptable=preemptable, name=name, job=job)
         self.jobStoreID = jobStoreID
-        self.predecessorID = None if predecessorNumber is not None and predecessorNumber<= 1 \
-            else str(uuid.uuid4())
         self.predecessorNumber = predecessorNumber
         self.command = command
 
@@ -229,8 +224,7 @@ class JobNode(JobLikeObject):
                    command=jobGraph.command,
                    job=jobGraph.job,
                    name=jobGraph.name,
-                   predecessorNumber=jobGraph.predecessorNumber,
-                   predecessorID=jobGraph.predecessorID)
+                   predecessorNumber=jobGraph.predecessorNumber)
 
     @classmethod
     def fromJob(cls, job, command, predecessorNumber):
@@ -240,8 +234,7 @@ class JobNode(JobLikeObject):
                    command=command,
                    job=job.job,
                    name=job.name,
-                   predecessorNumber=predecessorNumber,
-                   predecessorID=str(uuid.uuid4()) if (predecessorNumber>1) else None)
+                   predecessorNumber=predecessorNumber)
 
 
 class Job(JobLikeObject):
@@ -1003,7 +996,7 @@ class Job(JobLikeObject):
         else:
             jobGraph = jobsToJobGraphs[self]
         #The return is a tuple stored within a job.stack
-        #The tuple is jobStoreID, memory, cores, disk, predecessorID
+        #The tuple is jobStoreID, memory, cores, disk,
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor
@@ -1087,7 +1080,7 @@ class Job(JobLikeObject):
                                 terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
                                 errorJobStoreID=serviceJobGraph.errorJobStoreID,
                                 job=serviceJobGraph.job, name=serviceJobGraph.name,
-                                command=serviceJobGraph.command, predecessorID=serviceJobGraph.predecessorID,
+                                command=serviceJobGraph.command,
                                 predecessorNumber=serviceJobGraph.predecessorNumber)
 
             # Add the service job tuple to the list of services to run
@@ -1471,10 +1464,10 @@ class EncapsulatedJob(Job):
 
 class ServiceJobProxy(JobNode):
     def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
-                 errorJobStoreID, name, job, command, predecessorID, predecessorNumber):
+                 errorJobStoreID, name, job, command, predecessorNumber):
         super(ServiceJobProxy, self).__init__(name=name, job=job, memory=memory, cores=cores,
                                               disk=disk, preemptable=False, jobStoreID=jobStoreID,
-                                              command=command, predecessorID=predecessorID,
+                                              command=command,
                                               predecessorNumber=predecessorNumber)
         self.startJobStoreID = startJobStoreID
         self.terminateJobStoreID = terminateJobStoreID

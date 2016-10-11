@@ -128,7 +128,7 @@ class AbstractJobStoreTest:
             # Create parent job and verify its existence/properties
             #
             jobNodeOnMaster = JobNode(command='master1', memory=12, cores=34, disk=35, preemptable=True,
-                                      job='test1', name='onMaster', jobStoreID=None)
+                                      job='test1', name='onMaster', jobStoreID=None, predecessorNumber=0)
             jobOnMaster = master.create(jobNodeOnMaster)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
@@ -189,7 +189,7 @@ class AbstractJobStoreTest:
 
             # Test changing and persisting job state across multiple jobs
             #
-            childJobs = [worker.load(childCommand[0]) for childCommand in jobOnMaster.stack[-1]]
+            childJobs = [worker.load(childNode.jobStoreID) for childNode in jobOnMaster.stack[-1]]
             for childJob in childJobs:
                 childJob.logJobStoreFileID = str(uuid.uuid4())
                 childJob.remainingRetryCount = 66

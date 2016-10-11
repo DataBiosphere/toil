@@ -466,11 +466,10 @@ class AbstractJobStore(object):
                 return
             reachableFromRoot.add(jobGraph.jobStoreID)
             # Traverse jobs in stack
-            for jobs in jobGraph.stack:
-                for successorJobStoreID in map(lambda x: x.jobStoreID, jobs):
-                    if (successorJobStoreID not in reachableFromRoot
-                        and haveJob(successorJobStoreID)):
-                        getConnectedJobs(getJob(successorJobStoreID))
+            for job in jobGraph.stack:
+                if (job.jobStoreID not in reachableFromRoot
+                    and haveJob(job.jobStoreID)):
+                    getConnectedJobs(getJob(job.jobStoreID))
             # Traverse service jobs
             for jobs in jobGraph.services:
                 for serviceJobStoreID in map(lambda x: x.jobStoreID, jobs):

@@ -27,7 +27,7 @@ class JobGraph(JobNode):
     class and should therefore only be held in memory for brief periods of time.
     """
     def __init__( self, command, memory, cores, disk, name, job, preemptable,
-                  jobStoreID, remainingRetryCount, predecessorNumber, predecessorID,
+                  jobStoreID, remainingRetryCount, predecessorNumber,
                   filesToDelete=None, predecessorsFinished=None, 
                   stack=None, services=None, 
                   startJobStoreID=None, terminateJobStoreID=None,
@@ -38,8 +38,7 @@ class JobGraph(JobNode):
 
         super(JobGraph, self).__init__(command=command, memory=memory, cores=cores, disk=disk,
                                        name=name, preemptable=preemptable, jobStoreID=jobStoreID,
-                                       job=job, predecessorNumber=predecessorNumber,
-                                       predecessorID=predecessorID)
+                                       job=job, predecessorNumber=predecessorNumber)
 
         # The number of times the job should be retried if it fails This number is reduced by
         # retries until it is zero and then no further retries are made
@@ -132,8 +131,7 @@ class JobGraph(JobNode):
                    jobStoreID=jobStoreID,
                    remainingRetryCount=tryCount,
                    predecessorNumber=jobNode.predecessorNumber,
-                   name=jobNode.name, job=jobNode.job, predecessorID=jobNode.predecessorID
-                   )
+                   name=jobNode.name, job=jobNode.job)
 
     def __eq__(self, other):
         return (
