@@ -100,6 +100,10 @@ class JobStoreExistsException(Exception):
             "the job store with 'toil clean' to start the workflow from scratch" % locator)
 
 
+class JobStoreBucketExistsException(Exception):
+    def __init__(self, message):
+        super(JobStoreBucketExistsException, self).__init__(message)
+
 class AbstractJobStore(object):
     """ 
     Represents the physical storage for the jobs and files in a Toil workflow.

@@ -48,6 +48,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException,
                                              NoSuchJobStoreException,
+                                             JobStoreBucketExistsException,
                                              JobStoreExistsException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
@@ -681,6 +682,21 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             return None
+                    elif e.status == 301:
+                        # This is raised if the user attempts to get a bucket in a region outside
+                        # the specified one, if the specified one is not `us-east-1`.  The us-east-1
+                        # server allows a user to use buckets from any region.
+                        if self.region == 'us-east-1':
+                            message = ('Region is us-east-1 but 301 error was raised when '
+                                       'attempting to create the bucket. 301 Errors are usually '
+                                       'raised when a non-us-east-1 connection attempts to get a '
+                                       'bucket from another region. Cannot proceed further.')
+                        else:
+                            b = self.s3.get_bucket(bucket_name, validate=False)
+                            message = ('A bucket with the same name as the jobstore was found in '
+                                       'another region (%s). Cannot proceed further as the unique '
+                                       'jobstore name is already claimed.' % b.get_location())
+                        raise JobStoreBucketExistsException(message)
                     else:
                         raise
                 else:
