@@ -51,8 +51,9 @@ class JobGraphTest(ToilTest):
         remainingRetryCount = 5
         predecessorNumber = 0
         
-        j = JobGraph(command, memory, cores, disk, preemptable, jobStoreID,
-                     remainingRetryCount, predecessorNumber)
+        j = JobGraph(command=command, memory=memory, cores=cores, disk=disk, preemptable=preemptable,
+                     jobStoreID=jobStoreID, remainingRetryCount=remainingRetryCount,
+                     predecessorNumber=predecessorNumber, job='testJobGraph', name='noName')
         
         #Check attributes
         #
@@ -69,8 +70,10 @@ class JobGraphTest(ToilTest):
         self.assertEquals(j.logJobStoreFileID, None)
         
         #Check equals function
-        j2 = JobGraph(command, memory, cores, disk, preemptable, jobStoreID,
-                      remainingRetryCount, predecessorNumber)
+        j2 = JobGraph(command=command, memory=memory, cores=cores, disk=disk,
+                      preemptable=preemptable,
+                      jobStoreID=jobStoreID, remainingRetryCount=remainingRetryCount,
+                      predecessorNumber=predecessorNumber, job='testJobGraph', name='noName')
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}

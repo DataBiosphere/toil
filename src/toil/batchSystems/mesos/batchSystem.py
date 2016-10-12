@@ -101,9 +101,6 @@ class MesosBatchSystem(BatchSystemSupport,
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}
 
-        # Dict of jobIDs to jobNode objects
-        self.issuedJobNodes = {}
-
         # Queue of jobs whose status has been updated, according to Mesos
         self.updatedJobsQueue = Queue()
 
@@ -151,7 +148,6 @@ class MesosBatchSystem(BatchSystemSupport,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
                       workerCleanupInfo=self.workerCleanupInfo)
-        self.issuedJobNodes[jobID] = jobNode
         jobType = job.resources
         log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
         self.jobQueues[jobType].append(job)
@@ -202,15 +198,15 @@ class MesosBatchSystem(BatchSystemSupport,
                 item = self.updatedJobsQueue.get(timeout=maxWait)
             except Empty:
                 return None
-            jobNode, jobId, exitValue, wallTime = item
+            jobId, exitValue, wallTime = item
             try:
                 self.intendedKill.remove(jobId)
             except KeyError:
-                log.debug('Job %s ended with status %i, took %s seconds.', jobNode, exitValue,
+                log.debug('Job %s ended with status %i, took %s seconds.', jobId, exitValue,
                           '???' if wallTime is None else str(wallTime))
-                return jobNode, exitValue, wallTime
+                return item
             else:
-                log.debug('Job %s ended naturally before it could be killed.', jobNode)
+                log.debug('Job %s ended naturally before it could be killed.', jobId)
 
     def getWaitDuration(self):
         """
@@ -499,8 +495,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 pass
             else:
                 self.killedJobIds.add(jobID)
-            jobNode = self.issuedJobNodes.pop(jobID)
-            self.updatedJobsQueue.put((jobNode, jobID, _exitStatus, wallTime))
+            self.updatedJobsQueue.put((jobID, _exitStatus, wallTime))
             try:
                 del self.runningJobMap[jobID]
             except KeyError:

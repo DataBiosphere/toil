@@ -14,6 +14,8 @@
 from __future__ import absolute_import
 import os
 import random
+import unittest
+
 from toil.lib.bioio import getTempFile
 from toil.job import Job
 from toil.test import ToilTest

@@ -631,7 +631,7 @@ class AbstractJobStoreTest:
             # Create a bunch of child jobs
             for i in range(100):
                 child = master.create(self.arbitraryJob)
-                rootJob.stack.append(child)
+                rootJob.stack.append([child])
             master.update(rootJob)
 
             # See how long it takes to clean with no cache

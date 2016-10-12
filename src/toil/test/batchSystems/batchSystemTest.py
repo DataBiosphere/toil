@@ -53,7 +53,7 @@ numCores = 2
 
 preemptable = False
 
-defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
+defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
 
 
 class hidden:
@@ -133,18 +133,17 @@ class hidden:
             # Issue a job and then allow it to finish by itself, causing it to be added to the
             # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
-            job3Name = 'test3'
             jobNode3 = JobNode(command="touch %s" % testPath, job='test3', name=None,
                                jobStoreID=None, **defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
-            updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
-            # fail with updatedJobNode being equal to job1 or job2.
+            # fail with jobID being equal to job1 or job2.
             self.assertEqual(exitStatus, 0)
-            self.assertEqual(updatedJobNode.job, job3Name)
+            self.assertEqual(jobID, job3)
             if self.supportsWallTime():
                 self.assertTrue(wallTime > 0)
             else:
@@ -172,17 +171,17 @@ class hidden:
                 jobNode4 = JobNode(command=command, job='test4', name=None,
                                    jobStoreID=None, **defaultRequirements)
                 job4 = self.batchSystem.issueBatchJob(jobNode4)
-                updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
-                self.assertEqual(updatedJobNode.job, 'test4')
+                self.assertEqual(jobID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 jobNode5 = JobNode(command=command, job='test5', name=None,
                                    jobStoreID=None, **defaultRequirements)
                 job5 = self.batchSystem.issueBatchJob(jobNode5)
-                updatedJobNode, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
-                self.assertEqual(updatedJobNode, 'test5')
+                self.assertEqual(jobID, job5)
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
@@ -403,11 +402,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(command=self.scriptCommand(),
-                                                            cores=float(coresPerJob),
-                                                            memory=1,
-                                                            disk=1,
-                                                            preemptable=preemptable))
+                                jobIds.add(bs.issueBatchJob(JobNode(command=self.scriptCommand(),
+                                                                    cores=float(coresPerJob),
+                                                                    memory=1, disk=1,
+                                                                    preemptable=preemptable,
+                                                                    job=str(i), name='', jobStoreID=str(i))))
                             self.assertEquals(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
