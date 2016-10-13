@@ -248,7 +248,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                     pass
                 else:
                     raise
-            ctx.iam.delete_instance_profile(profile_name)
+            try:
+                ctx.iam.delete_instance_profile(profile_name)
+            except BotoServerError as e:
+                if e.status == 404:
+                    pass
+                else:
+                    raise
 
     def _addNodes(self, instancesToLaunch, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
