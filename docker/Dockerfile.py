@@ -34,6 +34,12 @@ print textwrap.dedent('''
 
     RUN ln -s /home/s3am/bin/s3am /usr/local/bin/
 
+    RUN sudo apt-get -y remove docker-engine
+
+    RUN wget -O /usr/bin/docker https://get.docker.com/builds/Linux/x86_64/docker-1.10.3
+
+    RUN chmod +x /usr/bin/docker
+    
     # Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
 
