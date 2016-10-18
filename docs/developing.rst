@@ -335,7 +335,7 @@ For example::
 
     from toil.job import Job
     
-    def binaryStringFn(job, message="", depth):
+    def binaryStringFn(job, message="", depth=0):
         if depth > 0:
             job.addChildJobFn(binaryStringFn, message + "0", depth-1)
             job.addChildJobFn(binaryStringFn, message + "1", depth-1)
