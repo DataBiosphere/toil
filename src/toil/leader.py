@@ -905,9 +905,9 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
 
                 elif jobWrapper.jobStoreID in toilState.servicesIssued:
                     logger.debug("Telling job: %s to terminate its due to the successful completion of its successor jobs",
-                                jobWrapper.jobStoreID)
+                                 jobWrapper.jobStoreID)
                     serviceManager.killServices(toilState.servicesIssued[jobWrapper.jobStoreID],
-                                                    error=False)
+                                                error=False)
 
                 #There are no remaining tasks to schedule within the jobWrapper, but
                 #we schedule it anyway to allow it to be deleted.
@@ -997,9 +997,12 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     #in a minute, providing things are quiet
                 logger.info("Rescued any (long) missing jobs")
 
-        # Check on the associated processes and exit if a failure is detected
+        # Check on the associated threads and exit if a failure is detected
         statsAndLogging.check()
         serviceManager.check()
+        # the cluster scaler object will only be instantiated if autoscaling is enabled
+        if jobBatcher.clusterScaler is not None:
+            jobBatcher.clusterScaler.check()
 
     logger.info("Finished the main loop")
 
