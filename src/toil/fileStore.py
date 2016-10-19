@@ -892,10 +892,10 @@ class FileStore(object):
                 #                  (self.decodedFileID(cachedFile), cachedFileSize))
                 logger.debug('CACHE: Evicted  file with ID \'%s\' (%s bytes)' %
                              (self.decodedFileID(cachedFile), cachedFileSize))
-            assert cacheInfo.isBalanced(), 'Unable to free up enough space for caching.'
+            if not cacheInfo.isBalanced():
+                raise CacheUnbalancedError()
             logger.debug('CACHE: After Evictions, ended up with %s.' %
                          (cacheInfo.cached + cacheInfo.sigmaJob))
-            logger.debug('CACHE: Unable to free up enough space for caching.')
 
     def removeSingleCachedFile(self, fileStoreID):
         '''
@@ -1591,6 +1591,15 @@ class CacheError(Exception):
 
     def __init__(self, message):
         super(CacheError, self).__init__(message)
+
+
+class CacheUnbalancedError(CacheError):
+    """
+    Raised if file store can't free enough space for caching
+    """
+    message = 'Unable unable to free enough space for caching'
+    def __init__(self):
+        super(CacheUnbalancedError, self).__init__(self.message)
 
 
 class IllegalDeletionCacheError(CacheError):
