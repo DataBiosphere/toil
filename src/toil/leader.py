@@ -356,7 +356,7 @@ class JobBatcher:
         Processes a totally failed job.
         """
         # Mark job as a totally failed job
-        self.toilState.totalFailedJobs.add(jobGraph.jobStoreID)
+        self.toilState.totalFailedJobs.add(JobNode.fromJobGraph(jobGraph))
 
         if jobGraph.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
             # a service job
@@ -521,10 +521,10 @@ class FailedJobsException( Exception ):
         msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
             msg += ": %s" % ", ".join(failedJobs)
-            for failedID in failedJobs:
-                job = jobStore.load(failedID)
+            for jobNode in failedJobs:
+                job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    msg += "\n=========> Failed job %s\n" % failedID
+                    msg += "\n=========> Failed job %s %s\n" % jobNode, jobNode.jobStoreID
                     with job.getLogFileHandle(jobStore) as fH:
                         msg += fH.read()
                     msg += "<=========\n"
@@ -743,7 +743,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobGraph, jobCache=
         serviceManager.shutdown()
 
     # Filter the failed jobs
-    toilState.totalFailedJobs = set(filter(jobStore.exists, toilState.totalFailedJobs))
+    toilState.totalFailedJobs = {jobNode for jobNode in toilState.totalFailedJobs if jobStore.exists(jobNode.jobStoreID)}
 
     logger.info("Finished toil run %s" %
                  ("successfully" if len(toilState.totalFailedJobs) == 0 else ("with %s failed jobs" % len(toilState.totalFailedJobs))))
