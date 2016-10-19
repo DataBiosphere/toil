@@ -130,6 +130,6 @@ disk-based storage systems as compared to the SSD systems we tested this on.
     shows the corresponding stage of the pipeline that is being processed. Since jobs requesting the
     same file shared the same inode, the effective load on the disk is considerably lower than in
     the uncached case where every job downloads a personal copy of every file it needs. We see that
-    in all cases, the uncached run uses almost 300-400GB more that the uncached run in the resource
+    in all cases, the uncached run uses almost 300-400GB more that the cached run in the resource
     heavy mutation calling step. We also see a benefit in terms of wall time for each stage since we
     eliminate the time taken for file transfers.
