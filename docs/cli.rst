@@ -34,6 +34,13 @@ The ``--stats`` argument records statistics about the Toil workflow in the job s
 the entrypoint ``toil stats <jobStore>`` can be used to return statistics about cpu, memory, job duration, and more.
 The job store will never be deleted with ``--stats``, as it overrides ``--clean``.
 
+.. _clusterRef:
+
+Cluster Utilities
+-----------------
+There are several utilites used for starting and managing a Toil cluster using the AWS provisioner. They use the
+``toil launch-cluster``, ``toil ssh-cluster``, and ``toil destroy-cluster`` entry points.
+
 Restart
 -------
 In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
