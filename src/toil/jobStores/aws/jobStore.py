@@ -664,7 +664,8 @@ class AWSJobStore(AbstractJobStore):
         def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
-            return (isinstance(e, S3CreateError)
+            # https://github.com/BD2KGenomics/toil/issues/1093
+            return (isinstance(e, (S3CreateError, S3ResponseError))
                     and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
 
         for attempt in retry_s3(predicate=bucket_creation_pending):
