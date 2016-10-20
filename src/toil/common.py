@@ -323,9 +323,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud'],
-                help="The provisioner for cluster auto-scaling. Currently only the cgcloud "
-                     "provisioner exists. The default is %s." % config.provisioner)
+    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud', 'aws'],
+                help="The provisioner for cluster auto-scaling. The currently supported choices are"
+                     "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
     for preemptable in (False, True):
         def _addOptionFn(*name, **kwargs):
@@ -344,7 +344,9 @@ def _addOptions(addGroupFn, config):
                      help="Node type for {non-|}preemptable nodes. The syntax depends on the "
                           "provisioner used. For the cgcloud provisioner this is the name of an "
                           "EC2 instance type{|, followed by a colon and the price in dollar to "
-                          "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
+                          "bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'. The AWS provisioner "
+                          "is the name of the EC2 instance type followed by a colon and the price "
+                          "in dollars, for example: 'm3.medium:0.10'")
         _addOptionFn('nodeOptions', metavar='OPTIONS',
                      help="Provisioning options for the {non-|}preemptable node type. The syntax "
                           "depends on the provisioner used. The CGCloud provisioner doesn't "
@@ -628,6 +630,10 @@ class Toil(object):
             logger.info('Using cgcloud provisioner.')
             from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
             self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
+        elif self.config.provisioner == 'aws':
+            logger.info('Using AWS provisioner.')
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            self._provisioner = AWSProvisioner(self.config, self._batchSystem)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner

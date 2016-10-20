@@ -12,3 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
+import datetime
+from bd2k.util import parse_iso_utc
+
+
+class BaseAWSProvisioner(object):
+    @staticmethod
+    def _remainingBillingInterval(instance):
+        return 1.0 - BaseAWSProvisioner._partialBillingInterval(instance)
+
+    @staticmethod
+    def _partialBillingInterval(instance):
+        """
+        Returns a floating point value between 0 and 1.0 representing how far we are into the
+        current billing cycle for the given instance. If the return value is .25, we are one
+        quarter into the billing cycle, with three quarters remaining before we will be charged
+        again for that instance.
+        """
+        launch_time = parse_iso_utc(instance.launch_time)
+        now = datetime.datetime.utcnow()
+        delta = now - launch_time
+        return delta.total_seconds() / 3600.0 % 1.0
