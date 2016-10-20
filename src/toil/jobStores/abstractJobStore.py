@@ -960,7 +960,7 @@ class JobStoreSupport(AbstractJobStore):
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
-        return url.scheme.lower() in ('http', 'https') and not export
+        return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
     def _readFromUrl(cls, url, writable):

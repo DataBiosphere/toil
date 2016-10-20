@@ -460,6 +460,12 @@ class AbstractJobStoreTest:
             with self.master.readFileStream(self.master.importFile(srcUrl)) as f:
                 self.assertEqual(hashlib.md5(f.read()).hexdigest(), srcHash)
 
+        def testImportFtpFile(self):
+            srcUrl, srcHash = ('ftp://speedtest.tele2.net/512KB.zip',
+                               '59071590099d21dd439896592338bf95')
+            with self.master.readFileStream(self.master.importFile(srcUrl)) as f:
+                self.assertEqual(hashlib.md5(f.read()).hexdigest(), srcHash)
+
         def testFileDeletion(self):
             """
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
