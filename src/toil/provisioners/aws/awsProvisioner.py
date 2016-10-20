@@ -19,6 +19,7 @@ import logging
 import time
 from contextlib import contextmanager
 
+import sys
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_active, a_short_time,
@@ -82,11 +83,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def sshLeader(cls, clusterName):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
-        cls._sshAppliance(leader.ip_address, 'bash')
+        tty = sys.stdin.isatty()
+        cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, command):
-        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -i leader %s\"" % (leaderIP, command)
+    def _sshAppliance(cls, leaderIP, command, tty=False):
+        ttyFlag = 't' if tty else ''
+        command = "ssh -o \"StrictHostKeyChecking=no\" -t core@%s \"docker exec -i%s leader %s\"" % (leaderIP, ttyFlag, command)
         return subprocess.check_call(command, shell=True)
 
     @classmethod
