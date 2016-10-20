@@ -91,10 +91,11 @@ coreos:
         [Unit]
         Description=mounts ephemeral volumes & bind mounts toil directories
         Author=cketchum@ucsc.edu
-        After=docker.service
+        Before=docker.service
 
         [Service]
-        Restart=on-failure
+        Type=oneshot
+        Restart=no
         ExecStart=/usr/bin/bash /home/core/volumes.sh
 
     - name: "toil-{role}.service"
