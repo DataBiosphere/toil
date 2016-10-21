@@ -236,23 +236,6 @@ else:
         return MarkDecorator(name)(test_item)
 
 
-def needs_spark(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Spark is usable.
-    """
-    test_item = _mark_test('spark', test_item)
-
-    try:
-        # noinspection PyUnresolvedReferences
-        import pyspark
-    except ImportError:
-        return unittest.skip("Skipping test. Install PySpark to include this test.")(test_item)
-    except:
-        raise
-    else:
-        return test_item
-
-
 def needs_aws(test_item):
     """
     Use as a decorator before test classes or methods to only run them if AWS usable.
