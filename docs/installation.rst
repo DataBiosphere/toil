@@ -30,7 +30,7 @@ like support for Mesos or AWS. To install Toil with all bells and whistles use
 
    pip install toil[aws,mesos,azure,google,encryption,cwl]
 
-.. _extras: https://pythonhosted.org/setuptools/setuptools.html#declaring-extras-optional-features-with-their-own-dependencies
+.. _extras: http://setuptools.readthedocs.io/en/latest/setuptools.html#declaring-extras-optional-features-with-their-own-dependencies
 
 Here's what each extra provides:
 
