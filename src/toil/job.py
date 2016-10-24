@@ -183,30 +183,6 @@ class JobNode(JobLikeObject):
         self.predecessorNumber = predecessorNumber
         self.command = command
 
-    # Serialization support methods
-
-    def toDict(self):
-        return self.__dict__.copy()
-
-    @classmethod
-    def fromDict(cls, d):
-        d = cls._filterArgDict(d)
-        return cls(**d)
-
-    @classmethod
-    def _filterArgDict(cls, d):
-        for key, value in dict(d).iteritems():
-            if key.startswith('_'):
-                d[key[1:]] = value
-                del d[key]
-        return d
-
-    def copy(self):
-        """
-        :rtype: JobGraph
-        """
-        return self.fromDict(**self.__dict__)
-
     def __hash__(self):
         return hash(self.jobStoreID)
 
@@ -1074,14 +1050,14 @@ class Job(JobLikeObject):
             assert jobStore.fileExists(serviceJobGraph.errorJobStoreID)
 
             # Create the service job tuple
-            j = ServiceJobProxy(jobStoreID=serviceJobGraph.jobStoreID,
-                                memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
-                                disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
-                                terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
-                                errorJobStoreID=serviceJobGraph.errorJobStoreID,
-                                job=serviceJobGraph.job, name=serviceJobGraph.name,
-                                command=serviceJobGraph.command,
-                                predecessorNumber=serviceJobGraph.predecessorNumber)
+            j = ServiceJobNode(jobStoreID=serviceJobGraph.jobStoreID,
+                               memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
+                               disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
+                               terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
+                               errorJobStoreID=serviceJobGraph.errorJobStoreID,
+                               job=serviceJobGraph.job, name=serviceJobGraph.name,
+                               command=serviceJobGraph.command,
+                               predecessorNumber=serviceJobGraph.predecessorNumber)
 
             # Add the service job tuple to the list of services to run
             jobGraph.services[depth].append(j)
@@ -1462,13 +1438,13 @@ class EncapsulatedJob(Job):
         return self.encapsulatedJob.rv(*path)
 
 
-class ServiceJobProxy(JobNode):
+class ServiceJobNode(JobNode):
     def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
                  errorJobStoreID, name, job, command, predecessorNumber):
-        super(ServiceJobProxy, self).__init__(name=name, job=job, memory=memory, cores=cores,
-                                              disk=disk, preemptable=False, jobStoreID=jobStoreID,
-                                              command=command,
-                                              predecessorNumber=predecessorNumber)
+        super(ServiceJobNode, self).__init__(name=name, job=job, memory=memory, cores=cores,
+                                             disk=disk, preemptable=False, jobStoreID=jobStoreID,
+                                             command=command,
+                                             predecessorNumber=predecessorNumber)
         self.startJobStoreID = startJobStoreID
         self.terminateJobStoreID = terminateJobStoreID
         self.errorJobStoreID = errorJobStoreID

@@ -1406,7 +1406,7 @@ class FileStore(object):
                 # This code will always run
                 self.updateSemaphore.release()
 
-        # The update semaphore is held while the job is writen to the job store
+        # The update semaphore is held while the job is written to the job store
         try:
             self.updateSemaphore.acquire()
             t = Thread(target=asyncUpdate)

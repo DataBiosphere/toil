@@ -87,19 +87,6 @@ class JobGraph(JobNode):
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = checkpointFilesToDelete
 
-    @classmethod
-    def _filterArgDict(cls, d):
-        # make all these non constructor args properties?
-        # only have to filter on _
-        # or maybe inner class for state
-        d = super(JobGraph, cls)._filterArgDict(d)
-        for key, value in dict(d).iteritems():
-            if key == 'config':
-                del d[key]
-            if key == 'batchSystemID':
-                del d[key]
-        return d
-
     def setupJobAfterFailure(self, config):
         """
         Reduce the remainingRetryCount if greater than zero and set the memory

@@ -156,21 +156,21 @@ class JobBatcher:
         self.reissueMissingJobs_missingHash = {} #Hash to store number of observed misses
         self.serviceManager = serviceManager
 
-    def issueJob(self, issueableJob):
+    def issueJob(self, jobNode):
         """
         Add a job to the queue of jobs
         """
         self.jobsIssued += 1
-        if issueableJob.preemptable:
+        if jobNode.preemptable:
             self._preemptableJobsIssued += 1
-        issueableJob.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                         self.jobStoreLocator, issueableJob.jobStoreID))
-        jobBatchSystemID = self.batchSystem.issueBatchJob(issueableJob)
-        self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = issueableJob
+        jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
+                                    self.jobStoreLocator, jobNode.jobStoreID))
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
+        self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         logger.debug("Issued job with job store ID: %s and job batch system ID: "
                      "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
-                     issueableJob.jobStoreID, str(jobBatchSystemID), issueableJob.cores,
-                     issueableJob.disk, issueableJob.memory)
+                     jobNode.jobStoreID, str(jobBatchSystemID), jobNode.cores,
+                     jobNode.disk, jobNode.memory)
 
     def issueJobs(self, jobs):
         """
@@ -302,12 +302,12 @@ class JobBatcher:
                 logger.warn("Despite the batch system claiming failure the "
                             "job %s seems to have finished and been removed", issuedJob)
             self._updatePredecessorStatus(issuedJob.jobStoreID)
-        issuedJob = self.removeJob(batchSystemID)
-        jobStoreID = issuedJob.jobStoreID
+        jobNode = self.removeJob(batchSystemID)
+        jobStoreID = jobNode.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
-            self.clusterScaler.addCompletedJob(issuedJob, wallTime)
+            self.clusterScaler.addCompletedJob(jobNode, wallTime)
         if self.jobStore.exists(jobStoreID):
-            logger.debug("Job %s continues to exist (i.e. has more to do)" % issuedJob)
+            logger.debug("Job %s continues to exist (i.e. has more to do)" % jobNode)
             try:
                 jobGraph = self.jobStore.load(jobStoreID)
             except NoSuchJobException:
@@ -318,13 +318,12 @@ class JobBatcher:
                     # Process the job from here as any other job removed from the job store.
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
-                    logger.warn('Got a stale read from SDB for job %s', issuedJob)
-                    processRemovedJob(issuedJob)
+                    logger.warn('Got a stale read from SDB for job %s', jobNode)
+                    processRemovedJob(jobNode)
                     return
                 else:
                     raise
             if jobGraph.logJobStoreFileID is not None:
-                logger.warn("The job %s seems to have left a log file, indicating failure", issuedJob)
                 with jobGraph.getLogFileHandle( self.jobStore ) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
@@ -338,7 +337,7 @@ class JobBatcher:
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the retry count here.
                 if jobGraph.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite job failing: %s", issuedJob)
+                    logger.warn("No log file is present, despite job failing: %s", jobNode)
                 jobGraph.setupJobAfterFailure(self.config)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
@@ -349,7 +348,7 @@ class JobBatcher:
             #jobGraph is done we can add it to the list of updated jobGraph files
             logger.debug("Added job: %s to active jobs", jobGraph)
         else:  #The jobGraph is done
-            processRemovedJob(issuedJob)
+            processRemovedJob(jobNode)
 
     def processTotallyFailedJob(self, jobGraph):
         """
@@ -503,8 +502,8 @@ class ToilState( object ):
 
         else: # There exist successors
             self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
-            for successorIssuedJob in jobGraph.stack[-1]:
-                successorJobStoreID = successorIssuedJob.jobStoreID
+            for successorJobNode in jobGraph.stack[-1]:
+                successorJobStoreID = successorJobNode.jobStoreID
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
                     #Given that the successor jobGraph does not yet point back at a
                     #predecessor we have not yet considered it, so we call the function
@@ -607,7 +606,7 @@ class ServiceManager( object ):
         :param float maxWait: Time in seconds to wait to get a job before returning.
         :return: a tuple of (serviceJobStoreID, memory, cores, disk, ..) representing
         a service job to start.
-        :rtype: toil.job.ServiceJobProxy
+        :rtype: toil.job.ServiceJobNode
         """
         try:
             serviceJob = self._serviceJobGraphsToStart.get(timeout=maxWait)
@@ -678,8 +677,8 @@ class ServiceManager( object ):
                     serviceJobsToStart.put(serviceJob)
 
                 # Wait until all the services of the batch are running
-                for serviceTuple in serviceJobList:
-                    while jobStore.fileExists(serviceTuple.startJobStoreID):
+                for serviceJob in serviceJobList:
+                    while jobStore.fileExists(serviceJob.startJobStoreID):
                         # Sleep to avoid thrashing
                         time.sleep(1.0)
 

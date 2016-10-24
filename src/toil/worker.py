@@ -366,22 +366,22 @@ def main():
             
             #We check the requirements of the jobGraph to see if we can run it
             #within the current worker
-            successorIssueableJob = jobs[0]
-            if successorIssueableJob.memory > jobGraph.memory:
+            successorJobNode = jobs[0]
+            if successorJobNode.memory > jobGraph.memory:
                 logger.debug("We need more memory for the next job, so finishing")
                 break
-            if successorIssueableJob.cores > jobGraph.cores:
+            if successorJobNode.cores > jobGraph.cores:
                 logger.debug("We need more cores for the next job, so finishing")
                 break
-            if successorIssueableJob.disk > jobGraph.disk:
+            if successorJobNode.disk > jobGraph.disk:
                 logger.debug("We need more disk for the next job, so finishing")
                 break
-            if successorIssueableJob.predecessorNumber > 1:
+            if successorJobNode.predecessorNumber > 1:
                 logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
                 break
 
             # Load the successor jobGraph
-            successorJobGraph = jobStore.load(successorIssueableJob.jobStoreID)
+            successorJobGraph = jobStore.load(successorJobNode.jobStoreID)
 
             # Somewhat ugly, but check if job is a checkpoint job and quit if
             # so
@@ -410,12 +410,12 @@ def main():
             jobGraph.stack.pop()
 
             #These should all match up
-            assert successorJobGraph.memory == successorIssueableJob.memory
-            assert successorJobGraph.cores == successorIssueableJob.cores
+            assert successorJobGraph.memory == successorJobNode.memory
+            assert successorJobGraph.cores == successorJobNode.cores
             assert successorJobGraph.predecessorsFinished == set()
             assert successorJobGraph.predecessorNumber == 1
             assert successorJobGraph.command is not None
-            assert successorIssueableJob.jobStoreID == successorJobGraph.jobStoreID
+            assert successorJobGraph.jobStoreID == successorJobNode.jobStoreID
             
             #Transplant the command and stack to the current jobGraph
             jobGraph.command = successorJobGraph.command
