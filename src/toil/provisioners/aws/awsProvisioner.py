@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import pipes
 import socket
 import subprocess
 import logging
@@ -97,15 +98,26 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, command, tty=False):
-        ttyFlag = 't' if tty else ''
-        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"' % (leaderIP, ttyFlag, command)
-        return subprocess.check_call(command, shell=True)
+    def _sshAppliance(cls, leaderIP, *args, **kwargs):
+        """
+        :param str leaderIP: IP of the master
+        :param args: arguments to execute in the appliance
+        :param kwargs: the only checked kwarg is tty=True which tells docker to
+         create a TTY shell for interactive SSH-ing
+        :return: 
+        """
+        tty = kwargs.pop('tty', False)
+        args = map(pipes.quote, args)
+        ttyFlag = '-t' if tty else ''
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP,
+                         'docker', 'exec', '-i', ttyFlag, 'leader'] + args
+        return subprocess.check_call(commandTokens)
 
     @classmethod
-    def _sshInstance(cls, leaderIP, command):
-        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "%s"' % (leaderIP, command)
-        ouput = subprocess.check_output(command, shell=True)
+    def _sshInstance(cls, leaderIP, *args):
+        args = map(pipes.quote, args)
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP] + args
+        ouput = subprocess.check_output(commandTokens)
         return ouput
 
     @classmethod
@@ -136,7 +148,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _waitForAppliance(cls, ip_address):
         logger.info('Waiting for leader Toil appliance to start...')
         while True:
-            output = cls._sshInstance(leaderIP=ip_address, command='docker ps')
+            output = cls._sshInstance(ip_address, 'docker', 'ps')
             if 'leader' in output:
                 logger.info('...Toil appliance started')
                 break
@@ -162,13 +174,11 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
         logger.info('Waiting for docker to start...')
-        command = 'ps aux | grep \\"docker daemon\\"'
         while True:
-            output = cls._sshInstance(ip_address, command)
+            output = cls._sshInstance(ip_address, 'ps', 'aux')
             time.sleep(5)
-            if 'root' in output:
-                # ps aux | grep x will always list itself. The actual docker daemon process will
-                # be started by root whereas the ssh-ed command will be executed by the user 'core'
+            if 'docker daemon' in output:
+                # docker daemon has started
                 break
             else:
                 logger.info('... Still waiting...')

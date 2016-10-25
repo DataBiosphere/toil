@@ -50,22 +50,29 @@ class AWSProvisionerTest(ToilTest):
                                               clusterName=self.clusterName)
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
+        AWSProvisioner._sshAppliance(leader.ip_address,
+                                     'virtualenv',
+                                     '--system-site-packages',
+                                     '--never-download',
+                                     '/home/venv')
 
-        upgrade_command = '/home/venv/bin/pip install setuptools==28.7.1'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=upgrade_command)
+        AWSProvisioner._sshAppliance(leader.ip_address,
+                                     '/home/venv/bin/pip',
+                                     'install',
+                                     'setuptools==28.7.1')
 
-        yaml_command = '/home/venv/bin/pip install pyyaml==3.12'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=yaml_command)
+        AWSProvisioner._sshAppliance(leader.ip_address,
+                                     '/home/venv/bin/pip',
+                                     'install',
+                                     'pyyaml==3.12')
 
         # install toil scripts
-        install_command = ('/home/venv/bin/pip install toil-scripts==%s' % self.toilScripts)
-        AWSProvisioner._sshAppliance(leader.ip_address, command=install_command)
+        AWSProvisioner._sshAppliance(leader.ip_address,
+                                     '/home/venv/bin/pip', 'install',
+                                     'toil-scripts==%s' % self.toilScripts)
 
         # install curl
-        install_command = 'sudo apt-get -y install curl'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=install_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, 'sudo', 'apt-get', '-y', 'install', 'curl')
 
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
@@ -87,14 +94,15 @@ class AWSProvisionerTest(ToilTest):
 
         toilOptions = ' '.join(toilOptions)
 
-        runCommand = 'bash -c \\"export PATH=/home/venv/bin/:$PATH;export TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i; export TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) + \
-                     '; export TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore + \
-                     '; /home/venv/bin/python -m unittest -v' + \
-                     ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest\\"'
+        runCommand = ['bash', '-c',
+                      'PATH=/home/venv/bin/:$PATH '
+                      'TOIL_SCRIPTS_TEST_NUM_SAMPLES='+str(self.numSamples)+
+                      ' TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) +
+                      ' TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore +
+                      ' /home/venv/bin/python -m unittest -v' +
+                      ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest']
 
-        runCommand %= self.numSamples
-
-        AWSProvisioner._sshAppliance(leader.ip_address, runCommand)
+        AWSProvisioner._sshAppliance(leader.ip_address, *runCommand)
 
     @integrative
     @needs_aws
