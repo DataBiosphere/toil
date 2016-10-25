@@ -48,6 +48,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException,
                                              NoSuchJobStoreException,
+                                             BucketLocationConflictException,
                                              JobStoreExistsException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
@@ -201,10 +202,15 @@ class AWSJobStore(AbstractJobStore):
         if self._registered:
             raise JobStoreExistsException(self.locator)
         self._registered = None
-        self._bind(create=True)
-        super(AWSJobStore, self).initialize(config)
-        # Only register after job store has been full initialized
-        self._registered = True
+        try:
+            self._bind(create=True)
+        except:
+            with panic(log):
+                self.destroy()
+        else:
+            super(AWSJobStore, self).initialize(config)
+            # Only register after job store has been full initialized
+            self._registered = True
 
     @property
     def sseKeyPath(self):
@@ -221,6 +227,9 @@ class AWSJobStore(AbstractJobStore):
             assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
 
+        # The order in which this sequence of events happens is important.  We can easily handle the
+        # inability to bind a domain, but it is a little harder to handle some cases of binding the
+        # jobstore bucket.  Maintaining this order allows for an easier `destroy` method.
         if self.jobsDomain is None:
             self.jobsDomain = self._bindDomain(qualify('jobs'), create=create, block=block)
         if self.filesDomain is None:
@@ -681,10 +690,17 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             return None
+                    elif e.status == 301:
+                        # This is raised if the user attempts to get a bucket in a region outside
+                        # the specified one, if the specified one is not `us-east-1`.  The us-east-1
+                        # server allows a user to use buckets from any region.
+                        bucket = self.s3.get_bucket(bucket_name, validate=False)
+                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
                     else:
                         raise
                 else:
-                    assert self.__getBucketRegion(bucket) == self.region
+                    if self.__getBucketRegion(bucket) != self.region:
+                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
                     assert versioning is self.__getBucketVersioning(bucket)
                     log.debug("Using existing job store bucket '%s'.", bucket_name)
                     return bucket
@@ -1255,7 +1271,14 @@ class AWSJobStore(AbstractJobStore):
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
         # See https://github.com/BD2KGenomics/toil/issues/1041
-        self._bind(create=False, block=False)
+        try:
+            self._bind(create=False, block=False)
+        except BucketLocationConflictException:
+            # If the unique jobstore bucket name existed, _bind would have raised a
+            # BucketLocationConflictException before calling destroy.  Calling _bind here again
+            # would reraise the same exception so we need to catch and ignore that exception.
+            pass
+        # TODO: Add other failure cases to be ignored here.
         self._registered = None
         if self.filesBucket is not None:
             self._delete_bucket(self.filesBucket)
