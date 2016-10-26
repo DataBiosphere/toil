@@ -519,11 +519,11 @@ class FailedJobsException( Exception ):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
         msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
-            msg += ": %s" % ", ".join(failedJobs)
+            msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
             for jobNode in failedJobs:
                 job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    msg += "\n=========> Failed job %s %s\n" % jobNode, jobNode.jobStoreID
+                    msg += "\n=========> Failed job %s %s\n" % (jobNode, jobNode.jobStoreID)
                     with job.getLogFileHandle(jobStore) as fH:
                         msg += fH.read()
                     msg += "<=========\n"
@@ -747,7 +747,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobGraph, jobCache=
     logger.info("Finished toil run %s" %
                  ("successfully" if len(toilState.totalFailedJobs) == 0 else ("with %s failed jobs" % len(toilState.totalFailedJobs))))
     if len(toilState.totalFailedJobs):
-        logger.info("Failed jobs at end of the run: %s", toilState.totalFailedJobs)
+        logger.info("Failed jobs at end of the run: %s", { str(jobNode) for jobNode in toilState.totalFailedJobs})
 
     # Cleanup
     if len(toilState.totalFailedJobs) > 0:
