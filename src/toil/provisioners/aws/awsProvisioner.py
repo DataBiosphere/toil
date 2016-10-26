@@ -439,7 +439,7 @@ def create_spot_instances(ec2, price, image_id, spec, clusterName,
     :rtype: Iterator[list[Instance]]
     """
     def spotRequestNotFound(e):
-        return e.status == 400 and 'does not exist' in e.body
+        return e.error_code == "InvalidSpotInstanceRequestID.NotFound"
 
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
