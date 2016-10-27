@@ -441,12 +441,19 @@ def create_spot_instances(ec2, price, image_id, spec, clusterName,
 
     :rtype: Iterator[list[Instance]]
     """
+    def spotRequestNotFound(e):
+        return e.error_code == "InvalidSpotInstanceRequestID.NotFound"
+
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
             requests = ec2.request_spot_instances(price, image_id, count=num_instances, **spec)
 
-    ec2.create_tags([x.id for x in requests], {'clusterName': clusterName})
+    for requestID in (request.id for request in requests):
+        for attempt in retry_ec2(retry_while=spotRequestNotFound):
+            with attempt:
+                ec2.create_tags([requestID], {'clusterName': clusterName})
+
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker
     # request_spot_instances's type annotation is wrong
