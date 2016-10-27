@@ -28,7 +28,6 @@ from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
 
