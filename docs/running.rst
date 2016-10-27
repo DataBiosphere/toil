@@ -323,7 +323,7 @@ Autoscaling
 -----------
 The fastest way to get started runnning Toil in a cloud environment is using Toil's autoscaling capabilities to
 handle node provisioning for us. Currently, autoscaling is only supported on the AWS cloud platform with two choices
-of provisioners: CGCloud and Toil's own Docker based provisioner.
+of provisioners: Toil's own Docker based provisioner and CGCloud.
 
 The AWS provisioner is included in Toil alongside the [aws] extra and allows us to spin up a cluster without any external dependencies
 using the Toil Appliance docker image. To get started, we choose which version of the appliance to run from CGL's
