@@ -75,13 +75,13 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         contentHash = hashlib.md5()
         # noinspection PyProtectedMember
         with cls._load(leaderPath) as src:
-            with jobStore.writeSharedFileStream(pathHash, isProtected=False) as dst:
+            with jobStore.writeSharedFileStream(sharedFileName=pathHash, isProtected=False) as dst:
                 userScript = src.read()
                 contentHash.update(userScript)
                 dst.write(userScript)
         return cls(name=os.path.basename(leaderPath),
                    pathHash=pathHash,
-                   url=(jobStore.getSharedPublicUrl(pathHash)),
+                   url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
                    contentHash=contentHash.hexdigest())
 
     @classmethod
@@ -203,7 +203,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         in the directory at the given path.
 
         :type path: str
-        :rtype: io.IOBase
+        :rtype: io.FileIO
         """
         raise NotImplementedError()
 
