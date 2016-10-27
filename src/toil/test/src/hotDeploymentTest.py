@@ -47,8 +47,7 @@ class HotDeploymentTest(ApplianceTestSupport):
 
                 # noinspection PyUnusedLocal
                 def job(job, disk='10M', cores=1, memory='10M'):
-                    # make job fail during the first invocation
-                    assert job.fileStore.jobStore.config.restart
+                    assert False
 
                 if __name__ == '__main__':
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
@@ -57,6 +56,8 @@ class HotDeploymentTest(ApplianceTestSupport):
                             toil.restart()
                         else:
                             toil.start(Job.wrapJobFn(job))
+
+            userScript = self._getScriptSource(userScript)
 
             leader.deployScript(path=self.sitePackages,
                                 packagePath='foo.bar',
@@ -70,6 +71,13 @@ class HotDeploymentTest(ApplianceTestSupport):
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
             self.assertRaises(CalledProcessError, leader.runOnAppliance, *command)
+
+            # Deploy an updated version of the script ...
+            userScript = userScript.replace('assert False', 'assert True')
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+            # ... and restart Toil.
             command = concat(pythonArgs, '--restart', toilArgs)
             leader.runOnAppliance(*command)
 

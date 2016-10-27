@@ -222,6 +222,14 @@ class ToilTest(unittest.TestCase):
         if capture:
             return stdout
 
+    def _getScriptSource(self, callable_):
+        """
+        Returns the source code of the body of given callable as a string, dedented. This is a
+        naught but incredibly useful trick that lets you embed user scripts as nested functions
+        and expose them to the syntax checker of your IDE.
+        """
+        return dedent('\n'.join(getsource(callable_).split('\n')[1:]))
+
 
 try:
     # noinspection PyUnresolvedReferences
@@ -677,6 +685,9 @@ class ApplianceTestSupport(ToilTest):
         lock = threading.Lock()
 
         def __init__(self, outer, mounts):
+            """
+            :param ApplianceTestSupport outer:
+            """
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
@@ -754,12 +765,12 @@ class ApplianceTestSupport(ToilTest):
                    user scripts into test code as nested function.
             """
             if callable(script):
-                script = dedent('\n'.join(getsource(script).split('\n')[1:]))
+                script = self.outer._getScriptSource(script)
             packagePath = packagePath.split('.')
             packages, module = packagePath[:-1], packagePath[-1]
             for package in packages:
                 path += '/' + package
-                self.runOnAppliance('mkdir', path)
+                self.runOnAppliance('mkdir', '-p', path)
                 self.writeToAppliance(path + '/__init__.py', '')
             self.writeToAppliance(path + '/' + module + '.py', script)
 
