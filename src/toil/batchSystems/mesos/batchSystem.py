@@ -71,14 +71,12 @@ class MesosBatchSystem(BatchSystemSupport,
             self.nodeInfo = nodeInfo
             self.lastSeen = lastSeen
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress,
-                 userScript=None, toilDistribution=None):
+    def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress, userScript=None):
         super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
         # The hot-deployed resources representing the user script and the Toil distribution
         # respectively. Will be passed along in every Mesos task. Also see toil.resource.Resource
         self.userScript = userScript
-        self.toilDistribution = toilDistribution
 
         # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
         # defined by resource usage
@@ -148,7 +146,6 @@ class MesosBatchSystem(BatchSystemSupport,
                                                     preemptable=preemptable),
                       command=command,
                       userScript=self.userScript,
-                      toilDistribution=self.toilDistribution,
                       environment=self.environment.copy(),
                       workerCleanupInfo=self.workerCleanupInfo)
         jobType = job.resources

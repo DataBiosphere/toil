@@ -48,8 +48,6 @@ ToilJob = namedtuple('ToilJob', (
     'command',
     # The resource object representing the user script
     'userScript',
-    # The resource object representing the toil source tarball
-    'toilDistribution',
     # A dictionary with additional environment variables to be set on the worker process
     'environment',
     # A named tuple containing all the required info for cleaning up the worker node
