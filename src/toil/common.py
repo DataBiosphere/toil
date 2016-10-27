@@ -512,9 +512,21 @@ class Toil(object):
         super(Toil, self).__init__()
         self.options = options
         self.config = None
+        """
+        :type: toil.common.Config
+        """
         self._jobStore = None
+        """
+        :type: toil.jobStores.abstractJobStore.AbstractJobStore
+        """
         self._batchSystem = None
+        """
+        :type: toil.batchSystems.abstractBatchSystem.AbstractBatchSystem
+        """
         self._provisioner = None
+        """
+        :type: toil.provisioners.abstractProvisioner.AbstractProvisioner
+        """
         self._jobCache = dict()
         self._inContextManager = False
 
