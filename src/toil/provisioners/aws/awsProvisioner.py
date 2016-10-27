@@ -17,9 +17,9 @@ import subprocess
 import logging
 
 import time
-from contextlib import contextmanager
 
 import sys
+from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_active, a_short_time,
@@ -32,6 +32,7 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
+import boto
 from bd2k.util.retry import retry
 from toil.provisioners import BaseAWSProvisioner
 
@@ -43,7 +44,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
-        self.ctx = Context(availability_zone='us-west-2a', namespace=self._toNameSpace(self.clusterName))
+        self.ctx = self._buildContext(clusterName=self.clusterName)
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -78,11 +79,37 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                      disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
 
     @classmethod
-    def sshLeader(cls, clusterName):
+    def _buildContext(cls, clusterName, zone=None):
+        if not zone:
+            zone = os.environ.get('TOIL_AWS_ZONE', None)
+        if not zone:
+            zone = boto.config.get('Boto', 'ec2_region_name')
+            zone += 'a'  # derive an availability zone in the region
+        if not zone:
+            try:
+                zone = get_instance_metadata()['placement']['availability-zone']
+            except KeyError:
+                raise RuntimeError('Could not determine availability zone. Insure that one of the following '
+                                   'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
+                                   'is set, ec2_region_name is set in the .boto file, or that '
+                                   'you are running on EC2.')
+        return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
+
+    @classmethod
+    def sshLeader(cls, clusterName, zone=None):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+
+    @memoize
+    def _discoverAMI(cls, ctx):
+        def descriptionMatches(ami):
+            return ami is not None and ami.description is not None and 'stable 1068.9.0' in ami.description
+        # that ownerID corresponds to coreOS
+        coreOSAMI = filter(descriptionMatches, ctx.ec2.get_all_images(owners=['679593333241']))
+        assert len(coreOSAMI) == 1
+        return coreOSAMI.pop().id
 
     @classmethod
     def dockerInfo(cls):
@@ -99,7 +126,9 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
         ttyFlag = 't' if tty else ''
-        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"' % (leaderIP, ttyFlag, command)
+        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"' % (leaderIP,
+                                                                                                 ttyFlag,
+                                                                                                 command)
         return subprocess.check_call(command, shell=True)
 
     @classmethod
@@ -115,8 +144,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         return clusterName.replace('-','/')
 
     @classmethod
-    def _getLeader(cls, clusterName, wait=False):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+    def _getLeader(cls, clusterName, wait=False, zone=None):
+        ctx = cls._buildContext(clusterName=clusterName, zone=None)
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -196,8 +225,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                 s.close()
 
     @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, zone=None):
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
@@ -214,21 +243,21 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                   'instance_profile_arn': profileARN}
         if not spotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=coreOSAMI,
+            create_ondemand_instances(ctx.ec2, image_id=cls._discoverAMI(ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2, price=spotBid, image_id=coreOSAMI,
+            list(create_spot_instances(ec2=ctx.ec2, price=spotBid, image_id=cls._discoverAMI(ctx),
                                        clusterName=clusterName, spec=kwargs, num_instances=1))
         return cls._getLeader(clusterName=clusterName, wait=True)
 
     @classmethod
-    def destroyCluster(cls, clusterName):
+    def destroyCluster(cls, clusterName, zone=None):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
@@ -287,12 +316,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', instancesToLaunch)
-            create_ondemand_instances(self.ctx.ec2, image_id=coreOSAMI,
+            create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching %s preemptable nodes', instancesToLaunch)
             # force generator to evaluate
-            list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=coreOSAMI,
+            list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=self._discoverAMI(self.ctx),
                                        clusterName=self.clusterName, spec=kwargs, num_instances=instancesToLaunch))
         logger.info('Launched %s new instance(s)', instancesToLaunch)
 

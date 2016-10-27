@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-coreOSAMI = 'ami-14589274'
-
 ec2FullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="ec2:*")])
 

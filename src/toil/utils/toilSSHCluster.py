@@ -15,21 +15,16 @@
 SSHs into the toil appliance container running on the leader of the cluster
 """
 import logging
-from toil import version
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions, setLoggingFromOptions
+from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions
+from toil.utils import getBasicProvisionerParser
 
 logger = logging.getLogger( __name__ )
 
+
 def main():
-    parser = getBasicOptionParser()
-    parser.add_argument("--version", action='version', version=version)
-    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
-                        help="The provisioner for cluster auto-scaling. Only aws is currently"
-                             "supported")
-    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
+    parser = getBasicProvisionerParser()
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    provisioner = None
     if config.provisioner == 'aws':
         logger.info('Using aws provisioner.')
         try:
