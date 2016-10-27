@@ -231,10 +231,11 @@ Cloud installation
 
 Installation on AWS for distributed computing
 ---------------------------------------------
-We use Toil's included AWS provisioner and CGCloud_ to provision instances and clusters in AWS.
-More information on the AWS provisioner can be found in the :ref:`Autoscaling` section.
-Thorough documentation of CGCloud_ can be found in the CGCloud-core_ and CGCloud-toil_
-documentation. Brief steps will be provided to those interested in using CGCloud_ for provisioning.
+We use Toil's included AWS provisioner and CGCloud_ to provision instances and
+clusters in AWS. More information on the AWS provisioner can be found in the
+:ref:`Autoscaling` section. Thorough documentation of CGCloud_ can be found in
+the CGCloud-core_ and CGCloud-toil_ documentation. Brief steps will be provided
+to those interested in using CGCloud_ for provisioning.
 
 .. _CGCloud: https://github.com/BD2KGenomics/cgcloud/
 .. _CGCloud-core: https://github.com/BD2KGenomics/cgcloud/blob/master/core/README.rst
