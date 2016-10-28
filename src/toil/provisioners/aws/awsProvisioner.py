@@ -84,7 +84,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
             zone = os.environ.get('TOIL_AWS_ZONE', None)
         if not zone:
             zone = boto.config.get('Boto', 'ec2_region_name')
-            zone += 'a'  # derive an availability zone in the region
+            if zone is not None:
+                zone += 'a'  # derive an availability zone in the region
         if not zone:
             try:
                 zone = get_instance_metadata()['placement']['availability-zone']
@@ -102,6 +103,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
 
+    @classmethod
     @memoize
     def _discoverAMI(cls, ctx):
         def descriptionMatches(ami):
