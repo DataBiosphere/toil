@@ -40,8 +40,6 @@ logger = logging.getLogger(__name__)
 
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
-    dockerInfo = os.environ.get('TOIL_APPLIANCE_SELF')
-
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
@@ -85,6 +83,18 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+
+    @classmethod
+    def dockerInfo(cls):
+        try:
+            return os.environ['TOIL_APPLIANCE_SELF']
+        except KeyError:
+            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
+                               'image of the Toil Appliance you wish to use. For example: '
+                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
+                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
+                               'for a full list of available versions.')
+
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
@@ -192,7 +202,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
-        dockerLeaderData = cls.dockerInfo.rsplit(':', 1)
+        dockerLeaderData = cls.dockerInfo().rsplit(':', 1)
         leaderRepo = dockerLeaderData[0]
         leaderTag = dockerLeaderData[1]
         leaderData = {'role': 'leader', 'tag': leaderTag,
@@ -263,7 +273,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
         # quay.io/toil-leader:tag
-        workerData = self.dockerInfo.rsplit(':', 1)
+        workerData = self.dockerInfo().rsplit(':', 1)
         workerRepo = workerData[0].rsplit('-', 1)[0] + '-worker'
         workerTag = workerData[1]
         workerData = {'role': 'worker', 'tag': workerTag,
