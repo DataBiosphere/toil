@@ -28,7 +28,6 @@ from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -512,9 +511,21 @@ class Toil(object):
         super(Toil, self).__init__()
         self.options = options
         self.config = None
+        """
+        :type: toil.common.Config
+        """
         self._jobStore = None
+        """
+        :type: toil.jobStores.abstractJobStore.AbstractJobStore
+        """
         self._batchSystem = None
+        """
+        :type: toil.batchSystems.abstractBatchSystem.AbstractBatchSystem
+        """
         self._provisioner = None
+        """
+        :type: toil.provisioners.abstractProvisioner.AbstractProvisioner
+        """
         self._jobCache = dict()
         self._inContextManager = False
 
@@ -577,9 +588,8 @@ class Toil(object):
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
 
-        self._batchSystem = self.createBatchSystem(self.config,
-                                                   jobStore=self._jobStore,
-                                                   userScript=rootJob.getUserScript())
+        self._batchSystem = self.createBatchSystem(self.config)
+        self._setupHotDeployment(rootJob.getUserScript())
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -616,7 +626,8 @@ class Toil(object):
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
 
-        self._batchSystem = self.createBatchSystem(self.config, jobStore=self._jobStore)
+        self._batchSystem = self.createBatchSystem(self.config)
+        self._setupHotDeployment()
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -693,20 +704,15 @@ class Toil(object):
         return jobStore
 
     @staticmethod
-    def createBatchSystem(config, jobStore=None, userScript=None):
+    def createBatchSystem(config):
         """
-        Creates an instance of the batch system specified in the given config. If a job store and
-        a user script are given then the user script can be hot deployed into the workflow.
+        Creates an instance of the batch system specified in the given config.
 
         :param toil.common.Config config: the current configuration
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: an instance of a jobStore
-
-        :param ModuleDescriptor userScript: a handle to the Python module defining the root job
+        :rtype: batchSystems.abstractBatchSystem.AbstractBatchSystem
 
         :return: an instance of a concrete subclass of AbstractBatchSystem
-
-        :rtype: batchSystems.abstractBatchSystem.AbstractBatchSystem
         """
         kwargs = dict(config=config,
                       maxCores=config.maxCores,
@@ -749,23 +755,51 @@ class Toil(object):
         logger.info('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
-        if jobStore is not None:
-            if userScript is not None:
-                if not userScript.belongsToToil and batchSystemClass.supportsHotDeployment():
-                    userScriptResource = userScript.saveAsResourceTo(jobStore)
-                    with jobStore.writeSharedFileStream('userScript') as f:
-                        f.write(userScriptResource.pickle())
-                    kwargs['userScript'] = userScriptResource
-            else:
-                from toil.jobStores.abstractJobStore import NoSuchFileException
-                try:
-                    with jobStore.readSharedFileStream('userScript') as f:
-                        userScriptResource = Resource.unpickle(f.read())
-                    kwargs['userScript'] = userScriptResource
-                except NoSuchFileException:
-                    pass
-
         return batchSystemClass(**kwargs)
+
+    def _setupHotDeployment(self, userScript=None):
+        """
+        Determine the user script, save it to the job store and inject a reference to the saved
+        copy into the batch system such that it can hot-deploy the resource on the worker
+        nodes.
+
+        :param toil.resource.ModuleDescriptor userScript: the module descriptor referencing the
+               user script. If None, it will be looked up in the job store.
+        """
+        if userScript is not None:
+            # This branch is hit when a workflow is being started
+            if userScript.belongsToToil:
+                logger.info('User script %s belongs to Toil. No need to hot-deploy it.', userScript)
+                userScript = None
+            else:
+                if self._batchSystem.supportsHotDeployment():
+                    # Note that by saving the ModuleDescriptor, and not the Resource we allow for
+                    # redeploying a potentially modified user script on workflow restarts.
+                    with self._jobStore.writeSharedFileStream('userScript') as f:
+                        cPickle.dump(userScript, f, protocol=cPickle.HIGHEST_PROTOCOL)
+                else:
+                    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+                    if not isinstance(self._batchSystem, SingleMachineBatchSystem):
+                        logger.warn('Batch system does not support hot-deployment. The user '
+                                    'script %s will have to be present at the same location on '
+                                    'every worker.', userScript)
+                    userScript = None
+        else:
+            # This branch is hit on restarts
+            from toil.jobStores.abstractJobStore import NoSuchFileException
+            try:
+                with self._jobStore.readSharedFileStream('userScript') as f:
+                    userScript = cPickle.load(f)
+            except NoSuchFileException:
+                logger.info('User script neither set explicitly nor present in the job store.')
+                userScript = None
+        if userScript is None:
+            logger.info('No user script to hot-deploy.')
+        else:
+            logger.info('Saving user script %s as a resource', userScript)
+            userScriptResource = userScript.saveAsResourceTo(self._jobStore)
+            logger.info('Hot-deploying user script resource %s.', userScriptResource)
+            self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
         self._assertContextManagerUsed()

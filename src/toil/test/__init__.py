@@ -84,7 +84,6 @@ class ToilTest(unittest.TestCase):
         else:
             return 'us-west-2'
 
-
     @classmethod
     def _availabilityZone(cls):
         """
@@ -101,7 +100,7 @@ class ToilTest(unittest.TestCase):
         The region will not change over the life of the instance so the result
         is memoized to avoid unnecessary work.
         """
-        m = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$',cls._availabilityZone())
+        m = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
         assert m
         region = m.group(1)
         return region
@@ -223,6 +222,14 @@ class ToilTest(unittest.TestCase):
         if capture:
             return stdout
 
+    def _getScriptSource(self, callable_):
+        """
+        Returns the source code of the body of given callable as a string, dedented. This is a
+        naught but incredibly useful trick that lets you embed user scripts as nested functions
+        and expose them to the syntax checker of your IDE.
+        """
+        return dedent('\n'.join(getsource(callable_).split('\n')[1:]))
+
 
 try:
     # noinspection PyUnresolvedReferences
@@ -277,6 +284,7 @@ def needs_google(test_item):
     """
     test_item = _mark_test('google', test_item)
     try:
+        # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
         return unittest.skip(
@@ -450,6 +458,8 @@ def timeLimit(seconds):
         ...
     RuntimeError: Timed out
     """
+
+    # noinspection PyUnusedLocal
     def signal_handler(signum, frame):
         raise RuntimeError('Timed out')
 
@@ -466,24 +476,25 @@ def timeLimit(seconds):
 
 def make_tests(generalMethod, targetClass=None, **kwargs):
     """
-    This method dynamically generates test methods using the generalMethod as a template. Each generated
-    function is the result of a unique combination of parameters applied to the generalMethod. Each of the
-    parameters has a corresponding string that will be used to name the method. These generated functions
-    are named in the scheme:
-    test_[generalMethodName]___[firstParamaterName]_[someValueName]__[secondParamaterName]_...
+    This method dynamically generates test methods using the generalMethod as a template. Each
+    generated function is the result of a unique combination of parameters applied to the
+    generalMethod. Each of the parameters has a corresponding string that will be used to name
+    the method. These generated functions are named in the scheme: test_[generalMethodName]___[
+    firstParamaterName]_[someValueName]__[secondParamaterName]_...
 
-    The arguments following the generalMethodName should be a series of one or more dictionaries of the form
-    {str : type, ...} where the key represents the name of the value. The names will be used to represent the
-    permutation of values passed for each parameter in the generalMethod.
+    The arguments following the generalMethodName should be a series of one or more dictionaries
+    of the form {str : type, ...} where the key represents the name of the value. The names will
+    be used to represent the permutation of values passed for each parameter in the generalMethod.
 
-    :param generalMethod: A method that will be parametrized with values passed as kwargs. Note that the
-        generalMethod must be a regular method.
+    :param generalMethod: A method that will be parametrized with values passed as kwargs. Note
+           that the generalMethod must be a regular method.
 
-    :param targetClass: This represents the class to which the generated test methods will be bound. If no
-        targetClass is specified the class of the generalMethod is assumed the target.
+    :param targetClass: This represents the class to which the generated test methods will be
+           bound. If no targetClass is specified the class of the generalMethod is assumed the
+           target.
 
-    :param kwargs: a series of dictionaries defining values, and their respective names where each keyword is
-        the name of a parameter in generalMethod.
+    :param kwargs: a series of dictionaries defining values, and their respective names where
+           each keyword is the name of a parameter in generalMethod.
 
     >>> class Foo:
     ...     def has(self, num, letter):
@@ -535,40 +546,46 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
 
     def pop(d):
         """
-        Pops an arbitrary key value pair from the dict
+        Pops an arbitrary key value pair from a given dict.
+
         :param d: a dictionary
+
         :return: the popped key, value tuple
         """
-        k, v = next(kwargs.iteritems())
-        del d[k]
+        k, v = next(iter(kwargs.iteritems()))
+        d.pop(k)
         return k, v
 
-    def permuteIntoLeft(left, rPrmName, right):
+    def permuteIntoLeft(left, rParamName, right):
         """
-        Permutes values in right dictionary into each parameter: value dict pair in the left dictionary.
-        Such that the left dictionary will contain a new set of keys each of which is a combination of one of
-        its original parameter-value names appended with some parameter-value name from the right dictionary.
-        Each original key in the left is deleted from the left dictionary after the permutation of the key and
-        every parameter-value name from the right has been added to the left dictionary.
+        Permutes values in right dictionary into each parameter: value dict pair in the left
+        dictionary. Such that the left dictionary will contain a new set of keys each of which is
+        a combination of one of its original parameter-value names appended with some
+        parameter-value name from the right dictionary. Each original key in the left is deleted
+        from the left dictionary after the permutation of the key and every parameter-value name
+        from the right has been added to the left dictionary.
 
-        For example
-        if left is {'__PrmOne_ValName':{'ValName':Val}} and right is {'rValName1':rVal1, 'rValName2':rVal2} then
-        left will become
+        For example if left is  {'__PrmOne_ValName':{'ValName':Val}} and right is
+        {'rValName1':rVal1, 'rValName2':rVal2} then left will become
         {'__PrmOne_ValName__rParamName_rValName1':{'ValName':Val. 'rValName1':rVal1},
         '__PrmOne_ValName__rParamName_rValName2':{'ValName':Val. 'rValName2':rVal2}}
 
-        :param left: A dictionary pairing each paramNameValue to a nested dictionary that contains each ValueName
-            and value pair described in the outer dict's paramNameValue key.
+        :param left: A dictionary pairing each paramNameValue to a nested dictionary that
+               contains each ValueName and value pair described in the outer dict's paramNameValue
+               key.
+
         :param rParamName: The name of the parameter that each value in the right dict represents.
-        :param right: A dict that pairs 1 or more valueNames and values for the rParamName parameter.
+
+        :param right: A dict that pairs 1 or more valueNames and values for the rParamName
+               parameter.
         """
         for prmValName, lDict in left.items():
             for rValName, rVal in right.items():
-                nextPrmVal = ('__%s_%s' % (rPrmName, rValName.lower()))
+                nextPrmVal = ('__%s_%s' % (rParamName, rValName.lower()))
                 if methodNamePartRegex.match(nextPrmVal) is None:
                     raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
                 aggDict = dict(lDict)
-                aggDict[rPrmName] = rVal
+                aggDict[rParamName] = rVal
                 left[prmValName + nextPrmVal] = aggDict
             left.pop(prmValName)
 
@@ -668,6 +685,9 @@ class ApplianceTestSupport(ToilTest):
         lock = threading.Lock()
 
         def __init__(self, outer, mounts):
+            """
+            :param ApplianceTestSupport outer:
+            """
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
@@ -745,12 +765,12 @@ class ApplianceTestSupport(ToilTest):
                    user scripts into test code as nested function.
             """
             if callable(script):
-                script = dedent('\n'.join(getsource(script).split('\n')[1:]))
+                script = self.outer._getScriptSource(script)
             packagePath = packagePath.split('.')
             packages, module = packagePath[:-1], packagePath[-1]
             for package in packages:
                 path += '/' + package
-                self.runOnAppliance('mkdir', path)
+                self.runOnAppliance('mkdir', '-p', path)
                 self.writeToAppliance(path + '/__init__.py', '')
             self.writeToAppliance(path + '/' + module + '.py', script)
 

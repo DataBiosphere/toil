@@ -47,11 +47,11 @@ class AbstractBatchSystem(object):
     @abstractclassmethod
     def supportsHotDeployment(cls):
         """
-        Whether this batch system supports hot deployment of the user script and toil itself. If
-        it does, the __init__ method will have to accept two optional parameters in addition to
-        the declared ones: userScript and toilDistribution. Both will be instances of
-        toil.common.HotDeployedResource that represent the user script and a source tarball (
-        sdist) of toil respectively.
+        Whether this batch system supports hot deployment of the user script itself. If it does,
+        the :meth:`setUserScript` can be invoked to set the resource object representing the user
+        script.
+
+        Note to implementors: If your implementation returns True here, it should also override
 
         :rtype: bool
         """
@@ -69,6 +69,17 @@ class AbstractBatchSystem(object):
         process terminates.
 
         :rtype: bool
+        """
+        raise NotImplementedError()
+
+    def setUserScript(self, userScript):
+        """
+        Set the user script for this workflow. This method must be called before the first job is
+        issued to this batch system, and only if :meth:`supportsHotDeployment` returns True,
+        otherwise it will raise an exception.
+
+        :param toil.resource.Resource userScript: the resource object representing the user script
+               or module and the modules it depends on.
         """
         raise NotImplementedError()
 
