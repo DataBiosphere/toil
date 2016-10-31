@@ -1445,8 +1445,8 @@ class NonCachingFileStore(FileStore):
 
     def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
         self.jobStore = jobStore
-        self.jobName = self.jobGraph.command.split()[1]
         self.jobGraph = jobGraph
+        self.jobName = self.jobGraph.command.split()[1]
         self.localTempDir = os.path.abspath(localTempDir)
         self.inputBlockFn = inputBlockFn
         self.jobsToDelete = set()
