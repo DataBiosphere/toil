@@ -244,7 +244,7 @@ class ClusterScaler(object):
         for scalerThread in [self.preemptableScaler, self.scaler]:
             if scalerThread is not None:
                 try:
-                    scalerThread.join(0)
+                    scalerThread.join(timeout=0)
                 except Exception as e:
                     logger.exception(e)
                     exception = True
