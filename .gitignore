@@ -11,6 +11,5 @@ __pycache__
 /venv/
 /src/toil/test/cwl/spec
 /docs/generated_rst/
-/docker/leader/
-/docker/worker/
+/docker/Dockerfile
 /docker/toil-*.tar.gz

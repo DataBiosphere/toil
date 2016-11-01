@@ -679,7 +679,11 @@ class ApplianceTestSupport(ToilTest):
 
         @abstractmethod
         def _containerCommand(self):
-            raise NotImplementedError
+            raise NotImplementedError()
+
+        @abstractmethod
+        def _entryPoint(self):
+            raise NotImplementedError()
 
         # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
         lock = threading.Lock()
@@ -696,9 +700,10 @@ class ApplianceTestSupport(ToilTest):
 
         def __enter__(self):
             with self.lock:
-                image = self._getApplianceImage()
+                image = os.environ['TOIL_APPLIANCE_SELF']
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
                 args = list(concat('docker', 'run',
+                                   '--entrypoint=' + self._entryPoint(),
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
@@ -734,10 +739,6 @@ class ApplianceTestSupport(ToilTest):
                     if 'true' == running:
                         break
                 time.sleep(1)
-
-        def _getApplianceImage(self):
-            image, tag = os.environ['TOIL_APPLIANCE_SELF'].rsplit(':', 1)
-            return image + '-' + self._getRole() + ':' + tag
 
         def tryRun(self):
             self.popen.wait()
@@ -778,6 +779,9 @@ class ApplianceTestSupport(ToilTest):
         def _getRole(self):
             return 'leader'
 
+        def _entryPoint(self):
+            return 'mesos-master'
+
         def _containerCommand(self):
             return ['--registry=in_memory',
                     '--ip=127.0.0.1',
@@ -785,10 +789,12 @@ class ApplianceTestSupport(ToilTest):
                     '--allocation_interval=500ms']
 
     class WorkerThread(Appliance):
-
         def __init__(self, outer, mounts, numCores):
             self.numCores = numCores
             super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
+
+        def _entryPoint(self):
+            return 'mesos-slave'
 
         def _getRole(self):
             return 'worker'

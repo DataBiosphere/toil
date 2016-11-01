@@ -85,7 +85,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
 
     @classmethod
-    def dockerInfo(cls):
+    def applianceImageTag(cls):
         try:
             return os.environ['TOIL_APPLIANCE_SELF']
         except KeyError:
@@ -202,11 +202,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
-        dockerLeaderData = cls.dockerInfo().rsplit(':', 1)
-        leaderRepo = dockerLeaderData[0]
-        leaderTag = dockerLeaderData[1]
-        leaderData = {'role': 'leader', 'tag': leaderTag,
-                      'args': leaderArgs.format(name=clusterName), 'repo': leaderRepo}
+        leaderData = dict(role='leader',
+                          image=cls.applianceImageTag(),
+                          entrypoint='mesos-master',
+                          args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_groups': [clusterName],
                   'instance_type': instanceType,
@@ -272,13 +271,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _addNodes(self, instancesToLaunch, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
-        # quay.io/toil-leader:tag
-        workerData = self.dockerInfo().rsplit(':', 1)
-        workerRepo = workerData[0].rsplit('-', 1)[0] + '-worker'
-        workerTag = workerData[1]
-        workerData = {'role': 'worker', 'tag': workerTag,
-                      'args': workerArgs.format(ip=self.leaderIP, preemptable=preemptable),
-                      'repo': workerRepo}
+        workerData = dict(role='worker',
+                          image=self.applianceImageTag(),
+                          entrypoint='mesos-slave',
+                          args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)
         kwargs = {'key_name': self.keyName, 'security_groups': [self.clusterName],
                   'instance_type': self.instanceType.name,

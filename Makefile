@@ -115,52 +115,35 @@ clean_pypi:
 	- rm -rf build/
 
 
-docker: check_docker_registry docker/worker/Dockerfile docker/leader/Dockerfile
+docker: check_docker_registry docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; for role in leader worker; do \
-	    docker build --tag=$(docker_registry)/$(docker_base_name)-$${role}:$(docker_tag) \
-	                 -f $${role}/Dockerfile \
-	                 . \
-	; done
-	# On versions of docker >= 1.10, the `docker rmi` invocation is redundant, their `docker tag`
-	# automatically removes the tag from previous images. In older versions, `docker tag -f` does
-	# the same. The only way that works on both version is to explicitly untag the old image. IOW,
-	# it is ok if the `rmi` command below fails.
-	-docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
-	docker tag $(docker_registry)/$(docker_base_name)-leader:$(docker_tag) \
-	           $(docker_registry)/$(docker_base_name):$(docker_tag)
+	; docker build --tag=$(docker_registry)/$(docker_base_name):$(docker_tag) \
+	             -f Dockerfile \
+	             .
+	@printf "Tagged appliance image as $(docker_registry)/$(docker_base_name):$(docker_tag)\n"
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
-docker/%/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
-	mkdir -p docker/$*
+docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
 	$(python) docker/Dockerfile.py \
-	    --role=$* \
 	    --sdist=$(sdist_name) \
-	    --self=$(docker_registry)/$(docker_base_name)-$*:$(docker_tag) > $@
+	    --self=$(docker_registry)/$(docker_base_name):$(docker_tag) > $@
 
 clean_docker: check_docker_registry
 	-rm docker/Dockerfile.{leader,worker} docker/$(sdist_name)
-	-@set -x \
-	; for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker rmi $(docker_registry)/$${repo}:$(docker_tag) \
-	; done
+    -docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
 
 obliterate_docker: clean_docker
 	-@set -x \
-	; for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker images $(docker_registry)/$${repo} \
-	        | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
-	        | xargs docker rmi \
-	; done
+	; docker images $(docker_registry)/$(docker_base_name) \
+	    | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
+	    | xargs docker rmi
 	-docker images -qf dangling=true | xargs docker rmi
 
 push_docker: docker
-	for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker push $(docker_registry)/$${repo}:$(docker_tag) \
-	; done
+	docker push $(docker_registry)/$(docker_base_name):$(docker_tag)
 
 
 docs: check_venv check_build_reqs
