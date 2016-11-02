@@ -26,7 +26,7 @@ class HotDeploymentTest(ApplianceTestSupport):
             try:
                 leader.runOnAppliance('virtualenv',
                                       '--system-site-packages',
-                                      '--never-download',
+                                      '--never-download',  # prevent silent upgrades to pip etc
                                       'venv')
                 leader.runOnAppliance('venv/bin/pip', 'list') # For diagnostic purposes
                 yield leader, worker

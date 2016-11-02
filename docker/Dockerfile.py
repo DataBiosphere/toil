@@ -28,7 +28,8 @@ print textwrap.dedent('''
     # Include virtualenv, as it is still the recommended way to deploy pipelines
     RUN pip install virtualenv==15.0.3
 
-    RUN virtualenv /home/s3am
+    # --never-download prevents silent upgrades to pip, wheel and setuptools
+    RUN virtualenv --never-download /home/s3am
 
     RUN /home/s3am/bin/pip install s3am==2.0
 

@@ -49,7 +49,8 @@ class AWSProvisionerTest(ToilTest):
         leader = AWSProvisioner.launchCluster(instanceType=self.instanceType, keyName=self.keyName,
                                               clusterName=self.clusterName)
 
-        venv_command = 'virtualenv --system-site-packages /home/venv'
+        # --never-download prevents silent upgrades to pip, wheel and setuptools
+        venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
         AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
 
         upgrade_command = '/home/venv/bin/pip install setuptools --upgrade'

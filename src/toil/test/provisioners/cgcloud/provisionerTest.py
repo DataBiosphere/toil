@@ -107,7 +107,8 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
         os.environ['CGCLOUD_PLUGINS'] = 'cgcloud.toil'
         cls.sdistPath = cls._getSourceDistribution()
         path = cls._createTempDirEx('cgcloud-venv')
-        cls._run('virtualenv', path)
+        # --never-download prevents silent upgrades to pip, wheel and setuptools
+        cls._run('virtualenv', '--never-download', path)
         binPath = os.path.join(path, 'bin')
         cls.oldPath = os.environ['PATH']
         os.environ['PATH'] = os.pathsep.join(concat(binPath, cls.oldPath.split(os.pathsep)))
@@ -154,7 +155,8 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                 self._leader('rm', sdistName, admin=True)
             if self.debugEggPath:
                 self._rsync('toil-leader', '-v', self.debugEggPath, ':')
-            self._leader('virtualenv', '--system-site-packages', '~/venv')
+            # --never-download prevents silent upgrades to pip, wheel and setuptools
+            self._leader('virtualenv', '--system-site-packages', '--never-download', '~/venv')
 
             self._getScript()
 
