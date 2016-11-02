@@ -53,10 +53,10 @@ class AWSProvisionerTest(ToilTest):
         venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
         AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
 
-        upgrade_command = '/home/venv/bin/pip install setuptools --upgrade'
+        upgrade_command = '/home/venv/bin/pip install setuptools==28.7.1'
         AWSProvisioner._sshAppliance(leader.ip_address, command=upgrade_command)
 
-        yaml_command = '/home/venv/bin/pip install pyyaml'
+        yaml_command = '/home/venv/bin/pip install pyyaml==3.12'
         AWSProvisioner._sshAppliance(leader.ip_address, command=yaml_command)
 
         # install toil scripts
