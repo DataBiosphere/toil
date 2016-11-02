@@ -134,6 +134,9 @@ class MesosBatchSystem(BatchSystemSupport,
 
         self._startDriver()
 
+    def setUserScript(self, userScript):
+        self.userScript = userScript
+
     def issueBatchJob(self, jobNode):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
