@@ -235,6 +235,23 @@ class ClusterScaler(object):
         else:
             self.scaler = None
 
+    def check(self):
+        """
+        Attempt to join any existing scaler threads that may have died or finished. This insures
+        any exceptions raised in the threads are propagated in a timely fashion.
+        """
+        exception = False
+        for scalerThread in [self.preemptableScaler, self.scaler]:
+            if scalerThread is not None:
+                try:
+                    scalerThread.join(timeout=0)
+                except Exception as e:
+                    logger.exception(e)
+                    exception = True
+        if exception:
+            raise RuntimeError('The cluster scaler has exited due to an exception')
+
+
     def shutdown(self):
         """
         Shutdown the cluster.
