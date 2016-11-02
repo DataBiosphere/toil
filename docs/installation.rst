@@ -188,7 +188,21 @@ To invoke the tests (unit and integration) use
 
 ::
 
-   make test
+    make test
+
+If you get
+
+::
+
+    Please set docker_registry, e.g. to quay.io/USER.
+
+make an account with `Quay`_ and specify it like so: 
+
+::
+
+    docker_registry=quay.io/$USER make test
+
+.. _Quay: Please set docker_registry, e.g. to quay.io/USER.
 
 Run an individual test with
 
