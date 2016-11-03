@@ -71,7 +71,7 @@ class AWSProvisionerTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--mesosMaster=%s:5050' % leader.private_ip_address,
                        '--clean=always',
-                       '--retryCount=0']
+                       '--retryCount=2']
 
         toilOptions.extend(['--provisioner=aws',
                             '--nodeType=' + self.instanceType,
