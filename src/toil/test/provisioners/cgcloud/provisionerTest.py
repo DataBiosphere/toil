@@ -67,7 +67,7 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     # The number of workers in a static cluster, the maximum number of prepemptable and
     # non-preemptable workers each in an auto-scaled cluster.
     #
-    numWorkers = 10
+    numWorkers = 2
 
     # The path to PyCharm's debug egg. If set, it will be copied to the leader to aid in remote
     # debugging. Use the following fragment to instrument the code for remote debugging:
@@ -252,7 +252,7 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
         super(CGCloudRNASeqTest, self).__init__(name)
         # The number of samples to run the test workflow on
         #
-        self.numSamples = 10
+        self.numSamples = 2
 
     def _getScript(self):
         toilScripts = urlparse(self.toilScripts)

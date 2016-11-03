@@ -31,8 +31,8 @@ class AWSProvisionerTest(ToilTest):
         self.keyName = 'jenkins@jenkins-master'
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.toilScripts = '2.1.0a1.dev654'#'2.1.0a1.dev455'
-        self.numWorkers = 10
-        self.numSamples = 10
+        self.numWorkers = 2
+        self.numSamples = 2
         self.spotBid = '0.15'
 
     def setUp(self):
