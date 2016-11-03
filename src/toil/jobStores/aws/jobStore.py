@@ -48,7 +48,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException,
                                              NoSuchJobStoreException,
-                                             BucketLocationConflictException,
                                              JobStoreExistsException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
@@ -668,22 +667,20 @@ class AWSJobStore(AbstractJobStore):
             return (isinstance(e, (S3CreateError, S3ResponseError))
                     and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
 
+        bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
             with attempt:
                 try:
                     bucket = self.s3.get_bucket(bucket_name, validate=True)
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
+                        bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
                             bucket = self.s3.create_bucket(bucket_name, location=location)
                             assert self.__getBucketRegion(bucket) == self.region
-                            if versioning:
-                                bucket.configure_versioning(versioning)
-                            log.debug("Created new job store bucket '%s'.", bucket_name)
-                            return bucket
                         elif block:
                             raise
                         else:
@@ -699,9 +696,20 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     if self.__getBucketRegion(bucket) != self.region:
                         raise BucketLocationConflictException(self.__getBucketRegion(bucket))
-                    assert versioning is self.__getBucketVersioning(bucket)
-                    log.debug("Using existing job store bucket '%s'.", bucket_name)
-                    return bucket
+                if versioning:
+                    bucket.configure_versioning(True)
+                else:
+                    bucket_versioning = self.__getBucketVersioning(bucket)
+                    if bucket_versioning is True:
+                        assert False, 'Cannot disable bucket versioning if it is already enabled'
+                    elif bucket_versioning is None:
+                        assert False, 'Cannot use a bucket with versioning suspended'
+                if bucketExisted:
+                    log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
+                else:
+                    log.debug("Created new job store bucket '%s'.", bucket_name)
+
+                return bucket
 
     def _bindDomain(self, domain_name, create=False, block=True):
         """
@@ -1245,21 +1253,20 @@ class AWSJobStore(AbstractJobStore):
 
     def __getBucketVersioning(self, bucket):
         """
-        A valueable lesson in how to botch a simple tri-state boolean.
-
-        For newly created buckets get_versioning_status returns None. We map that to False.
-
-        TBD: This may actually be a result of eventual consistency
+        For newly created buckets get_versioning_status returns an empty dict. In the past we've
+        seen None in this case. We map both to a return value of False.
 
         Otherwise, the 'Versioning' entry in the dictionary returned by get_versioning_status can
         be 'Enabled', 'Suspended' or 'Disabled' which we map to True, None and False
-        respectively. Calling configure_versioning with False on a bucket will cause
-        get_versioning_status to then return 'Suspended' for some reason.
+        respectively. Note that we've never seen a versioning status of 'Disabled', only the
+        empty dictionary. Calling configure_versioning with False on a bucket will cause
+        get_versioning_status to then return 'Suspended' even on a new bucket that never had
+        versioning enabled.
         """
         for attempt in retry_s3():
             with attempt:
                 status = bucket.get_versioning_status()
-        return bool(status) and self.versionings[status['Versioning']]
+                return self.versionings[status['Versioning']] if status else False
 
     def __getBucketRegion(self, bucket):
         for attempt in retry_s3():
@@ -1305,12 +1312,8 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     for upload in bucket.list_multipart_uploads():
                         upload.cancel_upload()
-                    if self.__getBucketVersioning(bucket) in (True, None):
-                        for key in list(bucket.list_versions()):
-                            bucket.delete_key(key.name, version_id=key.version_id)
-                    else:
-                        for key in list(bucket.list()):
-                            key.delete()
+                    for key in list(bucket.list_versions()):
+                        bucket.delete_key(key.name, version_id=key.version_id)
                     bucket.delete()
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
@@ -1350,3 +1353,10 @@ class AWSJob(JobGraph, SDBHelper):
         :return: a str for the item's name and a dictionary for the item's attributes
         """
         return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self))
+
+
+class BucketLocationConflictException(Exception):
+    def __init__(self, bucketRegion):
+        super(BucketLocationConflictException, self).__init__(
+            'A bucket with the same name as the jobstore was found in another region (%s). '
+            'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)
