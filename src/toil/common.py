@@ -379,9 +379,8 @@ def _addOptions(addGroupFn, config):
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
     addOptionFn('--nodeDebug', dest='nodeDebug', action="store_true",
-                help=("If enabled, this options prevents the cluster scaler from terminating "
-                      "instances that fail an instance status check. Currently only supported "
-                      "with the AWS provisioner."))
+                help=("If enabled, this option prevents the cluster scaler from terminating "
+                      "instances with failing status check to facilitate node debugging. "))
 
     #
     #Resource requirements

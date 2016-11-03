@@ -51,21 +51,21 @@ class AWSProvisionerTest(ToilTest):
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=venv_command)
 
         upgrade_command = '/home/venv/bin/pip install setuptools==28.7.1'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=upgrade_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=upgrade_command)
 
         yaml_command = '/home/venv/bin/pip install pyyaml==3.12'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=yaml_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=yaml_command)
 
         # install toil scripts
         install_command = ('/home/venv/bin/pip install toil-scripts==%s' % self.toilScripts)
-        AWSProvisioner._sshAppliance(leader.ip_address, command=install_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
 
         # install curl
         install_command = 'sudo apt-get -y install curl'
-        AWSProvisioner._sshAppliance(leader.ip_address, command=install_command)
+        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
 
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
