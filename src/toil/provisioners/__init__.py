@@ -21,6 +21,13 @@ class BaseAWSProvisioner(object):
     def _remainingBillingInterval(instance):
         return 1.0 - BaseAWSProvisioner._partialBillingInterval(instance)
 
+    @classmethod
+    def _filterImpairedNodes(cls, nodes, ec2):
+        nodeIDs = [node.id for node in nodes]
+        statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
+        statusMap = {status.id: status.instance_status for status in statuses}
+        return [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+
     @staticmethod
     def _partialBillingInterval(instance):
         """

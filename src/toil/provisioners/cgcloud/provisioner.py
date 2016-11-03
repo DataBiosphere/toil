@@ -76,6 +76,7 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         super(CGCloudProvisioner, self).__init__()
         self.batchSystem = batchSystem
         self.imageId = self._instance.image_id
+        self.nodeDebug = config.nodeDebug
         require(config.nodeType, 'Must pass --nodeType when using the cgcloud provisioner')
         instanceType = self._resolveInstanceType(config.nodeType)
         self._requireEphemeralDrives(instanceType)
@@ -132,7 +133,12 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                                         preemptable=preemptable)
         elif delta < 0:
             log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
-            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
+            if self.nodeDebug:
+                # don't terminate nodes with failing status checks so they can be debugged
+                instancesToTerminate = self._filterImpairedNodes(workerInstances, self._ec2)
+            else:
+                instancesToTerminate = workerInstances
+            numNodes = numCurrentNodes - self._removeNodes(instancesToTerminate,
                                                            numNodes=-delta,
                                                            preemptable=preemptable,
                                                            force=force)

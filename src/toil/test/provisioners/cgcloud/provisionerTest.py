@@ -168,7 +168,8 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                 toilOptions.extend(['--provisioner=cgcloud',
                                     '--nodeType=' + self.instanceType,
                                     '--maxNodes=%s' % self.numWorkers,
-                                    '--logDebug'])
+                                    '--logDebug',
+                                    '--nodeDebug'])
             if spotBid is not None:
                 toilOptions.extend([
                     '--preemptableNodeType=%s:%s' % (self.instanceType, spotBid),

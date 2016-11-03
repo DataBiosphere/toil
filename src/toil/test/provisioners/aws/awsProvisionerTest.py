@@ -76,7 +76,8 @@ class AWSProvisionerTest(ToilTest):
         toilOptions.extend(['--provisioner=aws',
                             '--nodeType=' + self.instanceType,
                             '--maxNodes=%s' % self.numWorkers,
-                            '--logDebug'])
+                            '--logDebug',
+                            '--nodeDebug'])
         if spotInstances:
             toilOptions.extend([
                 '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),

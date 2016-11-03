@@ -45,6 +45,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
         self.ctx = self._buildContext(clusterName=self.clusterName)
+        self.nodeDebug = config.nodeDebug
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -65,7 +66,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         if instancesToLaunch > 0:
             self._addNodes(instancesToLaunch, preemptable=preemptable)
         elif instancesToLaunch < 0:
-            self._removeNodes(instances=workerInstances, numNodes=numNodes, preemptable=preemptable, force=force)
+            if self.nodeDebug:
+                # don't terminate nodes with failing status checks so they can be debugged
+                instancesToTerminate = self._filterImpairedNodes(workerInstances, self.ctx.ec2)
+            else:
+                instancesToTerminate = workerInstances
+            self._removeNodes(instances=instancesToTerminate, numNodes=numNodes, preemptable=preemptable,
+                              force=force)
         else:
             pass
         workerInstances = self._getWorkersInCluster(preemptable)
