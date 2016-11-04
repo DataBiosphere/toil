@@ -1381,8 +1381,8 @@ class EncapsulatedJob(Job):
     def addChild(self, childJob):
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
-    def addService(self, service):
-        return Job.addService(self.encapsulatedFollowOn, service)
+    def addService(self, service, parentService=None):
+        return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
 
     def addFollowOn(self, followOnJob):
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
