@@ -605,11 +605,11 @@ class Toil(object):
                 cPickle.dump(promise, fH)
 
             # Setup the first wrapper and cache it
-            job = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(job)
+            rootJobWrapper = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(rootJobWrapper)
 
             self._setProvisioner()
-            return self._runMainLoop(job)
+            return self._runMainLoop(rootJobWrapper)
         finally:
             self._shutdownBatchSystem()
 
@@ -632,8 +632,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJob = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJob)
+            rootJobWrapper = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobWrapper)
         finally:
             self._shutdownBatchSystem()
 
