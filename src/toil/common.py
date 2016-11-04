@@ -595,22 +595,21 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
 
-            # Make a file to store the root job's return value in
-            rootJobReturnValueID = self._jobStore.getEmptyFileStoreID()
-
-            # Add the root job return value as a promise
-            rootJob._rvs[()].append(rootJobReturnValueID)
-
-            # Write the name of the promise file in a shared file
-            with self._jobStore.writeSharedFileStream("rootJobReturnValue") as fH:
-                fH.write(rootJobReturnValueID)
+            # Pickle the promised return value of the root job, then write the pickled promise to
+            # a shared file, where we can find and unpickle it at the end of the workflow.
+            # Unpickling the promise will automatically substitute the promise for the actual
+            # return value.
+            with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
+                rootJob.prepareForPromiseRegistration(self._jobStore)
+                promise = rootJob.rv()
+                cPickle.dump(promise, fH)
 
             # Setup the first wrapper and cache it
-            job = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(job)
+            rootJobWrapper = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(rootJobWrapper)
 
             self._setProvisioner()
-            return self._runMainLoop(job)
+            return self._runMainLoop(rootJobWrapper)
         finally:
             self._shutdownBatchSystem()
 
@@ -633,8 +632,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJob = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJob)
+            rootJobWrapper = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobWrapper)
         finally:
             self._shutdownBatchSystem()
 
