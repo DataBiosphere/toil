@@ -4,6 +4,7 @@
 # separated list of Makefile targets to invoke.
 
 # Passing --system-site-packages ensures that mesos.native and mesos.interface are included
+# Passing --never-download prevents silent upgrades to pip, wheel and setuptools
 virtualenv --system-site-packages --never-download venv
 . venv/bin/activate
 

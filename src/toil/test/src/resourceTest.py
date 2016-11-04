@@ -67,7 +67,8 @@ class ResourceTest(ToilTest):
         dirPath = self._createTempDir()
         if virtualenv:
             self.assertTrue(inVirtualEnv())
-            check_call(['virtualenv', dirPath])
+            # Passing --never-download prevents silent upgrades to pip, wheel and setuptools
+            check_call(['virtualenv', '--never-download', dirPath])
             sitePackages = os.path.join(dirPath, 'lib', 'python2.7', 'site-packages')
             # tuple assignment is necessary to make this line immediately precede the try:
             oldPrefix, sys.prefix, dirPath = sys.prefix, dirPath, sitePackages
