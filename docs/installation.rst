@@ -200,9 +200,9 @@ make an account with `Quay`_ and specify it like so:
 
 ::
 
-    docker_registry=quay.io/$USER make test
+    docker_registry=quay.io/USER make test
 
-.. _Quay: Please set docker_registry, e.g. to quay.io/USER.
+.. _Quay: https://quay.io/
 
 Run an individual test with
 
