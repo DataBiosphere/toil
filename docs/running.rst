@@ -315,7 +315,7 @@ Running in the cloud
 
 There are several recommended ways to run Toil jobs in the cloud. Of these, running on Amazon Web Services (AWS) is currently the best-supported solution.
 
-On all cloud providers, it is recommended that you run long-running jobs on remote systems under ``screen``. Simply type ``screen`` to open a new ``screen` session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run ``screen -r`` to reconnect to it. Commands running under ``screen`` will continue running even when you are disconnected, allowing you to unplug your laptop and take it home without ending your Toil jobs.
+On all cloud providers, it is recommended that you run long-running jobs on remote systems under ``screen``. Simply type ``screen`` to open a new ``screen`` session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run ``screen -r`` to reconnect to it. Commands running under ``screen`` will continue running even when you are disconnected, allowing you to unplug your laptop and take it home without ending your Toil jobs.
 
 
 .. _runningAWS:
