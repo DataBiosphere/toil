@@ -1356,15 +1356,16 @@ class EncapsulatedJob(Job):
     Let A be the root job of a job subgraph and B be another job we'd like to run after A
     and all its successors have completed, for this use encapsulate::
 
-        A, B = A(), B() #Job A and subgraph, Job B
+        #  Job A and subgraph, Job B
+        A, B = A(), B()
         A' = A.encapsulate()
-        A'.addChild(B) #B will run after A and all its successors have
-        # completed, A and its subgraph of successors in effect appear
-        # to be just one job.
+        A'.addChild(B)
+        #  B will run after A and all its successors have completed, A and its subgraph of
+        # successors in effect appear to be just one job.
 
-    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function) \
-    is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() \
-    will resolve to the same value after A or A.encapsulate() has been run.
+    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
+    is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
+    the same value after A or A.encapsulate() has been run.
     """
     def __init__(self, job):
         """
