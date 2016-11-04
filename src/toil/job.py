@@ -1395,6 +1395,10 @@ class EncapsulatedJob(Job):
         super(EncapsulatedJob, self).prepareForPromiseRegistration(jobStore)
         self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
 
+    def getUserScript(self):
+        return self.encapsulatedJob.getUserScript()
+
+
 class ServiceJob(Job):
     """
     Job used to wrap a :class:`toil.job.Job.Service` instance.
