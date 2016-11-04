@@ -28,7 +28,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                                       '--system-site-packages',
                                       '--never-download',  # prevent silent upgrades to pip etc
                                       'venv')
-                leader.runOnAppliance('venv/bin/pip', 'list') # For diagnostic purposes
+                leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
                 yield leader, worker
             finally:
                 # Without this step, we would leak files owned by root on the host's file system
@@ -141,3 +141,51 @@ class HotDeploymentTest(ApplianceTestSupport):
                                   '/data/jobstore')
             # Assert that out output file is there
             worker.runOnAppliance('test', '-f', '/data/foo.txt')
+
+    def testUserTypesInJobFunctionArgs(self):
+        """
+        Test encapsulated, function-wrapping jobs where the function arguments reference
+        user-defined types.
+
+        Mainly written to cover https://github.com/BD2KGenomics/toil/issues/1259 but then also
+        revealed https://github.com/BD2KGenomics/toil/issues/1278.
+        """
+        with self._venvApplianceCluster() as (leader, worker):
+            def userScript():
+                from toil.job import Job
+                from toil.common import Toil
+
+                # A user-defined type, i.e. a type defined in the user script
+                class X(object):
+                    pass
+
+                # noinspection PyUnusedLocal
+                def job(job, x, disk='10M', cores=1, memory='10M'):
+                    return x
+
+                if __name__ == '__main__':
+                    options = Job.Runner.getDefaultArgumentParser().parse_args()
+                    x = X()
+                    with Toil(options) as toil:
+                        r = toil.start(Job.wrapJobFn(job, x).encapsulate())
+                    # Assert that the return value is of type X, but not X from the __main__
+                    # module but X from foo.bar, the canonical name for the user module. The
+                    # translation from __main__ to foo.bar is a side effect of hot-deployment.
+                    assert r.__class__ is not X
+                    import foo.bar
+                    assert r.__class__ is foo.bar.X
+                    # Assert that a copy was made. This is a side effect of pickling/unpickling.
+                    assert x is not r
+
+            userScript = self._getScriptSource(userScript)
+
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+
+            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
+                                  '--logDebug',
+                                  '--batchSystem=mesos',
+                                  '--mesosMaster=localhost:5050',
+                                  '--defaultMemory=10M',
+                                  '/data/jobstore')
