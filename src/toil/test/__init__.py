@@ -745,6 +745,9 @@ class ApplianceTestSupport(ToilTest):
             log.info('Exiting %s', self.__class__.__name__)
 
         def runOnAppliance(self, *args, **kwargs):
+            # Check if thread is still alive. Note that ExceptionalThread.join raises the
+            # exception that occurred in the thread.
+            self.join(timeout=0)
             # noinspection PyProtectedMember
             self.outer._run('docker', 'exec', '-i', self.containerName, *args, **kwargs)
 
