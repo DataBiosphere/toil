@@ -15,6 +15,10 @@ import logging
 import pipes
 
 from uuid import uuid4
+
+import sys
+from boto.iam import IAMConnection
+
 from toil.test import needs_aws, integrative, ToilTest
 
 
@@ -43,12 +47,32 @@ class AWSProvisionerTest(ToilTest):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         AWSProvisioner.destroyCluster(self.clusterName)
 
+    def getMatchingRoles(self, roleName):
+        roleName = roleName.replace('-','_')
+        iam = IAMConnection()
+        truncated = True
+        matchingRoles = []
+        marker = None
+        while truncated:
+            resultDict = iam.list_roles(marker=marker)['list_roles_response']
+            resultDict = resultDict['list_roles_result']
+            truncated = resultDict['is_truncated'] == 'true'
+            try:
+                marker = resultDict['marker']
+            except KeyError:
+                assert not truncated
+            profiles = resultDict['roles']
+            profiles = [role for role in profiles if role.role_name.startswith(roleName)]
+            matchingRoles.extend(profiles)
+        return matchingRoles
+
     def _test(self, spotInstances=False):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
         leader = AWSProvisioner.launchCluster(instanceType=self.instanceType, keyName=self.keyName,
                                               clusterName=self.clusterName)
 
+        assert len(self.getMatchingRoles(self.clusterName)) > 0
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
         AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
@@ -95,6 +119,9 @@ class AWSProvisionerTest(ToilTest):
         runCommand %= self.numSamples
 
         AWSProvisioner._sshAppliance(leader.ip_address, runCommand)
+
+        AWSProvisioner.destroyCluster(self.clusterName)
+        assert len(self.getMatchingRoles(self.clusterName)) == 0
 
     @integrative
     @needs_aws
