@@ -102,9 +102,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         """
         :param str leaderIP: IP of the master
         :param args: arguments to execute in the appliance
-        :param kwargs: the only checked kwarg is tty=True which tells docker to
-         create a TTY shell for interactive SSH-ing
-        :return: 
+        :param kwargs: the only valid kwarg is tty=bool which tells docker whether or not
+        to create a TTY shell for interactive SSHing. The default value is False.
         """
         tty = kwargs.pop('tty', False)
         args = map(pipes.quote, args)
