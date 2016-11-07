@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
+        super(AWSProvisioner, self).__init__(config, batchSystem)
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
         self.ctx = Context(availability_zone='us-west-2a', namespace=self._toNameSpace(self.clusterName))
@@ -53,23 +54,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
             self.instanceType = ec2_instance_types[nodeBidTuple[0]]
         else:
             self.instanceType = ec2_instance_types[config.nodeType]
-        self.batchSystem = batchSystem
         self.leaderIP = self.instanceMetaData['local-ipv4']
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
-
-    def setNodeCount(self, numNodes, preemptable=False, force=False):
-        # get all nodes in cluster
-        workerInstances = self._getWorkersInCluster(preemptable)
-        instancesToLaunch = numNodes - len(workerInstances)
-        logger.info('Adjusting cluster size by %s', instancesToLaunch)
-        if instancesToLaunch > 0:
-            self._addNodes(instancesToLaunch, preemptable=preemptable)
-        elif instancesToLaunch < 0:
-            self._removeNodes(instances=workerInstances, numNodes=numNodes, preemptable=preemptable, force=force)
-        else:
-            pass
-        workerInstances = self._getWorkersInCluster(preemptable)
-        return len(workerInstances)
 
     def getNodeShape(self, preemptable=False):
         instanceType = self.instanceType
@@ -223,7 +209,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
         if instances:
             cls._deleteIAMProfiles(instances=instances, ctx=ctx)
-            cls._terminateInstance(instances=instances, ctx=ctx)
+            cls._terminateInstances(instances=instances, ctx=ctx)
         logger.info('Deleting security group...')
         for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
             with attempt:
@@ -231,11 +217,18 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('... Succesfully deleted security group')
 
     @classmethod
-    def _terminateInstance(cls, instances, ctx):
+    def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
+        cls._terminateIDs(instanceIDs, ctx)
+
+    @classmethod
+    def _terminateIDs(cls, instanceIDs, ctx):
         logger.info('Terminating instance(s): %s', instanceIDs)
         ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
+
+    def _logAndTerminate(self, instanceIDs):
+        self._terminateIDs(instanceIDs, self.ctx)
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):
@@ -257,7 +250,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                 else:
                     raise
 
-    def _addNodes(self, instancesToLaunch, preemptable=False):
+    def _addNodes(self, instances, numNodes, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
         workerData = dict(role='worker',
@@ -271,15 +264,15 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                   'instance_profile_arn': arn}
 
         if not preemptable:
-            logger.info('Launching %s non-preemptable nodes', instancesToLaunch)
+            logger.info('Launching %s non-preemptable nodes', numNodes)
             create_ondemand_instances(self.ctx.ec2, image_id=coreOSAMI,
                                       spec=kwargs, num_instances=1)
         else:
-            logger.info('Launching %s preemptable nodes', instancesToLaunch)
+            logger.info('Launching %s preemptable nodes', numNodes)
             # force generator to evaluate
             list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=coreOSAMI,
-                                       clusterName=self.clusterName, spec=kwargs, num_instances=instancesToLaunch))
-        logger.info('Launched %s new instance(s)', instancesToLaunch)
+                                       clusterName=self.clusterName, spec=kwargs, num_instances=numNodes))
+        logger.info('Launched %s new instance(s)', numNodes)
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):
@@ -293,40 +286,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
-
-    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
-        # based off toil.provisioners.cgcloud.provisioner.CGCloudProvisioner._removeNodes()
-        logger.debug('Attempting to delete nodes - force = %s', force)
-        # If the batch system is scalable, we can use the number of currently running workers on
-        # each node as the primary criterion to select which nodes to terminate.
-        if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            logger.debug('Using a scalable batch system')
-            nodes = self.batchSystem.getNodes(preemptable)
-            # Join nodes and instances on private IP address.
-            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
-            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
-            # the batch system to report stale nodes for which the corresponding instance was
-            # terminated already. There can also be instances that the batch system doesn't have
-            # nodes for yet. We'll ignore those, too, unless forced.
-            nodes = [(instance, nodeInfo)
-                     for instance, nodeInfo in nodes
-                     if force or nodeInfo is not None and nodeInfo.workers < 1]
-            # Sort nodes by number of workers and time left in billing cycle
-            nodes.sort(key=lambda (instance, nodeInfo): (
-                nodeInfo.workers if nodeInfo else 1,
-                self._remainingBillingInterval(instance)))
-            nodes = nodes[numNodes:]
-            instancesTerminate = [instance for instance, nodeInfo in nodes]
-        else:
-            # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances,
-                               key=lambda instance: (self._remainingBillingInterval(instance)))
-            instancesTerminate = [instance for instance in islice(instances, numNodes)]
-        if instancesTerminate:
-            self._terminateInstance(instances=instancesTerminate, ctx=self.ctx)
-        else:
-            logger.debug('No nodes to delete')
-        return len(instancesTerminate)
 
     @classmethod
     def __getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
