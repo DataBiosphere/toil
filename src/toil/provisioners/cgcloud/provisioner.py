@@ -14,6 +14,7 @@
 
 import datetime
 import logging
+import os
 import re
 import time
 from collections import Iterable
@@ -76,7 +77,9 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         super(CGCloudProvisioner, self).__init__()
         self.batchSystem = batchSystem
         self.imageId = self._instance.image_id
-        self.nodeDebug = config.nodeDebug
+        self.nodeDebug = os.environ.get('NODE_DEBUG', False)
+        if self.nodeDebug == 'TRUE':
+            self.nodeDebug = True
         require(config.nodeType, 'Must pass --nodeType when using the cgcloud provisioner')
         instanceType = self._resolveInstanceType(config.nodeType)
         self._requireEphemeralDrives(instanceType)

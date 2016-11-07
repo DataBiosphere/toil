@@ -45,7 +45,9 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
         self.ctx = self._buildContext(clusterName=self.clusterName)
-        self.nodeDebug = config.nodeDebug
+        self.nodeDebug = os.environ.get('NODE_DEBUG', False)
+        if self.nodeDebug == 'TRUE':
+            self.nodeDebug = True
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:

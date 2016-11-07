@@ -83,7 +83,6 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 10
         self.preemptableCompensation = 0.0
-        self.nodeDebug = False
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -207,7 +206,6 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
-        setOption("nodeDebug", bool)
 
         # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -378,9 +376,6 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
-    addOptionFn('--nodeDebug', dest='nodeDebug', action="store_true",
-                help=("If enabled, this option prevents the cluster scaler from terminating "
-                      "instances with failing status check to facilitate node debugging. "))
 
     #
     #Resource requirements
