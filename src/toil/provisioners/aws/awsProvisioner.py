@@ -272,14 +272,24 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        if instances:
-            cls._deleteIAMProfiles(instances=instances, ctx=ctx)
-            cls._terminateInstance(instances=instances, ctx=ctx)
-        logger.info('Deleting security group...')
-        for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
-            with attempt:
-                ctx.ec2.delete_security_group(name=clusterName)
-        logger.info('... Succesfully deleted security group')
+        nodeDebug = os.environ.get('NODE_DEBUG', False)
+        if nodeDebug == 'TRUE':
+            nodeDebug = True
+        if nodeDebug:
+            # don't terminate nodes with failing status checks so they can be debugged
+            instancesToTerminate = cls._filterImpairedNodes(instances, ctx.ec2)
+        else:
+            instancesToTerminate = instances
+        if instancesToTerminate:
+            cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
+            cls._terminateInstance(instances=instancesToTerminate, ctx=ctx)
+        if len(instances) != len(instancesToTerminate):
+            # the security group can't be deleted until all nodes are terminated
+            logger.info('Deleting security group...')
+            for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
+                with attempt:
+                    ctx.ec2.delete_security_group(name=clusterName)
+            logger.info('... Succesfully deleted security group')
 
     @classmethod
     def _terminateInstance(cls, instances, ctx):
