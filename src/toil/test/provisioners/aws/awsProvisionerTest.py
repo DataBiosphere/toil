@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import pipes
+import subprocess
 
 from uuid import uuid4
 from toil.test import needs_aws, integrative, ToilTest
@@ -24,6 +25,21 @@ log = logging.getLogger(__name__)
 @needs_aws
 @integrative
 class AWSProvisionerTest(ToilTest):
+
+
+    def sshUtil(self, command):
+        baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
+        callCommand = baseCommand + command
+        subprocess.check_call(callCommand)
+
+    def destroyClusterUtil(self):
+        callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
+        subprocess.check_call(callCommand)
+
+    def createClusterUtil(self):
+        callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
+                       '--nodeType=%s' % self.instanceType, self.clusterName]
+        subprocess.check_call(callCommand)
 
     def __init__(self, methodName='AWSprovisioner'):
         super(AWSProvisionerTest, self).__init__(methodName=methodName)
@@ -40,39 +56,23 @@ class AWSProvisionerTest(ToilTest):
         self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
-        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        AWSProvisioner.destroyCluster(self.clusterName)
+        self.destroyClusterUtil()
 
     def _test(self, spotInstances=False):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-
-        leader = AWSProvisioner.launchCluster(instanceType=self.instanceType, keyName=self.keyName,
-                                              clusterName=self.clusterName)
+        self.createClusterUtil()
+        # get the leader so we know the IP address - we don't need to wait since create cluster
+        # already insures the leader is running
+        leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        AWSProvisioner._sshAppliance(leader.ip_address,
-                                     'virtualenv',
-                                     '--system-site-packages',
-                                     '--never-download',
-                                     '/home/venv')
-
-        AWSProvisioner._sshAppliance(leader.ip_address,
-                                     '/home/venv/bin/pip',
-                                     'install',
-                                     'setuptools==28.7.1')
-
-        AWSProvisioner._sshAppliance(leader.ip_address,
-                                     '/home/venv/bin/pip',
-                                     'install',
-                                     'pyyaml==3.12')
-
+        self.sshUtil(['virtualenv', '--system-site-packages', '--never-download', '/home/venv'])
+        self.sshUtil(['/home/venv/bin/pip', 'install', 'setuptools==28.7.1'])
+        self.sshUtil(['/home/venv/bin/pip', 'install', 'pyyaml==3.12'])
         # install toil scripts
-        AWSProvisioner._sshAppliance(leader.ip_address,
-                                     '/home/venv/bin/pip', 'install',
-                                     'toil-scripts==%s' % self.toilScripts)
-
+        self.sshUtil(['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts])
         # install curl
-        AWSProvisioner._sshAppliance(leader.ip_address, 'sudo', 'apt-get', '-y', 'install', 'curl')
+        self.sshUtil(['sudo', 'apt-get', '-y', 'install', 'curl'])
 
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
@@ -102,7 +102,7 @@ class AWSProvisionerTest(ToilTest):
                       ' /home/venv/bin/python -m unittest -v' +
                       ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest']
 
-        AWSProvisioner._sshAppliance(leader.ip_address, *runCommand)
+        self.sshUtil(runCommand)
 
     @integrative
     @needs_aws

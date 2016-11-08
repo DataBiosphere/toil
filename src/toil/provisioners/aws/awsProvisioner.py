@@ -79,11 +79,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                      disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
 
     @classmethod
-    def sshLeader(cls, clusterName):
+    def sshLeader(cls, clusterName, args=None):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
-        cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+        command = args if args else ['bash']
+        cls._sshAppliance(leader.ip_address, *command, tty=tty)
 
     @classmethod
     def dockerInfo(cls):
@@ -248,7 +249,16 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('Deleting security group...')
         for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
             with attempt:
-                ctx.ec2.delete_security_group(name=clusterName)
+                try:
+                    ctx.ec2.delete_security_group(name=clusterName)
+                except BotoServerError as e:
+                    if e.error_code == 'InvalidGroup.NotFound':
+                        logger.info("... Security group does not exist. It may have already been"
+                                    "deleted")
+                        return
+                    else:
+                        raise
+
         logger.info('... Succesfully deleted security group')
 
     @classmethod

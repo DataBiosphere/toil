@@ -14,6 +14,7 @@
 """
 SSHs into the toil appliance container running on the leader of the cluster
 """
+import argparse
 import logging
 from toil import version
 from toil.lib.bioio import getBasicOptionParser, parseBasicOptions, setLoggingFromOptions
@@ -27,6 +28,7 @@ def main():
                         help="The provisioner for cluster auto-scaling. Only aws is currently"
                              "supported")
     parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
+    parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     provisioner = None
@@ -40,4 +42,4 @@ def main():
     else:
         assert False
 
-    provisioner.sshLeader(clusterName=config.clusterName)
+    provisioner.sshLeader(clusterName=config.clusterName, args=config.args)
