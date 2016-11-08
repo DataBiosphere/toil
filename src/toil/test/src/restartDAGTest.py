@@ -24,18 +24,18 @@ import shutil
 import signal
 
 
-class RestartJobTest(ToilTest):
+class RestartDAGTest(ToilTest):
     """
     Tests that restarted job DAGs don't run children of jobs that failed in the first run till the
     parent completes successfully in the restart.
     """
     def setUp(self):
-        super(RestartJobTest, self).setUp()
+        super(RestartDAGTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
         self.testJobStore = self._getTestJobStorePath()
 
     def tearDown(self):
-        super(RestartJobTest, self).tearDown()
+        super(RestartDAGTest, self).tearDown()
         shutil.rmtree(self.testJobStore)
 
     def testRestartedWorkflowSchedulesCorrectJobsOnFailedParent(self):
@@ -80,6 +80,8 @@ class RestartJobTest(ToilTest):
 
         failReasons = []
 
+        assert not os.path.exists(childFile)
+
         # Run the test
         for runMode in 'start', 'restart':
             self.errorRaised = None
@@ -116,7 +118,7 @@ class RestartJobTest(ToilTest):
                     self.fail('No errors were raised on toil "%s".' % runMode)
         if failReasons:
             self.fail('Test failed for (%s) reasons:\n\t%s' % (len(failReasons),
-                                                             '\n\t'.join(failReasons)))
+                                                               '\n\t'.join(failReasons)))
 
     @staticmethod
     def _passingFn(job, fileName=None):
@@ -131,17 +133,6 @@ class RestartJobTest(ToilTest):
             open(fileName, 'w').close()
 
     @staticmethod
-    def _testFileExists(filePath):
-        """
-        Test whether filePath exists or not
-        :param filePath: Path to a file
-        :return: True if exists else False
-        :rtype: bool
-        """
-        return os.path.exists()
-
-
-    @staticmethod
     def _failingFn(job, failType, fileName):
         """
         This function is guaranteed to fail via a raised assertion, or an os.kill
@@ -152,7 +143,7 @@ class RestartJobTest(ToilTest):
         """
         assert failType in ('raise', 'kill')
         # Use that function to avoid code redundancy
-        RestartJobTest._passingFn(job, fileName)
+        RestartDAGTest._passingFn(job, fileName)
 
         if failType == 'raise':
             assert False
@@ -172,4 +163,4 @@ def _exportStaticMethodAsGlobalFunctions(cls):
             if args and args[0] == 'job':
                 globals()[name] = method
 
-_exportStaticMethodAsGlobalFunctions(RestartJobTest)
+_exportStaticMethodAsGlobalFunctions(RestartDAGTest)
