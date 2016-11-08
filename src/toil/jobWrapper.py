@@ -93,6 +93,17 @@ class JobWrapper( object ):
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = checkpointFilesToDelete
 
+    @property
+    def allPredecessorsSuccessful(self):
+        if self.predecessorNumber == 1:
+            # Since job wrappers aren't created until their first predecessor finishes
+            # we know a job wrapper with a predecessor count of 1 has only finished predecessors
+            return True
+        elif self.predecessorNumber == len(self.predecessorsFinished):
+            return True
+        else:
+            return False
+
     def setupJobAfterFailure(self, config):
         """
         Reduce the remainingRetryCount if greater than zero and set the memory
