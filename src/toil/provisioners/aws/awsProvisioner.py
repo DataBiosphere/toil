@@ -239,7 +239,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('Deleting security group...')
         for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
             with attempt:
-                ctx.ec2.delete_security_group(name=clusterName)
+                try:
+                    ctx.ec2.delete_security_group(name=clusterName)
+                except BotoServerError as e:
+                    if e.error_code == 'InvalidGroup.NotFound':
+                        pass
+                    else:
+                        raise
         logger.info('... Succesfully deleted security group')
 
     @classmethod
