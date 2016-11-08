@@ -324,50 +324,61 @@ Autoscaling
 The fastest way to get started runnning Toil in a cloud environment is using
 Toil's autoscaling capabilities to handle node provisioning for us.
 Currently, autoscaling is only supported on the AWS cloud platform with two
-choices of provisioners: Toil's own Docker based provisioner and CGCloud.
+choices of provisioners: Toil's own Docker-based provisioner and CGCloud.
 
 The AWS provisioner is included in Toil alongside the [aws] extra and allows
 us to spin up a cluster without any external dependencies using the Toil
-Appliance docker image. To get started, we choose which version of the
-appliance to run from CGL's
+Appliance, a Docker image that bundles Toil and all its requirements,
+e.g. Mesos. To get started, we choose which version of the appliance to run
+from CGL's
 `Quay account <https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags>`_and
- set the TOIL_APPLIANCE_SELF environment variable to quay.io/ucsc-cgl:toil--
- followed by the tag of the Toil Appliance version we wish to use ::
+ set the `TOIL_APPLIANCE_SELF` environment variable to `quay.io/ucsc-cgl:toil--`
+ followed by the tag of the Toil Appliance version we wish to use::
 
     export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801
     _
 
-Having done that, simply run::
+If you are confused as to which tag to choose, choose the most recent one. Having
+done that, simply run::
 
-    toil launch-cluster -p aws your-cluster-name-here --nodeType=t2.micro 
+    toil launch-cluster -p aws cluster-name-here --nodeType=t2.micro
     --keyPairName=your-AWS-key-pair-name
     _
 
-to launch a t2.micro leader instance - you should adjust this instance type
-accordingly if you want to do real work. See 
+to launch a t2.micro leader instance - adjust this instance type
+accordingly to do real work. See
 `here <https://aws.amazon.com/ec2/instance-types/>`_ for a full selection
  of EC2 instance types. For more information on cluster managment using 
  Toil's AWS provisioner, see :ref:`clusterRef`.
 
-To use CGCloud based autoscaling, see :ref:`installationAWS`for CGCloud
+To use CGCloud-based autoscaling, see :ref:`installationAWS`for CGCloud
 installation and more information on starting our leader instance.
 
 Once we have our leader instance launched, the steps for both provisioners
-converge. At this point we simply start off our Toil run, being sure to
-set ``--batchSystem=mesos``, using an AWS job store with the following
-autoscaling specific options. Indicate your provisioner choice via the
-``--provisioner=<>`` flag and node type for your worker nodes via
-``--nodeType=<>``. Addionally, both provisioners support
-`preemptable nodes <https://aws.amazon.com/ec2/spot/>`_. Toil can run on a
-heterogenous cluster of both preemptable and non preemptable nodes. Our
-preemptable node type can be set by using the ``--preemptableNodeType=<>``
-flag. Be sure to read the help strings for this option, as the different
-provisioners have different syntax for indicating the bid price for on the
-node type you want. While individual jobs can each explicitly specify whether
-or not they should be run on preemptable nodes, the ``--defaultPreemptable``
-flag will allow all other jobs to run on preemptable machines. Finally,
+converge. As with all distributed AWS workflows, we start our Toil run
+using an AWS job store and being sure to pass ``--batchSystem=mesos``.
+Additionally, we have to pass the following autoscaling specific options.
+You can read the help strings for all of the possible Toil flags by passing
+``--help`` to your toil script invocation.
+Indicate your provisioner choice via the ``--provisioner=<>`` flag and
+node type for your worker nodes via ``--nodeType=<>``. Additionally, both
+provisioners support `preemptable nodes <https://aws.amazon.com/ec2/spot/>`_.
+Toil can run on a heterogenous cluster of both preemptable and
+non-preemptable nodes. Our preemptable node type can be set by using the
+``--preemptableNodeType=<>`` flag. While individual jobs
+can each explicitly specify whether or not
+they should be run on preemptable nodes via the boolean `preemptable`
+resource requirement, the ``--defaultPreemptable`` flag will allow jobs
+without a `preemptable` requirement to run on preemptable machines. Finally,
 we can set the maximum number of preemptable and non-preemptable nodes
-via the flags ``--maxNodes=<>`` and ``--maxPreemptableNodes=<>``.
+via the flags ``--maxNodes=<>`` and ``--maxPreemptableNodes=<>``. Insure that
+these choices won't cause a hang in your workflow - if the workflow requires
+preemptable nodes set ``--maxPreemptableNodes`` to some non-zero value and
+if any job requires non-preemptable nodes set ``--maxNodes`` to some non-zero
+value. If the provisioner can't provision the correct type of node for the
+worflow's jobs, the workflow will hang. Use the ``--preemptableCompensation``
+flag to handle cases where preemptable nodes may not be available but are
+required for your workflow.
 
 .. _runningAWS:
 
