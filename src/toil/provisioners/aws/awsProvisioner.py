@@ -24,7 +24,7 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_active, a_short_time,
                              wait_transition, inconsistencies_detected, create_ondemand_instances,
-                             a_long_time)
+                             a_long_time, create_spot_instances)
 from itertools import islice, count
 
 from toil import applianceSelf
@@ -193,8 +193,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2, price=spotBid, image_id=coreOSAMI,
-                                       clusterName=clusterName, spec=kwargs, num_instances=1))
+            list(create_spot_instances(ec2=ctx.ec2,
+                                       price=spotBid,
+                                       image_id=coreOSAMI,
+                                       tags={'clusterName': clusterName},
+                                       spec=kwargs,
+                                       num_instances=1))
         return cls._getLeader(clusterName=clusterName, wait=True)
 
     @classmethod
@@ -270,8 +274,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
             # force generator to evaluate
-            list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=coreOSAMI,
-                                       clusterName=self.clusterName, spec=kwargs, num_instances=numNodes))
+            list(create_spot_instances(ec2=self.ctx.ec2,
+                                       price=self.spotBid,
+                                       image_id=coreOSAMI,
+                                       tags={'clusterName': self.clusterName},
+                                       spec=kwargs,
+                                       num_instances=numNodes))
         logger.info('Launched %s new instance(s)', numNodes)
 
     @classmethod
@@ -385,53 +393,3 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
             with attempt:
                 ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
-
-
-def create_spot_instances(ec2, price, image_id, spec, clusterName,
-                          num_instances=1, timeout=None, tentative=False):
-    """
-    Adapted from cgcloud.lib.ec2.create_spot_instances to tag spot requests with the cluster name
-    so they can be discovered and cleaned up at a later time
-
-    :rtype: Iterator[list[Instance]]
-    """
-    def spotRequestNotFound(e):
-        return e.error_code == "InvalidSpotInstanceRequestID.NotFound"
-
-    for attempt in retry_ec2(retry_for=a_long_time,
-                             retry_while=inconsistencies_detected):
-        with attempt:
-            requests = ec2.request_spot_instances(price, image_id, count=num_instances, **spec)
-
-    for requestID in (request.id for request in requests):
-        for attempt in retry_ec2(retry_while=spotRequestNotFound):
-            with attempt:
-                ec2.create_tags([requestID], {'clusterName': clusterName})
-
-    num_active, num_other = 0, 0
-    # noinspection PyUnboundLocalVariable,PyTypeChecker
-    # request_spot_instances's type annotation is wrong
-    for batch in wait_spot_requests_active(ec2,
-                                           requests,
-                                           timeout=timeout,
-                                           tentative=tentative):
-        instance_ids = []
-        for request in batch:
-            if request.state == 'active':
-                instance_ids.append(request.instance_id)
-                num_active += 1
-            else:
-                logger.info('Request %s in unexpected state %s.', request.id, request.state)
-                num_other += 1
-        if instance_ids:
-            # This next line is the reason we batch. It's so we can get multiple instances in
-            # a single request.
-            yield ec2.get_only_instances(instance_ids)
-    if not num_active:
-        message = 'None of the spot requests entered the active state'
-        if tentative:
-            logger.warn(message + '.')
-        else:
-            raise RuntimeError(message)
-    if num_other:
-        logger.warn('%i request(s) entered a state other than active.', num_other)
