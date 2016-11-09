@@ -92,7 +92,7 @@ class AWSProvisionerTest(ToilTest):
         # https://github.com/BD2KGenomics/toil/issues/1141
         runCommand = 'bash -c \\"export PATH=/home/venv/bin/:$PATH;export TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i; export TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) + \
                      '; export TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore + \
-                     '; export TOIL_NODE_DEBUG=TRUE' + \
+                     '; export TOIL_NODE_DEBUG=True' + \
                      '; /home/venv/bin/python -m unittest -v' + \
                      ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest\\"'
 
