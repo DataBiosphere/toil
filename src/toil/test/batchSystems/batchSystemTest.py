@@ -79,11 +79,12 @@ class hidden:
         def supportsWallTime(self):
             return False
 
-        @staticmethod
-        def _createDummyConfig():
+        @classmethod
+        def createConfig(cls):
             """
             Returns a dummy config for the batch system tests.  We need a workflowID to be set up
-            since we are running tests without setting up a jobstore.
+            since we are running tests without setting up a jobstore. This is the class version
+            to be used when an instance is not available.
 
             :rtype: toil.common.Config
             """
@@ -92,6 +93,15 @@ class hidden:
             config.workflowID = str(uuid4())
             return config
 
+        def _createConfig(self):
+            """
+            Returns a dummy config for the batch system tests.  We need a workflowID to be set up
+            since we are running tests without setting up a jobstore.
+
+            :rtype: toil.common.Config
+            """
+            return self.createConfig()
+
         @classmethod
         def setUpClass(cls):
             super(hidden.AbstractBatchSystemTest, cls).setUpClass()
@@ -99,7 +109,7 @@ class hidden:
 
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
-            self.config = self._createDummyConfig()
+            self.config = self._createConfig()
             self.batchSystem = self.createBatchSystem()
             self.tempDir = self._createTempDir('testFiles')
 
@@ -262,6 +272,27 @@ class hidden:
                 _, maxValue = getCounters(counterPath)
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
+    class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
+        """
+        An abstract class to reduce redundancy between Grid Engine, Slurm, and other similar batch
+        systems
+        """
+
+        def _createConfig(self):
+            config = super(hidden.AbstractGridEngineBatchSystemTest, self)._createConfig()
+            # can't use _getTestJobStorePath since that method removes the directory
+            config.jobStore = 'file:' + self._createTempDir('jobStore')
+            return config
+
+        def testResultFile(self):
+            """
+            Tests that the result file name is formatted properly
+            """
+            fileName = BatchSystemSupport._getResultsFileName(self._createConfig().jobStore)
+            locator = self.config.jobStore
+            self.assertTrue(locator.startswith('file:'))
+            self.assertEqual(locator[len('file:'):], fileName)
+
 
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
@@ -385,7 +416,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     if jobs >= 1 and minCores <= coresPerJob < maxCores:
                         self.assertEquals(maxCores, float(maxCores))
                         bs = SingleMachineBatchSystem(
-                            config=hidden.AbstractBatchSystemTest._createDummyConfig(),
+                            config=hidden.AbstractBatchSystemTest.createConfig(),
                             maxCores=float(maxCores),
                             # Ensure that memory or disk requirements don't get in the way.
                             maxMemory=jobs * 10,
@@ -478,8 +509,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def supportsWallTime(self):
         return True
 
-    def _createDummyConfig(self):
-        config = super(ParasolBatchSystemTest, self)._createDummyConfig()
+    def _createConfig(self):
+        config = super(ParasolBatchSystemTest, self)._createConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir('jobStore')
         return config
@@ -538,16 +569,10 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
 
 @needs_gridengine
-class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
+class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the GridEngine batch system
     """
-
-    def _createDummyConfig(self):
-        config = super(GridEngineBatchSystemTest, self)._createDummyConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = 'file:'+ self._createTempDir('jobStore')
-        return config
 
     def createBatchSystem(self):
         from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -562,16 +587,10 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
             os.unlink(f)
 
 @needs_slurm
-class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
+class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the Slurm batch system
     """
-
-    def _createDummyConfig(self):
-        config = super(SlurmBatchSystemTest, self)._createDummyConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
-        return config
 
     def createBatchSystem(self):
         from toil.batchSystems.slurm import SlurmBatchSystem
