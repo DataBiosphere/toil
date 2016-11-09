@@ -229,20 +229,20 @@ this may come up empty. To fix it, run the following::
 .. _docker-quay-note:
 .. topic:: Installing Docker with Quay
 
-   `Docker`_ is needed for some of the tests. Follow the appopriate 
+   `Docker`_ is needed for some of the tests. Follow the appopriate
    installation instructions for your system on their website to get started.
 
    When running ``make test`` you may still get the following error
 
    ::
 
-       Please set docker_registry, e.g. to quay.io/USER.
+       Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
 
-   To solve, make an account with `Quay`_ and specify it like so: 
+   To solve, make an account with `Quay`_ and specify it like so:
 
    ::
 
-       docker_registry=quay.io/USER make test
+       TOIL_DOCKER_REGISTRY=quay.io/USER make test
 
    where ``USER`` is your Quay username.
 
@@ -250,9 +250,9 @@ this may come up empty. To fix it, run the following::
 
    ::
 
-       echo "export docker_registry=quay.io/USER" >> $HOME/.bashrc 
+       echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
 
-   
+
 .. _Docker: https://www.docker.com/products/docker
 .. _Quay: https://quay.io/
 

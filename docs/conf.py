@@ -38,7 +38,7 @@ path_to_dir = os.path.dirname(os.path.abspath(__file__))
 
 assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
     "Another Toil installation seems to have precedence over this working directory."
-toilVersion = toil.version.version
+toilVersion = toil.version.baseVersion
 
 # -- General configuration ------------------------------------------------
 

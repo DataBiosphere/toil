@@ -321,34 +321,28 @@ On all cloud providers, it is recommended that you run long-running jobs on remo
 
 Autoscaling
 -----------
-The fastest way to get started runnning Toil in a cloud environment is using
-Toil's autoscaling capabilities to handle node provisioning for us.
-Currently, autoscaling is only supported on the AWS cloud platform with two
-choices of provisioners: Toil's own Docker-based provisioner and CGCloud.
 
-The AWS provisioner is included in Toil alongside the [aws] extra and allows
-us to spin up a cluster without any external dependencies using the Toil
-Appliance, a Docker image that bundles Toil and all its requirements,
-e.g. Mesos. To get started, we choose which version of the appliance to run
-from CGL's
-`Quay account <https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags>`_and
- set the `TOIL_APPLIANCE_SELF` environment variable to `quay.io/ucsc-cgl:toil--`
- followed by the tag of the Toil Appliance version we wish to use::
+The fastest way to get started running Toil in a cloud environment is using
+Toil's autoscaling capabilities to handle node provisioning for us. Currently,
+autoscaling is only supported on the AWS cloud platform with two choices of
+provisioners: Toil's own Docker-based provisioner and CGCloud.
 
-    export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801
-    _
+The AWS provisioner is included in Toil alongside the [aws] extra and allows us
+to spin up a cluster without any external dependencies using the Toil
+Appliance, a Docker image that bundles Toil and all its requirements, e.g.
+Mesos. Toil will automatically choose an appliance image that matches the
+current Toil version but that choice can be overriden by setting the
+environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
+``TOIL_APPLIANCE_SELF``. See :meth:`toil.applianceSelf` for details.
 
-If you are confused as to which tag to choose, choose the most recent one. Having
-done that, simply run::
-
-    toil launch-cluster -p aws cluster-name-here --nodeType=t2.micro
+    toil launch-cluster -p aws CLUSTER-NAME-HERE \
+    --nodeType=t2.micro \
     --keyPairName=your-AWS-key-pair-name
-    _
 
 to launch a t2.micro leader instance - adjust this instance type
 accordingly to do real work. See
 `here <https://aws.amazon.com/ec2/instance-types/>`_ for a full selection
- of EC2 instance types. For more information on cluster managment using 
+ of EC2 instance types. For more information on cluster management using 
  Toil's AWS provisioner, see :ref:`clusterRef`.
 
 To use CGCloud-based autoscaling, see :ref:`installationAWS`for CGCloud

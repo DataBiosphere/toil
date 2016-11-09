@@ -42,12 +42,15 @@ The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a part
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
 
-The 'docker' target builds the Docker images that make up the Toil appliance.
+The 'docker' target builds the Docker images that make up the Toil appliance. It requires
+the TOIL_DOCKER_REGISTRY variable to be set, e.g.
+
+	make docker TOIL_DOCKER_REGISTRY=quay.io/USER
 
 The 'push_docker' target pushes the Toil appliance images to a remote Docker registry. It requires
-the docker_registry variable to be set, e.g.
+the TOIL_DOCKER_REGISTRY variable to be set, e.g.
 
-	make push_docker docker_registry=quay.io/USERNAME
+	make push_docker TOIL_DOCKER_REGISTRY=quay.io/USER
 
 endef
 export help
@@ -60,12 +63,11 @@ python=python2.7
 pip=pip2.7
 tests=src
 extras=
-toil_version:=$(shell $(python) version.py)
-sdist_name:=toil-$(toil_version).tar.gz
-current_commit:=$(shell git log --pretty=oneline -n 1 -- $(pwd) | cut -f1 -d " ")
-dirty:=$(shell (git diff --exit-code && git diff --cached --exit-code) > /dev/null || printf -- --DIRTY)
-docker_tag:=$(toil_version)--$(current_commit)$(dirty)
-docker_base_name?=toil
+dist_version:=$(shell $(python) version_template.py distVersion)
+sdist_name:=toil-$(dist_version).tar.gz
+docker_tag:=$(shell $(python) version_template.py dockerTag)
+export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 green=\033[0;32m
 normal=\033[0m\n
@@ -77,6 +79,7 @@ develop: check_venv
 clean_develop: check_venv
 	- $(pip) uninstall -y toil
 	- rm -rf src/*.egg-info
+	- rm src/toil/version.py
 
 sdist: dist/$(sdist_name)
 dist/$(sdist_name): check_venv
@@ -90,27 +93,19 @@ dist/$(sdist_name): check_venv
 	    || true
 clean_sdist:
 	- rm -rf dist
+	- rm src/toil/version.py
 
 
 test: check_venv check_build_reqs docker
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) run_tests.py test $(tests)
+	$(python) run_tests.py test $(tests)
 
 
 integration-test: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True \
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) run_tests.py integration-test $(tests)
+	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
-	set -x \
-	&& tag_build=`$(python) -c 'pass;\
-	    from version import version as v;\
-	    from pkg_resources import parse_version as pv;\
-	    import os;\
-	    print "--tag-build=.dev" + os.getenv("BUILD_NUMBER") if pv(v).is_prerelease else ""'` \
-	&& $(python) setup.py egg_info $$tag_build sdist bdist_egg upload
+	$(python) setup.py egg_info sdist bdist_egg upload
 clean_pypi:
 	- rm -rf build/
 
@@ -118,32 +113,30 @@ clean_pypi:
 docker: check_docker_registry docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; docker build --tag=$(docker_registry)/$(docker_base_name):$(docker_tag) \
+	; docker build --tag=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag) \
 	             -f Dockerfile \
 	             .
-	@printf "Tagged appliance image as $(docker_registry)/$(docker_base_name):$(docker_tag)\n"
+	@printf "Tagged appliance image as $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)\n"
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
 docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
-	$(python) docker/Dockerfile.py \
-	    --sdist=$(sdist_name) \
-	    --self=$(docker_registry)/$(docker_base_name):$(docker_tag) > $@
+	_TOIL_SDIST_NAME=$(sdist_name) $(python) docker/Dockerfile.py > $@
 
 clean_docker: check_docker_registry
 	-rm docker/Dockerfile.{leader,worker} docker/$(sdist_name)
-    -docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
+    -docker rmi $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 obliterate_docker: clean_docker
 	-@set -x \
-	; docker images $(docker_registry)/$(docker_base_name) \
+	; docker images $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME) \
 	    | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
 	    | xargs docker rmi
 	-docker images -qf dangling=true | xargs docker rmi
 
 push_docker: docker
-	docker push $(docker_registry)/$(docker_base_name):$(docker_tag)
+	docker push $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 
 docs: check_venv check_build_reqs
@@ -189,8 +182,8 @@ check_running_on_jenkins:
 
 
 check_docker_registry:
-	@test -n "$(docker_registry)" \
-		|| ( printf '$(red)Please set docker_registry, e.g. to quay.io/USER.$(normal)' ; false )
+	@test -n "$(TOIL_DOCKER_REGISTRY)" \
+		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.$(normal)' ; false )
 
 
 .PHONY: help \

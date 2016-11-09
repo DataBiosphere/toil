@@ -13,14 +13,18 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+
 import logging
+import multiprocessing
 import os
+import re
+import shutil
+import signal
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
-import shutil
-import re
 import uuid
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
@@ -29,19 +33,14 @@ from textwrap import dedent
 from unittest.util import strclass
 from urllib2 import urlopen
 
-import multiprocessing
-
-import time
-import signal
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
 
-from toil.version import version as toil_version
-
-from toil import toilPackageDirPath
+from toil.version import distVersion
+from toil import toilPackageDirPath, applianceSelf
 
 log = logging.getLogger(__name__)
 
@@ -173,7 +172,7 @@ class ToilTest(unittest.TestCase):
 
         :rtype: str
         """
-        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % toil_version)
+        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % distVersion)
         assert os.path.isfile(
             sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
         excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
@@ -700,7 +699,7 @@ class ApplianceTestSupport(ToilTest):
 
         def __enter__(self):
             with self.lock:
-                image = os.environ['TOIL_APPLIANCE_SELF']
+                image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
                 args = list(concat('docker', 'run',
                                    '--entrypoint=' + self._entryPoint(),

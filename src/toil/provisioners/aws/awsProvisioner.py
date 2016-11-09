@@ -27,6 +27,7 @@ from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_a
                              a_long_time)
 from itertools import islice, count
 
+from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
@@ -83,18 +84,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
-
-    @classmethod
-    def applianceImageTag(cls):
-        try:
-            return os.environ['TOIL_APPLIANCE_SELF']
-        except KeyError:
-            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
-                               'image of the Toil Appliance you wish to use. For example: '
-                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
-                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
-                               'for a full list of available versions.')
-
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
@@ -203,7 +192,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         cls._createSecurityGroup(ctx, clusterName)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
         leaderData = dict(role='leader',
-                          image=cls.applianceImageTag(),
+                          image=applianceSelf(),
                           entrypoint='mesos-master',
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
@@ -272,7 +261,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
         workerData = dict(role='worker',
-                          image=self.applianceImageTag(),
+                          image=applianceSelf(),
                           entrypoint='mesos-slave',
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)

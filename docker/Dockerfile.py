@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
+import os
 import textwrap
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--sdist', required=True)
-parser.add_argument('--self', required=True)
-options = parser.parse_args()
+applianceSelf = os.environ['TOIL_APPLIANCE_SELF']
+sdistName = os.environ['_TOIL_SDIST_NAME']
+
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
                          'python-dev',  # For installing Python packages with native code
@@ -45,7 +44,7 @@ motd = heredoc('''
 
     Copyright (C) 2015-2016 Regents of the University of California
 
-    Version: {options.self}
+    Version: {applianceSelf}
 
 ''')
 
@@ -88,12 +87,12 @@ print heredoc('''
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
-    ENV TOIL_APPLIANCE_SELF {options.self}
+    ENV TOIL_APPLIANCE_SELF {applianceSelf}
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
-    COPY {options.sdist} .
-    RUN pip install {options.sdist}[aws,mesos,encryption,cwl]
-    RUN rm {options.sdist}
+    COPY {sdistName} .
+    RUN pip install {sdistName}[aws,mesos,encryption,cwl]
+    RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
     # that the running appliance just gives you a shell. To start the Mesos master or slave
