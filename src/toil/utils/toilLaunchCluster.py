@@ -20,6 +20,7 @@ from toil.lib.bioio import getBasicOptionParser, parseBasicOptions, setLoggingFr
 
 logger = logging.getLogger( __name__ )
 
+
 def main():
     parser = getBasicOptionParser()
     parser.add_argument("--version", action='version', version=version)
