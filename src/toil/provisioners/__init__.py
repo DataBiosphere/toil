@@ -13,7 +13,9 @@
 # limitations under the License.
 from __future__ import absolute_import
 import datetime
-from bd2k.util import parse_iso_utc
+import os
+
+from bd2k.util import parse_iso_utc, less_strict_bool
 
 
 class BaseAWSProvisioner(object):
@@ -23,6 +25,11 @@ class BaseAWSProvisioner(object):
 
     @classmethod
     def _filterImpairedNodes(cls, nodes, ec2):
+        # if TOIL_NODE_DEBUG is set don't terminate nodes with
+        # failing status checks so they can be debugged
+        nodeDebug = less_strict_bool(os.environ.get('TOIL_NODE_DEBUG'))
+        if not nodeDebug:
+            return nodes
         nodeIDs = [node.id for node in nodes]
         statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
         statusMap = {status.id: status.instance_status for status in statuses}

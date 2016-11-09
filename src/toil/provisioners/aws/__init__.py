@@ -11,6 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
+
+
+def getCurrentAWSZone():
+    zone = None
+    try:
+        import boto
+        from boto.utils import get_instance_metadata
+    except ImportError:
+        pass
+    else:
+        zone = os.environ.get('TOIL_AWS_ZONE', None)
+        if not zone:
+            zone = boto.config.get('Boto', 'ec2_region_name')
+            if zone is not None:
+                zone += 'a'  # derive an availability zone in the region
+        if not zone:
+            try:
+                zone = get_instance_metadata()['placement']['availability-zone']
+            except KeyError:
+                pass
+    return zone
 
 ec2FullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="ec2:*")])

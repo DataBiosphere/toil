@@ -21,7 +21,7 @@ from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize, parse_iso_utc
+from bd2k.util import memoize, parse_iso_utc, less_strict_bool
 from bd2k.util.exceptions import require
 from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
@@ -77,9 +77,6 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         super(CGCloudProvisioner, self).__init__()
         self.batchSystem = batchSystem
         self.imageId = self._instance.image_id
-        self.nodeDebug = os.environ.get('NODE_DEBUG', False)
-        if self.nodeDebug == 'TRUE':
-            self.nodeDebug = True
         require(config.nodeType, 'Must pass --nodeType when using the cgcloud provisioner')
         instanceType = self._resolveInstanceType(config.nodeType)
         self._requireEphemeralDrives(instanceType)
@@ -136,11 +133,7 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                                         preemptable=preemptable)
         elif delta < 0:
             log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
-            if self.nodeDebug:
-                # don't terminate nodes with failing status checks so they can be debugged
-                instancesToTerminate = self._filterImpairedNodes(workerInstances, self._ec2)
-            else:
-                instancesToTerminate = workerInstances
+            instancesToTerminate = self._filterImpairedNodes(workerInstances, self._ec2)
             numNodes = numCurrentNodes - self._removeNodes(instancesToTerminate,
                                                            numNodes=-delta,
                                                            preemptable=preemptable,

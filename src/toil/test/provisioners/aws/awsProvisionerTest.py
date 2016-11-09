@@ -87,12 +87,12 @@ class AWSProvisionerTest(ToilTest):
 
         toilOptions = ' '.join(toilOptions)
 
-        # NODE_DEBUG prevents the provisioner from killing nodes that fail a status
+        # TOIL_NODE_DEBUG prevents the provisioner from killing nodes that fail a status
         # check. This allows for easier debugging of
         # https://github.com/BD2KGenomics/toil/issues/1141
         runCommand = 'bash -c \\"export PATH=/home/venv/bin/:$PATH;export TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i; export TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) + \
                      '; export TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore + \
-                     '; export NODE_DEBUG=TRUE' + \
+                     '; export TOIL_NODE_DEBUG=TRUE' + \
                      '; /home/venv/bin/python -m unittest -v' + \
                      ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest\\"'
 

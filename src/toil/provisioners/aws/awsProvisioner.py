@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import socket
 import subprocess
 import logging
@@ -32,7 +31,6 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
-import boto
 from bd2k.util.retry import retry
 from toil.provisioners import BaseAWSProvisioner
 
@@ -45,9 +43,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
         self.ctx = self._buildContext(clusterName=self.clusterName)
-        self.nodeDebug = os.environ.get('NODE_DEBUG', False)
-        if self.nodeDebug == 'TRUE':
-            self.nodeDebug = True
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -68,11 +63,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         if instancesToLaunch > 0:
             self._addNodes(instancesToLaunch, preemptable=preemptable)
         elif instancesToLaunch < 0:
-            if self.nodeDebug:
-                # don't terminate nodes with failing status checks so they can be debugged
-                instancesToTerminate = self._filterImpairedNodes(workerInstances, self.ctx.ec2)
-            else:
-                instancesToTerminate = workerInstances
+            instancesToTerminate = self._filterImpairedNodes(workerInstances, self.ctx.ec2)
             self._removeNodes(instances=instancesToTerminate, numNodes=numNodes, preemptable=preemptable,
                               force=force)
         else:
@@ -89,20 +80,14 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _buildContext(cls, clusterName, zone=None):
-        if not zone:
-            zone = os.environ.get('TOIL_AWS_ZONE', None)
-        if not zone:
-            zone = boto.config.get('Boto', 'ec2_region_name')
-            if zone is not None:
-                zone += 'a'  # derive an availability zone in the region
-        if not zone:
-            try:
-                zone = get_instance_metadata()['placement']['availability-zone']
-            except KeyError:
-                raise RuntimeError('Could not determine availability zone. Insure that one of the following '
-                                   'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
-                                   'is set, ec2_region_name is set in the .boto file, or that '
-                                   'you are running on EC2.')
+        if zone is None:
+            zone = getCurrentAWSZone()
+            if zone is None:
+                raise RuntimeError(
+                    'Could not determine availability zone. Insure that one of the following '
+                    'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
+                    'is set, ec2_region_name is set in the .boto file, or that '
+                    'you are running on EC2.')
         return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
 
     @classmethod
@@ -116,9 +101,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     @memoize
     def _discoverAMI(cls, ctx):
         def descriptionMatches(ami):
-            return ami is not None and ami.description is not None and 'stable 1068.9.0' in ami.description
+            return ami.description is not None and 'stable 1068.9.0' in ami.description
+        coreOSAMI = os.environ.get('TOIL_APPLIANCE_AMI')
+        if coreOSAMI is not None:
+            return coreOSAMI
         # that ownerID corresponds to coreOS
-        coreOSAMI = filter(descriptionMatches, ctx.ec2.get_all_images(owners=['679593333241']))
+        coreOSAMI = [ami for ami in ctx.ec2.get_all_images(owners=['679593333241']) if
+                     descriptionMatches(ami)]
         assert len(coreOSAMI) == 1
         return coreOSAMI.pop().id
 
@@ -132,7 +121,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
                                'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
                                'for a full list of available versions.')
-
 
     @classmethod
     def _sshAppliance(cls, leaderIP, remoteCommand, tty=False):
@@ -272,14 +260,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        nodeDebug = os.environ.get('NODE_DEBUG', False)
-        if nodeDebug == 'TRUE':
-            nodeDebug = True
-        if nodeDebug:
-            # don't terminate nodes with failing status checks so they can be debugged
-            instancesToTerminate = cls._filterImpairedNodes(instances, ctx.ec2)
-        else:
-            instancesToTerminate = instances
+        instancesToTerminate = cls._filterImpairedNodes(instances, ctx.ec2)
         if instancesToTerminate:
             cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
             cls._terminateInstance(instances=instancesToTerminate, ctx=ctx)
