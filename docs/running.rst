@@ -271,6 +271,51 @@ Typing ``python toil-sort-example.py --help`` will show the complete list of arg
 both Toil's and ones defined inside **toil-sort-example.py**.  A complete explanation of Toil's arguments can be found
 in :ref:`commandRef`.
 
+Environment Variable Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+There are several environment variables that affect the way Toil runs.
+
+TOIL_WORKDIR: An absolute path to a directory where Toil will write its
+temporary files.
+
+TOIL_TEST_TEMP: An absolute path to a directory where Toil tests will
+write their temporary files.
+
+TOIL_RT_LOGGING_ADDRESS: In the form IP:Port, this is the address to use
+for Toil's realtime logging.
+
+TOIL_RT_LOGGING_LEVEL: The real time logger's log level threshold. Any
+messages below this level will not be displayed. Choose from the following
+options. In descending order of information relayed: DEBUG, INFO, WARNING,
+ERROR, CRITICAL.
+
+TOIL_TEST_INTEGRATIVE: If 'True', this allows the integration tests to run.
+
+TOIL_TEST_EXPERIMENTAL: If 'True', this allows test to runs on experimental
+features, such as the Google and Azure job stores.
+
+TOIL_AWS_ZONE: Provides a way to set the EC2 zone to provision nodes in, if
+using Toil's provisioner.
+
+TOIL_APPLIANCE_SELF: The tag of the Toil Appliance version to use. See
+:ref:`Autoscaling` for more.
+
+TOIL_APPLIANCE_AMI: ID of the AMI to use in node provisioning. If in doubt,
+don't set this variable.
+
+TOIL_NODE_DEBUG: Determines whether to preserve nodes that have failed health
+checks. If set to 'True', nodes that fail health checks will never be
+terminated so they can be examined and the cause of failure determined.
+If any EC2 nodes are left behind in this manner, the security group
+will also be left behind by necessity - it cannot be deleted until all the
+nodes are gone.
+
+TOIL_SLURM_ARGS: Arguments for the slurm batch system.
+
+TOIL_GRIDENGINE_ARGS: Arguments for the gridengine batch system.
+
+TOIL_GRIDENGINE_PE: Arguments for gridengine's parallel environment.
+
 Changing the log statements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When we run the pipeline, we see some logs printed to the screen.  At the top there's some information provided
