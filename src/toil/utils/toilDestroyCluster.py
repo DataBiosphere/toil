@@ -17,7 +17,7 @@ Terminates the specified cluster and associated resources
 import logging
 from toil import version
 from toil.lib.bioio import getBasicOptionParser, parseBasicOptions, setLoggingFromOptions
-from toil.provisioners.abstractProvisioner import Cluster
+from toil.provisioners import Cluster
 
 logger = logging.getLogger( __name__ )
 

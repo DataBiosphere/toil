@@ -17,14 +17,13 @@ import subprocess
 import logging
 
 import time
-from contextlib import contextmanager
 
 import sys
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_active, a_short_time,
-                             wait_transition, inconsistencies_detected, create_ondemand_instances,
-                             a_long_time, create_spot_instances)
+from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, a_short_time,
+                             wait_transition, create_ondemand_instances,
+                             create_spot_instances)
 from itertools import islice, count
 
 from toil import applianceSelf
@@ -34,12 +33,12 @@ from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import BaseAWSProvisioner
+from toil.provisioners import AWSRemainingBillingInterval
 
 logger = logging.getLogger(__name__)
 
 
-class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
+class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, config, batchSystem):
         super(AWSProvisioner, self).__init__(config, batchSystem)
@@ -70,6 +69,20 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+
+    @classmethod
+    def dockerInfo(cls):
+        try:
+            return os.environ['TOIL_APPLIANCE_SELF']
+        except KeyError:
+            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
+                               'image of the Toil Appliance you wish to use. For example: '
+                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
+                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
+                               'for a full list of available versions.')
+
+    def _remainingBillingInterval(self, instance):
+        return AWSRemainingBillingInterval(instance)
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
@@ -267,20 +280,23 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                   'user_data': userData, 'block_device_map': bdm,
                   'instance_profile_arn': arn}
 
+        instancesLaunched = []
+
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', numNodes)
-            create_ondemand_instances(self.ctx.ec2, image_id=coreOSAMI,
+            instancesLaunched = create_ondemand_instances(self.ctx.ec2, image_id=coreOSAMI,
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
             # force generator to evaluate
-            list(create_spot_instances(ec2=self.ctx.ec2,
+            instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
                                        price=self.spotBid,
                                        image_id=coreOSAMI,
                                        tags={'clusterName': self.clusterName},
                                        spec=kwargs,
                                        num_instances=numNodes))
         logger.info('Launched %s new instance(s)', numNodes)
+        return len(instancesLaunched)
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):

@@ -16,13 +16,9 @@ import datetime
 from bd2k.util import parse_iso_utc
 
 
-class BaseAWSProvisioner(object):
-    @staticmethod
-    def _remainingBillingInterval(instance):
-        return 1.0 - BaseAWSProvisioner._partialBillingInterval(instance)
 
-    @staticmethod
-    def _partialBillingInterval(instance):
+def AWSRemainingBillingInterval(instance):
+    def partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the
         current billing cycle for the given instance. If the return value is .25, we are one
@@ -33,3 +29,24 @@ class BaseAWSProvisioner(object):
         now = datetime.datetime.utcnow()
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
+    return 1.0 - partialBillingInterval(instance)
+
+
+class Cluster(object):
+    def __init__(self, clusterName, provisioner):
+        self.clusterName = clusterName
+        self.provisioner = None
+        if provisioner == 'aws':
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            self.provisioner = AWSProvisioner
+        elif provisioner == 'cgcloud':
+            from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
+            self.provisioner = CGCloudProvisioner
+        else:
+            raise RuntimeError('The only options are aws and cgcloud')
+
+    def sshCluster(self):
+        self.provisioner.sshLeader(self.clusterName)
+
+    def destroyCluster(self):
+        self.provisioner.destroyCluster(self.clusterName)

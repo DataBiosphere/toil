@@ -35,7 +35,7 @@ from itertools import islice
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners import BaseAWSProvisioner
+from toil.provisioners import AWSRemainingBillingInterval
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -48,7 +48,7 @@ log = logging.getLogger(__name__)
 provisioning_timeout = 10 * 60
 
 
-class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
+class CGCloudProvisioner(AbstractProvisioner):
     """
     A provisioner that uses CGCloud's toil-box role to boot up worker nodes in EC2. It uses the
     spot market to provision preemptable instances, but defaults to on-demand instances.
@@ -136,6 +136,9 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     @classmethod
     def destroyCluster(cls, clusterName):
         raise NotImplementedError
+
+    def _remainingBillingInterval(self, instance):
+        return AWSRemainingBillingInterval(instance)
 
     def _addNodes(self, instances, numNodes, preemptable=False):
         deadline = time.time() + provisioning_timeout

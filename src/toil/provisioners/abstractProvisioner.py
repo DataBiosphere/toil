@@ -19,8 +19,6 @@ from collections import namedtuple
 from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
 
 log = logging.getLogger(__name__)
 
@@ -36,25 +34,6 @@ or 60 for Azure. FIXME: and for jobs?
 The memory and disk attributes store the number of bytes required by a job (or provided by a
 node) in RAM or on disk (SSD or HDD), respectively.
 """
-
-
-class Cluster(object):
-    def __init__(self, clusterName, provisioner):
-        self.clusterName = clusterName
-        self.provisioner = None
-        if provisioner == 'aws':
-            self.provisioner = AWSProvisioner
-        elif provisioner == 'cgcloud':
-            self.provisioner = CGCloudProvisioner
-        else:
-            raise RuntimeError('The only options are aws and cgcloud')
-
-    def sshCluster(self):
-        self.provisioner.sshLeader(self.clusterName)
-
-    def destroyCluster(self):
-        self.provisioner.destroyCluster(self.clusterName)
-
 
 
 class AbstractProvisioner(object):

@@ -17,7 +17,7 @@ SSHs into the toil appliance container running on the leader of the cluster
 import logging
 from toil import version
 from toil.lib.bioio import getBasicOptionParser, parseBasicOptions, setLoggingFromOptions
-from toil.provisioners.abstractProvisioner import Cluster
+from toil.provisioners import Cluster
 
 logger = logging.getLogger( __name__ )
 
