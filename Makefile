@@ -28,10 +28,12 @@ in develop mode with all extras, run
 
 	make develop extras=[mesos,aws,google,azure,cwl,encryption]
 
-The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
-implemented yet).
+The 'sdist' target creates a source distribution of Toil. It is used for some unit tests and for
+installing the currently checked out version of Toil into the appliance image.
 
-The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
+The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', 'pypi' and 'docker'
+on this machine. It does not undo externally visible effects like removing packages already
+uploaded to PyPI.
 
 The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
@@ -42,15 +44,23 @@ The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a part
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean, and tagging it as an unstable .dev build.
 
-The 'docker' target builds the Docker images that make up the Toil appliance. It requires
-the TOIL_DOCKER_REGISTRY variable to be set, e.g.
+The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
+TOIL_DOCKER_REGISTRY variable to override the default registry that the 'docker_push' target pushes
+the appliance images to, for example:
 
-	make docker TOIL_DOCKER_REGISTRY=quay.io/USER
+	TOIL_DOCKER_REGISTRY=quay.io/USER make docker
 
-The 'push_docker' target pushes the Toil appliance images to a remote Docker registry. It requires
-the TOIL_DOCKER_REGISTRY variable to be set, e.g.
+If Docker is not installed, Docker-related targets tasks and tests will be skipped. The
+same can be achieved by setting TOIL_DOCKER_REGISTRY to an empty string.
 
-	make push_docker TOIL_DOCKER_REGISTRY=quay.io/USER
+The 'push_docker' target pushes the Toil appliance images to a remote Docker registry. It
+requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the default to avoid
+accidentally pushing to the official Docker registry for Toil.
+
+The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
+is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team's
+continuous integration system overrides this variable to avoid conflicts between concurrently
+executing builds for the same revision, e.g. toil-pr and toil-it.
 
 endef
 export help
@@ -63,15 +73,28 @@ python=python2.7
 pip=pip2.7
 tests=src
 extras=
+
 dist_version:=$(shell $(python) version_template.py distVersion)
 sdist_name:=toil-$(dist_version).tar.gz
+
 docker_tag:=$(shell $(python) version_template.py dockerTag)
+default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
+docker_path:=$(strip $(shell which docker))
+ifdef docker_path
+    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+else
+    $(warning Cannot find 'docker' executable. Docker-related targets will be skipped.)
+    export TOIL_DOCKER_REGISTRY:=
+endif
 export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+# Note that an empty TOIL_DOCKER_REGISTRY yield an invalid TOIL_APPLIANCE_SELF which will coax the
+# @needs_appliance decorator to skip the test.
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 green=\033[0;32m
 normal=\033[0m\n
 red=\033[0;31m
+cyan=\033[0;36m
 
 
 develop: check_venv
@@ -88,7 +111,7 @@ dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
-	         && printf "$(green)No significant changes to sdist, reinstating backup.$(normal)" \
+	         && printf "$(cyan)No significant changes to sdist, reinstating backup.$(normal)" \
 	         || rm dist/$(sdist_name).old ) \
 	    || true
 clean_sdist:
@@ -110,7 +133,9 @@ clean_pypi:
 	- rm -rf build/
 
 
-docker: check_docker_registry docker/Dockerfile
+ifdef TOIL_DOCKER_REGISTRY
+
+docker: docker/Dockerfile
 	@set -ex \
 	; cd docker \
 	; docker build --tag=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag) \
@@ -124,9 +149,9 @@ docker/$(sdist_name): dist/$(sdist_name)
 docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
 	_TOIL_SDIST_NAME=$(sdist_name) $(python) docker/Dockerfile.py > $@
 
-clean_docker: check_docker_registry
-	-rm docker/Dockerfile.{leader,worker} docker/$(sdist_name)
-    -docker rmi $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+clean_docker:
+	-rm docker/Dockerfile docker/$(sdist_name)
+	-docker rmi $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 obliterate_docker: clean_docker
 	-@set -x \
@@ -135,8 +160,15 @@ obliterate_docker: clean_docker
 	    | xargs docker rmi
 	-docker images -qf dangling=true | xargs docker rmi
 
-push_docker: docker
+push_docker: docker check_docker_registry
 	docker push $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+
+else
+
+docker docker_push clean_docker:
+	@printf "$(cyan)Skipping '$@' target as TOIL_DOCKER_REGISTRY is empty or Docker is not installed.$(normal)\n"
+
+endif
 
 
 docs: check_venv check_build_reqs
@@ -182,8 +214,10 @@ check_running_on_jenkins:
 
 
 check_docker_registry:
-	@test -n "$(TOIL_DOCKER_REGISTRY)" \
-		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.$(normal)' ; false )
+	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
+		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
+	$(default_docker_registry) and ensure that you have permissions to push \
+	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)' ; false )
 
 
 .PHONY: help \

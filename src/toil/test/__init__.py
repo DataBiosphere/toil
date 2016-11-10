@@ -404,6 +404,23 @@ def needs_cwl(test_item):
         return test_item
 
 
+def needs_appliance(test_item):
+    test_item = _mark_test('appliance', test_item)
+    if next(which('docker'), None):
+        image = applianceSelf()
+        try:
+            images = subprocess.check_output(['docker', 'images', image])
+        except subprocess.CalledProcessError:
+            images = ''
+        if image in images:
+            return test_item
+        else:
+            return unittest.skip("Cannot find appliance image %s. Be sure to run 'make docker' "
+                                 "prior to running this test." % image)(test_item)
+    else:
+        return unittest.skip('Install Docker to include this test.')(test_item)
+
+
 def experimental(test_item):
     """
     Use this to decorate experimental or brittle tests in order to skip them during regular builds.

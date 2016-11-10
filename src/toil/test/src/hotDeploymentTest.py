@@ -4,12 +4,13 @@ from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
-from toil.test import needs_mesos, ApplianceTestSupport
+from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance
 
 log = logging.getLogger(__name__)
 
 
 @needs_mesos
+@needs_appliance
 class HotDeploymentTest(ApplianceTestSupport):
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
