@@ -112,7 +112,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def create(self, jobNode):
         jobStoreID = self._newID()
-        job = JobGraph(jobStoreID=jobStoreID, name=jobNode.name, job=jobNode.job,
+        job = JobGraph(jobStoreID=jobStoreID, unitName=jobNode.name, jobName=jobNode.job,
                        command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
                        logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
                        **jobNode._requirements)

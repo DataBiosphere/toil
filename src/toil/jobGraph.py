@@ -26,19 +26,22 @@ class JobGraph(JobNode):
     scripts is persisted separately since it may be much bigger than the state managed by this
     class and should therefore only be held in memory for brief periods of time.
     """
-    def __init__( self, command, memory, cores, disk, name, job, preemptable,
-                  jobStoreID, remainingRetryCount, predecessorNumber,
-                  filesToDelete=None, predecessorsFinished=None, 
-                  stack=None, services=None, 
-                  startJobStoreID=None, terminateJobStoreID=None,
-                  errorJobStoreID=None,
-                  logJobStoreFileID=None,
-                  checkpoint=None,
-                  checkpointFilesToDelete=None ):
-
-        super(JobGraph, self).__init__(command=command, memory=memory, cores=cores, disk=disk,
-                                       name=name, preemptable=preemptable, jobStoreID=jobStoreID,
-                                       job=job, predecessorNumber=predecessorNumber)
+    def __init__(self, command, memory, cores, disk, unitName, jobName, preemptable,
+                 jobStoreID, remainingRetryCount, predecessorNumber,
+                 filesToDelete=None, predecessorsFinished=None,
+                 stack=None, services=None,
+                 startJobStoreID=None, terminateJobStoreID=None,
+                 errorJobStoreID=None,
+                 logJobStoreFileID=None,
+                 checkpoint=None,
+                 checkpointFilesToDelete=None):
+        requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                        'preemptable': preemptable}
+        super(JobGraph, self).__init__(command=command,
+                                       requirements=requirements,
+                                       unitName=unitName, jobName=jobName,
+                                       jobStoreID=jobStoreID,
+                                       predecessorNumber=predecessorNumber)
 
         # The number of times the job should be retried if it fails This number is reduced by
         # retries until it is zero and then no further retries are made
@@ -112,13 +115,21 @@ class JobGraph(JobNode):
 
     @classmethod
     def fromJobNode(cls, jobNode, jobStoreID, tryCount):
-        return cls(command=jobNode.command, memory=jobNode.memory,
-                   cores=jobNode.cores, disk=jobNode.disk,
-                   preemptable=jobNode.preemptable,
+        """
+        Builds a job graph from a given job node
+        :param toil.job.JobNode jobNode: a job node object to build into a job graph
+        :param str jobStoreID: the job store ID to assign to the resulting job graph object
+        :param int tryCount: the number of times the resulting job graph object can be retried after
+            failure
+        :return: The newly created job graph object
+        :rtype: toil.jobGraph.JobGraph
+        """
+        return cls(command=jobNode.command,
                    jobStoreID=jobStoreID,
                    remainingRetryCount=tryCount,
                    predecessorNumber=jobNode.predecessorNumber,
-                   name=jobNode.name, job=jobNode.job)
+                   unitName=jobNode.unitName, jobName=jobNode.jobName,
+                   **jobNode._requirements)
 
     def __eq__(self, other):
         return (

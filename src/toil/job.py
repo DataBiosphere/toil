@@ -33,7 +33,6 @@ from io import BytesIO
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
-from toil import resolveEntryPoint
 from toil.common import Toil, addOptions
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
@@ -43,13 +42,23 @@ from toil.resource import ModuleDescriptor
 logger = logging.getLogger( __name__ )
 
 
-class ResourceRequirementMixin(object):
+class JobLikeObject(object):
     """
     Inherit from this class to add requirement properties to a job (or job-like) object.
     If the object doesn't specify explicit requirements, these properties will fall back
     to the configured defaults. If the value cannot be determined, an AttributeError is raised.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
+    def __init__(self, requirements, unitName, jobName=None):
+        cores = requirements.get('cores')
+        memory = requirements.get('memory')
+        disk = requirements.get('disk')
+        preemptable = requirements.get('preemptable')
+        if unitName is not None:
+            assert isinstance(unitName, str)
+        if jobName is not None:
+            assert isinstance(jobName, str)
+        self.unitName = unitName
+        self.jobName = jobName if jobName is not None else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
         self._memory = self._parseResource('memory', memory)
         self._disk = self._parseResource('disk', disk)
@@ -109,7 +118,7 @@ class ResourceRequirementMixin(object):
         """
         Gets a dictionary of all the object's resource requirements. Unset values are defaulted to None
         """
-        return {'memory':getattr(self, 'memory', None),
+        return {'memory': getattr(self, 'memory', None),
                 'cores': getattr(self, 'cores', None),
                 'disk': getattr(self, 'disk', None),
                 'preemptable': getattr(self, 'preemptable', None)}
@@ -158,58 +167,76 @@ class ResourceRequirementMixin(object):
             raise TypeError("The '%s' requirement does not accept values that are of %s"
                             % (name, type(value)))
 
-
-class JobLikeObject(ResourceRequirementMixin):
-    def __init__(self, name, job=None, **requirements):
-        super(JobLikeObject, self).__init__(**requirements)
-        self.name = name
-        self.job = job or self.__class__.__name__
-
     def __str__(self):
-        printedName = '\''+self.job + '\''
-        if self.name:
-            printedName += ' '+self.name
-        return str(printedName)
+        printedName = "'" + self.jobName + "'"
+        if self.unitName:
+            printedName += ' ' + self.unitName
+        elif self.unitName == '':
+            printedName += ' ' + 'user passed empty string for name'
+        return printedName
+
 
 class JobNode(JobLikeObject):
     """
     This object bridges the job graph, job, and batchsystem classes
     """
-    def __init__(self, memory, cores, disk, preemptable, job, name, jobStoreID,
+    def __init__(self, requirements, jobName, unitName, jobStoreID,
                  command, predecessorNumber=1):
-        super(JobNode, self).__init__(memory=memory, cores=cores, disk=disk,
-                                      preemptable=preemptable, name=name, job=job)
+        super(JobNode, self).__init__(requirements=requirements, unitName=unitName, jobName=jobName)
         self.jobStoreID = jobStoreID
         self.predecessorNumber = predecessorNumber
         self.command = command
 
+    def __str__(self):
+        return super(JobNode, self).__str__() + ' ' + self.jobStoreID
+
     def __hash__(self):
         return hash(self.jobStoreID)
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.__dict__ == other.__dict__
+        return NotImplemented
+
     def __ne__(self, other):
-        return not self.__eq__(other)
+        if isinstance(other, self.__class__):
+            return not self.__eq__(other)
+        return NotImplemented
 
     def __repr__(self):
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
 
     @classmethod
     def fromJobGraph(cls, jobGraph):
-        return cls(jobStoreID=jobGraph.jobStoreID, memory=jobGraph.memory,
-                   cores=jobGraph.cores, disk=jobGraph.disk,
-                   preemptable=jobGraph.preemptable,
+        """
+        Takes a job graph object and returns a job node object
+        :param toil.jobGraph.JobGraph jobGraph: A job graph object to be transformed into a job node
+        :return: A job node object
+        :rtype: toil.job.JobNode
+        """
+        return cls(jobStoreID=jobGraph.jobStoreID,
+                   requirements=jobGraph._requirements,
                    command=jobGraph.command,
-                   job=jobGraph.job,
-                   name=jobGraph.name,
+                   jobName=jobGraph.jobName,
+                   unitName=jobGraph.unitName,
                    predecessorNumber=jobGraph.predecessorNumber)
 
     @classmethod
     def fromJob(cls, job, command, predecessorNumber):
-        return cls(jobStoreID=None, memory=job.memory,
-                   cores=job.cores, disk=job.disk,
-                   preemptable=job.preemptable,
+        """
+        Build a job node from a job object
+        :param toil.job.Job job: the job object to be transformed into a job node
+        :param str command: the JobNode's command
+        :param int predecessorNumber: the number of predecessors that must finish
+            successfully before the job can be scheduled
+        :return: a JobNode object representing the job object parameter
+        :rtype: toil.job.JobNode
+        """
+        return cls(jobStoreID=None,
+                   requirements=job._requirements,
                    command=command,
-                   job=job.job,
-                   name=job.name,
+                   jobName=job.jobName,
+                   unitName=job.unitName,
                    predecessorNumber=predecessorNumber)
 
 
@@ -217,7 +244,8 @@ class Job(JobLikeObject):
     """
     Class represents a unit of work in toil.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, name='', checkpoint=False):
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None,
+                 checkpoint=False):
         """
         This method must be called by any overriding constructor.
         
@@ -235,7 +263,9 @@ class Job(JobLikeObject):
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
-        super(Job, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable, name=name)
+        requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                        'preemptable': preemptable}
+        super(Job, self).__init__(requirements=requirements, unitName=unitName)
         self.checkpoint = checkpoint
         #Private class variables
 
@@ -702,12 +732,14 @@ class Job(JobLikeObject):
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=None, cores=None, disk=None, preemptable=None, name=''):
+        def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-            super(Job.Service, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable, name=name)
+            requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                            'preemptable': preemptable}
+            super(Job.Service, self).__init__(requirements=requirements, unitName=unitName)
             self._childServices = []
             self._hasParent = False
 
@@ -847,7 +879,7 @@ class Job(JobLikeObject):
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()
-        assert isinstance(runnable, ResourceRequirementMixin)
+        assert isinstance(runnable, JobLikeObject)
         runnable._config = config
         return runnable
 
@@ -1055,7 +1087,7 @@ class Job(JobLikeObject):
                                disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
                                terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
                                errorJobStoreID=serviceJobGraph.errorJobStoreID,
-                               job=serviceJobGraph.job, name=serviceJobGraph.name,
+                               jobName=serviceJobGraph.jobName, unitName=serviceJobGraph.unitName,
                                command=serviceJobGraph.command,
                                predecessorNumber=serviceJobGraph.predecessorNumber)
 
@@ -1300,11 +1332,11 @@ class FunctionWrappingJob(Job):
                      disk=resolve('disk', dehumanize=True),
                      preemptable=resolve('preemptable'),
                      checkpoint=resolve('checkpoint', default=False),
-                     name=resolve('name', default=''))
+                     unitName=resolve('name', default=None))
 
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self.job = self.userFunctionName
+        self.jobName = self.userFunctionName
         self._args = args
         self._kwargs = kwargs
 
@@ -1440,9 +1472,11 @@ class EncapsulatedJob(Job):
 
 class ServiceJobNode(JobNode):
     def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
-                 errorJobStoreID, name, job, command, predecessorNumber):
-        super(ServiceJobNode, self).__init__(name=name, job=job, memory=memory, cores=cores,
-                                             disk=disk, preemptable=False, jobStoreID=jobStoreID,
+                 errorJobStoreID, unitName, jobName, command, predecessorNumber):
+        requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=False)
+        super(ServiceJobNode, self).__init__(unitName=unitName, jobName=jobName,
+                                             requirements=requirements,
+                                             jobStoreID=jobStoreID,
                                              command=command,
                                              predecessorNumber=predecessorNumber)
         self.startJobStoreID = startJobStoreID
@@ -1468,7 +1502,7 @@ class ServiceJob(Job):
         #The service to run - this will be replace before serialization with a pickled version
         self.service = service
         self.pickledService = None
-        self.job = service.job
+        self.jobName = service.jobName
         # This references the parent job wrapper. It is initialised just before
         # the job is run. It is used to access the start and terminate flags.
         self.jobGraph = None

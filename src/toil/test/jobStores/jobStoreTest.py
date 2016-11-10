@@ -104,9 +104,11 @@ class AbstractJobStoreTest:
             self.master = self._createJobStore()
             self.config = self._createConfig()
             self.master.initialize(self.config)
-            self.arbitraryRequirements = {'memory':1, 'disk':2, 'cores':1, 'preemptable':False}
-            self.arbitraryJob = JobNode(command='command', jobStoreID=None, job='arbitrary', name=None,
-                                        **self.arbitraryRequirements)
+            self.arbitraryRequirements = {'memory': 1, 'disk': 2, 'cores': 1, 'preemptable': False}
+            self.arbitraryJob = JobNode(command='command',
+                                        jobStoreID=None,
+                                        jobName='arbitrary', unitName=None,
+                                        requirements=self.arbitraryRequirements)
 
         def tearDown(self):
             self.master.destroy()
@@ -127,17 +129,20 @@ class AbstractJobStoreTest:
 
             # Create parent job and verify its existence/properties
             #
-            jobNodeOnMaster = JobNode(command='master1', memory=12, cores=34, disk=35, preemptable=True,
-                                      job='test1', name='onMaster', jobStoreID=None, predecessorNumber=0)
+            masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobNodeOnMaster = JobNode(command='master1',
+                                      requirements=masterRequirements,
+                                      jobName='test1', unitName='onMaster',
+                                      jobStoreID=None, predecessorNumber=0)
             jobOnMaster = master.create(jobNodeOnMaster)
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
-            self.assertEquals(jobOnMaster.memory, 12)
-            self.assertEquals(jobOnMaster.cores, 34)
-            self.assertEquals(jobOnMaster.disk, 35)
-            self.assertEquals(jobOnMaster.preemptable, True)
-            self.assertEquals(jobOnMaster.job, 'test1')
-            self.assertEquals(jobOnMaster.name, 'onMaster')
+            self.assertEquals(jobOnMaster.memory, masterRequirements['memory'])
+            self.assertEquals(jobOnMaster.cores, masterRequirements['cores'])
+            self.assertEquals(jobOnMaster.disk, masterRequirements['disk'])
+            self.assertEquals(jobOnMaster.preemptable, masterRequirements['preemptable'])
+            self.assertEquals(jobOnMaster.jobName, 'test1')
+            self.assertEquals(jobOnMaster.unitName, 'onMaster')
             self.assertEquals(jobOnMaster.stack, [])
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
@@ -164,12 +169,16 @@ class AbstractJobStoreTest:
             # Check jobs to delete persisted
             self.assertEquals(master.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
             # Create children
-            jobNodeOnChild1 = JobNode(command='child1', memory=23, cores=45, disk=46,
-                                      preemptable=True,
-                                      job='test2', name='onChild1', jobStoreID=None)
-            jobNodeOnChild2 = JobNode(command='master1', memory=34, cores=56, disk=57,
-                                      preemptable=False,
-                                      job='test3', name='onChild2', jobStoreID=None)
+            childRequirements1 = dict(memory=23, cores=45, disk=46, preemptable=True)
+            jobNodeOnChild1 = JobNode(command='child1',
+                                      requirements=childRequirements1,
+                                      jobName='test2', unitName='onChild1',
+                                      jobStoreID=None)
+            childRequirements2 = dict(memory=34, cores=56, disk=57, preemptable=False)
+            jobNodeOnChild2 = JobNode(command='master1',
+                                      requirements=childRequirements2,
+                                      jobName='test3', unitName='onChild2',
+                                      jobStoreID=None)
             child1 = worker.create(jobNodeOnChild1)
             child2 = worker.create(jobNodeOnChild2)
             # Update parent

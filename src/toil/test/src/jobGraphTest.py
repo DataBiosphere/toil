@@ -53,7 +53,7 @@ class JobGraphTest(ToilTest):
         
         j = JobGraph(command=command, memory=memory, cores=cores, disk=disk, preemptable=preemptable,
                      jobStoreID=jobStoreID, remainingRetryCount=remainingRetryCount,
-                     predecessorNumber=predecessorNumber, job='testJobGraph', name='noName')
+                     predecessorNumber=predecessorNumber, jobName='testJobGraph', unitName='noName')
         
         #Check attributes
         #
@@ -73,7 +73,7 @@ class JobGraphTest(ToilTest):
         j2 = JobGraph(command=command, memory=memory, cores=cores, disk=disk,
                       preemptable=preemptable,
                       jobStoreID=jobStoreID, remainingRetryCount=remainingRetryCount,
-                      predecessorNumber=predecessorNumber, job='testJobGraph', name='noName')
+                      predecessorNumber=predecessorNumber, jobName='testJobGraph', unitName='noName')
         self.assertEquals(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}

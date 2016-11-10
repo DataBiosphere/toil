@@ -92,11 +92,13 @@ class ClusterScalerTest(ToilTest):
                 # Add a 1000 random jobs
                 for i in xrange(1000):
                     x = mock.getNodeShape(preemptable)
-                    iJ = JobNode(jobStoreID=1, memory=random.choice(range(1, x.memory)),
-                                   cores=random.choice(range(1, x.cores)),
-                                   disk=random.choice(range(1, x.disk)),
-                                   preemptable=preemptable, command=None,
-                                 job='testClusterScaling', name='')
+                    iJ = JobNode(jobStoreID=1,
+                                 requirements=dict(memory=random.choice(range(1, x.memory)),
+                                                   cores=random.choice(range(1, x.cores)),
+                                                   disk=random.choice(range(1, x.disk)),
+                                                   preemptable=preemptable),
+                                 command=None,
+                                 jobName='testClusterScaling', unitName='')
                     clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
 
         logger.info("Waiting for jobs to be processed")
