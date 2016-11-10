@@ -190,7 +190,7 @@ To invoke all tests (unit and integration) use
 
     make test
 
-Note that :ref:`Docker <docker-note>` is a dependency for some tests.
+Note that :ref:`Docker and Quay <docker-quay-note>` are necessary for some tests.
 
 Run an individual test with
 
@@ -226,8 +226,8 @@ this may come up empty. To fix it, run the following::
 
     for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
 
-.. _docker-note:
-.. topic:: Installing Docker
+.. _docker-quay-note:
+.. topic:: Installing Docker with Quay
 
    `Docker`_ is needed for some of the tests. Follow the appopriate 
    installation instructions for your system on their website to get started.
@@ -250,7 +250,7 @@ this may come up empty. To fix it, run the following::
 
    ::
 
-       echo "export export_registry=quay.io/USER" >> $HOME/.bashrc 
+       echo "export docker_registry=quay.io/USER" >> $HOME/.bashrc 
 
    
 .. _Docker: https://www.docker.com/products/docker
