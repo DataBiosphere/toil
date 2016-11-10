@@ -79,14 +79,27 @@ class UtilsTest(ToilTest):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         try:
             system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
-                 clusterName, '--provisioner=aws'])
+                    clusterName, '--provisioner=aws'])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
                     clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
+            compareTo = "import sys; assert sys.argv[1]=='testString'"
+            AWSProvisioner.sshLeader(clusterName=clusterName,
+                                     args=['python', '-', 'testString'],
+                                     stdin=compareTo)
+            compareTo = "import sys; assert sys.argv[1]=='  testString'"
+            AWSProvisioner.sshLeader(clusterName=clusterName,
+                                     args=['python', '-', '  testString'],
+                                     stdin=compareTo)
+            compareTo = "import sys; assert sys.argv[1]=='$PATH'"
+            AWSProvisioner.sshLeader(clusterName=clusterName,
+                                     args=['python', '-', '$PATH'],
+                                     stdin=compareTo)
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 

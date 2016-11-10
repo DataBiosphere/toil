@@ -79,12 +79,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                      disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
 
     @classmethod
-    def sshLeader(cls, clusterName, args=None):
+    def sshLeader(cls, clusterName, args=None, **kwargs):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
-        tty = sys.stdin.isatty()
+        kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        cls._sshAppliance(leader.ip_address, *command, tty=tty)
+        cls._sshAppliance(leader.ip_address, *command, **kwargs)
 
     @classmethod
     def dockerInfo(cls):
@@ -103,15 +103,16 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         """
         :param str leaderIP: IP of the master
         :param args: arguments to execute in the appliance
-        :param kwargs: the only valid kwarg is tty=bool which tells docker whether or not
-        to create a TTY shell for interactive SSHing. The default value is False.
+        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
+            interactive SSHing. The default value is False. All other
+            kwargs are passed as arguments into check_call
         """
         tty = kwargs.pop('tty', False)
         args = map(pipes.quote, args)
         ttyFlag = '-t' if tty else ''
         commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP,
                          'docker', 'exec', '-i', ttyFlag, 'leader'] + args
-        return subprocess.check_call(commandTokens)
+        return subprocess.check_call(commandTokens, **kwargs)
 
     @classmethod
     def _sshInstance(cls, leaderIP, *args):
