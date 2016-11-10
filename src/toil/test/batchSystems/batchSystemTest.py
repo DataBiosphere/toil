@@ -507,14 +507,18 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        jobNode1 = JobNode(command="sleep 1000", memory=1 << 30, cores=1, disk=1000,
-                           preemptable=preemptable, jobName='testResourceLimits', jobStoreID=None,
-                           unitName=None)
+        jobNode1 = JobNode(command="sleep 1000",
+                           requirements=dict(memory=1 << 30, cores=1,
+                                             disk=1000, preemptable=preemptable),
+                           jobName='testResourceLimits', unitName=None,
+                           jobStoreID=None)
         job1 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job1)
-        jobNode2 = JobNode(command="sleep 1000", memory=2 << 30, cores=1, disk=1000,
-                           preemptable=preemptable, jobName='testResourceLimits', jobStoreID=None,
-                           unitName=None)
+        jobNode2 = JobNode(command="sleep 1000",
+                           requirements=dict(memory=2 << 30, cores=1,
+                                             disk=1000, preemptable=preemptable),
+                           jobName='testResourceLimits', unitName=None,
+                           jobStoreID=None)
         job2 = self.batchSystem.issueBatchJob(jobNode2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
