@@ -101,7 +101,7 @@ class Config(object):
 
         #Misc
         self.disableCaching = False
-        self.maxLogFileSize=50120
+        self.maxLogFileSize = 50000
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -446,8 +446,8 @@ def _addOptions(addGroupFn, config):
                      'LSF, or Slurm')
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
-                            "than this will be truncated to the last X bytes. Default is 50 "
-                            "kilobytes, default=%s" % config.maxLogFileSize))
+                            "than this will be truncated to the last X bytes. Setting this option to a negative "
+                            "value will prevent any truncation. Default=%s" % config.maxLogFileSize))
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 

@@ -35,7 +35,6 @@ import signal
 logger = logging.getLogger( __name__ )
 
 
-logFileByteReportLimit = 50000
 
 
 def nextOpenDescriptor():
@@ -95,6 +94,8 @@ def main():
     ##########################################
     #Create the worker killer, if requested
     ##########################################
+
+    logFileByteReportLimit = config.maxLogFileSize
 
     if config.badWorker > 0 and random.random() < config.badWorker:
         def badWorker():
@@ -510,7 +511,7 @@ def main():
         jobWrapper.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobWrapper.jobStoreID)
         with jobStore.updateFileStream(jobWrapper.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "r") as f:
-                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
+                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit > 0:
                     f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                 w.write(f.read())
         jobStore.update(jobWrapper)
