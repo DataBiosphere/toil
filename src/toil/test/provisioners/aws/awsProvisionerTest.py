@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import sys
 from boto.iam import IAMConnection
+from cgcloud.lib.context import Context
 
 from toil.test import needs_aws, integrative, ToilTest
 
@@ -48,22 +49,10 @@ class AWSProvisionerTest(ToilTest):
         AWSProvisioner.destroyCluster(self.clusterName)
 
     def getMatchingRoles(self, roleName):
-        roleName = roleName.replace('-','_')
-        iam = IAMConnection()
-        truncated = True
-        matchingRoles = []
-        marker = None
-        while truncated:
-            resultDict = iam.list_roles(marker=marker)['list_roles_response']
-            resultDict = resultDict['list_roles_result']
-            truncated = resultDict['is_truncated'] == 'true'
-            try:
-                marker = resultDict['marker']
-            except KeyError:
-                assert not truncated
-            profiles = resultDict['roles']
-            profiles = [role for role in profiles if role.role_name.startswith(roleName)]
-            matchingRoles.extend(profiles)
+        ctx = Context(self.awsRegion()+'a', '/')
+        roles = ctx._get_all_roles()
+        roleName = roleName.replace('-', '_')
+        matchingRoles = [role for role in roles if role.role_name.startswith(roleName)]
         return matchingRoles
 
     def _test(self, spotInstances=False):
