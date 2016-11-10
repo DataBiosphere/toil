@@ -20,6 +20,7 @@ from __future__ import absolute_import
 import cPickle
 import json
 import logging
+import os
 import time
 from Queue import Queue, Empty
 from collections import namedtuple
@@ -51,6 +52,17 @@ class StatsAndLogging( object ):
         self._worker.start()
 
     @staticmethod
+    def writeLogs(jobStoreID, jobLogList):
+        def logFileName(jobStoreID):
+            logName = jobStoreID.replace('/', '-') + '.log'
+            return str(logName)
+        fileName = logFileName(jobStoreID)
+        with open(fileName, 'a+') as f:
+            f.writelines("%s\n" % l for l in jobLogList)
+            f.write('\nEnd of the log for this invocation of the job\n')
+
+
+    @staticmethod
     def statsAndLoggingAggregator(jobStore, stop):
         """
         The following function is used for collating stats/reporting log messages from the workers.
@@ -59,6 +71,7 @@ class StatsAndLogging( object ):
         #  Overall timing
         startTime = time.time()
         startClock = getTotalCpuTime()
+        config = jobStore.config
 
         def callback(fileHandle):
             stats = json.load(fileHandle, object_hook=Expando)
@@ -93,10 +106,14 @@ class StatsAndLogging( object ):
                     else:
                         # we have reached the next job, output the aggregated logs and continue
                         logWithFormatting(currentJobStoreID, jobLogs)
+                        if config.writeLogs:
+                            StatsAndLogging.writeLogs(currentJobStoreID, jobLogs)
                         jobLogs = []
                         currentJobStoreID = jobStoreID
                 # output the last job's logs
                 logWithFormatting(currentJobStoreID, jobLogs)
+                if config.writeLogs:
+                    StatsAndLogging.writeLogs(currentJobStoreID, jobLogs)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -331,6 +348,8 @@ class JobBatcher:
                     logFormat = '\n%s    ' % jobStoreID
                     logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
                                 jobStoreID, logFormat.join(messages))
+                    if self.config.writeLogs:
+                        StatsAndLogging.writeLogs(jobStoreID, messages)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we

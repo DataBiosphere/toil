@@ -102,6 +102,7 @@ class Config(object):
         #Misc
         self.disableCaching = False
         self.maxLogFileSize = 50000
+        self.writeLogs = False
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -225,6 +226,7 @@ class Config(object):
         #Misc
         setOption("disableCaching")
         setOption("maxLogFileSize", h2b, iC(1))
+        setOption("writeLogs")
         def checkSse(sseKey):
             with open(sseKey) as f:
                 assert(len(f.readline().rstrip()) == 32)
@@ -448,6 +450,11 @@ def _addOptions(addGroupFn, config):
                       help=("The maximum size of a job log file to keep (in bytes), log files larger "
                             "than this will be truncated to the last X bytes. Setting this option to a negative "
                             "value will prevent any truncation. Default=%s" % config.maxLogFileSize))
+    addOptionFn("--writeLogs", dest="writeLogs", action="store_true", default=False,
+                help="Write worker logs received by master into their own files. Note: By default "
+                     "only the logs of failed jobs are returned to master. Set log level to "
+                     "'debug' to get logs back from successful jobs, and adjust 'maxLogFileSize' "
+                     "to control the truncation limit for worker logs.")
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 
