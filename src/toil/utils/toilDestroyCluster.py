@@ -15,14 +15,15 @@
 Terminates the specified cluster and associated resources
 """
 import logging
-from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions
-from toil.utils import getBasicProvisionerParser
+from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
+from toil.utils import addBasicProvisionerOptions
 
 logger = logging.getLogger( __name__ )
 
 
 def main():
-    parser = getBasicProvisionerParser()
+    parser = getBasicOptionParser()
+    parser = addBasicProvisionerOptions(parser)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     if config.provisioner == 'aws':

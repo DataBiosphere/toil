@@ -15,14 +15,15 @@
 Launches a toil leader instance with the specified provisioner
 """
 import logging
-from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions
-from toil.utils import getBasicProvisionerParser
+from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
+from toil.utils import addBasicProvisionerOptions
 
 logger = logging.getLogger( __name__ )
 
 
 def main():
-    parser = getBasicProvisionerParser()
+    parser = getBasicOptionParser()
+    parser = addBasicProvisionerOptions(parser)
     parser.add_argument("--nodeType", dest='nodeType', required=True,
                         help="Node type for {non-|}preemptable nodes. The syntax depends on the "
                              "provisioner used. For the aws provisioner this is the name of an "

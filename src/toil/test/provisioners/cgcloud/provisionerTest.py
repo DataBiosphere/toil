@@ -267,11 +267,10 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
     def _runScript(self, toilOptions):
         toilOptions = ' '.join(toilOptions)
         self._leader('PATH=~/venv/bin:$PATH',
-                     # TOIL_NODE_DEBUG prevents the provisioner from killing nodes that fail a
-                     # status
-                     # check. This allows for easier debugging of
+                     # TOIL_AWS_NODE_DEBUG prevents the provisioner from killing nodes that fail a
+                     # status check. This allows for easier debugging of
                      # https://github.com/BD2KGenomics/toil/issues/1141
-                     'TOIL_NODE_DEBUG=True',
+                     'TOIL_AWS_NODE_DEBUG=True',
                      'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
                      'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
                      'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,

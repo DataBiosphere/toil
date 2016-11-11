@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 
 from toil import version
-from toil.lib.bioio import getBasicOptionParser
 import logging
 
 from toil.provisioners.aws import getCurrentAWSZone
@@ -9,8 +8,7 @@ from toil.provisioners.aws import getCurrentAWSZone
 logger = logging.getLogger( __name__ )
 
 
-def getBasicProvisionerParser():
-    parser = getBasicOptionParser()
+def addBasicProvisionerOptions(parser):
     parser.add_argument("--version", action='version', version=version)
     parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
                         help="The provisioner for cluster auto-scaling. Only aws is currently "

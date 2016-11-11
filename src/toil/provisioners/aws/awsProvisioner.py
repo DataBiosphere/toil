@@ -102,7 +102,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _discoverAMI(cls, ctx):
         def descriptionMatches(ami):
             return ami.description is not None and 'stable 1068.9.0' in ami.description
-        coreOSAMI = os.environ.get('TOIL_APPLIANCE_AMI')
+        coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
         # that ownerID corresponds to coreOS
