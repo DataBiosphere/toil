@@ -20,6 +20,7 @@ from __future__ import absolute_import
 import cPickle
 import json
 import logging
+import gzip
 import os
 import time
 from Queue import Queue, Empty
@@ -51,19 +52,34 @@ class StatsAndLogging( object ):
                               args=(jobStore, self._stop))
         self._worker.start()
 
-    @staticmethod
-    def writeLogs(jobStoreID, jobLogList):
-        def logFileName(jobStoreID):
-            logName = jobStoreID.replace('/', '-') + '.log'
-            return str(logName)
-        fileName = logFileName(jobStoreID)
-        with open(fileName, 'a+') as f:
-            f.writelines("%s\n" % l for l in jobLogList)
-            f.write('\nEnd of the log for this invocation of the job\n')
+    @classmethod
+    def writeLogFiles(cls, jobStoreID, jobLogList, config):
+        def logFilePath(jobStoreID, path, extension):
+            logName = jobStoreID.replace('-', '--')
+            logName = logName.replace('/', '-')
+            counter = 0
+            while True:
+                suffix = str(counter).zfill(3) + extension
+                fullName = os.path.join(path, logName + suffix)
+                if not os.path.exists(fullName):
+                    return fullName
+                counter += 1
+        path = None
+        writeFn = None
+        extension = '.log'
+        if config.writeLogs:
+            path = config.writeLogs
+            writeFn = open
+        if config.writeLogsGzip:
+            path = config.writeLogsGzip
+            writeFn = gzip.open
+            extension += '.gz'
+        fileName = logFilePath(jobStoreID, path, extension)
+        with writeFn(fileName, 'w') as f:
+            f.writelines(l + '\n' for l in jobLogList)
 
-
-    @staticmethod
-    def statsAndLoggingAggregator(jobStore, stop):
+    @classmethod
+    def statsAndLoggingAggregator(cls, jobStore, stop):
         """
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
@@ -106,14 +122,12 @@ class StatsAndLogging( object ):
                     else:
                         # we have reached the next job, output the aggregated logs and continue
                         logWithFormatting(currentJobStoreID, jobLogs)
-                        if config.writeLogs:
-                            StatsAndLogging.writeLogs(currentJobStoreID, jobLogs)
+                        cls.writeLogFiles(currentJobStoreID, jobLogs, config=config)
                         jobLogs = []
                         currentJobStoreID = jobStoreID
                 # output the last job's logs
                 logWithFormatting(currentJobStoreID, jobLogs)
-                if config.writeLogs:
-                    StatsAndLogging.writeLogs(currentJobStoreID, jobLogs)
+                cls.writeLogFiles(currentJobStoreID, jobLogs, config=config)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -348,8 +362,7 @@ class JobBatcher:
                     logFormat = '\n%s    ' % jobStoreID
                     logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
                                 jobStoreID, logFormat.join(messages))
-                    if self.config.writeLogs:
-                        StatsAndLogging.writeLogs(jobStoreID, messages)
+                    StatsAndLogging.writeLogFiles(jobStoreID, messages, self.config)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
