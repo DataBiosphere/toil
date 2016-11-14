@@ -35,7 +35,10 @@ The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
 
 The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
-The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
+The 'test-serially' target runs Toil's unit tests serially with pytest.
+
+The 'test' target runs Toil's unit tests in parallel and generates a test report
+from the results. Set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
@@ -90,6 +93,11 @@ dist/$(sdist_name): check_venv
 	    || true
 clean_sdist:
 	- rm -rf dist
+
+
+test-serially: check_venv check_build_reqs docker
+	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
+	    $(python) -m pytest -vv src
 
 
 test: check_venv check_build_reqs docker
