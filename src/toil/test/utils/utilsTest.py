@@ -17,6 +17,7 @@ from __future__ import absolute_import
 import os
 import sys
 import uuid
+from StringIO import StringIO
 from subprocess import CalledProcessError, check_call
 
 import toil
@@ -91,15 +92,15 @@ class UtilsTest(ToilTest):
             compareTo = "import sys; assert sys.argv[1]=='testString'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', 'testString'],
-                                     stdin=compareTo)
+                                     stdin=StringIO(compareTo))
             compareTo = "import sys; assert sys.argv[1]=='  testString'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', '  testString'],
-                                     stdin=compareTo)
+                                     stdin=StringIO(compareTo))
             compareTo = "import sys; assert sys.argv[1]=='$PATH'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', '$PATH'],
-                                     stdin=compareTo)
+                                     stdin=StringIO(compareTo))
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 

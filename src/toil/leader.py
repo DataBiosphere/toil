@@ -32,11 +32,14 @@ from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.lib.bioio import getTotalCpuTime
 from toil.provisioners.clusterScaler import ClusterScaler
 
+
 logger = logging.getLogger( __name__ )
+
 
 ####################################################
 ##Stats/logging aggregation
 ####################################################
+
 
 class StatsAndLogging( object ):
     """
