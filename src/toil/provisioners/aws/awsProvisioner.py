@@ -23,7 +23,7 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, a_short_time,
                              wait_transition, create_ondemand_instances,
-                             create_spot_instances)
+                             create_spot_instances, wait_instances_running)
 from itertools import islice, count
 
 from toil import applianceSelf
@@ -295,6 +295,7 @@ class AWSProvisioner(AbstractProvisioner):
                                        tags={'clusterName': self.clusterName},
                                        spec=kwargs,
                                        num_instances=numNodes))
+        wait_instances_running(self.ctx.ec2, instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
