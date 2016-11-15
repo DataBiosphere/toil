@@ -11,13 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import socket
 import subprocess
 import logging
 
 import time
-from contextlib import contextmanager
 
 import sys
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
@@ -39,12 +37,16 @@ from toil.provisioners import BaseAWSProvisioner
 logger = logging.getLogger(__name__)
 
 
+availabilityZone = 'us-west-2a'
+
+
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
-        self.ctx = Context(availability_zone='us-west-2a', namespace=self._toNameSpace(self.clusterName))
+        self.ctx = Context(availability_zone=availabilityZone,
+                           namespace=self._toNameSpace(self.clusterName))
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -105,7 +107,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -186,7 +188,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
@@ -216,7 +218,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:

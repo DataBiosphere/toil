@@ -46,12 +46,12 @@ class AWSProvisionerTest(ToilTest):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         AWSProvisioner.destroyCluster(self.clusterName)
 
-    def getMatchingRoles(self, roleName):
-        ctx = Context(self.awsRegion()+'a', '/')
-        roles = ctx._get_all_roles()
-        roleName = roleName.replace('-', '_')
-        matchingRoles = [role for role in roles if role.role_name.startswith(roleName)]
-        return matchingRoles
+    def getMatchingRoles(self, clusterName):
+        from toil.provisioners.aws.awsProvisioner import availabilityZone, AWSProvisioner
+        awsName = AWSProvisioner._toNameSpace(clusterName)
+        ctx = Context(availabilityZone, awsName)
+        roles = list(ctx.local_roles())
+        return roles
 
     def _test(self, spotInstances=False):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
