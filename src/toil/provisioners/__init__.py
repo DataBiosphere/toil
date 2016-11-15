@@ -17,7 +17,7 @@ from bd2k.util import parse_iso_utc
 
 
 
-def AWSRemainingBillingInterval(instance):
+def awsRemainingBillingInterval(instance):
     def partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the

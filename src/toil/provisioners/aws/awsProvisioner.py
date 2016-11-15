@@ -24,16 +24,15 @@ from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, a_short_time,
                              wait_transition, create_ondemand_instances,
                              create_spot_instances, wait_instances_running)
-from itertools import islice, count
+from itertools import count
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import AWSRemainingBillingInterval
+from toil.provisioners import awsRemainingBillingInterval
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ class AWSProvisioner(AbstractProvisioner):
                                'for a full list of available versions.')
 
     def _remainingBillingInterval(self, instance):
-        return AWSRemainingBillingInterval(instance)
+        return awsRemainingBillingInterval(instance)
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):

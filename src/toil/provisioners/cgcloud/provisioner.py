@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
 import logging
 import re
 import time
@@ -20,7 +19,7 @@ from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize, parse_iso_utc
+from bd2k.util import memoize
 from bd2k.util.exceptions import require
 from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
@@ -30,12 +29,11 @@ from cgcloud.lib.ec2 import (ec2_instance_types,
                              tag_object_persistently)
 from cgcloud.lib.util import (allocate_cluster_ordinals,
                               thread_pool)
-from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners import AWSRemainingBillingInterval
+from toil.provisioners import awsRemainingBillingInterval
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -138,7 +136,7 @@ class CGCloudProvisioner(AbstractProvisioner):
         raise NotImplementedError
 
     def _remainingBillingInterval(self, instance):
-        return AWSRemainingBillingInterval(instance)
+        return awsRemainingBillingInterval(instance)
 
     def _addNodes(self, instances, numNodes, preemptable=False):
         deadline = time.time() + provisioning_timeout
