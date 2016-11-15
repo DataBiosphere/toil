@@ -756,13 +756,12 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
         raise FailedJobsException(config.jobStore, toilState.totalFailedJobs, jobStore)
 
     # Parse out the return value from the root job
-    with jobStore.readSharedFileStream("rootJobReturnValue") as jobStoreFileID:
-        with jobStore.readFileStream(jobStoreFileID.read()) as fH:
-            try:
-                return cPickle.load(fH)  # rootJobReturnValue
-            except EOFError:
-                logger.exception("Failed to unpickle root job return value")
-                raise FailedJobsException(jobStoreFileID, toilState.totalFailedJobs, jobStore)
+    with jobStore.readSharedFileStream('rootJobReturnValue') as fH:
+        try:
+            return cPickle.load(fH)
+        except EOFError:
+            logger.exception('Failed to unpickle root job return value')
+            raise FailedJobsException(config.jobStore, toilState.totalFailedJobs, jobStore)
 
 
 

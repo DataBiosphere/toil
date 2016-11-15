@@ -16,14 +16,14 @@ import pipes
 import subprocess
 
 from uuid import uuid4
-from toil.test import needs_aws, integrative, ToilTest
-
+from toil.test import needs_aws, integrative, ToilTest, needs_appliance
 
 log = logging.getLogger(__name__)
 
 
 @needs_aws
 @integrative
+@needs_appliance
 class AWSProvisionerTest(ToilTest):
 
 
