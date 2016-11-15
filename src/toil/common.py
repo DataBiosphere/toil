@@ -28,6 +28,8 @@ from bd2k.util.humanize import bytes2human
 
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
+from toil.batchSystems.options import setOptions as setBatchOptions
+from toil.batchSystems.options import addOptions as addBatchOptions
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,8 @@ class Config(object):
         #Restarting the workflow options
         self.restart = False
 
-        #Batch system options
+        #Batch system common options
         self.batchSystem = "singleMachine"
-        self.scale = 1
-        self.mesosMasterAddress = 'localhost:5050'
-        self.parasolCommand = "parasol"
-        self.parasolMaxBatches = 10000
         self.environment = {}
 
         #Autoscaling options
@@ -118,10 +116,13 @@ class Config(object):
         """
         from bd2k.util.humanize import human2bytes #This import is used to convert
         #from human readable quantites to integers
-        def setOption(varName, parsingFn=None, checkFn=None):
+        def setOption(varName, parsingFn=None, checkFn=None, default=None):
             #If options object has the option "varName" specified
             #then set the "varName" attrib to this value in the config object
             x = getattr(options, varName, None)
+            if x is None:
+                x = default
+                
             if x is not None:
                 if parsingFn is not None:
                     x = parsingFn(x)
@@ -135,20 +136,6 @@ class Config(object):
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x : human2bytes(str(x))
-
-        def iC(minValue, maxValue=sys.maxint):
-            # Returns function that checks if a given int is in the given half-open interval
-            assert isinstance(minValue, int) and isinstance(maxValue, int)
-            return lambda x: minValue <= x < maxValue
-
-        def fC(minValue, maxValue=None):
-            # Returns function that checks if a given float is in the given half-open interval
-            assert isinstance(minValue, float)
-            if maxValue is None:
-                return lambda x: minValue <= x
-            else:
-                assert isinstance(maxValue, float)
-                return lambda x: minValue <= x < maxValue
 
         def parseJobStore(s):
             name, rest = Toil.parseLocator(s)
@@ -181,13 +168,10 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
-        setOption("scale", float, fC(0.0))
-        setOption("mesosMasterAddress")
-        setOption("parasolCommand")
-        setOption("parasolMaxBatches", int, iC(1))
+        setBatchOptions(self, setOption)
 
         setOption("environment", parseSetEnv)
-
+    
         #Autoscaling options
         setOption("provisioner")
         setOption("nodeType")
@@ -302,21 +286,7 @@ def _addOptions(addGroupFn, config):
 
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
-    addOptionFn("--batchSystem", dest="batchSystem", default=None,
-                      help=("The type of batch system to run the job(s) with, currently can be one "
-                            "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
-    addOptionFn("--scale", dest="scale", default=None,
-                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
-                      "Used in singleMachine batch system. default=%s" % config.scale))
-    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
-                help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
-    addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
-                      help="The name or path of the parasol program. Will be looked up on PATH "
-                           "unless it starts with a slashdefault=%s" % config.parasolCommand)
-    addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
-                help="Maximum number of job batches the Parasol batch is allowed to create. One "
-                     "batch is created for jobs with a a unique set of resource requirements. "
-                     "default=%i" % config.parasolMaxBatches)
+    addBatchOptions(addOptionFn)
 
     #
     #Auto scaling options
@@ -716,33 +686,12 @@ class Toil(object):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        if config.batchSystem == 'parasol':
-            from toil.batchSystems.parasol import ParasolBatchSystem
-            batchSystemClass = ParasolBatchSystem
-
-        elif config.batchSystem == 'single_machine' or config.batchSystem == 'singleMachine':
-            from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-            batchSystemClass = SingleMachineBatchSystem
-
-        elif config.batchSystem == 'gridengine' or config.batchSystem == 'gridEngine':
-            from toil.batchSystems.gridengine import GridengineBatchSystem
-            batchSystemClass = GridengineBatchSystem
-
-        elif config.batchSystem == 'lsf' or config.batchSystem == 'LSF':
-            from toil.batchSystems.lsf import LSFBatchSystem
-            batchSystemClass = LSFBatchSystem
-
-        elif config.batchSystem == 'mesos' or config.batchSystem == 'Mesos':
-            from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
-            batchSystemClass = MesosBatchSystem
-
-            kwargs['masterAddress'] = config.mesosMasterAddress
-
-        elif config.batchSystem == 'slurm' or config.batchSystem == 'Slurm':
-            from toil.batchSystems.slurm import SlurmBatchSystem
-            batchSystemClass = SlurmBatchSystem
-
-        else:
+        from toil.batchSystems.registry import batchSystemFactoryFor
+        
+        try:
+            factory = batchSystemFactoryFor(config.batchSystem)
+            batchSystemClass = factory()
+        except:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
         if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
@@ -955,6 +904,21 @@ def parseSetEnv(l):
             raise ValueError('Empty name')
         d[k] = v
     return d
+
+
+def iC(minValue, maxValue=sys.maxint):
+    # Returns function that checks if a given int is in the given half-open interval
+    assert isinstance(minValue, int) and isinstance(maxValue, int)
+    return lambda x: minValue <= x < maxValue
+
+def fC(minValue, maxValue=None):
+    # Returns function that checks if a given float is in the given half-open interval
+    assert isinstance(minValue, float)
+    if maxValue is None:
+        return lambda x: minValue <= x
+    else:
+        assert isinstance(maxValue, float)
+        return lambda x: minValue <= x < maxValue
 
 
 def cacheDirName(workflowID):
