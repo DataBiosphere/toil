@@ -17,7 +17,7 @@
 
 from toil.job import Job
 from toil.common import Toil
-from toil.version import version
+from toil.version import baseVersion
 from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
@@ -557,7 +557,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
-    parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--version", action='version', version=baseVersion)
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1,VAR2"),
