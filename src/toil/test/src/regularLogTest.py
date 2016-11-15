@@ -13,11 +13,31 @@
 # limitations under the License.
 import subprocess
 import sys
+import os
+import mimetypes
 from toil.test import ToilTest
 from toil.test.mesos import helloWorld
 
 
 class RegularLogTest(ToilTest):
+
+    def setUp(self):
+        super(RegularLogTest, self).setUp()
+        self.tempDir = self._createTempDir(purpose='tempDir')
+
+    def _getFiles(self, dir):
+        return [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
+
+    def _assertFileTypeExists(self, dir, extension, encoding=None):
+        # an encoding of None implies no compression
+        onlyFiles = self._getFiles(dir)
+        onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
+        assert onlyLogs
+        for log in onlyLogs:
+            mime = mimetypes.guess_type(log)
+            # The first element in the tuple is type of file ('text/plain', etc.),
+            # but is unfortunately platform dependent.
+            assert mime[1] == encoding
 
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -26,6 +46,26 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput
+
+    def testWriteLogs(self):
+        toilOutput = subprocess.check_output([sys.executable,
+                                              '-m', helloWorld.__name__,
+                                              './toilTest',
+                                              '--clean=always',
+                                              '--logLevel=debug',
+                                              '--writeLogs=%s' % self.tempDir],
+                                             stderr=subprocess.STDOUT)
+        self._assertFileTypeExists(self.tempDir, '.log')
+
+    def testWriteGzipLogs(self):
+        toilOutput = subprocess.check_output([sys.executable,
+                                              '-m', helloWorld.__name__,
+                                              './toilTest',
+                                              '--clean=always',
+                                              '--logLevel=debug',
+                                              '--writeLogsGzip=%s' % self.tempDir],
+                                              stderr=subprocess.STDOUT)
+        self._assertFileTypeExists(self.tempDir, '.log.gz', 'gzip')
 
     def testMultipleLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
