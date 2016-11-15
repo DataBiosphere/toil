@@ -405,18 +405,23 @@ def needs_cwl(test_item):
 
 
 def needs_appliance(test_item):
+    import json
     test_item = _mark_test('appliance', test_item)
     if next(which('docker'), None):
         image = applianceSelf()
         try:
-            images = subprocess.check_output(['docker', 'images', image])
+            images = subprocess.check_output(['docker', 'inspect', image])
         except subprocess.CalledProcessError:
-            images = ''
-        if image in images:
-            return test_item
+            images = []
         else:
+            images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
+        if len(images) == 0:
             return unittest.skip("Cannot find appliance image %s. Be sure to run 'make docker' "
                                  "prior to running this test." % image)(test_item)
+        elif len(images) == 1:
+            return test_item
+        else:
+            assert False, 'Expected `docker inspect` to return zero or one image.'
     else:
         return unittest.skip('Install Docker to include this test.')(test_item)
 
