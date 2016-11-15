@@ -91,10 +91,12 @@ export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
 # @needs_appliance decorator to skip the test.
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
+ifndef BUILD_NUMBER
 green=\033[0;32m
-normal=\033[0m\n
+normal=\033[0m
 red=\033[0;31m
 cyan=\033[0;36m
+endif
 
 
 develop: check_venv
@@ -111,7 +113,7 @@ dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
-	         && printf "$(cyan)No significant changes to sdist, reinstating backup.$(normal)" \
+	         && printf "$(cyan)No significant changes to sdist, reinstating backup.$(normal)\n" \
 	         || rm dist/$(sdist_name).old ) \
 	    || true
 clean_sdist:
@@ -183,7 +185,7 @@ clean: clean_develop clean_sdist clean_pypi clean_docs
 
 check_build_reqs:
 	@$(python) -c 'import mock; import pytest' \
-		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)" ; false )
+		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 
 prepare: check_venv
@@ -192,32 +194,32 @@ prepare: check_venv
 
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
-		|| ( printf "$(red)A virtualenv must be active.$(normal)" ; false )
+		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 
 check_clean_working_copy:
-	@printf "$(green)Checking if your working copy is clean ...$(normal)"
+	@printf "$(green)Checking if your working copy is clean ...$(normal)\n"
 	@git diff --exit-code > /dev/null \
-		|| ( printf "$(red)Your working copy looks dirty.$(normal)" ; false )
+		|| ( printf "$(red)Your working copy looks dirty.$(normal)\n" ; false )
 	@git diff --cached --exit-code > /dev/null \
-		|| ( printf "$(red)Your index looks dirty.$(normal)" ; false )
+		|| ( printf "$(red)Your index looks dirty.$(normal)\n" ; false )
 	@test -z "$$(git ls-files --other --exclude-standard --directory)" \
-		|| ( printf "$(red)You have are untracked files:$(normal)" \
+		|| ( printf "$(red)You have are untracked files:$(normal)\n" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
 
 check_running_on_jenkins:
-	@printf "$(green)Checking if running on Jenkins ...$(normal)"
+	@printf "$(green)Checking if running on Jenkins ...$(normal)\n"
 	@test -n "$$BUILD_NUMBER" \
-		|| ( printf "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
+		|| ( printf "$(red)This target should only be invoked on Jenkins.$(normal)\n" ; false )
 
 
 check_docker_registry:
 	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
 		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
 	$(default_docker_registry) and ensure that you have permissions to push \
-	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)' ; false )
+	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
 
 .PHONY: help \
