@@ -42,7 +42,7 @@ The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a part
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
-copy and the index are clean, and tagging it as an unstable .dev build.
+copy and the index are clean.
 
 The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
 TOIL_DOCKER_REGISTRY variable to override the default registry that the 'docker_push' target pushes
@@ -87,8 +87,8 @@ else
     export TOIL_DOCKER_REGISTRY:=
 endif
 export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
-# Note that an empty TOIL_DOCKER_REGISTRY yield an invalid TOIL_APPLIANCE_SELF which will coax the
-# @needs_appliance decorator to skip the test.
+# Note that setting TOIL_DOCKER_REGISTRY to an empty string yields an invalid TOIL_APPLIANCE_SELF
+# which will coax the @needs_appliance decorator to skip the test.
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 ifndef BUILD_NUMBER
@@ -137,13 +137,26 @@ clean_pypi:
 
 ifdef TOIL_DOCKER_REGISTRY
 
+docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
+docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
+docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
+
+define tag_docker
+	@printf "$(cyan)Removing old tag $2. This may fail but that's expected.$(normal)\n"
+	-docker rmi $2
+	docker tag $1 $2
+	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
+endef
+
+
 docker: docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; docker build --tag=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag) \
-	             -f Dockerfile \
-	             .
-	@printf "Tagged appliance image as $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)\n"
+	; docker build --tag=$(docker_image):$(docker_tag) -f Dockerfile .
+ifdef BUILD_NUMBER
+	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
+	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
+endif
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
@@ -153,17 +166,17 @@ docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
 
 clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
-	-docker rmi $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+	-docker rmi $(docker_image):$(docker_tag)
 
 obliterate_docker: clean_docker
 	-@set -x \
-	; docker images $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME) \
+	; docker images $(docker_image) \
 	    | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
 	    | xargs docker rmi
 	-docker images -qf dangling=true | xargs docker rmi
 
 push_docker: docker check_docker_registry
-	docker push $(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+	docker push $(docker_image):$(docker_tag)
 
 else
 
