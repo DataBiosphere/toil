@@ -16,18 +16,16 @@ import pipes
 
 from uuid import uuid4
 
-import sys
-from boto.iam import IAMConnection
 from cgcloud.lib.context import Context
 
-from toil.test import needs_aws, integrative, ToilTest
-
+from toil.test import needs_aws, integrative, ToilTest, needs_appliance
 
 log = logging.getLogger(__name__)
 
 
 @needs_aws
 @integrative
+@needs_appliance
 class AWSProvisionerTest(ToilTest):
 
     def __init__(self, methodName='AWSprovisioner'):
