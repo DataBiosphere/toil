@@ -41,7 +41,7 @@ logger = logging.getLogger( __name__ )
 
 DeferredFunction = collections.namedtuple('DeferredFunction', (
     # The deferred action to take in the form of a function
-    'callable',
+    'func',
     # Non-keyword arguments to the function
     'args',
     # Keyword arguments to the function
@@ -1068,20 +1068,20 @@ class FileStore(object):
                 # Remove it from the cache state file
                 cacheInfo.jobState.pop(jobID)
 
-    def _registerDeferredFunction(self, callable, *args, **kwargs):
+    def _registerDeferredFunction(self, func, *args, **kwargs):
         """
         This is the backend function to register a function that will be run after the completion of
         the current job on the same node
-        :param function callable: The function to be run after this job.
+        :param function func: The function to be run after this job.
         :param list args: The arguments to the function
         :param dict kwargs: The keyword arguments to the function
         """
         with self._CacheState.open(self) as cacheInfo:
-            deferredFunction = DeferredFunction(callable=callable,
+            deferredFunction = DeferredFunction(func=dill.dumps(func),
                                                 args=args,
                                                 kwargs=kwargs)
             cacheInfo.jobState[self.jobID]['deferredFunctions'].append(deferredFunction)
-            logger.info('Registered the deferred function "%s" to job "%s".', callable.__name__,
+            logger.info('Registered the deferred function "%s" to job "%s".', func.__name__,
                         self.jobName)
 
     @staticmethod
@@ -1096,15 +1096,16 @@ class FileStore(object):
         """
         failures = []
         for deferredFunction in deferredFunctions:
-            #TODO: better representation of the callable in the output string
+            # TODO: better representation of the callable in the output string
+            deferredFunctionCallable = dill.loads(deferredFunction.func)
+            logger.debug('Running deferred function "%s".', deferredFunctionCallable.__name__)
             try:
-                logger.debug('Running deferred function "%s".', deferredFunction.callable.__name__)
-                deferredFunction.callable(*deferredFunction.args, **deferredFunction.kwargs)
+                deferredFunctionCallable(*deferredFunction.args, **deferredFunction.kwargs)
             except:
                 # This has to be generic because we don't know what is in the function
-                failures.append(deferredFunction.callable.__name__)
+                failures.append(deferredFunctionCallable.__name__)
                 logger.exception('Deferred function "%s" failed.',
-                                 deferredFunction.callable.__name__)
+                                 deferredFunctionCallable.__name__)
         return failures
 
 

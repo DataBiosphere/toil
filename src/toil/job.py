@@ -558,7 +558,7 @@ class Job(ResourceRequirementMixin):
                 if len(y._children) != 0 and len(y._followOns) != 0 and len(y._services) != 0:
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
-    def defer(self, callable, *args, **kwargs):
+    def defer(self, func, *args, **kwargs):
         """
         Register a deferred function, i.e. a callable that will be invoked after the current attempt
         at running this job concludes. A job attempt is said to conclude when the job function (or
@@ -567,24 +567,26 @@ class Job(ResourceRequirementMixin):
         attempted to run the job, even if a subsequent attempt is made on another node. A deferred
         function should be idempotent because it may be called multiple times on the same node or
         even in the same process. More than one deferred function may be registered per job attempt
-        by calling this method repeatedly with different arguments. If the same callable is
+        by calling this method repeatedly with different arguments. If the same callable (func) is
         registered twice, it will be called twice per job attempt.
 
         The functions one would typically provide here are cleanup functions that handle
         Toil-external events upon a failure within Toil (killing Docker containers, etc).
 
-        :param function callable: The function to be run after this job.
+        :param function func: The function to be run after this job.
         :param list args: The arguments to the function
         :param dict kwargs: The keyword arguments to the function
         :return: None
         """
+        if not callable(func):
+            raise IllegalRegisteredDeferredFunctionError(func)
         try:
             getattr(self, 'fileStore')
         except AttributeError:
             raise RuntimeError('A deferred function may only be registered from within the job it '
                                'is being registered with. "%s" was illegally registered.',
-                               callable.__name__)
-        self.fileStore._registerDeferredFunction(callable, *args, **kwargs)
+                               func.__name__)
+        self.fileStore._registerDeferredFunction(func, *args, **kwargs)
 
 
     ####################################################
@@ -1199,6 +1201,17 @@ class JobException( Exception ):
     """
     def __init__( self, message ):
         super( JobException, self ).__init__( message )
+
+
+class IllegalRegisteredDeferredFunctionError(Exception):
+    """
+    Exception raised when an illegal callable was attempted to be registered..
+    """
+    def __init__(self, func):
+        message = ('An illegal object with value (%s) was attempted to be registered as a deferred '
+                   'function.  Only callable functions may be registered as deferred functions.'
+                   % func)
+        super(IllegalRegisteredDeferredFunctionError, self).__init__(message)
 
 
 class JobGraphDeadlockException( JobException ):
