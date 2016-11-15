@@ -97,22 +97,26 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
                                'for a full list of available versions.')
 
-
     @classmethod
     def _sshAppliance(cls, leaderIP, *args, **kwargs):
         """
         :param str leaderIP: IP of the master
         :param args: arguments to execute in the appliance
         :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
-            interactive SSHing. The default value is False. All other
-            kwargs are passed as arguments into check_call
+            interactive SSHing. The default value is False. Input=string is passed as
+            input to the Popen call.
         """
         tty = kwargs.pop('tty', False)
         args = map(pipes.quote, args)
         ttyFlag = '-t' if tty else ''
         commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP,
                          'docker', 'exec', '-i', ttyFlag, 'leader'] + args
-        return subprocess.check_call(commandTokens, **kwargs)
+        inputString = kwargs.pop('input', None)
+        if inputString is not None:
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(commandTokens, **kwargs)
+        stdout, stderr = popen.communicate(input=inputString)
+        assert stderr is None
 
     @classmethod
     def _sshInstance(cls, leaderIP, *args):

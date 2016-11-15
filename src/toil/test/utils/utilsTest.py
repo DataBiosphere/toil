@@ -92,15 +92,15 @@ class UtilsTest(ToilTest):
             compareTo = "import sys; assert sys.argv[1]=='testString'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', 'testString'],
-                                     stdin=StringIO(compareTo))
+                                     input=compareTo)
             compareTo = "import sys; assert sys.argv[1]=='  testString'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', '  testString'],
-                                     stdin=StringIO(compareTo))
+                                     input=compareTo)
             compareTo = "import sys; assert sys.argv[1]=='$PATH'"
             AWSProvisioner.sshLeader(clusterName=clusterName,
                                      args=['python', '-', '$PATH'],
-                                     stdin=StringIO(compareTo))
+                                     input=compareTo)
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 
