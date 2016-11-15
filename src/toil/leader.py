@@ -54,16 +54,6 @@ class StatsAndLogging( object ):
 
     @classmethod
     def writeLogFiles(cls, jobStoreID, jobLogList, config):
-        def logFilePath(jobStoreID, path, extension):
-            logName = jobStoreID.replace('-', '--')
-            logName = logName.replace('/', '-')
-            counter = 0
-            while True:
-                suffix = str(counter).zfill(3) + extension
-                fullName = os.path.join(path, logName + suffix)
-                if not os.path.exists(fullName):
-                    return fullName
-                counter += 1
         path = None
         writeFn = None
         extension = '.log'
@@ -74,8 +64,19 @@ class StatsAndLogging( object ):
             path = config.writeLogsGzip
             writeFn = gzip.open
             extension += '.gz'
-        fileName = logFilePath(jobStoreID, path, extension)
-        with writeFn(fileName, 'w') as f:
+        if path is None:
+            # we don't have anywhere to write the logs, return now
+            return
+        logName = jobStoreID.replace('-', '--')
+        logName = logName.replace('/', '-')
+        counter = 0
+        while True:
+            suffix = str(counter).zfill(3) + extension
+            fullName = os.path.join(path, logName + suffix)
+            if not os.path.exists(fullName):
+                break
+            counter += 1
+        with writeFn(fullName, 'w') as f:
             f.writelines(l + '\n' for l in jobLogList)
 
     @classmethod
