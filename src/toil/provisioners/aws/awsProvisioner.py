@@ -27,6 +27,7 @@ from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_a
                              a_long_time)
 from itertools import islice, count
 
+from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
@@ -83,18 +84,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
-
-    @classmethod
-    def dockerInfo(cls):
-        try:
-            return os.environ['TOIL_APPLIANCE_SELF']
-        except KeyError:
-            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
-                               'image of the Toil Appliance you wish to use. For example: '
-                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
-                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
-                               'for a full list of available versions.')
-
 
     @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
@@ -202,11 +191,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
-        dockerLeaderData = cls.dockerInfo().rsplit(':', 1)
-        leaderRepo = dockerLeaderData[0]
-        leaderTag = dockerLeaderData[1]
-        leaderData = {'role': 'leader', 'tag': leaderTag,
-                      'args': leaderArgs.format(name=clusterName), 'repo': leaderRepo}
+        leaderData = dict(role='leader',
+                          image=applianceSelf(),
+                          entrypoint='mesos-master',
+                          args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_groups': [clusterName],
                   'instance_type': instanceType,
@@ -272,13 +260,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _addNodes(self, instancesToLaunch, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
-        # quay.io/toil-leader:tag
-        workerData = self.dockerInfo().rsplit(':', 1)
-        workerRepo = workerData[0].rsplit('-', 1)[0] + '-worker'
-        workerTag = workerData[1]
-        workerData = {'role': 'worker', 'tag': workerTag,
-                      'args': workerArgs.format(ip=self.leaderIP, preemptable=preemptable),
-                      'repo': workerRepo}
+        workerData = dict(role='worker',
+                          image=applianceSelf(),
+                          entrypoint='mesos-slave',
+                          args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)
         kwargs = {'key_name': self.keyName, 'security_groups': [self.clusterName],
                   'instance_type': self.instanceType.name,
