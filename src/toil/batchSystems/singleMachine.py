@@ -291,6 +291,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         return 5400
 
+    @staticmethod
+    def setOptions(setOption):
+        setOption("scale", default=1)
+        
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable
     def __init__(self, startTime, popen, killIntended):
