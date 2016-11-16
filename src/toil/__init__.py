@@ -18,10 +18,10 @@ import os
 import sys
 
 from subprocess import check_output
+from pprint import pformat
 
 from bd2k.util import memoize
-from toil.version import version
-from pprint import pformat
+
 
 def toilPackageDirPath():
     """
@@ -89,6 +89,9 @@ def physicalDisk(config, toilWorkflowDir=None):
 
 
 def logProcessContext(config, logger):
+    # toil.version.version (string) canont be imported at top level because it conflicts with
+    # toil.version (module) and Sphinx doesn't like that.
+    from toil.version import version
     logger.info("Running Toil version %s.", version)
     logger.info("Configuration:\n %s", pformat(config.__dict__))
 
