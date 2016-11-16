@@ -15,7 +15,7 @@
 from registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
 
-def __parasolOptions(addOptionFn):
+def _parasolOptions(addOptionFn):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The name or path of the parasol program. Will be looked up on PATH "
                            "unless it starts with a slashdefault=%s" % 'parasol')
@@ -24,25 +24,25 @@ def __parasolOptions(addOptionFn):
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % 1000)
     
-def __singleMachineOptions(addOptionFn):
+def _singleMachineOptions(addOptionFn):
     addOptionFn("--scale", dest="scale", default=None,
         help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
               "Used in singleMachine batch system. default=%s" % 1))
 
-def __mesosOptions(addOptionFn):
+def _mesosOptions(addOptionFn):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
         help=("The host and port of the Mesos master separated by colon. default=%s" % 'localhost:5050'))
 
-__OPTIONS = [
-    __parasolOptions,
-    __singleMachineOptions,
-    __mesosOptions
+_OPTIONS = [
+    _parasolOptions,
+    _singleMachineOptions,
+    _mesosOptions
     ]
 
-__options = list(__OPTIONS)
+_options = list(_OPTIONS)
 
 def addOptionsDefinition(optionsDefinition):
-    __options.append(optionsDefinition)
+    _options.append(optionsDefinition)
     
     
 def setOptions(config, setOption):
@@ -59,5 +59,7 @@ def addOptions(addOptionFn):
               help=("The type of batch system to run the job(s) with, currently can be one "
                     "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
     
-    for o in __options:
+    for o in _options:
         o(addOptionFn)
+
+
