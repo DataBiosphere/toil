@@ -14,21 +14,12 @@
 
 from __future__ import absolute_import, print_function
 from abc import abstractmethod, ABCMeta
-from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from hashlib import sha1
-from threading import Thread, Semaphore, Event
-from Queue import Queue, Empty
 
-
-from bd2k.util.humanize import bytes2human
 from bd2k.util.objects import abstractclassmethod
-from toil.common import cacheDirName, getDirSizeRecursively
-from toil.lib.bioio import makePublicDir
 
 import base64
-import collections
+from collections import namedtuple, defaultdict
+
 import dill
 import errno
 import logging
@@ -39,15 +30,56 @@ import tempfile
 import time
 import uuid
 
-logger = logging.getLogger( __name__ )
+from contextlib import contextmanager
+from fcntl import flock, LOCK_EX, LOCK_UN
+from functools import partial
+from hashlib import sha1
+from Queue import Queue, Empty
+from threading import Thread, Semaphore, Event
 
-DeferredFunction = collections.namedtuple('DeferredFunction', (
-    # The deferred action to take in the form of a function
-    'callable',
-    # Non-keyword arguments to the function
-    'args',
-    # Keyword arguments to the function
-    'kwargs'))
+from bd2k.util.humanize import bytes2human
+from toil.common import cacheDirName, getDirSizeRecursively
+from toil.lib.bioio import makePublicDir
+
+logger = logging.getLogger(__name__)
+
+
+class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name')):
+    """
+    >>> df = DeferredFunction.create(dict, {'x':1}, y=2)
+    >>> df
+    DeferredFunction(dict, ...)
+    >>> df.invoke() == dict(x=1, y=2)
+    True
+    """
+    @classmethod
+    def create(cls, function, *args, **kwargs):
+        """
+        Create an instance of this class that captures the given callable and arguments.
+
+        :param callable function: The deferred action to take in the form of a function
+        :param tuple args: Non-keyword arguments to the function
+        :param dict kwargs: Keyword arguments to the function
+        """
+        # The general principle is to deserialize as late as possible, i.e. when the function is
+        # to be invoked, as that will avoid redundantly deserializing deferred functions for
+        # concurrently running jobs when the cache state is loaded from disk. By implication we
+        # should serialize as early as possible. We need to serialize the function as well as its
+        # arguments.
+        return cls(*map(dill.dumps, (function, args, kwargs)), name=function.__name__)
+
+    def invoke(self):
+        """
+        Invoke the captured function with the captured arguments.
+        """
+        logger.debug('Running deferred function %s.', self)
+        function, args, kwargs = map(dill.loads, (self.function, self.args, self.kwargs))
+        return function(*args, **kwargs)
+
+    def __str__(self):
+        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
+
+    __repr__ = __str__
 
 
 class FileStore(object):
@@ -290,38 +322,30 @@ class FileStore(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def _registerDeferredFunction(self, callable_, *args, **kwargs):
+    def _registerDeferredFunction(self, deferredFunction):
         """
-        This is the backend function to register a function that will be run after the completion of
-        the current job on the same node
+        Register the given deferred function with this job.
 
-        :param callable_: The function or lambda to be run after this job -- Must return True for
-               callable(callable_).
-        :param list args: The arguments to the function.
-        :param dict kwargs: The keyword arguments to the function.
+        :param DeferredFunction deferredFunction: the function to register
         """
         raise NotImplementedError()
 
     @staticmethod
     def _runDeferredFunctions(deferredFunctions):
         """
-        This function will run all the registered deferred functions for the job.
+        Invoke the specified deferred functions and return a list of names of functions that
+        raised an exception while being invoked.
 
-        :param list deferredFunctions: A list of DeferredFunctions to run the cache
-        :return: list of failed functions
-        :rtype: list
+        :param list[DeferredFunction] deferredFunctions: the DeferredFunctions to run
+        :rtype: list[str]
         """
         failures = []
         for deferredFunction in deferredFunctions:
-            # TODO: better representation of the callable in the output string
             try:
-                logger.debug('Running deferred function "%s".', deferredFunction.callable.__name__)
-                deferredFunction.callable(*deferredFunction.args, **deferredFunction.kwargs)
+                deferredFunction.invoke()
             except:
-                # This has to be generic because we don't know what is in the function
-                failures.append(deferredFunction.callable.__name__)
-                logger.exception('Deferred function "%s" failed.',
-                                 deferredFunction.callable.__name__)
+                failures.append(deferredFunction.name)
+                logger.exception('%s failed.', deferredFunction)
         return failures
 
     # Functions related to logging
@@ -1069,9 +1093,8 @@ class CachingFileStore(FileStore):
                 'jobName': self.jobName,
                 'jobReqs': newJobReqs,
                 'jobDir': self.localTempDir,
-                'jobSpecificFiles': collections.defaultdict(partial(collections.defaultdict,
-                                                                    int)),
-                'filesToFSIDs': collections.defaultdict(set),
+                'jobSpecificFiles': defaultdict(partial(defaultdict,int)),
+                'filesToFSIDs': defaultdict(set),
                 'pid': os.getpid(),
                 'deferredFunctions': []}
             # If the caching equation is balanced, do nothing.
@@ -1243,22 +1266,15 @@ class CachingFileStore(FileStore):
                     if os.path.exists(jobState.jobDir):
                         shutil.rmtree(jobState.jobDir)
                     nodeInfo.sigmaJob -= jobState.jobReqs
-                # Run any deferred functions associated with the job
                 logger.debug('Running user-defined deferred functions.')
-                deferredFunctions = jobState.deferredFunctions
-                cls._runDeferredFunctions(deferredFunctions)
-                # Remove it from the cache state file
+                cls._runDeferredFunctions(jobState.deferredFunctions)
+                # Remove job from the cache state file
                 nodeInfo.jobState.pop(jobID)
 
-    def _registerDeferredFunction(self, callable_, *args, **kwargs):
-        assert callable(callable_)
+    def _registerDeferredFunction(self, deferredFunction):
         with self._CacheState.open(self) as cacheInfo:
-            deferredFunction = DeferredFunction(callable=callable_,
-                                                args=args,
-                                                kwargs=kwargs)
             cacheInfo.jobState[self.jobID]['deferredFunctions'].append(deferredFunction)
-            logger.info('Registered the deferred function "%s" to job "%s".', callable_.__name__,
-                        self.jobName)
+            logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
 
     class _JobState(object):
         """
@@ -1551,7 +1567,7 @@ class NonCachingFileStore(FileStore):
         super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # This will be defined in the `open` method.
         self.jobStateFile = None
-        self.localFileMap = collections.defaultdict(list)
+        self.localFileMap = defaultdict(list)
 
     @contextmanager
     def open(self, job):
@@ -1736,19 +1752,14 @@ class NonCachingFileStore(FileStore):
             state = dill.load(fH)
         return state
 
-    def _registerDeferredFunction(self, callable_, *args, **kwargs):
-        assert callable(callable_)
+    def _registerDeferredFunction(self, deferredFunction):
         with open(self.jobStateFile) as fH:
             jobState = dill.load(fH)
-            deferredFunction = DeferredFunction(callable=callable_,
-                                                args=args,
-                                                kwargs=kwargs)
-            jobState['deferredFunctions'].append(deferredFunction)
+        jobState['deferredFunctions'].append(deferredFunction)
         with open(self.jobStateFile + '.tmp', 'w') as fH:
             dill.dump(jobState, fH)
         os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
-        logger.info('Registered the deferred function "%s" to job "%s".', callable_.__name__,
-                    self.jobName)
+        logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
 
     def _createJobStateFile(self):
         """
