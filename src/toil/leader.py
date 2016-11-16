@@ -484,12 +484,13 @@ class ToilState( object ):
             else:
                 return jobStore.load(jobId)
 
-        # If the jobWrapper has a command, is a checkpoint, has services or is ready to be
-        # deleted it is ready to be processed
-        if (jobWrapper.command is not None
-            or jobWrapper.checkpoint is not None
-            or len(jobWrapper.services) > 0
-            or len(jobWrapper.stack) == 0):
+        # If the jobWrapper's predecessors have finished and it has a command, is a checkpoint,
+        # has services or is ready to be deleted it is ready to be processed
+        if (jobWrapper.allPredecessorsSuccessful and
+                (jobWrapper.command is not None or
+                 jobWrapper.checkpoint is not None or
+                 len(jobWrapper.services) > 0 or
+                 len(jobWrapper.stack) == 0)):
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
                          'with  services: %s, with stack: %s', jobWrapper.jobStoreID,
                          jobWrapper.command is not None, jobWrapper.checkpoint is not None,
