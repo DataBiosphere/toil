@@ -30,9 +30,8 @@ from threading import Thread
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
-from toil.version import version
+from toil import logProcessContext
 import signal
-from pprint import pformat
 
 logger = logging.getLogger( __name__ )
 
@@ -211,8 +210,7 @@ def main():
         logger.debug("Next available file descriptor: {}".format(
             nextOpenDescriptor()))
 
-        logger.info("Running Toil version %s.", version)
-        logger.info("Configuration:\n %s", pformat(config.__dict__))
+        logProcessContext(config, logger)
 
         ##########################################
         #Load the jobWrapper

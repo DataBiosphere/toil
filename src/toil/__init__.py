@@ -20,7 +20,8 @@ import sys
 from subprocess import check_output
 
 from bd2k.util import memoize
-
+from toil.version import version
+from pprint import pformat
 
 def toilPackageDirPath():
     """
@@ -85,4 +86,9 @@ def physicalDisk(config, toilWorkflowDir=None):
         toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
     diskStats = os.statvfs(toilWorkflowDir)
     return diskStats.f_frsize * diskStats.f_bavail
+
+
+def logProcessContext(config, logger):
+    logger.info("Running Toil version %s.", version)
+    logger.info("Configuration:\n %s", pformat(config.__dict__))
 

@@ -22,14 +22,13 @@ import sys
 import tempfile
 import time
 from argparse import ArgumentParser
-from pprint import pformat
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
+from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-from toil.version import version
 
 logger = logging.getLogger(__name__)
 
@@ -878,8 +877,7 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        logger.info("Running Toil version %s.", version)
-        logger.info("Configuration:\n %s", pformat(self.config.__dict__))
+        logProcessContext(self.config, logger)
 
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
