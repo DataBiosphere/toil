@@ -21,7 +21,8 @@ export LIBPROCESS_IP=127.0.0.1
 export CGCLOUD_ME=jenkins@jenkins-master
 
 TMPDIR=/mnt/ephemeral/tmp
-rm -rf $TMPDIR
+# Run rm "as root" so we can clean up files left over by rogue containers
+docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR
 mkdir $TMPDIR
 # Check that we have enough free space for running the tests
 python -c "
@@ -33,4 +34,4 @@ sys.exit(1 if f < min_free_in_GiB << 30 else 0)
 "
 export TMPDIR
 make $make_targets
-rm -rf $TMPDIR
+docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR

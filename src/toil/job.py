@@ -515,13 +515,25 @@ class Job(JobLikeObject):
         """
         return Promise(self, path)
 
-    def allocatePromiseFile(self, path):
+    def registerPromise(self, path):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a '
                                'predecessor of the job receiving the promise')
         jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
+
+    def prepareForPromiseRegistration(self, jobStore):
+        """
+        Ensure that a promise by this job (the promissor) can register with the promissor when
+        another job referring to the promise (the promissee) is being serialized. The promissee
+        holds the reference to the promise (usually as part of the the job arguments) and when it
+        is being pickled, so will the promises it refers to. Pickling a promise triggers it to be
+        registered with the promissor.
+
+        :return:
+        """
+        self._promiseJobStore = jobStore
 
     ####################################################
     #Cycle/connectivity checking
@@ -1135,9 +1147,9 @@ class Job(JobLikeObject):
 
         # Temporarily set the jobStore locators for the promise call back functions
         for job in ordering:
-            job._promiseJobStore = jobStore
+            job.prepareForPromiseRegistration(jobStore)
             def setForServices(serviceJob):
-                serviceJob._promiseJobStore = jobStore
+                serviceJob.prepareForPromiseRegistration(jobStore)
                 for childServiceJob in serviceJob.service._childServices:
                     setForServices(childServiceJob)
             for serviceJob in self._services:
@@ -1435,15 +1447,16 @@ class EncapsulatedJob(Job):
     Let A be the root job of a job subgraph and B be another job we'd like to run after A
     and all its successors have completed, for this use encapsulate::
 
-        A, B = A(), B() #Job A and subgraph, Job B
+        #  Job A and subgraph, Job B
+        A, B = A(), B()
         A' = A.encapsulate()
-        A'.addChild(B) #B will run after A and all its successors have
-        # completed, A and its subgraph of successors in effect appear
-        # to be just one job.
+        A'.addChild(B)
+        #  B will run after A and all its successors have completed, A and its subgraph of
+        # successors in effect appear to be just one job.
 
-    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function) \
-    is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() \
-    will resolve to the same value after A or A.encapsulate() has been run.
+    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
+    is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
+    the same value after A or A.encapsulate() has been run.
     """
     def __init__(self, job):
         """
@@ -1460,14 +1473,21 @@ class EncapsulatedJob(Job):
     def addChild(self, childJob):
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
-    def addService(self, service):
-        return Job.addService(self.encapsulatedFollowOn, service)
+    def addService(self, service, parentService=None):
+        return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
 
     def addFollowOn(self, followOnJob):
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
     def rv(self, *path):
         return self.encapsulatedJob.rv(*path)
+
+    def prepareForPromiseRegistration(self, jobStore):
+        super(EncapsulatedJob, self).prepareForPromiseRegistration(jobStore)
+        self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
+
+    def getUserScript(self):
+        return self.encapsulatedJob.getUserScript()
 
 
 class ServiceJobNode(JobNode):
@@ -1607,21 +1627,23 @@ class Promise(object):
     def __init__(self, job, path):
         """
         :param Job job: the job whose return value this promise references
+        :param path: see :meth:`Job.rv`
         """
         self.job = job
         self.path = path
 
     def __reduce__(self):
         """
-        Called during pickling when a promise of this class is about to be be pickled. Returns
-        the Promise class and construction arguments that will be evaluated during unpickling,
-        namely the job store coordinates of a file that will hold the promised return value. By
-        the time the promise is about to be unpickled, that file should be populated.
+        Called during pickling when a promise (an instance of this class) is about to be be
+        pickled. Returns the Promise class and construction arguments that will be evaluated
+        during unpickling, namely the job store coordinates of a file that will hold the promised
+        return value. By the time the promise is about to be unpickled, that file should be
+        populated.
         """
         # The allocation of the file in the job store is intentionally lazy, we only allocate an
         # empty file in the job store if the promise is actually being pickled. This is done so
         # that we do not allocate files for promises that are never used.
-        jobStoreLocator, jobStoreFileID = self.job.allocatePromiseFile(self.path)
+        jobStoreLocator, jobStoreFileID = self.job.registerPromise(self.path)
         # Returning a class object here causes the pickling machinery to attempt to instantiate
         # the class. We will catch that with __new__ and return an the actual return value instead.
         return self.__class__, (jobStoreLocator, jobStoreFileID)

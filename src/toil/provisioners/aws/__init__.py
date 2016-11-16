@@ -108,6 +108,14 @@ coreos:
 
         [Service]
         Restart=on-failure
-        ExecStart=/usr/bin/docker run --net=host -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/mesos:/var/lib/mesos -v /var/lib/docker:/var/lib/docker -v /var/lib/toil:/var/lib/toil --name={role} {repo}:{tag} {args}
-
+        ExecStart=/usr/bin/docker run \
+            --entrypoint={entrypoint} \
+            --net=host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v /var/lib/mesos:/var/lib/mesos \
+            -v /var/lib/docker:/var/lib/docker \
+            -v /var/lib/toil:/var/lib/toil \
+            --name={role} \
+            {image} \
+            {args}
 """
