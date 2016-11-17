@@ -307,7 +307,7 @@ class JobBatcher:
         if wallTime is not None and self.clusterScaler is not None:
             self.clusterScaler.addCompletedJob(jobNode, wallTime)
         if self.jobStore.exists(jobStoreID):
-            logger.debug("Job %s continues to exist (i.e. has more to do)" % jobNode)
+            logger.debug("Job %s continues to exist (i.e. has more to do)", jobNode)
             try:
                 jobGraph = self.jobStore.load(jobStoreID)
             except NoSuchJobException:
@@ -394,7 +394,7 @@ class JobBatcher:
 
         if jobGraph.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
             # a service job
-            logger.debug("Service job is being processed as a totally failed job: %s" % jobGraph)
+            logger.debug("Service job is being processed as a totally failed job: %s", jobGraph)
 
             predecesssorJobGraph = self.toilState.serviceJobStoreIDToPredecessorJob[jobGraph.jobStoreID]
 
@@ -426,8 +426,8 @@ class JobBatcher:
             # as a set (unseenSuccessors).
             unseenSuccessors = self.getSuccessors(jobGraph, self.toilState.failedSuccessors,
                                                   self.jobStore)
-            logger.debug("Found new failed successors: %s of job: %s" % (" ".join(
-                unseenSuccessors), jobGraph))
+            logger.debug("Found new failed successors: %s of job: %s", " ".join(
+                         unseenSuccessors), jobGraph)
             
             # For each newly found successor
             for successorJobStoreID in unseenSuccessors:
@@ -445,7 +445,8 @@ class JobBatcher:
                         
                         # Indicate that it has failed jobs.  
                         self.toilState.hasFailedSuccessors.add(predecessorJob.jobStoreID)
-                        logger.debug("Marking job: %s as having failed successors (found by reading successors failed job)" % predecessorJob.jobStoreID)
+                        logger.debug("Marking job: %s as having failed successors (found by "
+                                     "reading successors failed job)", predecessorJob)
                         
                         # If the predecessor has no remaining successors, add to list of active jobs
                         assert self.toilState.successorCounts[predecessorJob.jobStoreID] >= 0
@@ -463,7 +464,8 @@ class JobBatcher:
                     
                     # Mark the predecessor as failed
                     self.toilState.hasFailedSuccessors.add(predecessorJobGraph.jobStoreID)
-                    logger.debug("Totally failed job: %s is marking direct predecessor: %s as having failed jobs", jobGraph.jobStoreID, predecessorJobGraph.jobStoreID)
+                    logger.debug("Totally failed job: %s is marking direct predecessor: %s "
+                                 "as having failed jobs", jobGraph, predecessorJobGraph)
 
                 self._updatePredecessorStatus(jobGraph.jobStoreID)
 
@@ -480,7 +482,7 @@ class JobBatcher:
                 self.toilState.servicesIssued.pop(predecessorJob.jobStoreID) # The job has no running services
                 self.toilState.updatedJobs.add((predecessorJob, 0)) # Now we know
                 # the job is done we can add it to the list of updated job files
-                logger.debug("Job %s services have completed or totally failed, adding to updated jobs" % predecessorJob.jobStoreID)
+                logger.debug("Job %s services have completed or totally failed, adding to updated jobs", predecessorJob)
 
         elif jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             #We have reach the root job
@@ -514,7 +516,7 @@ class JobBatcher:
                     self.toilState.updatedJobs.add((predecessorJob, 0))
                     
                     logger.debug('Job %s has all its non-service successors completed or totally '
-                                 'failed', predecessorJob.jobStoreID)
+                                 'failed', predecessorJob)
 
 ##########################################
 #Class to represent the state of the toil in memory. Loads this
