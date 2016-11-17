@@ -1,9 +1,11 @@
+# coding=utf-8
 import logging
 from contextlib import contextmanager
 from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
+from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance
 
 log = logging.getLogger(__name__)
@@ -12,6 +14,13 @@ log = logging.getLogger(__name__)
 @needs_mesos
 @needs_appliance
 class HotDeploymentTest(ApplianceTestSupport):
+    """
+    Tests various hot-deployment scenarios. Using the appliance, i.e. a docker container,
+    for these tests allows for running worker processes on the same node as the leader process
+    while keeping their file systems separate from each other and the leader process. Separate
+    file systems are crucial to prove that hot-deployment does its job.
+    """
+
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
         super(HotDeploymentTest, self).setUp()
@@ -189,4 +198,115 @@ class HotDeploymentTest(ApplianceTestSupport):
                                   '--batchSystem=mesos',
                                   '--mesosMaster=localhost:5050',
                                   '--defaultMemory=10M',
+                                  '--defaultDisk=10M',
+                                  '/data/jobstore')
+
+    def testDeferralWithConcurrentEncapsulation(self):
+        """
+        Ensure that the following DAG succeeds:
+
+                      ┌───────────┐
+                      │ Root (W1) │
+                      └───────────┘
+                            │
+                 ┌──────────┴─────────┐
+                 ▼                    ▼
+        ┌────────────────┐ ┌────────────────────┐
+        │ Deferring (W2) │ │ Encapsulating (W3) │───────────────┐
+        └────────────────┘ └────────────────────┘               │
+                                      │                         │
+                                      ▼                         ▼
+                            ┌───────────────────┐      ┌────────────────┐
+                            │ Encapsulated (W3) │      │ Follow-on (W6) │
+                            └───────────────────┘      └────────────────┘
+                                      │                         │
+                              ┌───────┴────────┐                │
+                              ▼                ▼                ▼
+                      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                      │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
+                      └──────────────┘ └──────────────┘ └──────────────┘
+
+        The Wn numbers denote the worker processes that a particular job is run in. `Deferring`
+        adds a deferred function and then runs for a long time. The deferred function will be
+        present in the cache state for the duration of `Deferred`. `Follow-on` is the generic Job
+        instance that's added by encapsulating a job. It runs on the same worker node but in a
+        separate worker process, as the first job in that worker. Because …
+
+        1) it is the first job in its worker process (the user script has not been made available
+        on the sys.path by a previous job in that worker) and
+
+        2) it shares the cache state with the `Deferring` job and
+
+        3) it is an instance of Job (and so does not introduce the user script to sys.path itself),
+
+        … it might cause problems with deserializing a defered function defined in the user script.
+
+        `Encapsulated` has two children to ensure that `Follow-on` is run in a separate worker.
+        """
+        with self._venvApplianceCluster() as (leader, worker):
+            def userScript():
+                import time
+                import logging
+                from toil.job import Job
+                from toil.common import Toil
+
+                log = logging.getLogger(__name__)
+
+                def root(rootJob):
+                    def nullFile():
+                        return rootJob.fileStore.jobStore.importFile('file:///dev/null')
+
+                    startFile = nullFile()
+                    endFile = nullFile()
+                    rootJob.addChildJobFn(deferring, startFile, endFile)
+                    encapsulatedJob = Job.wrapJobFn(encapsulated, startFile)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatingJob = encapsulatedJob.encapsulate()
+                    rootJob.addChild(encapsulatingJob)
+                    encapsulatingJob.addChildJobFn(last, endFile)
+
+                def dummy():
+                    pass
+
+                def deferred():
+                    pass
+
+                # noinspection PyUnusedLocal
+                def deferring(job, startFile, endFile):
+                    job.defer(deferred)
+                    job.fileStore.jobStore.deleteFile(startFile)
+                    timeout = time.time() + 10
+                    while job.fileStore.jobStore.fileExists(endFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+
+                def encapsulated(job, startFile):
+                    timeout = time.time() + 10
+                    while job.fileStore.jobStore.fileExists(startFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+
+                def last(job, endFile):
+                    job.fileStore.jobStore.deleteFile(endFile)
+
+                if __name__ == '__main__':
+                    options = Job.Runner.getDefaultArgumentParser().parse_args()
+                    with Toil(options) as toil:
+                        rootJob = Job.wrapJobFn(root)
+                        toil.start(rootJob)
+
+            userScript = self._getScriptSource(userScript)
+
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+
+            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
+                                  '--logDebug',
+                                  '--batchSystem=mesos',
+                                  '--mesosMaster=localhost:5050',
+                                  '--retryCount=0',
+                                  '--defaultMemory=10M',
+                                  '--defaultDisk=10M',
                                   '/data/jobstore')
