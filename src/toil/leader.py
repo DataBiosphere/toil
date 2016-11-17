@@ -381,7 +381,7 @@ class JobBatcher:
                         if jobStore.exists(successorJobStoreID):
                             successorRecursion(jobStore.load(successorJobStoreID))
     
-        successorRecursion(jobGraph) # Recurse from jobWrapper
+        successorRecursion(jobGraph) # Recurse from jobGraph
         
         return successors   
 
@@ -459,11 +459,11 @@ class JobBatcher:
             if jobGraph.jobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
                 
                 # For each predecessor of the job
-                for predecessorJobWrapper in self.toilState.successorJobStoreIDToPredecessorJobs[jobGraph.jobStoreID]:
+                for predecessorJobGraph in self.toilState.successorJobStoreIDToPredecessorJobs[jobGraph.jobStoreID]:
                     
                     # Mark the predecessor as failed
-                    self.toilState.hasFailedSuccessors.add(predecessorJobWrapper.jobStoreID)
-                    logger.debug("Totally failed job: %s is marking direct predecessor: %s as having failed jobs", jobGraph.jobStoreID, predecessorJobWrapper.jobStoreID)
+                    self.toilState.hasFailedSuccessors.add(predecessorJobGraph.jobStoreID)
+                    logger.debug("Totally failed job: %s is marking direct predecessor: %s as having failed jobs", jobGraph.jobStoreID, predecessorJobGraph.jobStoreID)
 
                 self._updatePredecessorStatus(jobGraph.jobStoreID)
 
@@ -558,7 +558,7 @@ class ToilState( object ):
         
         # Set of jobs that have multiple predecessors that have one or more predecessors
         # finished, but not all of them. This acts as a cache for these jobs.
-        # Stored as hash from jobStoreIDs to jobWrappers
+        # Stored as hash from jobStoreIDs to job graphs
         self.jobsToBeScheduledWithMultiplePredecessors = {}
         
         ##Algorithm to build this information
@@ -605,28 +605,28 @@ class ToilState( object ):
             # Record the number of successors
             self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
             
-            def processSuccessorWithMultiplePredecessors(successorJobWrapper):
-                # If jobWrapper job is not reported as complete by the successor
-                if jobGraph.jobStoreID not in successorJobWrapper.predecessorsFinished:
+            def processSuccessorWithMultiplePredecessors(successorJobGraph):
+                # If jobGraph is not reported as complete by the successor
+                if jobGraph.jobStoreID not in successorJobGraph.predecessorsFinished:
                     
                     # Update the sucessor's status to mark the predecessor complete
-                    successorJobWrapper.predecessorsFinished.add(jobGraph.jobStoreID)
+                    successorJobGraph.predecessorsFinished.add(jobGraph.jobStoreID)
             
                 # If the successor has no predecessors to finish
-                assert len(successorJobWrapper.predecessorsFinished) <= successorJobWrapper.predecessorNumber
-                if len(successorJobWrapper.predecessorsFinished) == successorJobWrapper.predecessorNumber:
+                assert len(successorJobGraph.predecessorsFinished) <= successorJobGraph.predecessorNumber
+                if len(successorJobGraph.predecessorsFinished) == successorJobGraph.predecessorNumber:
                     
                     # It is ready to be run, so remove it from the cache
                     self.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
                     
                     # Recursively consider the successor
-                    self._buildToilState(successorJobWrapper, jobStore, jobCache=jobCache)
+                    self._buildToilState(successorJobGraph, jobStore, jobCache=jobCache)
             
             # For each successor
             for successorJobNode in jobGraph.stack[-1]:
                 successorJobStoreID = successorJobNode.jobStoreID
                 
-                # If the successor jobWrapper does not yet point back at a
+                # If the successor jobGraph does not yet point back at a
                 # predecessor we have not yet considered it
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
 
@@ -637,17 +637,17 @@ class ToilState( object ):
                     if successorJobNode.predecessorNumber > 1:
                         
                         # We load the successor job
-                        successorJobWrapper =  getJob(successorJobStoreID)
+                        successorJobGraph =  getJob(successorJobStoreID)
                         
                         # We put the successor job in the cache of successor jobs with multiple predecessors
                         assert successorJobStoreID not in self.jobsToBeScheduledWithMultiplePredecessors
-                        self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = successorJobWrapper
+                        self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = successorJobGraph
                         
                         # Process successor
-                        processSuccessorWithMultiplePredecessors(successorJobWrapper)
+                        processSuccessorWithMultiplePredecessors(successorJobGraph)
                             
                     else:
-                        # The successor has only the jobWrapper job as a predecessor so
+                        # The successor has only the jobGraph as a predecessor so
                         # recursively consider the successor
                         self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
                 
@@ -662,10 +662,10 @@ class ToilState( object ):
                     if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
                         
                         # Get the successor from cache
-                        successorJobWrapper = self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
+                        successorJobGraph = self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
                         
                         # Process successor
-                        processSuccessorWithMultiplePredecessors(successorJobWrapper)
+                        processSuccessorWithMultiplePredecessors(successorJobGraph)
 
 class FailedJobsException( Exception ):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
@@ -1035,7 +1035,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                         if successorJobStoreID not in toilState.successorJobStoreIDToPredecessorJobs:
                             toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
                         toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
-                        #Case that the jobWrapper has multiple predecessors
+                        #Case that the jobGraph has multiple predecessors
                         if jobNode.predecessorNumber > 1:
                             logger.debug("Successor job: %s of job: %s has multiple "
                                          "predecessors", jobNode, jobGraph)
@@ -1047,7 +1047,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                                 toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = jobStore.load(successorJobStoreID)      
                             successorJobGraph = toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
                             
-                            #Add the jobWrapper job as a finished predecessor to the successor 
+                            #Add the jobGraph as a finished predecessor to the successor
                             successorJobGraph.predecessorsFinished.add(jobGraph.jobStoreID)
 
                             # If the successor is in the set of successors of failed jobs 
@@ -1076,7 +1076,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                                     continue
 
                             # If the successor job's predecessors have all not all completed then
-                            # ignore the jobWrapper as is not yet ready to run
+                            # ignore the jobGraph as is not yet ready to run
                             assert len(successorJobGraph.predecessorsFinished) <= successorJobGraph.predecessorNumber
                             if len(successorJobGraph.predecessorsFinished) < successorJobGraph.predecessorNumber:
                                 continue
