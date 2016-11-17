@@ -615,6 +615,8 @@ class AbstractJobStore(object):
     @abstractmethod
     def create(self, jobNode):
         """
+        Creates a job graph from the given job node & writes it to the job store.
+
         :rtype: toil.jobGraph.JobGraph
         """
         raise NotImplementedError()

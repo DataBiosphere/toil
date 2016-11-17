@@ -266,7 +266,7 @@ class ClusterScaler(object):
         Adds the shape of a completed job to the queue, allowing the scalar to use the last N
         completed jobs in factoring how many nodes are required in the cluster.
 
-        :param JobNode job: The memory, core and disk requirements of the completed job
+        :param toil.job.JobNode job: The memory, core and disk requirements of the completed job
 
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
