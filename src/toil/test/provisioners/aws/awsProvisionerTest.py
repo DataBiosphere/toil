@@ -15,14 +15,17 @@ import logging
 import pipes
 
 from uuid import uuid4
-from toil.test import needs_aws, integrative, ToilTest
 
+from cgcloud.lib.context import Context
+
+from toil.test import needs_aws, integrative, ToilTest, needs_appliance
 
 log = logging.getLogger(__name__)
 
 
 @needs_aws
 @integrative
+@needs_appliance
 class AWSProvisionerTest(ToilTest):
 
     def __init__(self, methodName='AWSprovisioner'):
@@ -43,12 +46,20 @@ class AWSProvisionerTest(ToilTest):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         AWSProvisioner.destroyCluster(self.clusterName)
 
+    def getMatchingRoles(self, clusterName):
+        from toil.provisioners.aws.awsProvisioner import availabilityZone, AWSProvisioner
+        awsName = AWSProvisioner._toNameSpace(clusterName)
+        ctx = Context(availabilityZone, awsName)
+        roles = list(ctx.local_roles())
+        return roles
+
     def _test(self, spotInstances=False):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
         leader = AWSProvisioner.launchCluster(instanceType=self.instanceType, keyName=self.keyName,
                                               clusterName=self.clusterName)
 
+        assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
         AWSProvisioner._sshAppliance(leader.ip_address, command=venv_command)
@@ -95,6 +106,10 @@ class AWSProvisionerTest(ToilTest):
         runCommand %= self.numSamples
 
         AWSProvisioner._sshAppliance(leader.ip_address, runCommand)
+        assert len(self.getMatchingRoles(self.clusterName)) == 1
+
+        AWSProvisioner.destroyCluster(self.clusterName)
+        assert len(self.getMatchingRoles(self.clusterName)) == 0
 
     @integrative
     @needs_aws

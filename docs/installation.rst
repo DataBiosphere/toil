@@ -184,11 +184,13 @@ To build the docs, run ``make develop`` with all extras followed by
 
     make docs
 
-To invoke the tests (unit and integration) use
+To invoke all tests (unit and integration) use
 
 ::
 
-   make test
+    make test
+
+Note that :ref:`Docker and Quay <docker-quay-note>` are necessary for some tests.
 
 Run an individual test with
 
@@ -224,6 +226,36 @@ this may come up empty. To fix it, run the following::
 
     for i in /usr/local/lib/python2.7/site-packages/*mesos*; do ln -snf $i venv/lib/python2.7/site-packages/ ; done
 
+.. _docker-quay-note:
+.. topic:: Installing Docker with Quay
+
+   `Docker`_ is needed for some of the tests. Follow the appopriate
+   installation instructions for your system on their website to get started.
+
+   When running ``make test`` you may still get the following error
+
+   ::
+
+       Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
+
+   To solve, make an account with `Quay`_ and specify it like so:
+
+   ::
+
+       TOIL_DOCKER_REGISTRY=quay.io/USER make test
+
+   where ``USER`` is your Quay username.
+
+   For convenience you may want to add this variable to your bashrc by running
+
+   ::
+
+       echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
+
+
+.. _Docker: https://www.docker.com/products/docker
+.. _Quay: https://quay.io/
+
 Cloud installation
 ==================
 
@@ -231,9 +263,11 @@ Cloud installation
 
 Installation on AWS for distributed computing
 ---------------------------------------------
-We use CGCloud_ to provision instances and clusters in AWS. Thorough documentation of CGCloud_ can be found
-in the CGCloud-core_ and CGCloud-toil_ documentation. Brief steps will be provided to those
-interested in using CGCloud_ for provisioning.
+We use Toil's included AWS provisioner and CGCloud_ to provision instances and
+clusters in AWS. More information on the AWS provisioner can be found in the
+:ref:`Autoscaling` section. Thorough documentation of CGCloud_ can be found in
+the CGCloud-core_ and CGCloud-toil_ documentation. Brief steps will be provided
+to those interested in using CGCloud_ for provisioning.
 
 .. _CGCloud: https://github.com/BD2KGenomics/cgcloud/
 .. _CGCloud-core: https://github.com/BD2KGenomics/cgcloud/blob/master/core/README.rst
