@@ -52,9 +52,8 @@ In the example a class, HelloWorld, is defined. The constructor requests 2
 gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
 
 The :func:`toil.job.Job.run` method is the function the user overrides to get
-work done. Here it just logs a message using
-:func:`toil.job.Job.FileStore.logToMaster`, which will be registered in the log
-output of the leader process of the workflow.
+work done. Here it just logs a message using :func:`toil.fileStore.CachingFileStore.logToMaster`,
+which will be registered in the log output of the leader process of the workflow.
 
 
 Invoking a workflow
@@ -234,7 +233,7 @@ argument in a class, this allows access to the methods of the wrapping job, see
     def helloWorld(job, message):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.CachingFileStore class
         
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
@@ -242,7 +241,7 @@ argument in a class, this allows access to the methods of the wrapping job, see
         print Job.Runner.startToil(Job.wrapJobFn(helloWorld, "woot"), options)
 
 Here ``helloWorld()`` is a job function. It accesses the
-:class:`toil.job.Job.FileStore` attribute of the job to log a message that will
+:class:`toil.fileStore.CachingFileStore` attribute of the job to log a message that will
 be printed to the output console. Here the only subtle difference to note is
 the line::
 
@@ -276,7 +275,7 @@ earlier ``helloWorld()`` job function::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.CachingFileStore class
         
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = Job.wrapJobFn(helloWorld, "second or third")
@@ -303,7 +302,7 @@ example::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.CachingFileStore class
     
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -329,7 +328,7 @@ specified as a DAG as follows::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.CachingFileStore class
     
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -444,7 +443,7 @@ Managing files within a workflow
 --------------------------------
 
 It is frequently the case that a workflow will want to create files, both
-persistent and temporary, during its run. The :class:`toil.job.Job.FileStore`
+persistent and temporary, during its run. The :class:`toil.fileStore.CachingFileStore`
 class is used by jobs to manage these files in a manner that guarantees cleanup
 and resumption on failure.
 
@@ -493,7 +492,7 @@ example::
     def globalFileStoreJobFn(job):
         job.fileStore.logToMaster("The following example exercises all the"
                                   " methods provided by the"
-                                  " Job.FileStore class")
+                                  " toil.fileStore.CachingFileStore class")
     
         scratchFile = job.fileStore.getLocalTempFile() # Create a local 
         # temporary file.

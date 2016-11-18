@@ -8,11 +8,11 @@ Jobs are the units of work in Toil which are composed into workflows.
 .. autoclass:: toil.job.Job
    :members:
 
-Job.FileStore
+Job.CachingFileStore
 -------------
-The FileStore is an abstraction of a Toil run's shared storage.
+The CachingFileStore is an abstraction of a Toil run's shared storage.
 
-.. autoclass:: toil.fileStore::FileStore
+.. autoclass:: toil.fileStore::CachingFileStore
    :members:
 
 Job.Runner
