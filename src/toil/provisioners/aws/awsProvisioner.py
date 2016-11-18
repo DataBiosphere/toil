@@ -18,6 +18,7 @@ import logging
 import time
 
 import sys
+from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_active, a_short_time,
@@ -37,16 +38,12 @@ from toil.provisioners import BaseAWSProvisioner
 logger = logging.getLogger(__name__)
 
 
-availabilityZone = 'us-west-2a'
-
-
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
-        self.ctx = Context(availability_zone=availabilityZone,
-                           namespace=self._toNameSpace(self.clusterName))
+        self.ctx = self._buildContext(clusterName=self.clusterName)
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -67,7 +64,9 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         if instancesToLaunch > 0:
             self._addNodes(instancesToLaunch, preemptable=preemptable)
         elif instancesToLaunch < 0:
-            self._removeNodes(instances=workerInstances, numNodes=numNodes, preemptable=preemptable, force=force)
+            instancesToTerminate = self._filterImpairedNodes(workerInstances, self.ctx.ec2)
+            self._removeNodes(instances=instancesToTerminate, numNodes=numNodes, preemptable=preemptable,
+                              force=force)
         else:
             pass
         workerInstances = self._getWorkersInCluster(preemptable)
@@ -81,17 +80,55 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                      disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
 
     @classmethod
-    def sshLeader(cls, clusterName):
+    def _buildContext(cls, clusterName, zone=None):
+        if zone is None:
+            zone = getCurrentAWSZone()
+            if zone is None:
+                raise RuntimeError(
+                    'Could not determine availability zone. Insure that one of the following '
+                    'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
+                    'is set, ec2_region_name is set in the .boto file, or that '
+                    'you are running on EC2.')
+        return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
+
+    @classmethod
+    def sshLeader(cls, clusterName, zone=None):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, command, tty=False):
+    @memoize
+    def _discoverAMI(cls, ctx):
+        def descriptionMatches(ami):
+            return ami.description is not None and 'stable 1068.9.0' in ami.description
+        coreOSAMI = os.environ.get('TOIL_AWS_AMI')
+        if coreOSAMI is not None:
+            return coreOSAMI
+        # that ownerID corresponds to coreOS
+        coreOSAMI = [ami for ami in ctx.ec2.get_all_images(owners=['679593333241']) if
+                     descriptionMatches(ami)]
+        assert len(coreOSAMI) == 1
+        return coreOSAMI.pop().id
+
+    @classmethod
+    def dockerInfo(cls):
+        try:
+            return os.environ['TOIL_APPLIANCE_SELF']
+        except KeyError:
+            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
+                               'image of the Toil Appliance you wish to use. For example: '
+                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
+                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
+                               'for a full list of available versions.')
+
+    @classmethod
+    def _sshAppliance(cls, leaderIP, remoteCommand, tty=False):
         ttyFlag = 't' if tty else ''
-        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"' % (leaderIP, ttyFlag, command)
-        return subprocess.check_call(command, shell=True)
+        localCommand = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"'
+        localCommand %= (leaderIP, ttyFlag, remoteCommand)
+        return subprocess.check_call(localCommand, shell=True)
 
     @classmethod
     def _sshInstance(cls, leaderIP, command):
@@ -106,8 +143,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         return clusterName.replace('-','/')
 
     @classmethod
-    def _getLeader(cls, clusterName, wait=False):
-        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
+    def _getLeader(cls, clusterName, wait=False, zone=None):
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -187,8 +224,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                 s.close()
 
     @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, zone=None):
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
@@ -204,39 +241,47 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                   'instance_profile_arn': profileARN}
         if not spotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=coreOSAMI,
+            create_ondemand_instances(ctx.ec2, image_id=cls._discoverAMI(ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2, price=spotBid, image_id=coreOSAMI,
+            list(create_spot_instances(ec2=ctx.ec2, price=spotBid, image_id=cls._discoverAMI(ctx),
                                        clusterName=clusterName, spec=kwargs, num_instances=1))
         return cls._getLeader(clusterName=clusterName, wait=True)
 
     @classmethod
-    def destroyCluster(cls, clusterName):
+    def destroyCluster(cls, clusterName, zone=None):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        if instances:
-            cls._deleteIAMProfiles(instances=instances, ctx=ctx)
-            cls._terminateInstance(instances=instances, ctx=ctx)
-        logger.info('Deleting security group...')
-        for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
-            with attempt:
-                try:
-                    ctx.ec2.delete_security_group(name=clusterName)
-                except BotoServerError as e:
-                    if e.error_code == 'InvalidGroup.NotFound':
-                        pass
-                    else:
-                        raise
-        logger.info('... Succesfully deleted security group')
+        instancesToTerminate = cls._filterImpairedNodes(instances, ctx.ec2)
+        if instancesToTerminate:
+            cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
+            cls._terminateInstance(instances=instancesToTerminate, ctx=ctx)
+        if len(instances) == len(instancesToTerminate):
+            logger.info('Deleting security group...')
+            for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
+                with attempt:
+                    try:
+                        ctx.ec2.delete_security_group(name=clusterName)
+                    except BotoServerError as e:
+                        if e.error_code == 'InvalidGroup.NotFound':
+                            pass
+                        else:
+                            raise
+            logger.info('... Succesfully deleted security group')
+        else:
+            assert len(instances) > len(instancesToTerminate)
+            # the security group can't be deleted until all nodes are terminated
+            logger.warning('The TOIL_AWS_NODE_DEBUG environment variable is set and some nodes '
+                           'have failed health checks. As a result, the security group & IAM '
+                           'roles will not be deleted.')
 
     @classmethod
     def _terminateInstance(cls, instances, ctx):
@@ -314,12 +359,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', instancesToLaunch)
-            create_ondemand_instances(self.ctx.ec2, image_id=coreOSAMI,
+            create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching %s preemptable nodes', instancesToLaunch)
             # force generator to evaluate
-            list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=coreOSAMI,
+            list(create_spot_instances(ec2=self.ctx.ec2, price=self.spotBid, image_id=self._discoverAMI(self.ctx),
                                        clusterName=self.clusterName, spec=kwargs, num_instances=instancesToLaunch))
         logger.info('Launched %s new instance(s)', instancesToLaunch)
 
