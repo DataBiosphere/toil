@@ -348,6 +348,42 @@ class JobBatcher:
             logger.debug("Added jobWrapper: %s to active jobs", jobStoreID)
         else:  #The jobWrapper is done
             processRemovedJob(jobStoreID)
+    
+    @staticmethod    
+    def getSuccessors(jobWrapper, alreadySeenSuccessors, jobStore):
+        """
+        Gets successors of the given job (jobWrapper) by walking the job graph from the job
+        through all its successors recursively. 
+        Any successor in alreadySeenSuccessors is ignored and not traversed.
+        Returns the set of found successors. This set is added to alreadySeenSuccessors.
+        """
+        successors = set()
+        
+        def successorRecursion(jobWrapper):
+            # For lists of successors
+            for successorList in jobWrapper.stack:
+                
+                # For each successor in list of successors
+                for successorJobStoreTuple in successorList:
+                    
+                    # Id of the successor
+                    successorJobStoreID = successorJobStoreTuple[0]
+                    
+                    # If successor not already visited
+                    if successorJobStoreID not in alreadySeenSuccessors:
+                        
+                        # Add to set of successors
+                        successors.add(successorJobStoreID)
+                        alreadySeenSuccessors.add(successorJobStoreID)
+                        
+                        # Recurse if job exists
+                        # (job may not exist if already completed)
+                        if jobStore.exists(successorJobStoreID):
+                            successorRecursion(jobStore.load(successorJobStoreID))
+    
+        successorRecursion(jobWrapper) # Recurse from jobWrapper
+        
+        return successors   
 
     def processTotallyFailedJob(self, jobWrapper):
         """
@@ -381,18 +417,57 @@ class JobBatcher:
             self.toilState.hasFailedSuccessors.add(predecessorJobWrapper.jobStoreID) # This ensures that the
             # job will not attempt to run any of it's successors on the stack
         else:
+            # Is a non-service job
             assert jobWrapper.jobStoreID not in self.toilState.servicesIssued
+            
+            # Traverse failed job's successor graph and get the jobStoreID of new successors.
+            # Any successor already in toilState.failedSuccessors will not be traversed
+            # All successors traversed will be added to toilState.failedSuccessors and returned
+            # as a set (unseenSuccessors).
+            unseenSuccessors = self.getSuccessors(jobWrapper, self.toilState.failedSuccessors, self.jobStore)
+            logger.debug("Found new failed successors: %s of job: %s" % (" ".join(unseenSuccessors), jobWrapper.jobStoreID))
+            
+            # For each newly found successor
+            for successorJobStoreID in unseenSuccessors:
+                
+                # If the successor is a successor of other jobs that have already tried to schedule it
+                if successorJobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
+                    
+                    # For each such predecessor job
+                    # (we remove the successor from toilState.successorJobStoreIDToPredecessorJobs to avoid doing 
+                    # this multiple times for each failed predecessor)
+                    for predecessorJob in self.toilState.successorJobStoreIDToPredecessorJobs.pop(successorJobStoreID):
+                        
+                        # Reduce the predecessor job's successor count.
+                        self.toilState.successorCounts[predecessorJob.jobStoreID] -= 1
+                        
+                        # Indicate that it has failed jobs.  
+                        self.toilState.hasFailedSuccessors.add(predecessorJob.jobStoreID)
+                        logger.debug("Marking job: %s as having failed successors (found by reading successors failed job)" % predecessorJob.jobStoreID)
+                        
+                        # If the predecessor has no remaining successors, add to list of active jobs
+                        assert self.toilState.successorCounts[predecessorJob.jobStoreID] >= 0
+                        if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0:
+                            self.toilState.updatedJobs.add((predecessorJob, 0))
+                            
+                            # Remove the predecessor job from the set of jobs with successors. 
+                            self.toilState.successorCounts.pop(predecessorJob.jobStoreID) 
 
-            # Is a non-service job, walk up the tree killing services of any jobs with nothing left to do.
+            # If the job has predecessor(s)
             if jobWrapper.jobStoreID in self.toilState.successorJobStoreIDToPredecessorJobs:
+                
+                # For each predecessor of the job
                 for predecessorJobWrapper in self.toilState.successorJobStoreIDToPredecessorJobs[jobWrapper.jobStoreID]:
+                    
+                    # Mark the predecessor as failed
                     self.toilState.hasFailedSuccessors.add(predecessorJobWrapper.jobStoreID)
-                    logger.debug("Totally failed job: %s is marking direct predecessors %s as having failed jobs", jobWrapper.jobStoreID, predecessorJobWrapper.jobStoreID)
+                    logger.debug("Totally failed job: %s is marking direct predecessor: %s as having failed jobs", jobWrapper.jobStoreID, predecessorJobWrapper.jobStoreID)
+
                 self._updatePredecessorStatus(jobWrapper.jobStoreID)
 
     def _updatePredecessorStatus(self, jobStoreID):
         """
-        Update status of a predecessor for finished successor job.
+        Update status of predecessors for finished successor job.
         """
         if jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Is a service job
@@ -410,19 +485,34 @@ class JobBatcher:
             assert len(self.toilState.updatedJobs) == 0
             assert len(self.toilState.successorJobStoreIDToPredecessorJobs) == 0
             assert len(self.toilState.successorCounts) == 0
+            logger.debug("Reached root job %s so no predecessors to clean up" % jobStoreID)
 
         else:
+            # Is a non-root, non-service job
+            logger.debug("Cleaning the predecessors of %s" % jobStoreID)
+            
+            # For each predecessor
             for predecessorJob in self.toilState.successorJobStoreIDToPredecessorJobs.pop(jobStoreID):
+                
+                # Reduce the predecessor's number of successors by one to indicate the 
+                # completion of the jobStoreID job
                 self.toilState.successorCounts[predecessorJob.jobStoreID] -= 1
-                assert self.toilState.successorCounts[predecessorJob.jobStoreID] >= 0
-                if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0: #Job is done
+
+                # If the predecessor job is done and all the successors are complete 
+                if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0:
+                    
+                    # Remove it from the set of jobs with active successors
                     self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
+
+                    # Pop stack at this point, as we can get rid of its successors
                     predecessorJob.stack.pop()
+                    
+                    # Now we know the job is done we can add it to the list of updated job files
+                    assert predecessorJob not in self.toilState.updatedJobs
+                    self.toilState.updatedJobs.add((predecessorJob, 0))
+                    
                     logger.debug('Job %s has all its non-service successors completed or totally '
                                  'failed', predecessorJob.jobStoreID)
-                    assert predecessorJob not in self.toilState.updatedJobs
-                    self.toilState.updatedJobs.add((predecessorJob, 0)) #Now we know
-                    #the job is done we can add it to the list of updated job files
 
 ##########################################
 #Class to represent the state of the toil in memory. Loads this
@@ -450,9 +540,6 @@ class ToilState( object ):
         # Each for job, the map is a dictionary of service jobStoreIDs
         # to the flags used to communicate the with service
         self.servicesIssued = { }
-
-        # Jobs (as jobStoreIDs) with successors that have totally failed
-        self.hasFailedSuccessors = set()
         
         # Jobs that are ready to be processed
         self.updatedJobs = set( )
@@ -460,6 +547,17 @@ class ToilState( object ):
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
         self.totalFailedJobs = set()
+        
+        # Jobs (as jobStoreIDs) with successors that have totally failed
+        self.hasFailedSuccessors = set()
+        
+        # The set of successors of failed jobs as a set of jobStoreIds
+        self.failedSuccessors = set()
+        
+        # Set of jobs that have multiple predecessors that have one or more predecessors
+        # finished, but not all of them. This acts as a cache for these jobs.
+        # Stored as hash from jobStoreIDs to jobWrappers
+        self.jobsToBeScheduledWithMultiplePredecessors = {}
         
         ##Algorithm to build this information
         logger.info("(Re)building internal scheduler state")
@@ -500,19 +598,73 @@ class ToilState( object ):
                 jobWrapper.command = jobWrapper.checkpoint
 
         else: # There exist successors
+            logger.debug("Adding job: %s to the state with %s successors" % (jobWrapper.jobStoreID, len(jobWrapper.stack[-1])))
+            
+            # Record the number of successors
             self.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
+            
+            def processSuccessorWithMultiplePredecessors(successorJobWrapper):
+                # If jobWrapper job is not reported as complete by the successor
+                if jobWrapper.jobStoreID not in successorJobWrapper.predecessorsFinished:
+                    
+                    # Update the sucessor's status to mark the predecessor complete
+                    successorJobWrapper.predecessorsFinished.add(jobWrapper.jobStoreID)
+            
+                # If the successor has no predecessors to finish
+                assert len(successorJobWrapper.predecessorsFinished) <= successorJobWrapper.predecessorNumber
+                if len(successorJobWrapper.predecessorsFinished) == successorJobWrapper.predecessorNumber:
+                    
+                    # It is ready to be run, so remove it from the cache
+                    self.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
+                    
+                    # Recursively consider the successor
+                    self._buildToilState(successorJobWrapper, jobStore, jobCache=jobCache)
+            
+            # For each successor
             for successorJobStoreTuple in jobWrapper.stack[-1]:
                 successorJobStoreID = successorJobStoreTuple[0]
+                
+                # If the successor jobWrapper does not yet point back at a
+                # predecessor we have not yet considered it
                 if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
-                    #Given that the successor jobWrapper does not yet point back at a
-                    #predecessor we have not yet considered it, so we call the function
-                    #on the successor
+
+                    # Add the job as a predecessor
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobWrapper]
-                    self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
+                    
+                    # If predecessorJobStoreID is not None then the successor has multiple predecessors
+                    predecessorJobStoreID = successorJobStoreTuple[-1]
+                    if predecessorJobStoreID != None: 
+                        
+                        # We load the successor job
+                        successorJobWrapper =  getJob(successorJobStoreID)
+                        
+                        # We put the successor job in the cache of successor jobs with multiple predecessors
+                        assert successorJobStoreID not in self.jobsToBeScheduledWithMultiplePredecessors
+                        self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = successorJobWrapper
+                        
+                        # Process successor
+                        processSuccessorWithMultiplePredecessors(successorJobWrapper)
+                            
+                    else:
+                        # The successor has only the jobWrapper job as a predecessor so
+                        # recursively consider the successor
+                        self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
+                
                 else:
-                    #We have already looked at the successor, so we don't recurse,
-                    #but we add back a predecessor link
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
+                    # We've already seen the successor
+                    
+                    # Add the job as a predecessor
+                    assert jobWrapper not in self.successorJobStoreIDToPredecessorJobs[successorJobStoreID]
+                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper) 
+                    
+                    # If the successor has multiple predecessors
+                    if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
+                        
+                        # Get the successor from cache
+                        successorJobWrapper = self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
+                        
+                        # Process successor
+                        processSuccessorWithMultiplePredecessors(successorJobWrapper)
 
 class FailedJobsException( Exception ):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
@@ -760,8 +912,6 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobWrapper, jobCach
             logger.exception('Failed to unpickle root job return value')
             raise FailedJobsException(config.jobStore, toilState.totalFailedJobs, jobStore)
 
-
-
 def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging):
     """
     :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
@@ -829,6 +979,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                                             cores=jobWrapper.cores,
                                             disk=jobWrapper.disk,
                                             preemptable=jobWrapper.preemptable)
+                        
                     else: # Mark it totally failed
                         logger.debug("Job %s is being processed as completely failed", jobWrapper.jobStoreID)
                         jobBatcher.processTotallyFailedJob(jobWrapper)
@@ -873,12 +1024,15 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     assert len(jobWrapper.stack[-1]) > 0
                     logger.debug("Job: %s has %i successors to schedule",
                                  jobWrapper.jobStoreID, len(jobWrapper.stack[-1]))
+                    
                     #Record the number of successors that must be completed before
                     #the jobWrapper can be considered again
                     assert jobWrapper.jobStoreID not in toilState.successorCounts
                     toilState.successorCounts[jobWrapper.jobStoreID] = len(jobWrapper.stack[-1])
+                    
                     #List of successors to schedule
                     successors = []
+                    
                     #For each successor schedule if all predecessors have been completed
                     for successorJobStoreID, memory, cores, disk, preemptable, predecessorID in jobWrapper.stack[-1]:
                         #Build map from successor to predecessors.
@@ -887,26 +1041,57 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                         toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobWrapper)
                         #Case that the jobWrapper has multiple predecessors
                         if predecessorID is not None:
-                            #Load the wrapped jobWrapper
-                            job2 = jobStore.load(successorJobStoreID)
-                            #Remove the predecessor from the list of predecessors
-                            job2.predecessorsFinished.add(predecessorID)
-                            #Checkpoint
-                            jobStore.update(job2)
-                            #If the jobs predecessors have all not all completed then
-                            #ignore the jobWrapper
-                            assert len(job2.predecessorsFinished) >= 1
-                            assert len(job2.predecessorsFinished) <= job2.predecessorNumber
-                            if len(job2.predecessorsFinished) < job2.predecessorNumber:
+                            logger.debug("Successor job: %s of job: %s has multiple predecessors" % (successorJobStoreID, jobWrapper.jobStoreID))
+                            
+                            # Get the successor job, using a cache 
+                            # (if the successor job has already been seen it will be in this cache, 
+                            # but otherwise put it in the cache)
+                            if successorJobStoreID not in toilState.jobsToBeScheduledWithMultiplePredecessors:
+                                toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = jobStore.load(successorJobStoreID)      
+                            successorJobWrapper = toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
+                            
+                            #Add the jobWrapper job as a finished predecessor to the successor 
+                            successorJobWrapper.predecessorsFinished.add(predecessorID)
+
+                            # If the successor is in the set of successors of failed jobs 
+                            if successorJobStoreID in toilState.failedSuccessors:
+                                logger.debug("Successor job: %s of job: %s has failed predecessors" % (successorJobStoreID, jobWrapper.jobStoreID))
+                                
+                                # Add the job to the set having failed successors
+                                toilState.hasFailedSuccessors.add(jobWrapper.jobStoreID)
+                                
+                                # Reduce active successor count and remove the successor as an active successor of the job
+                                toilState.successorCounts[jobWrapper.jobStoreID] -= 1
+                                assert toilState.successorCounts[jobWrapper.jobStoreID] >= 0
+                                toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].remove(jobWrapper)
+                                if len(toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID]) == 0:
+                                    toilState.successorJobStoreIDToPredecessorJobs.pop(successorJobStoreID)
+                                
+                                # If the job now has no active successors add to active jobs
+                                # so it can be processed as a job with failed successors
+                                if toilState.successorCounts[jobWrapper.jobStoreID] == 0:
+                                    logger.debug("Job: %s has no successors to run and some are failed, adding to list of jobs with failed successors" % jobWrapper.jobStoreID)
+                                    toilState.successorCounts.pop(jobWrapper.jobStoreID)
+                                    toilState.updatedJobs.add((jobWrapper, 0))
+                                    continue
+
+                            # If the successor job's predecessors have all not all completed then
+                            # ignore the jobWrapper as is not yet ready to run
+                            assert len(successorJobWrapper.predecessorsFinished) <= successorJobWrapper.predecessorNumber
+                            if len(successorJobWrapper.predecessorsFinished) < successorJobWrapper.predecessorNumber:
                                 continue
+                            else:
+                                # Remove the successor job from the cache
+                                toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
+                        
+                        # Add successor to list of successors to schedule   
                         successors.append((successorJobStoreID, memory, cores, disk, preemptable))
                     jobBatcher.issueJobs(successors)
 
                 elif jobWrapper.jobStoreID in toilState.servicesIssued:
-                    logger.debug("Telling job: %s to terminate its due to the successful completion of its successor jobs",
-                                 jobWrapper.jobStoreID)
-                    serviceManager.killServices(toilState.servicesIssued[jobWrapper.jobStoreID],
-                                                error=False)
+                    logger.debug("Telling job: %s to terminate its services due to the successful completion of its successor jobs",
+                                jobWrapper.jobStoreID)
+                    serviceManager.killServices(toilState.servicesIssued[jobWrapper.jobStoreID], error=False)
 
                 #There are no remaining tasks to schedule within the jobWrapper, but
                 #we schedule it anyway to allow it to be deleted.
@@ -1011,4 +1196,5 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
     assert toilState.successorJobStoreIDToPredecessorJobs == {}
     assert toilState.serviceJobStoreIDToPredecessorJob == {}
     assert toilState.servicesIssued == {}
+    # assert toilState.jobsToBeScheduledWithMultiplePredecessors # These are not properly emptied yet
     # assert toilState.hasFailedSuccessors == set() # These are not properly emptied yet
