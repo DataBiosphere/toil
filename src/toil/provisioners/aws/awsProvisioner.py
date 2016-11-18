@@ -11,13 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import socket
 import subprocess
 import logging
 
 import time
-from contextlib import contextmanager
 
 import sys
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
@@ -27,6 +25,7 @@ from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, wait_spot_requests_a
                              a_long_time)
 from itertools import islice, count
 
+from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
@@ -38,12 +37,16 @@ from toil.provisioners import BaseAWSProvisioner
 logger = logging.getLogger(__name__)
 
 
+availabilityZone = 'us-west-2a'
+
+
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
-        self.ctx = Context(availability_zone='us-west-2a', namespace=self._toNameSpace(self.clusterName))
+        self.ctx = Context(availability_zone=availabilityZone,
+                           namespace=self._toNameSpace(self.clusterName))
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -85,18 +88,6 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
 
     @classmethod
-    def dockerInfo(cls):
-        try:
-            return os.environ['TOIL_APPLIANCE_SELF']
-        except KeyError:
-            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
-                               'image of the Toil Appliance you wish to use. For example: '
-                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
-                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
-                               'for a full list of available versions.')
-
-
-    @classmethod
     def _sshAppliance(cls, leaderIP, command, tty=False):
         ttyFlag = 't' if tty else ''
         command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"' % (leaderIP, ttyFlag, command)
@@ -116,7 +107,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -197,16 +188,15 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
-        dockerLeaderData = cls.dockerInfo().rsplit(':', 1)
-        leaderRepo = dockerLeaderData[0]
-        leaderTag = dockerLeaderData[1]
-        leaderData = {'role': 'leader', 'tag': leaderTag,
-                      'args': leaderArgs.format(name=clusterName), 'repo': leaderRepo}
+        leaderData = dict(role='leader',
+                          image=applianceSelf(),
+                          entrypoint='mesos-master',
+                          args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_groups': [clusterName],
                   'instance_type': instanceType,
@@ -228,7 +218,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
@@ -239,7 +229,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('Deleting security group...')
         for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
             with attempt:
-                ctx.ec2.delete_security_group(name=clusterName)
+                try:
+                    ctx.ec2.delete_security_group(name=clusterName)
+                except BotoServerError as e:
+                    if e.error_code == 'InvalidGroup.NotFound':
+                        pass
+                    else:
+                        raise
         logger.info('... Succesfully deleted security group')
 
     @classmethod
@@ -251,18 +247,52 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):
-        instanceProfiles = [x.instance_profile for x in instances]
+        instanceProfiles = [x.instance_profile['arn'] for x in instances]
         for profile in instanceProfiles:
-            profile_name = profile['arn'].split('/', 1)[1]
+            # boto won't look things up by the ARN so we have to parse it to get
+            # the profile name
+            profileName = profile.rsplit('/')[-1]
             try:
-                ctx.iam.remove_role_from_instance_profile(profile_name, profile_name)
+                profileResult = ctx.iam.get_instance_profile(profileName)
+            except BotoServerError as e:
+                if e.status == 404:
+                    return
+                else:
+                    raise
+            # wade through EC2 response object to get what we want
+            profileResult = profileResult['get_instance_profile_response']
+            profileResult = profileResult['get_instance_profile_result']
+            profile = profileResult['instance_profile']
+            # this is based off of our 1:1 mapping of profiles to roles
+            role = profile['roles']['member']['role_name']
+            try:
+                ctx.iam.remove_role_from_instance_profile(profileName, role)
+            except BotoServerError as e:
+                if e.status == 404:
+                    pass
+                else:
+                    raise
+            policyResults = ctx.iam.list_role_policies(role)
+            policyResults = policyResults['list_role_policies_response']
+            policyResults = policyResults['list_role_policies_result']
+            policies = policyResults['policy_names']
+            for policyName in policies:
+                try:
+                    ctx.iam.delete_role_policy(role, policyName)
+                except BotoServerError as e:
+                    if e.status == 404:
+                        pass
+                    else:
+                        raise
+            try:
+                ctx.iam.delete_role(role)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
                 else:
                     raise
             try:
-                ctx.iam.delete_instance_profile(profile_name)
+                ctx.iam.delete_instance_profile(profileName)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
@@ -272,13 +302,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _addNodes(self, instancesToLaunch, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
-        # quay.io/toil-leader:tag
-        workerData = self.dockerInfo().rsplit(':', 1)
-        workerRepo = workerData[0].rsplit('-', 1)[0] + '-worker'
-        workerTag = workerData[1]
-        workerData = {'role': 'worker', 'tag': workerTag,
-                      'args': workerArgs.format(ip=self.leaderIP, preemptable=preemptable),
-                      'repo': workerRepo}
+        workerData = dict(role='worker',
+                          image=applianceSelf(),
+                          entrypoint='mesos-slave',
+                          args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)
         kwargs = {'key_name': self.keyName, 'security_groups': [self.clusterName],
                   'instance_type': self.instanceType.name,
