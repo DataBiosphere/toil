@@ -38,9 +38,6 @@ from toil.provisioners import BaseAWSProvisioner
 logger = logging.getLogger(__name__)
 
 
-availabilityZone = 'us-west-2a'
-
-
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
@@ -147,7 +144,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
-        ctx = cls._buildContext(clusterName=clusterName, zone=None)
+        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -267,8 +264,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         if instancesToTerminate:
             cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
             cls._terminateInstance(instances=instancesToTerminate, ctx=ctx)
-        if len(instances) != len(instancesToTerminate):
-            # the security group can't be deleted until all nodes are terminated
+        if len(instances) == len(instancesToTerminate):
             logger.info('Deleting security group...')
             for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
                 with attempt:
@@ -280,6 +276,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                         else:
                             raise
             logger.info('... Succesfully deleted security group')
+        else:
+            assert len(instances) > len(instancesToTerminate)
+            # the security group can't be deleted until all nodes are terminated
+            logger.warning('The TOIL_AWS_NODE_DEBUG environment variable is set and some nodes '
+                           'have failed health checks. As a result, the security group & IAM '
+                           'roles will not be deleted.')
 
     @classmethod
     def _terminateInstance(cls, instances, ctx):

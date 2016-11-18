@@ -47,9 +47,8 @@ class AWSProvisionerTest(ToilTest):
         AWSProvisioner.destroyCluster(self.clusterName)
 
     def getMatchingRoles(self, clusterName):
-        from toil.provisioners.aws.awsProvisioner import availabilityZone, AWSProvisioner
-        awsName = AWSProvisioner._toNameSpace(clusterName)
-        ctx = Context(availabilityZone, awsName)
+        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+        ctx = AWSProvisioner._buildContext(clusterName)
         roles = list(ctx.local_roles())
         return roles
 

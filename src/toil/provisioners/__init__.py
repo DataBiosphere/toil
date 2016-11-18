@@ -13,9 +13,13 @@
 # limitations under the License.
 from __future__ import absolute_import
 import datetime
+import logging
 import os
 
 from bd2k.util import parse_iso_utc, less_strict_bool
+
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAWSProvisioner(object):
@@ -33,7 +37,11 @@ class BaseAWSProvisioner(object):
         nodeIDs = [node.id for node in nodes]
         statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
         statusMap = {status.id: status.instance_status for status in statuses}
-        return [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+        healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+        impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
+        logger.warn('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
+                    'will not be terminated.', ' '.join(impairedNodes))
+        return healthyNodes
 
     @staticmethod
     def _partialBillingInterval(instance):
