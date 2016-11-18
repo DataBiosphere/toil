@@ -650,7 +650,7 @@ def main(args=None, stdout=sys.stdout):
         t.visit(importDefault)
 
         basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-        builder = t._init_job(job, basedir=basedir)
+        builder = t._init_job(job, basedir=basedir, use_container=use_container)
         (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
         cwltool.builder.adjustDirObjs(builder.job, locToPath)
         cwltool.builder.adjustFileObjs(builder.job, locToPath)
