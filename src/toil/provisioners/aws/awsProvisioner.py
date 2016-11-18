@@ -11,13 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import socket
 import subprocess
 import logging
 
 import time
-from contextlib import contextmanager
 
 import sys
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
@@ -39,12 +37,16 @@ from toil.provisioners import BaseAWSProvisioner
 logger = logging.getLogger(__name__)
 
 
+availabilityZone = 'us-west-2a'
+
+
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     def __init__(self, config, batchSystem):
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self.instanceMetaData['security-groups']
-        self.ctx = Context(availability_zone='us-west-2a', namespace=self._toNameSpace(self.clusterName))
+        self.ctx = Context(availability_zone=availabilityZone,
+                           namespace=self._toNameSpace(self.clusterName))
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
         if config.preemptableNodeType is not None:
@@ -105,7 +107,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
@@ -186,7 +188,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         cls._createSecurityGroup(ctx, clusterName)
@@ -216,7 +218,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        ctx = Context(availability_zone='us-west-2a', namespace=cls._toNameSpace(clusterName))
+        ctx = Context(availability_zone=availabilityZone, namespace=cls._toNameSpace(clusterName))
         instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
@@ -227,7 +229,13 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('Deleting security group...')
         for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
             with attempt:
-                ctx.ec2.delete_security_group(name=clusterName)
+                try:
+                    ctx.ec2.delete_security_group(name=clusterName)
+                except BotoServerError as e:
+                    if e.error_code == 'InvalidGroup.NotFound':
+                        pass
+                    else:
+                        raise
         logger.info('... Succesfully deleted security group')
 
     @classmethod
@@ -239,18 +247,52 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):
-        instanceProfiles = [x.instance_profile for x in instances]
+        instanceProfiles = [x.instance_profile['arn'] for x in instances]
         for profile in instanceProfiles:
-            profile_name = profile['arn'].split('/', 1)[1]
+            # boto won't look things up by the ARN so we have to parse it to get
+            # the profile name
+            profileName = profile.rsplit('/')[-1]
             try:
-                ctx.iam.remove_role_from_instance_profile(profile_name, profile_name)
+                profileResult = ctx.iam.get_instance_profile(profileName)
+            except BotoServerError as e:
+                if e.status == 404:
+                    return
+                else:
+                    raise
+            # wade through EC2 response object to get what we want
+            profileResult = profileResult['get_instance_profile_response']
+            profileResult = profileResult['get_instance_profile_result']
+            profile = profileResult['instance_profile']
+            # this is based off of our 1:1 mapping of profiles to roles
+            role = profile['roles']['member']['role_name']
+            try:
+                ctx.iam.remove_role_from_instance_profile(profileName, role)
+            except BotoServerError as e:
+                if e.status == 404:
+                    pass
+                else:
+                    raise
+            policyResults = ctx.iam.list_role_policies(role)
+            policyResults = policyResults['list_role_policies_response']
+            policyResults = policyResults['list_role_policies_result']
+            policies = policyResults['policy_names']
+            for policyName in policies:
+                try:
+                    ctx.iam.delete_role_policy(role, policyName)
+                except BotoServerError as e:
+                    if e.status == 404:
+                        pass
+                    else:
+                        raise
+            try:
+                ctx.iam.delete_role(role)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
                 else:
                     raise
             try:
-                ctx.iam.delete_instance_profile(profile_name)
+                ctx.iam.delete_instance_profile(profileName)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
