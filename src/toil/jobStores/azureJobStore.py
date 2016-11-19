@@ -41,7 +41,7 @@ from bd2k.util.exceptions import panic
 from bd2k.util.retry import retry
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -222,12 +222,11 @@ class AzureJobStore(AbstractJobStore):
 
         logger.info("Processed %d total jobs" % total_processed)
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
-        job = AzureJob(jobStoreID=jobStoreID, command=command,
-                       memory=memory, cores=cores, disk=disk, preemptable=preemptable,
+        job = AzureJob(jobStoreID=jobStoreID, command=jobNode.command, name=jobNode.name, job=jobNode.job,
                        remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                       predecessorNumber=predecessorNumber)
+                       predecessorNumber=jobNode.predecessorNumber, **jobNode._requirements)
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)
@@ -740,7 +739,7 @@ class AzureBlobContainer(object):
         return f
 
 
-class AzureJob(JobWrapper):
+class AzureJob(JobGraph):
     """
     Serialize and unserialize a job for storage on Azure.
 

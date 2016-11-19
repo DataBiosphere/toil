@@ -98,7 +98,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     l.sort()
 
                 # Make the first job
-                firstJob = Job.wrapJobFn(setup, tempSortFile, N, downCheckpoints=downCheckpoints, memory=sortMemory)
+                firstJob = Job.wrapJobFn(setup, tempSortFile, N, downCheckpoints=downCheckpoints, memory=sortMemory,
+                                         name=tempSortFile)
 
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True

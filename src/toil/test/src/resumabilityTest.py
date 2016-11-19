@@ -47,7 +47,7 @@ class ResumabilityTest(ToilTest):
         with open(options.logFile) as f:
             logString = f.read()
             # We are looking for e.g. "Batch system is reporting that
-            # the jobWrapper with batch system ID: 1 and jobWrapper
+            # the jobGraph with batch system ID: 1 and jobGraph
             # store ID: n/t/jobwbijqL failed with exit value 1"
             self.assertTrue("failed with exit value" not in logString)
 
