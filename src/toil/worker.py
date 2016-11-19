@@ -493,7 +493,7 @@ def main():
     os.dup2(origStdOut, 1)
     
     #Close redirected stderr and replace with the original standard error.
-    os.dup2(origStdOut, 2)
+    os.dup2(origStdErr, 2)
     
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
