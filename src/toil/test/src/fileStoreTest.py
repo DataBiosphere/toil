@@ -117,14 +117,14 @@ class hidden:
             """
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
-            localFileIDs = []
+            localFileIDs = set()
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             cls = hidden.AbstractNonCachingFileStoreTest
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            localFileIDs.append(writtenFiles.keys()[0])
+            localFileIDs.add(writtenFiles.keys()[0])
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -135,7 +135,7 @@ class hidden:
                                                        nonLocalDir=nonLocalDir,
                                                        fileMB=writeFileSize)
                     writtenFiles[fsID] = writeFileSize
-                    localFileIDs.append(fsID)
+                    localFileIDs.add(fsID)
                 else:
                     if len(writtenFiles) == 0:
                         continue
@@ -147,7 +147,7 @@ class hidden:
                         cache = True if random.random() <= 0.5 else False
                         job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
                                                      cache=cache, mutable=mutable)
-                        localFileIDs.append(fsID)
+                        localFileIDs.add(fsID)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in localFileIDs:
@@ -444,26 +444,6 @@ class hidden:
         def setUp(self):
             super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
             self.options.disableCaching = True
-
-        def testDeferredFunctionRunsWithMethod(self):
-            """
-            Refer docstring in _testDeferredFunctionRuns.
-            Test with Method
-            """
-            self._testDeferredFunctionRuns(self._writeNonLocalFilesMethod)
-
-        def testDeferredFunctionRunsWithClassMethod(self):
-            """
-            Refer docstring in _testDeferredFunctionRuns.
-            Test with Class Method
-            """
-            self._testDeferredFunctionRuns(self._writeNonLocalFilesClassMethod)
-
-        def testDeferredFunctionRunsWithLambda(self):
-            self.skipTest('Defer not implemented in non caching file store')
-
-        def _testDeferredFunctionRuns(self, callableFn):
-            self.skipTest('Defer not implemented in non caching file store')
 
     class AbstractCachingFileStoreTest(AbstractFileStoreTest):
         """
@@ -1273,7 +1253,6 @@ class _deleteMethods(object):
             os.remove(nlf)
 
 
-@unittest.skip('Currently not implemented')
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'file'
 
@@ -1283,7 +1262,6 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
 
 
 @needs_aws
-@unittest.skip('Currently not implemented')
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
@@ -1299,7 +1277,6 @@ class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
 
 @needs_azure
 @experimental
-@unittest.skip('Currently not implemented')
 class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'azure'
 
@@ -1316,7 +1293,6 @@ class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest)
 
 @experimental
 @needs_google
-@unittest.skip('Currently not implemented')
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 

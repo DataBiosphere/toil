@@ -67,6 +67,7 @@ class FileStore(object):
         self.jobStore = jobStore
         self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
+        self.workFlowDir = os.path.dirname(self.localTempDir)
         self.jobName = self.jobGraph.command.split()[1]
         self.inputBlockFn = inputBlockFn
         self.loggingMessages = []
@@ -374,6 +375,18 @@ class FileStore(object):
                 raise
         else:
             return True
+
+    @abstractclassmethod
+    def shutdown(cls, dir_):
+        """
+        Shutdown the filestore on this node.
+
+        This is intended to be called on batch system shutdown.
+
+        :param dir_: The jeystone directory containing the required information for fixing the state
+               of failed workers on the node before cleaning up.
+        """
+        raise NotImplementedError()
 
 
 class CachingFileStore(FileStore):
@@ -1518,6 +1531,15 @@ class CachingFileStore(FileStore):
         # by _updateJobWhenDone again.
         return
 
+    @classmethod
+    def shutdown(cls, dir_):
+        """
+        :param dir_: The directory that will contain the cache state file.
+        """
+        cacheInfo = cls._CacheState._load(os.path.join(dir_, '_cacheState'))
+        cls.findAndHandleDeadJobs(cacheInfo, batchSystemShutdown=True)
+        shutil.rmtree(dir_)
+
     def __del__(self):
         """
         Cleanup function that is run when destroying the class instance that ensures that all the
@@ -1534,6 +1556,8 @@ class CachingFileStore(FileStore):
 class NonCachingFileStore(FileStore):
     def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
         super(NonCachingFileStore, self).__init__(jobStore, jobWrapper, localTempDir, inputBlockFn)
+        # This will be defined in the `open` method.
+        self.jobStateFile = None
         self.localFileMap = {}
 
     @contextmanager
@@ -1541,6 +1565,8 @@ class NonCachingFileStore(FileStore):
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.findAndHandleDeadJobs(self.workFlowDir)
+        self.jobStateFile = self._createJobStateFile()
         try:
             os.chdir(self.localTempDir)
             yield
@@ -1561,6 +1587,13 @@ class NonCachingFileStore(FileStore):
                                  "script to avoid the chance of failure due to incorrectly "
                                  "requested resources. " + logString, level=logging.WARNING)
             os.chdir(startingDir)
+            jobState = self._readJobState(self.jobStateFile)
+            deferredFunctions = jobState['deferredFunctions']
+            failures = self._runDeferredFunctions(deferredFunctions)
+            for failure in failures:
+                self.logToMaster('Deferred function "%s" failed.' % failure, logging.WARN)
+            # Finally delete the job from the worker
+            os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
@@ -1636,11 +1669,115 @@ class NonCachingFileStore(FileStore):
 
     # Functions related to the deferred function logic
     @classmethod
-    def findAndHandleDeadJobs(cls, workflowDir, batchSystemShutdown=False):
-        pass
+    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
+        """
+        Look at the state of all jobs registered in the individual job state files, and handle them
+        (clean up the disk, and run any registered defer functions)
+
+        :param str nodeInfo: The location of the workflow directory on the node.
+        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
+        :return:
+        """
+        # A list of tuples of (job name, pid or process running job, registered defer functions)
+        for jobState in cls._getAllJobStates(nodeInfo):
+            if not cls._pidExists(jobState['jobPID']):
+                # using same logic to prevent races as CachingFileStore._setupCache
+                myPID = str(os.getpid())
+                cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
+                with open(os.path.join(jobState['jobDir'], '.' + myPID), 'w') as f:
+                    f.write(myPID)
+                while True:
+                    try:
+                        os.rename(f.name, cleanupFile)
+                    except OSError as err:
+                        if err.errno == errno.ENOTEMPTY:
+                            with open(cleanupFile, 'r') as f:
+                                cleanupPID = f.read()
+                            if cls._pidExists(int(cleanupPID)):
+                                # Cleanup your own mess.  It's only polite.
+                                os.remove(f.name)
+                                break
+                            else:
+                                os.remove(cleanupFile)
+                                continue
+                        else:
+                            raise
+                    else:
+                        logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
+                                       'state of the job on disk.', jobState['jobName'])
+                        if not batchSystemShutdown:
+                            logger.debug("Deleting the stale working directory.")
+                            # Delete the old work directory if it still exists.  Do this only during
+                            # the life of the program and dont' do it during the batch system
+                            # cleanup.  Leave that to the batch system cleanup code.
+                            shutil.rmtree(jobState['jobDir'])
+                        # Run any deferred functions associated with the job
+                        logger.debug('Running user-defined deferred functions.')
+                        cls._runDeferredFunctions(jobState['deferredFunctions'])
+                        break
+
+    @staticmethod
+    def _getAllJobStates(workflowDir):
+        """
+        Generator function that deserializes and yields the job state for every job on the node,
+        one at a time.
+
+        :param str workflowDir: The location of the workflow directory on the node.
+        :return: dict with keys (jobName,  jobPID, jobDir, deferredFunctions)
+        :rtype: dict
+        """
+        jobStateFiles = []
+        for root, dirs, files in os.walk(workflowDir):
+            for filename in files:
+                if filename == '.jobState':
+                    jobStateFiles.append(os.path.join(root, filename))
+        for filename in jobStateFiles:
+            yield NonCachingFileStore._readJobState(filename)
+
+    @staticmethod
+    def _readJobState(jobStateFileName):
+        with open(jobStateFileName) as fH:
+            state = dill.load(fH)
+        return state
 
     def _registerDeferredFunction(self, callable_, *args, **kwargs):
-        pass
+        assert callable(callable_)
+        with open(self.jobStateFile) as fH:
+            jobState = dill.load(fH)
+            deferredFunction = DeferredFunction(callable=callable_,
+                                                args=args,
+                                                kwargs=kwargs)
+            jobState['deferredFunctions'].append(deferredFunction)
+        with open(self.jobStateFile + '.tmp', 'w') as fH:
+            dill.dump(jobState, fH)
+        os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
+        logger.info('Registered the deferred function "%s" to job "%s".', callable_.__name__,
+                    self.jobName)
+
+    def _createJobStateFile(self):
+        """
+        Create the job state file for the current job and fill in the required
+        values.
+
+        :return: Path to the job state file
+        :rtype: str
+        """
+        jobStateFile = os.path.join(self.localTempDir, '.jobState')
+        jobState = {'jobPID': os.getpid(),
+                    'jobName': self.jobName,
+                    'jobDir': self.localTempDir,
+                    'deferredFunctions': []}
+        with open(jobStateFile + '.tmp', 'w') as fH:
+            dill.dump(jobState, fH)
+        os.rename(jobStateFile + '.tmp', jobStateFile)
+        return jobStateFile
+
+    @classmethod
+    def shutdown(cls, dir_):
+        """
+        :param dir_: The workflow directory that will contain all the individual worker directories.
+        """
+        cls.findAndHandleDeadJobs(dir_, batchSystemShutdown=True)
 
 
 class FileID(str):
@@ -1660,26 +1797,29 @@ class FileID(str):
         return cls(fileStoreID, os.stat(filePath).st_size)
 
 
-def shutdownCache(cacheDir):
+def shutdownFileStore(workflowDir, workflowID):
     """
     Run the deferred functions from any prematurely terminated jobs still lingering on the system
-    and delete the cache directory.
+    and carry out any necessary filestore-specific cleanup.
 
     This is a destructive operation and it is important to ensure that there are no other running
-    processes on the system that are modifying or using the cache state file.
+    jobs on the system.
 
     This is the intended to be the last call to the file store in a Toil run, called by the
     batch system cleanup function upon batch system shutdown.
 
-    :param cacheDir: The path to the cache directory
+    :param str workflowDir: The path to the cache directory
+    :param str workflowID: The workflow ID for this invocation of the workflow
     """
+    cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
     if os.path.exists(cacheDir):
         # The presence of the cacheDir suggests this was a cached run. We don't need the cache lock
         # for any of this since this is the final cleanup of a job and there should be  no other
         # conflicting processes using the cache.
-        cacheInfo = CachingFileStore._CacheState._load(os.path.join(cacheDir, '_cacheState'))
-        CachingFileStore.findAndHandleDeadJobs(cacheInfo, batchSystemShutdown=True)
-        shutil.rmtree(cacheDir)
+        CachingFileStore.shutdown(cacheDir)
+    else:
+        # This absence of cacheDir suggests otherwise.
+        NonCachingFileStore.shutdown(workflowDir)
 
 
 class CacheError(Exception):
