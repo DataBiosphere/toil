@@ -1558,7 +1558,7 @@ class NonCachingFileStore(FileStore):
         super(NonCachingFileStore, self).__init__(jobStore, jobWrapper, localTempDir, inputBlockFn)
         # This will be defined in the `open` method.
         self.jobStateFile = None
-        self.localFileMap = {}
+        self.localFileMap = collections.defaultdict(list)
 
     @contextmanager
     def open(self, job):
@@ -1598,7 +1598,9 @@ class NonCachingFileStore(FileStore):
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         cleanupID = None if not cleanup else self.jobGraph.jobStoreID
-        return FileID.forPath(self.jobStore.writeFile(absLocalFileName, cleanupID), absLocalFileName)
+        fileStoreID = self.jobStore.writeFile(absLocalFileName, cleanupID)
+        self.localFileMap[fileStoreID].append(absLocalFileName)
+        return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
         if userPath is not None:
@@ -1609,7 +1611,7 @@ class NonCachingFileStore(FileStore):
             localFilePath = self.getLocalTempFileName()
 
         self.jobStore.readFile(fileStoreID, localFilePath)
-        self.localFileMap[fileStoreID] = localFilePath
+        self.localFileMap[fileStoreID].append(localFilePath)
         return localFilePath
 
     @contextmanager
@@ -1619,11 +1621,12 @@ class NonCachingFileStore(FileStore):
 
     def deleteLocalFile(self, fileStoreID):
         try:
-            localFilePath = self.localFileMap.pop(fileStoreID)
+            localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
             raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
         else:
-            os.remove(localFilePath)
+            for localFilePath in localFilePaths:
+                os.remove(localFilePath)
 
     def deleteGlobalFile(self, fileStoreID):
         try:
