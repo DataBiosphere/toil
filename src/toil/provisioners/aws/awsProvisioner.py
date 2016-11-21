@@ -21,7 +21,7 @@ import sys
 from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from cgcloud.lib.ec2 import (ec2_instance_types, retry_ec2, a_short_time,
+from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time,
                              wait_transition, create_ondemand_instances,
                              create_spot_instances, wait_instances_running)
 from itertools import count
@@ -262,7 +262,7 @@ class AWSProvisioner(AbstractProvisioner):
             cls._terminateInstances(instances=instancesToTerminate, ctx=ctx)
         if len(instances) == len(instancesToTerminate):
             logger.info('Deleting security group...')
-            for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
+            for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
                     try:
                         ctx.ec2.delete_security_group(name=clusterName)
