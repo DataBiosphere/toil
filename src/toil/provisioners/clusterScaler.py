@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 _preemptableNodeDeficit = 0
 
-
 class RecentJobShapes(object):
     """
     Used to track the 'shapes' of the last N jobs run (see Shape).
@@ -214,19 +213,18 @@ def binPacking(jobShapes, nodeShape):
 
 
 class ClusterScaler(object):
-    def __init__(self, provisioner, jobBatcher, config):
+    def __init__(self, provisioner, leader, config):
         """
         Class manages automatically scaling the number of worker nodes.
 
         :param AbstractProvisioner provisioner: Provisioner instance to scale.
 
-        :param JobBatcher jobBatcher: The class issuing jobs to the batch system. This is
-               monitored to make scaling decisions.
+        :param toil.leader.Leader leader: 
 
         :param Config config: Config object from which to draw parameters.
         """
         self.provisioner = provisioner
-        self.jobBatcher = jobBatcher
+        self.leader = leader
         self.config = config
         # Indicates that the scaling threads should shutdown
         self.stop = False
@@ -234,18 +232,20 @@ class ClusterScaler(object):
         assert config.maxPreemptableNodes >= 0 and config.maxNodes >= 0
         require(config.maxPreemptableNodes + config.maxNodes > 0,
                 'Either --maxNodes or --maxPreemptableNodes must be non-zero.')
+        
+        self.preemptableScaler = ScalerThread(self, preemptable=True) if self.config.maxPreemptableNodes > 0 else None
 
-        if config.maxPreemptableNodes > 0:
-            self.preemptableScaler = ScalerThread(self, preemptable=True)
+        self.scaler = ScalerThread(self, preemptable=False) if self.config.maxNodes > 0 else None
+
+    def start(self):
+        """ 
+        Start the cluster scaler thread(s).
+        """
+        if self.preemptableScaler != None:
             self.preemptableScaler.start()
-        else:
-            self.preemptableScaler = None
 
-        if config.maxNodes > 0:
-            self.scaler = ScalerThread(self, preemptable=False)
+        if self.scaler != None:
             self.scaler.start()
-        else:
-            self.scaler = None
 
     def check(self):
         """
@@ -262,7 +262,6 @@ class ClusterScaler(object):
                     exception = True
         if exception:
             raise RuntimeError('The cluster scaler has exited due to an exception')
-
 
     def shutdown(self):
         """
@@ -325,8 +324,8 @@ class ScalerThread(ExceptionalThread):
     def tryRun(self):
         global _preemptableNodeDeficit
 
-        if isinstance(self.scaler.jobBatcher.batchSystem, AbstractScalableBatchSystem):
-            totalNodes = len(self.scaler.jobBatcher.batchSystem.getNodes(self.preemptable))
+        if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
+            totalNodes = len(self.scaler.leader.batchSystem.getNodes(self.preemptable))
         else:
             totalNodes = 0
         logger.info('Starting with %s node(s) in the cluster.', totalNodes)
@@ -335,7 +334,7 @@ class ScalerThread(ExceptionalThread):
 
                 # Number of jobs issued
                 # TODO: Make this call thread safe
-                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
+                queueSize = self.scaler.leader.getNumberOfJobsIssued(preemptable=self.preemptable)
                 
                 # Job shapes of completed jobs
                 recentJobShapes = self.jobShapes.get()
@@ -357,7 +356,7 @@ class ScalerThread(ExceptionalThread):
                 # to service jobs running indefinitely.
                 
                 # Running jobs and how long they have been running
-                runningJobs = self.scaler.jobBatcher.batchSystem.getRunningBatchJobIDs()
+                runningJobs = self.scaler.leader.batchSystem.getRunningBatchJobIDs()
                 
                 # Ratio of avg. runtime of currently running and completed jobs
                 historicalAvgRuntime = sum(map(lambda jS : jS.walltime, recentJobShapes))

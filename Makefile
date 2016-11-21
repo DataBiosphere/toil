@@ -121,7 +121,7 @@ clean_sdist:
 	- rm src/toil/version.py
 
 
-test: check_venv check_build_reqs docker
+test: check_venv check_build_reqs
 	$(python) run_tests.py test $(tests)
 
 
