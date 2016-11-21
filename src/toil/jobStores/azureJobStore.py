@@ -224,9 +224,7 @@ class AzureJobStore(AbstractJobStore):
 
     def create(self, jobNode):
         jobStoreID = self._newJobID()
-        job = AzureJob(jobStoreID=jobStoreID, command=jobNode.command, name=jobNode.name, job=jobNode.job,
-                       remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                       predecessorNumber=jobNode.predecessorNumber, **jobNode._requirements)
+        job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)
