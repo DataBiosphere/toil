@@ -28,7 +28,9 @@ def main():
     parser.add_argument('-p',"--provisioner", dest='provisioner', choices=['aws'], required=True,
                         help="The provisioner for cluster auto-scaling. Only aws is currently"
                              "supported")
-    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
+    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by. "
+                                            "Must be lowercase and may not contain the '_' "
+                                            "character.")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)

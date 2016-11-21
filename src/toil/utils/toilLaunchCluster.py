@@ -32,7 +32,9 @@ def main():
     parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
                         help="The provisioner for cluster auto-scaling. Only aws is currently"
                              "supported")
-    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
+    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by. "
+                                            "Must be lowercase and may not contain the '_' "
+                                            "character.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
                         help="The name of the AWS key pair to include on the instance")
     config = parseBasicOptions(parser)

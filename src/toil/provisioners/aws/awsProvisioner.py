@@ -97,9 +97,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _toNameSpace(cls, clusterName):
-        if not clusterName.startswith('/'):
-            clusterName = '/'+clusterName+'/'
-        return clusterName.replace('-','/')
+        assert isinstance(clusterName, str)
+        if any((char.isupper() for char in clusterName)) or '_' in clusterName:
+            raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
+                               "character.")
+        namespace = clusterName
+        if not namespace.startswith('/'):
+            namespace = '/'+namespace+'/'
+        return namespace.replace('-','/')
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False):
