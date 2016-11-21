@@ -17,7 +17,7 @@
 
 from toil.job import Job
 from toil.common import Toil
-from toil.version import version
+from toil.version import baseVersion
 from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
@@ -557,7 +557,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
-    parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--version", action='version', version=baseVersion)
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1,VAR2"),
@@ -649,20 +649,23 @@ def main(args=None, stdout=sys.stdout):
             adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
         t.visit(importDefault)
 
-        basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-        builder = t._init_job(job, basedir=basedir)
-        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
-        cwltool.builder.adjustDirObjs(builder.job, locToPath)
-        cwltool.builder.adjustFileObjs(builder.job, locToPath)
-        adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
-                    if not urlparse.urlparse(x).scheme else x)
-        cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
-        cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
-        cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
-        adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
-        wf1.cwljob = builder.job
+        if options.restart:
+            outobj = toil.restart()
+        else:
+            basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
+            builder = t._init_job(job, basedir=basedir)
+            (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
+            cwltool.builder.adjustDirObjs(builder.job, locToPath)
+            cwltool.builder.adjustFileObjs(builder.job, locToPath)
+            adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
+                        if not urlparse.urlparse(x).scheme else x)
+            cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
+            cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
+            cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
+            adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
+            wf1.cwljob = builder.job
+            outobj = toil.start(wf1)
 
-        outobj = toil.start(wf1)
         outobj = resolve_indirect(outobj)
 
         adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={}, export=True, rename_collision=True))

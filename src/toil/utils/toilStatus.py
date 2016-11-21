@@ -83,7 +83,7 @@ def main():
     
     toilState = ToilState(jobStore, rootJob )
 
-    # The first element of the toilState.updatedJobs tuple is the jobWrapper we want to inspect
+    # The first element of the toilState.updatedJobs tuple is the jobGraph we want to inspect
     totalJobs = set(toilState.successorCounts.keys()) | \
                 {jobTuple[0] for jobTuple in toilState.updatedJobs}
 

@@ -26,6 +26,7 @@ from argparse import ArgumentParser
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
+from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 
@@ -621,11 +622,11 @@ class Toil(object):
                 cPickle.dump(promise, fH)
 
             # Setup the first wrapper and cache it
-            rootJobWrapper = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(rootJobWrapper)
+            rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(rootJobGraph)
 
             self._setProvisioner()
-            return self._runMainLoop(rootJobWrapper)
+            return self._runMainLoop(rootJobGraph)
         finally:
             self._shutdownBatchSystem()
 
@@ -648,8 +649,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJobWrapper = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJobWrapper)
+            rootJobGraph = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobGraph)
         finally:
             self._shutdownBatchSystem()
 
@@ -846,14 +847,14 @@ class Toil(object):
         Downloads all jobs in the current job store into self.jobCache.
         """
         logger.info('Caching all jobs in job store')
-        self._jobCache = {jobWrapper.jobStoreID: jobWrapper for jobWrapper in self._jobStore.jobs()}
+        self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
         logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
         Adds given job to current job cache.
 
-        :param toil.jobWrapper.JobWrapper job: job to be added to current job cache
+        :param toil.jobGraph.JobGraph job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
 
@@ -891,6 +892,8 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
+        logProcessContext(self.config, logger)
+
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
@@ -899,7 +902,7 @@ class Toil(object):
                             batchSystem=self._batchSystem,
                             provisioner=self._provisioner,
                             jobStore=self._jobStore,
-                            rootJobWrapper=rootJob,
+                            rootJobGraph=rootJob,
                             jobCache=self._jobCache)
 
     def _shutdownBatchSystem(self):

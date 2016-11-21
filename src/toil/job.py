@@ -32,6 +32,7 @@ from io import BytesIO
 
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
+
 from toil.common import Toil, addOptions
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
@@ -41,13 +42,23 @@ from toil.resource import ModuleDescriptor
 logger = logging.getLogger( __name__ )
 
 
-class ResourceRequirementMixin(object):
+class JobLikeObject(object):
     """
     Inherit from this class to add requirement properties to a job (or job-like) object.
     If the object doesn't specify explicit requirements, these properties will fall back
     to the configured defaults. If the value cannot be determined, an AttributeError is raised.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
+    def __init__(self, requirements, unitName, jobName=None):
+        cores = requirements.get('cores')
+        memory = requirements.get('memory')
+        disk = requirements.get('disk')
+        preemptable = requirements.get('preemptable')
+        if unitName is not None:
+            assert isinstance(unitName, str)
+        if jobName is not None:
+            assert isinstance(jobName, str)
+        self.unitName = unitName
+        self.jobName = jobName if jobName is not None else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
         self._memory = self._parseResource('memory', memory)
         self._disk = self._parseResource('disk', disk)
@@ -107,7 +118,7 @@ class ResourceRequirementMixin(object):
         """
         Gets a dictionary of all the object's resource requirements. Unset values are defaulted to None
         """
-        return {'memory':getattr(self, 'memory', None),
+        return {'memory': getattr(self, 'memory', None),
                 'cores': getattr(self, 'cores', None),
                 'disk': getattr(self, 'disk', None),
                 'preemptable': getattr(self, 'preemptable', None)}
@@ -156,12 +167,85 @@ class ResourceRequirementMixin(object):
             raise TypeError("The '%s' requirement does not accept values that are of %s"
                             % (name, type(value)))
 
+    def __str__(self):
+        printedName = "'" + self.jobName + "'"
+        if self.unitName:
+            printedName += ' ' + self.unitName
+        elif self.unitName == '':
+            printedName += ' ' + 'user passed empty string for name'
+        return printedName
 
-class Job(ResourceRequirementMixin):
+
+class JobNode(JobLikeObject):
+    """
+    This object bridges the job graph, job, and batchsystem classes
+    """
+    def __init__(self, requirements, jobName, unitName, jobStoreID,
+                 command, predecessorNumber=1):
+        super(JobNode, self).__init__(requirements=requirements, unitName=unitName, jobName=jobName)
+        self.jobStoreID = jobStoreID
+        self.predecessorNumber = predecessorNumber
+        self.command = command
+
+    def __str__(self):
+        return super(JobNode, self).__str__() + ' ' + self.jobStoreID
+
+    def __hash__(self):
+        return hash(self.jobStoreID)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.__dict__ == other.__dict__
+        return NotImplemented
+
+    def __ne__(self, other):
+        if isinstance(other, self.__class__):
+            return not self.__eq__(other)
+        return NotImplemented
+
+    def __repr__(self):
+        return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+
+    @classmethod
+    def fromJobGraph(cls, jobGraph):
+        """
+        Takes a job graph object and returns a job node object
+        :param toil.jobGraph.JobGraph jobGraph: A job graph object to be transformed into a job node
+        :return: A job node object
+        :rtype: toil.job.JobNode
+        """
+        return cls(jobStoreID=jobGraph.jobStoreID,
+                   requirements=jobGraph._requirements,
+                   command=jobGraph.command,
+                   jobName=jobGraph.jobName,
+                   unitName=jobGraph.unitName,
+                   predecessorNumber=jobGraph.predecessorNumber)
+
+    @classmethod
+    def fromJob(cls, job, command, predecessorNumber):
+        """
+        Build a job node from a job object
+        :param toil.job.Job job: the job object to be transformed into a job node
+        :param str command: the JobNode's command
+        :param int predecessorNumber: the number of predecessors that must finish
+            successfully before the job can be scheduled
+        :return: a JobNode object representing the job object parameter
+        :rtype: toil.job.JobNode
+        """
+        return cls(jobStoreID=None,
+                   requirements=job._requirements,
+                   command=command,
+                   jobName=job.jobName,
+                   unitName=job.unitName,
+                   predecessorNumber=predecessorNumber)
+
+
+class Job(JobLikeObject):
     """
     Class represents a unit of work in toil.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, checkpoint=False):
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None,
+                 checkpoint=False):
         """
         This method must be called by any overriding constructor.
         
@@ -179,7 +263,9 @@ class Job(ResourceRequirementMixin):
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
-        super(Job, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
+        requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                        'preemptable': preemptable}
+        super(Job, self).__init__(requirements=requirements, unitName=unitName)
         self.checkpoint = checkpoint
         #Private class variables
 
@@ -653,17 +739,19 @@ class Job(ResourceRequirementMixin):
                 else:
                     return toil.restart()
 
-    class Service(ResourceRequirementMixin):
+    class Service(JobLikeObject):
         """
         Abstract class used to define the interface to a service.
         """
         __metaclass__ = ABCMeta
-        def __init__(self, memory=None, cores=None, disk=None, preemptable=None):
+        def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-            super(Job.Service, self).__init__(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
+            requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                            'preemptable': preemptable}
+            super(Job.Service, self).__init__(requirements=requirements, unitName=unitName)
             self._childServices = []
             self._hasParent = False
 
@@ -759,7 +847,7 @@ class Job(ResourceRequirementMixin):
         pickle file for the job and a list of modules which must be imported so that \
         the Job can be successfully unpickled. \
         See :func:`toil.job.Job._serialiseFirstJob` and \
-        :func:`toil.job.Job._makeJobWrappers` to see precisely how the Job is encoded \
+        :func:`toil.job.Job._makeJobGraphs` to see precisely how the Job is encoded \
         in the command.
 
         :param string command: encoding of the job in the job store.
@@ -803,7 +891,7 @@ class Job(ResourceRequirementMixin):
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()
-        assert isinstance(runnable, ResourceRequirementMixin)
+        assert isinstance(runnable, JobLikeObject)
         runnable._config = config
         return runnable
 
@@ -895,47 +983,44 @@ class Job(ResourceRequirementMixin):
     #a job graph to the jobStore
     ####################################################
 
-    def _createEmptyJobWrapperForJob(self, jobStore, command=None, predecessorNumber=0):
+    def _createEmptyJobGraphForJob(self, jobStore, command=None, predecessorNumber=0):
         """
         Create an empty job for the job.
         """
         # set _config to determine user determined default values for resource requirements
         self._config = jobStore.config
-        return jobStore.create(command=command, predecessorNumber=predecessorNumber,
-                               cores=self.cores, disk=self.disk, memory=self.memory,
-                               preemptable=self.preemptable)
+        return jobStore.create(JobNode.fromJob(self, command=command,
+                                               predecessorNumber=predecessorNumber))
 
-    def _makeJobWrappers(self, jobWrapper, jobStore):
+    def _makeJobGraphs(self, jobGraph, jobStore):
         """
-        Creates a jobWrapper for each job in the job graph, recursively.
+        Creates a jobGraph for each job in the job graph, recursively.
         """
-        jobsToJobWrappers = { self:jobWrapper }
+        jobsToJobGraphs = {self:jobGraph}
         for successors in (self._followOns, self._children):
             jobs = map(lambda successor:
-                successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
-            jobWrapper.stack.append(jobs)
-        return jobsToJobWrappers
+                successor._makeJobGraphs2(jobStore, jobsToJobGraphs), successors)
+            jobGraph.stack.append(jobs)
+        return jobsToJobGraphs
 
-    def _makeJobWrappers2(self, jobStore, jobsToJobWrappers):
-        #Make the jobWrapper for the job, if necessary
-        if self not in jobsToJobWrappers:
-            jobWrapper = self._createEmptyJobWrapperForJob(jobStore, predecessorNumber=len(self._directPredecessors))
-            jobsToJobWrappers[self] = jobWrapper
+    def _makeJobGraphs2(self, jobStore, jobsToJobGraphs):
+        #Make the jobGraph for the job, if necessary
+        if self not in jobsToJobGraphs:
+            jobGraph = self._createEmptyJobGraphForJob(jobStore, predecessorNumber=len(self._directPredecessors))
+            jobsToJobGraphs[self] = jobGraph
             #Add followOns/children to be run after the current job.
             for successors in (self._followOns, self._children):
                 jobs = map(lambda successor:
-                    successor._makeJobWrappers2(jobStore, jobsToJobWrappers), successors)
-                jobWrapper.stack.append(jobs)
+                    successor._makeJobGraphs2(jobStore, jobsToJobGraphs), successors)
+                jobGraph.stack.append(jobs)
         else:
-            jobWrapper = jobsToJobWrappers[self]
+            jobGraph = jobsToJobGraphs[self]
         #The return is a tuple stored within a job.stack
-        #The tuple is jobStoreID, memory, cores, disk, predecessorID
+        #The tuple is jobStoreID, memory, cores, disk,
         #The predecessorID is used to establish which predecessors have been
         #completed before running the given Job - it is just a unique ID
         #per predecessor
-        return (jobWrapper.jobStoreID, jobWrapper.memory, jobWrapper.cores,
-                jobWrapper.disk, jobWrapper.preemptable,
-                None if jobWrapper.predecessorNumber <= 1 else str(uuid.uuid4()))
+        return JobNode.fromJobGraph(jobGraph)
 
     def getTopologicalOrderingOfJobs(self):
         """
@@ -958,9 +1043,9 @@ class Job(ResourceRequirementMixin):
         getRunOrder(self)
         return ordering
 
-    def _serialiseJob(self, jobStore, jobsToJobWrappers, rootJobWrapper):
+    def _serialiseJob(self, jobStore, jobsToJobGraphs, rootJobGraph):
         """
-        Pickle a job and its jobWrapper to disk.
+        Pickle a job and its jobGraph to disk.
         """
         # Pickle the job so that its run method can be run at a later time.
         # Drop out the children/followOns/predecessors/services - which are
@@ -971,7 +1056,7 @@ class Job(ResourceRequirementMixin):
         # The pickled job is "run" as the command of the job, see worker
         # for the mechanism which unpickles the job and executes the Job.run
         # method.
-        with jobStore.writeFileStream(rootJobWrapper.jobStoreID) as (fileHandle, fileStoreID):
+        with jobStore.writeFileStream(rootJobGraph.jobStoreID) as (fileHandle, fileStoreID):
             cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
@@ -980,42 +1065,46 @@ class Job(ResourceRequirementMixin):
         # and FunctionWrappingJob overrides getUserScript() to give us just that. Only then can
         # filter_main() in _unpickle( ) do its job of resolving any user-defined type or function.
         userScript = self.getUserScript().globalize()
-        jobsToJobWrappers[self].command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
-        #Update the status of the jobWrapper on disk
-        jobStore.update(jobsToJobWrappers[self])
+        jobsToJobGraphs[self].command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
+        #Update the status of the jobGraph on disk
+        jobStore.update(jobsToJobGraphs[self])
 
-    def _serialiseServices(self, jobStore, jobWrapper, rootJobWrapper):
+    def _serialiseServices(self, jobStore, jobGraph, rootJobGraph):
         """
         Serialises the services for a job.
         """
         def processService(serviceJob, depth):
             # Extend the depth of the services if necessary
-            if depth == len(jobWrapper.services):
-                jobWrapper.services.append([])
+            if depth == len(jobGraph.services):
+                jobGraph.services.append([])
 
             # Recursively call to process child services
             for childServiceJob in serviceJob.service._childServices:
                 processService(childServiceJob, depth+1)
 
             # Make a job wrapper
-            serviceJobWrapper = serviceJob._createEmptyJobWrapperForJob(jobStore, predecessorNumber=1)
+            serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
 
             # Create the start and terminate flags
-            serviceJobWrapper.startJobStoreID = jobStore.getEmptyFileStoreID()
-            serviceJobWrapper.terminateJobStoreID = jobStore.getEmptyFileStoreID()
-            serviceJobWrapper.errorJobStoreID = jobStore.getEmptyFileStoreID()
-            assert jobStore.fileExists(serviceJobWrapper.startJobStoreID)
-            assert jobStore.fileExists(serviceJobWrapper.terminateJobStoreID)
-            assert jobStore.fileExists(serviceJobWrapper.errorJobStoreID)
+            serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID()
+            assert jobStore.fileExists(serviceJobGraph.startJobStoreID)
+            assert jobStore.fileExists(serviceJobGraph.terminateJobStoreID)
+            assert jobStore.fileExists(serviceJobGraph.errorJobStoreID)
 
             # Create the service job tuple
-            j = (serviceJobWrapper.jobStoreID, serviceJobWrapper.memory,
-                 serviceJobWrapper.cores, serviceJobWrapper.disk,
-                 serviceJobWrapper.startJobStoreID, serviceJobWrapper.terminateJobStoreID,
-                 serviceJobWrapper.errorJobStoreID)
+            j = ServiceJobNode(jobStoreID=serviceJobGraph.jobStoreID,
+                               memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
+                               disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
+                               terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
+                               errorJobStoreID=serviceJobGraph.errorJobStoreID,
+                               jobName=serviceJobGraph.jobName, unitName=serviceJobGraph.unitName,
+                               command=serviceJobGraph.command,
+                               predecessorNumber=serviceJobGraph.predecessorNumber)
 
             # Add the service job tuple to the list of services to run
-            jobWrapper.services[depth].append(j)
+            jobGraph.services[depth].append(j)
 
             # Break the links between the services to stop them being serialised together
             #childServices = serviceJob.service._childServices
@@ -1028,7 +1117,7 @@ class Job(ResourceRequirementMixin):
             serviceJob.service = None
 
             # Serialise the service job and job wrapper
-            serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobWrapper }, rootJobWrapper)
+            serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobGraph }, rootJobGraph)
 
             # Restore values
             #serviceJob.service = service
@@ -1039,22 +1128,22 @@ class Job(ResourceRequirementMixin):
 
         self._services = []
 
-    def _serialiseJobGraph(self, jobWrapper, jobStore, returnValues, firstJob):
+    def _serialiseJobGraph(self, jobGraph, jobStore, returnValues, firstJob):
         """
         Pickle the graph of jobs in the jobStore. The graph is not fully serialised \
-        until the jobWrapper itself is written to disk, this is not performed by this \
+        until the jobGraph itself is written to disk, this is not performed by this \
         function because of the need to coordinate this operation with other updates. \
         """
         #Check if the job graph has created
         #any cycles of dependencies or has multiple roots
         self.checkJobGraphForDeadlocks()
 
-        #Create the jobWrappers for followOns/children
-        jobsToJobWrappers = self._makeJobWrappers(jobWrapper, jobStore)
+        #Create the jobGraphs for followOns/children
+        jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
-        assert len(ordering) == len(jobsToJobWrappers)
+        assert len(ordering) == len(jobsToJobGraphs)
 
         # Temporarily set the jobStore locators for the promise call back functions
         for job in ordering:
@@ -1072,9 +1161,9 @@ class Job(ResourceRequirementMixin):
             #If the first job we serialise all the jobs, including the root job
             for job in ordering:
                 # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobWrappers[job], jobWrapper)
+                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
                 # Now pickle the job
-                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
         else:
             #We store the return values at this point, because if a return value
             #is a promise from another job, we need to register the promise
@@ -1083,11 +1172,11 @@ class Job(ResourceRequirementMixin):
             #Pickle the non-root jobs
             for job in ordering[:-1]:
                 # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobWrappers[job], jobWrapper)
+                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
                 # Pickle the job itself
-                job._serialiseJob(jobStore, jobsToJobWrappers, jobWrapper)
+                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
             # Pickle any services for the job
-            self._serialiseServices(jobStore, jobWrapper, jobWrapper)
+            self._serialiseServices(jobStore, jobGraph, jobGraph)
 
     def _serialiseFirstJob(self, jobStore):
         """
@@ -1095,33 +1184,33 @@ class Job(ResourceRequirementMixin):
 
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
         """
-        # Create first jobWrapper
-        jobWrapper = self._createEmptyJobWrapperForJob(jobStore, None, predecessorNumber=0)
+        # Create first jobGraph
+        jobGraph = self._createEmptyJobGraphForJob(jobStore=jobStore, predecessorNumber=0)
         # Write the graph of jobs to disk
-        self._serialiseJobGraph(jobWrapper, jobStore, None, True)
-        jobStore.update(jobWrapper)
+        self._serialiseJobGraph(jobGraph, jobStore, None, True)
+        jobStore.update(jobGraph)
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
-        jobStore.setRootJob(jobWrapper.jobStoreID)
-        return jobWrapper
+        jobStore.setRootJob(jobGraph.jobStoreID)
+        return jobGraph
 
-    def _serialiseExistingJob(self, jobWrapper, jobStore, returnValues):
+    def _serialiseExistingJob(self, jobGraph, jobStore, returnValues):
         """
         Serialise an existing job.
         """
-        self._serialiseJobGraph(jobWrapper, jobStore, returnValues, False)
+        self._serialiseJobGraph(jobGraph, jobStore, returnValues, False)
         #Drop the completed command, if not dropped already
-        jobWrapper.command = None
+        jobGraph.command = None
         #Merge any children (follow-ons) created in the initial serialisation
         #with children (follow-ons) created in the subsequent scale-up.
-        assert len(jobWrapper.stack) >= 4
-        combinedChildren = jobWrapper.stack[-1] + jobWrapper.stack[-3]
-        combinedFollowOns = jobWrapper.stack[-2] + jobWrapper.stack[-4]
-        jobWrapper.stack = jobWrapper.stack[:-4]
+        assert len(jobGraph.stack) >= 4
+        combinedChildren = jobGraph.stack[-1] + jobGraph.stack[-3]
+        combinedFollowOns = jobGraph.stack[-2] + jobGraph.stack[-4]
+        jobGraph.stack = jobGraph.stack[:-4]
         if len(combinedFollowOns) > 0:
-            jobWrapper.stack.append(combinedFollowOns)
+            jobGraph.stack.append(combinedFollowOns)
         if len(combinedChildren) > 0:
-            jobWrapper.stack.append(combinedChildren)
+            jobGraph.stack.append(combinedChildren)
 
     ####################################################
     #Function which worker calls to ultimately invoke
@@ -1129,11 +1218,11 @@ class Job(ResourceRequirementMixin):
     #children/followOn jobs
     ####################################################
 
-    def _run(self, jobWrapper, fileStore):
+    def _run(self, jobGraph, fileStore):
         return self.run(fileStore)
 
     @contextmanager
-    def _executor(self, jobWrapper, stats, fileStore):
+    def _executor(self, jobGraph, stats, fileStore):
         """
         This is the core wrapping method for running the job within a worker.  It sets up the stats
         and logging before yielding. After completion of the body, the function will finish up the
@@ -1153,7 +1242,7 @@ class Job(ResourceRequirementMixin):
                 fileStore.deleteGlobalFile(jobStoreFileID)
         else:
             # Else copy them to the job wrapper to delete later
-            jobWrapper.checkpointFilesToDelete = list(Promise.filesToDelete)
+            jobGraph.checkpointFilesToDelete = list(Promise.filesToDelete)
         Promise.filesToDelete.clear()
         # Now indicate the asynchronous update of the job can happen
         fileStore._updateJobWhenDone()
@@ -1172,19 +1261,19 @@ class Job(ResourceRequirementMixin):
                 )
             )
 
-    def _runner(self, jobWrapper, jobStore, fileStore):
+    def _runner(self, jobGraph, jobStore, fileStore):
         """
         This method actually runs the job, and serialises the next jobs.
 
-        :param class jobWrapper: Instance of a job wrapper object
+        :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
         :param class fileStore: Instance of Job.FileStore or Job.CachedFileStore
         :return:
         """
         # Run the job
-        returnValues = self._run(jobWrapper, fileStore)
+        returnValues = self._run(jobGraph, fileStore)
         # Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseExistingJob(jobWrapper, jobStore, returnValues)
+        self._serialiseExistingJob(jobGraph, jobStore, returnValues)
 
     def _jobName(self):
         """
@@ -1254,10 +1343,12 @@ class FunctionWrappingJob(Job):
                      cores=resolve('cores', dehumanize=True),
                      disk=resolve('disk', dehumanize=True),
                      preemptable=resolve('preemptable'),
-                     checkpoint=resolve('checkpoint', default=False))
+                     checkpoint=resolve('checkpoint', default=False),
+                     unitName=resolve('name', default=None))
 
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
+        self.jobName = self.userFunctionName
         self._args = args
         self._kwargs = kwargs
 
@@ -1399,6 +1490,20 @@ class EncapsulatedJob(Job):
         return self.encapsulatedJob.getUserScript()
 
 
+class ServiceJobNode(JobNode):
+    def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
+                 errorJobStoreID, unitName, jobName, command, predecessorNumber):
+        requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=False)
+        super(ServiceJobNode, self).__init__(unitName=unitName, jobName=jobName,
+                                             requirements=requirements,
+                                             jobStoreID=jobStoreID,
+                                             command=command,
+                                             predecessorNumber=predecessorNumber)
+        self.startJobStoreID = startJobStoreID
+        self.terminateJobStoreID = terminateJobStoreID
+        self.errorJobStoreID = errorJobStoreID
+
+
 class ServiceJob(Job):
     """
     Job used to wrap a :class:`toil.job.Job.Service` instance.
@@ -1417,10 +1522,10 @@ class ServiceJob(Job):
         #The service to run - this will be replace before serialization with a pickled version
         self.service = service
         self.pickledService = None
-
+        self.jobName = service.jobName
         # This references the parent job wrapper. It is initialised just before
         # the job is run. It is used to access the start and terminate flags.
-        self.jobWrapper = None
+        self.jobGraph = None
 
     def run(self, fileStore):
         
@@ -1443,19 +1548,19 @@ class ServiceJob(Job):
 
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
-            assert self.jobWrapper.startJobStoreID != None
-            if fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID):
-                fileStore.jobStore.deleteFile(self.jobWrapper.startJobStoreID)
-            assert not fileStore.jobStore.fileExists(self.jobWrapper.startJobStoreID)
+            assert self.jobGraph.startJobStoreID != None
+            if fileStore.jobStore.fileExists(self.jobGraph.startJobStoreID):
+                fileStore.jobStore.deleteFile(self.jobGraph.startJobStoreID)
+            assert not fileStore.jobStore.fileExists(self.jobGraph.startJobStoreID)
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
-            assert self.jobWrapper.terminateJobStoreID != None
+            assert self.jobGraph.terminateJobStoreID != None
             while True:
                 # Check for the terminate signal
-                if not fileStore.jobStore.fileExists(self.jobWrapper.terminateJobStoreID):
+                if not fileStore.jobStore.fileExists(self.jobGraph.terminateJobStoreID):
                     logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
-                    if not fileStore.jobStore.fileExists(self.jobWrapper.errorJobStoreID):
+                    if not fileStore.jobStore.fileExists(self.jobGraph.errorJobStoreID):
                         raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
                     break
 
@@ -1470,25 +1575,25 @@ class ServiceJob(Job):
 
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
 
-            # Remove link to the jobWrapper
-            self.jobWrapper = None
+            # Remove link to the jobGraph
+            self.jobGraph = None
 
             logger.debug("Service is done")
         finally:
             # The stop function is always called
             service.stop(self)
 
-    def _run(self, jobWrapper, fileStore):
-        # Set the jobWrapper for the job
-        self.jobWrapper = jobWrapper
+    def _run(self, jobGraph, fileStore):
+        # Set the jobGraph for the job
+        self.jobGraph = jobGraph
         #Run the job
         returnValues = self.run(fileStore)
-        assert jobWrapper.stack == []
-        assert jobWrapper.services == []
-        # Unset the jobWrapper for the job
-        self.jobWrapper = None
+        assert jobGraph.stack == []
+        assert jobGraph.services == []
+        # Unset the jobGraph for the job
+        self.jobGraph = None
         # Set the stack to mimic what would be expected for a non-service job (this is a hack)
-        jobWrapper.stack = [ [], [] ]
+        jobGraph.stack = [[], []]
         return returnValues
 
     def getUserScript(self):
