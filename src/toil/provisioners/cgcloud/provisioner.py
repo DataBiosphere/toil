@@ -14,13 +14,14 @@
 
 import datetime
 import logging
+import os
 import re
 import time
 from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize, parse_iso_utc
+from bd2k.util import memoize, parse_iso_utc, less_strict_bool
 from bd2k.util.exceptions import require
 from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
@@ -132,7 +133,8 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                                         preemptable=preemptable)
         elif delta < 0:
             log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
-            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
+            instancesToTerminate = self._filterImpairedNodes(workerInstances, self._ec2)
+            numNodes = numCurrentNodes - self._removeNodes(instancesToTerminate,
                                                            numNodes=-delta,
                                                            preemptable=preemptable,
                                                            force=force)

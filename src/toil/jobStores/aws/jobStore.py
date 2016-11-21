@@ -59,7 +59,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       region_to_bucket_location)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
@@ -306,14 +306,11 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if command is None else command)
-        job = AWSJob(jobStoreID=jobStoreID, command=command,
-                     memory=memory, cores=cores, disk=disk, preemptable=preemptable,
-                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     predecessorNumber=predecessorNumber)
+                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        job = AWSJob.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(*job.toItem())
@@ -1326,7 +1323,7 @@ aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quo
 custom_repr = aRepr.repr
 
 
-class AWSJob(JobWrapper, SDBHelper):
+class AWSJob(JobGraph, SDBHelper):
     """
     A Job that can be converted to and from an SDB item.
     """

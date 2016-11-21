@@ -74,11 +74,8 @@ def main():
     from toil.lib.bioio import setLogLevel
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-    from toil.lib.bioio import makePublicDir
-    from toil.lib.bioio import system
     from toil.job import Job
-    
-    ########################################## 
+    ##########################################
     #Input args
     ##########################################
     
@@ -114,10 +111,10 @@ def main():
         t.start()
 
     ##########################################
-    #Load the environment for the jobWrapper
+    #Load the environment for the jobGraph
     ##########################################
     
-    #First load the environment for the jobWrapper.
+    #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = cPickle.load(fileHandle)
     for i in environment:
@@ -210,30 +207,30 @@ def main():
             nextOpenDescriptor()))
 
         ##########################################
-        #Load the jobWrapper
+        #Load the jobGraph
         ##########################################
         
-        jobWrapper = jobStore.load(jobStoreID)
-        logger.debug("Parsed jobWrapper")
+        jobGraph = jobStore.load(jobStoreID)
+        logger.debug("Parsed jobGraph")
         
         ##########################################
-        #Cleanup from any earlier invocation of the jobWrapper
+        #Cleanup from any earlier invocation of the jobGraph
         ##########################################
         
-        if jobWrapper.command == None:
+        if jobGraph.command == None:
             # Cleanup jobs already finished
             f = lambda jobs : filter(lambda x : len(x) > 0, map(lambda x :
-                                    filter(lambda y : jobStore.exists(y[0]), x), jobs))
-            jobWrapper.stack = f(jobWrapper.stack)
-            jobWrapper.services = f(jobWrapper.services)
+                                    filter(lambda y : jobStore.exists(y.jobStoreID), x), jobs))
+            jobGraph.stack = f(jobGraph.stack)
+            jobGraph.services = f(jobGraph.services)
             logger.debug("Cleaned up any references to completed successor jobs")
 
         #This cleans the old log file which may 
-        #have been left if the jobWrapper is being retried after a jobWrapper failure.
-        oldLogFile = jobWrapper.logJobStoreFileID
+        #have been left if the job is being retried after a job failure.
+        oldLogFile = jobGraph.logJobStoreFileID
         if oldLogFile != None:
-            jobWrapper.logJobStoreFileID = None
-            jobStore.update(jobWrapper) #Update first, before deleting any files
+            jobGraph.logJobStoreFileID = None
+            jobStore.update(jobGraph) #Update first, before deleting any files
             jobStore.deleteFile(oldLogFile)
 
         ##########################################
@@ -241,56 +238,56 @@ def main():
         ##########################################
 
         # The job is a checkpoint, and is being restarted after previously completing
-        if jobWrapper.checkpoint != None:
+        if jobGraph.checkpoint != None:
             logger.debug("Job is a checkpoint")
-            if len(jobWrapper.stack) > 0 or len(jobWrapper.services) > 0 or jobWrapper.command != None:
-                if jobWrapper.command != None:
-                    assert jobWrapper.command == jobWrapper.checkpoint
+            if len(jobGraph.stack) > 0 or len(jobGraph.services) > 0 or jobGraph.command != None:
+                if jobGraph.command != None:
+                    assert jobGraph.command == jobGraph.checkpoint
                     logger.debug("Checkpoint job already has command set to run")
                 else:
-                    jobWrapper.command = jobWrapper.checkpoint
+                    jobGraph.command = jobGraph.checkpoint
 
                 # Reduce the retry count
-                assert jobWrapper.remainingRetryCount >= 0
-                jobWrapper.remainingRetryCount = max(0, jobWrapper.remainingRetryCount - 1)
+                assert jobGraph.remainingRetryCount >= 0
+                jobGraph.remainingRetryCount = max(0, jobGraph.remainingRetryCount - 1)
 
-                jobStore.update(jobWrapper) # Update immediately to ensure that checkpoint
+                jobStore.update(jobGraph) # Update immediately to ensure that checkpoint
                 # is made before deleting any remaining successors
 
-                if len(jobWrapper.stack) > 0 or len(jobWrapper.services) > 0:
+                if len(jobGraph.stack) > 0 or len(jobGraph.services) > 0:
                     # If the subtree of successors is not complete restart everything
                     logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
-                                 (jobWrapper.stack, jobWrapper.services))
+                                 (jobGraph.stack, jobGraph.services))
 
                     # Delete everything on the stack, as these represent successors to clean
                     # up as we restart the queue
-                    def recursiveDelete(jobWrapper2):
+                    def recursiveDelete(jobGraph2):
                         # Recursive walk the stack to delete all remaining jobs
-                        for jobs in jobWrapper2.stack + jobWrapper2.services:
-                            for jobTuple in jobs:
-                                if jobStore.exists(jobTuple[0]):
-                                    recursiveDelete(jobStore.load(jobTuple[0]))
+                        for jobs in jobGraph2.stack + jobGraph2.services:
+                            for jobNode in jobs:
+                                if jobStore.exists(jobNode.jobStoreID):
+                                    recursiveDelete(jobStore.load(jobNode.jobStoreID))
                                 else:
-                                    logger.debug("Job %s has already been deleted", jobTuple[0])
-                        if jobWrapper2 != jobWrapper:
-                            logger.debug("Checkpoint is deleting old successor job: %s", jobWrapper2.jobStoreID)
-                            jobStore.delete(jobWrapper2.jobStoreID)
-                    recursiveDelete(jobWrapper)
+                                    logger.debug("Job %s has already been deleted", jobNode)
+                        if jobGraph2 != jobGraph:
+                            logger.debug("Checkpoint is deleting old successor job: %s", jobGraph2.jobStoreID)
+                            jobStore.delete(jobGraph2.jobStoreID)
+                    recursiveDelete(jobGraph)
 
-                    jobWrapper.stack = [ [], [] ] # Initialise the job to mimic the state of a job
+                    jobGraph.stack = [ [], [] ] # Initialise the job to mimic the state of a job
                     # that has been previously serialised but which as yet has no successors
 
-                    jobWrapper.services = [] # Empty the services
+                    jobGraph.services = [] # Empty the services
 
                     # Update the jobStore to avoid doing this twice on failure and make this clean.
-                    jobStore.update(jobWrapper)
+                    jobStore.update(jobGraph)
 
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
             # because of the job being a checkpoint
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files
-                map(jobStore.deleteFile, filter(jobStore.fileExists, jobWrapper.checkpointFilesToDelete))
+                map(jobStore.deleteFile, filter(jobStore.fileExists, jobGraph.checkpointFilesToDelete))
 
         ##########################################
         #Setup the stats, if requested
@@ -300,42 +297,42 @@ def main():
             startTime = time.time()
             startClock = getTotalCpuTime()
 
-        #Make a temporary file directory for the jobWrapper
+        #Make a temporary file directory for the jobGraph
         #localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
 
         startTime = time.time()
         while True:
             ##########################################
-            #Run the jobWrapper, if there is one
+            #Run the jobGraph, if there is one
             ##########################################
             
-            if jobWrapper.command is not None:
-                assert jobWrapper.command.startswith( "_toil " )
-                logger.debug("Got a command to run: %s" % jobWrapper.command)
+            if jobGraph.command is not None:
+                assert jobGraph.command.startswith( "_toil " )
+                logger.debug("Got a command to run: %s" % jobGraph.command)
                 #Load the job
-                job = Job._loadJob(jobWrapper.command, jobStore)
+                job = Job._loadJob(jobGraph.command, jobStore)
                 # If it is a checkpoint job, save the command
                 if job.checkpoint:
-                    jobWrapper.checkpoint = jobWrapper.command
+                    jobGraph.checkpoint = jobGraph.command
 
                 # Create a fileStore object for the job
-                fileStore = FileStore.createFileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn,
+                fileStore = FileStore.createFileStore(jobStore, jobGraph, localWorkerTempDir, blockFn,
                                                       caching=not config.disableCaching)
-                with job._executor(jobWrapper=jobWrapper,
+                with job._executor(jobGraph=jobGraph,
                                    stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
                     with fileStore.open(job):
                         # Get the next block function and list that will contain any messages
                         blockFn = fileStore._blockFn
 
-                        job._runner(jobWrapper=jobWrapper, jobStore=jobStore, fileStore=fileStore)
+                        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
 
             else:
                 #The command may be none, in which case
-                #the jobWrapper is either a shell ready to be deleted or has 
+                #the jobGraph is either a shell ready to be deleted or has
                 #been scheduled after a failure to cleanup
                 break
             
@@ -343,17 +340,17 @@ def main():
                 raise RuntimeError("The termination flag is set")
 
             ##########################################
-            #Establish if we can run another jobWrapper within the worker
+            #Establish if we can run another jobGraph within the worker
             ##########################################
             
             #If no more jobs to run or services not finished, quit
-            if len(jobWrapper.stack) == 0 or len(jobWrapper.services) > 0 or jobWrapper.checkpoint != None:
+            if len(jobGraph.stack) == 0 or len(jobGraph.services) > 0 or jobGraph.checkpoint != None:
                 logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
-                             len(jobWrapper.stack), len(jobWrapper.services), jobWrapper.checkpoint != None)
+                             len(jobGraph.stack), len(jobGraph.services), jobGraph.checkpoint != None)
                 break
             
             #Get the next set of jobs to run
-            jobs = jobWrapper.stack[-1]
+            jobs = jobGraph.stack[-1]
             assert len(jobs) > 0
             
             #If there are 2 or more jobs to run in parallel we quit
@@ -362,30 +359,30 @@ def main():
                             " it's got %i children", len(jobs)-1)
                 break
             
-            #We check the requirements of the jobWrapper to see if we can run it
+            #We check the requirements of the jobGraph to see if we can run it
             #within the current worker
-            successorJobStoreID, successorMemory, successorCores, successorsDisk, successorsPreemptable, successorPredecessorID = jobs[0]
-            if successorMemory > jobWrapper.memory:
-                logger.debug("We need more memory for the next jobWrapper, so finishing")
+            successorJobNode = jobs[0]
+            if successorJobNode.memory > jobGraph.memory:
+                logger.debug("We need more memory for the next job, so finishing")
                 break
-            if successorCores > jobWrapper.cores:
-                logger.debug("We need more cores for the next jobWrapper, so finishing")
+            if successorJobNode.cores > jobGraph.cores:
+                logger.debug("We need more cores for the next job, so finishing")
                 break
-            if successorsDisk > jobWrapper.disk:
-                logger.debug("We need more disk for the next jobWrapper, so finishing")
+            if successorJobNode.disk > jobGraph.disk:
+                logger.debug("We need more disk for the next job, so finishing")
                 break
-            if successorPredecessorID != None: 
-                logger.debug("The jobWrapper has multiple predecessors, we must return to the leader.")
+            if successorJobNode.predecessorNumber > 1:
+                logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
                 break
 
-            # Load the successor jobWrapper
-            successorJobWrapper = jobStore.load(successorJobStoreID)
+            # Load the successor jobGraph
+            successorJobGraph = jobStore.load(successorJobNode.jobStoreID)
 
             # Somewhat ugly, but check if job is a checkpoint job and quit if
             # so
-            if successorJobWrapper.command.startswith( "_toil " ):
+            if successorJobGraph.command.startswith( "_toil " ):
                 #Load the job
-                successorJob = Job._loadJob(successorJobWrapper.command, jobStore)
+                successorJob = Job._loadJob(successorJobGraph.command, jobStore)
 
                 # Check it is not a checkpoint
                 if successorJob.checkpoint:
@@ -394,51 +391,51 @@ def main():
 
             ##########################################
             #We have a single successor job that is not a checkpoint job.
-            #We transplant the successor jobWrappers command and stack
-            #into the current jobWrapper so that it can be run
-            #as if it were a command that were part of the current jobWrapper.
-            #We can then delete the successor jobWrapper in the jobStore, as it is
-            #wholly incorporated into the current jobWrapper.
+            #We transplant the successor jobGraph command and stack
+            #into the current jobGraph object so that it can be run
+            #as if it were a command that were part of the current jobGraph.
+            #We can then delete the successor jobGraph in the jobStore, as it is
+            #wholly incorporated into the current jobGraph.
             ##########################################
             
-            #Clone the jobWrapper and its stack
-            jobWrapper = copy.deepcopy(jobWrapper)
+            #Clone the jobGraph and its stack
+            jobGraph = copy.deepcopy(jobGraph)
             
-            #Remove the successor jobWrapper
-            jobWrapper.stack.pop()
+            #Remove the successor jobGraph
+            jobGraph.stack.pop()
 
             #These should all match up
-            assert successorJobWrapper.memory == successorMemory
-            assert successorJobWrapper.cores == successorCores
-            assert successorJobWrapper.predecessorsFinished == set()
-            assert successorJobWrapper.predecessorNumber == 1
-            assert successorJobWrapper.command != None
-            assert successorJobStoreID == successorJobWrapper.jobStoreID
+            assert successorJobGraph.memory == successorJobNode.memory
+            assert successorJobGraph.cores == successorJobNode.cores
+            assert successorJobGraph.predecessorsFinished == set()
+            assert successorJobGraph.predecessorNumber == 1
+            assert successorJobGraph.command is not None
+            assert successorJobGraph.jobStoreID == successorJobNode.jobStoreID
             
-            #Transplant the command and stack to the current jobWrapper
-            jobWrapper.command = successorJobWrapper.command
-            jobWrapper.stack += successorJobWrapper.stack
-            assert jobWrapper.memory >= successorJobWrapper.memory
-            assert jobWrapper.cores >= successorJobWrapper.cores
+            #Transplant the command and stack to the current jobGraph
+            jobGraph.command = successorJobGraph.command
+            jobGraph.stack += successorJobGraph.stack
+            assert jobGraph.memory >= successorJobGraph.memory
+            assert jobGraph.cores >= successorJobGraph.cores
             
             #Build a fileStore to update the job
-            fileStore = FileStore.createFileStore(jobStore, jobWrapper, localWorkerTempDir, blockFn,
+            fileStore = FileStore.createFileStore(jobStore, jobGraph, localWorkerTempDir, blockFn,
                                                   caching=not config.disableCaching)
 
             #Update blockFn
             blockFn = fileStore._blockFn
             
-            #Add successorJobWrapper to those to be deleted
-            fileStore.jobsToDelete.add(successorJobWrapper.jobStoreID)
+            #Add successorJobGraph to those to be deleted
+            fileStore.jobsToDelete.add(successorJobGraph.jobStoreID)
             
             #This will update the job once the previous job is done
             fileStore._updateJobWhenDone()            
             
-            #Clone the jobWrapper and its stack again, so that updates to it do 
+            #Clone the jobGraph and its stack again, so that updates to it do
             #not interfere with this update
-            jobWrapper = copy.deepcopy(jobWrapper)
+            jobGraph = copy.deepcopy(jobGraph)
             
-            logger.debug("Starting the next jobWrapper")
+            logger.debug("Starting the next job")
         
         ##########################################
         #Finish up the stats
@@ -458,7 +455,7 @@ def main():
     ##########################################
     except: #Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed jobWrapper on host %s", socket.gethostname())
+        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         FileStore._terminateEvent.set()
     
     ##########################################
@@ -473,8 +470,8 @@ def main():
     ########################################## 
     
     if FileStore._terminateEvent.isSet():
-        jobWrapper = jobStore.load(jobStoreID)
-        jobWrapper.setupJobAfterFailure(config)
+        jobGraph = jobStore.load(jobStoreID)
+        jobGraph.setupJobAfterFailure(config)
         workerFailed = True
 
     ##########################################
@@ -493,7 +490,7 @@ def main():
     os.dup2(origStdOut, 1)
     
     #Close redirected stderr and replace with the original standard error.
-    os.dup2(origStdOut, 2)
+    os.dup2(origStdErr, 2)
     
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
@@ -507,13 +504,13 @@ def main():
     
     #Copy back the log file to the global dir, if needed
     if workerFailed:
-        jobWrapper.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobWrapper.jobStoreID)
-        with jobStore.updateFileStream(jobWrapper.logJobStoreFileID) as w:
+        jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
+        with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "r") as f:
                 if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
                     f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                 w.write(f.read())
-        jobStore.update(jobWrapper)
+        jobStore.update(jobGraph)
 
     elif debugging:  # write log messages
         with open(tempWorkerLogPath, 'r') as logFile:
@@ -531,6 +528,6 @@ def main():
         shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and jobWrapper.command == None and len(jobWrapper.stack) == 0 and len(jobWrapper.services) == 0:
-        # We can now safely get rid of the jobWrapper
-        jobStore.delete(jobWrapper.jobStoreID)
+    if (not workerFailed) and jobGraph.command == None and len(jobGraph.stack) == 0 and len(jobGraph.services) == 0:
+        # We can now safely get rid of the jobGraph
+        jobStore.delete(jobGraph.jobStoreID)

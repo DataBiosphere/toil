@@ -67,7 +67,7 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     # The number of workers in a static cluster, the maximum number of prepemptable and
     # non-preemptable workers each in an auto-scaled cluster.
     #
-    numWorkers = 10
+    numWorkers = 2
 
     # The path to PyCharm's debug egg. If set, it will be copied to the leader to aid in remote
     # debugging. Use the following fragment to instrument the code for remote debugging:
@@ -251,7 +251,7 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
         super(CGCloudRNASeqTest, self).__init__(name)
         # The number of samples to run the test workflow on
         #
-        self.numSamples = 10
+        self.numSamples = 2
 
     def _getScript(self):
         toilScripts = urlparse(self.toilScripts)
@@ -267,6 +267,10 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
     def _runScript(self, toilOptions):
         toilOptions = ' '.join(toilOptions)
         self._leader('PATH=~/venv/bin:$PATH',
+                     # TOIL_AWS_NODE_DEBUG prevents the provisioner from killing nodes that fail a
+                     # status check. This allows for easier debugging of
+                     # https://github.com/BD2KGenomics/toil/issues/1141
+                     'TOIL_AWS_NODE_DEBUG=True',
                      'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
                      'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
                      'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
