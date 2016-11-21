@@ -649,20 +649,23 @@ def main(args=None, stdout=sys.stdout):
             adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
         t.visit(importDefault)
 
-        basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-        builder = t._init_job(job, basedir=basedir)
-        (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
-        cwltool.builder.adjustDirObjs(builder.job, locToPath)
-        cwltool.builder.adjustFileObjs(builder.job, locToPath)
-        adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
-                    if not urlparse.urlparse(x).scheme else x)
-        cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
-        cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
-        cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
-        adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
-        wf1.cwljob = builder.job
+        if options.restart:
+            outobj = toil.restart()
+        else:
+            basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
+            builder = t._init_job(job, basedir=basedir)
+            (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
+            cwltool.builder.adjustDirObjs(builder.job, locToPath)
+            cwltool.builder.adjustFileObjs(builder.job, locToPath)
+            adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
+                        if not urlparse.urlparse(x).scheme else x)
+            cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
+            cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
+            cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
+            adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
+            wf1.cwljob = builder.job
+            outobj = toil.start(wf1)
 
-        outobj = toil.start(wf1)
         outobj = resolve_indirect(outobj)
 
         adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={}, export=True, rename_collision=True))
