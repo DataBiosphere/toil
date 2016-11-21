@@ -120,7 +120,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             with attempt:
                 dstBucket = s3.get_bucket(dstBucketName)
                 upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
-        log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
+        log.debug("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
                  srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
         try:
             # We can oversubscribe cores by at least a factor of 16 since each copy task just
@@ -138,7 +138,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             for attempt in retry_s3():
                 with attempt:
                     completed = upload.complete_upload()
-                    log.info("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
+                    log.debug("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
                              srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
                     return completed
 
@@ -659,7 +659,7 @@ class AWSJobStore(AbstractJobStore):
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        log.info("Binding to job store bucket '%s'.", bucket_name)
+        log.debug("Binding to job store bucket '%s'.", bucket_name)
 
         def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
@@ -718,7 +718,7 @@ class AWSJobStore(AbstractJobStore):
         :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
                 retry timeout expires.
         """
-        log.info("Binding to job store domain '%s'.", domain_name)
+        log.debug("Binding to job store domain '%s'.", domain_name)
         for attempt in retry_sdb(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e)):
             with attempt:
                 try:

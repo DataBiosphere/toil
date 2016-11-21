@@ -41,7 +41,7 @@ def prepareBsub(cpu, mem):
 def bsub(bsubline):
     process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
     liney = process.stdout.readline()
-    logger.info("BSUB: " + liney)
+    logger.debug("BSUB: " + liney)
     result = int(liney.strip().split()[1].strip('<>'))
     logger.debug("Got the job id: %s" % (str(result)))
     return result
@@ -51,43 +51,43 @@ def getjobexitcode(lsfJobID):
 
         #first try bjobs to find out job state
         args = ["bjobs", "-l", str(job)]
-        logger.info("Checking job exit code for job via bjobs: " + str(job))
+        logger.debug("Checking job exit code for job via bjobs: " + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         started = 0
         for line in process.stdout:
             if line.find("Done successfully") > -1:
-                logger.info("bjobs detected job completed for job: " + str(job))
+                logger.debug("bjobs detected job completed for job: " + str(job))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("bjobs detected job failed for job: " + str(job))
+                logger.debug("bjobs detected job failed for job: " + str(job))
                 return 1
             elif line.find("New job is waiting for scheduling") > -1:
-                logger.info("bjobs detected job pending scheduling for job: " + str(job))
+                logger.debug("bjobs detected job pending scheduling for job: " + str(job))
                 return None
             elif line.find("PENDING REASONS") > -1:
-                logger.info("bjobs detected job pending for job: " + str(job))
+                logger.debug("bjobs detected job pending for job: " + str(job))
                 return None
             elif line.find("Started on ") > -1:
                 started = 1
 
         if started == 1:
-            logger.info("bjobs detected job started but not completed: " + str(job))
+            logger.debug("bjobs detected job started but not completed: " + str(job))
             return None
 
         #if not found in bjobs, then try bacct (slower than bjobs)
-        logger.info("bjobs failed to detect job - trying bacct: " + str(job))
+        logger.debug("bjobs failed to detect job - trying bacct: " + str(job))
 
         args = ["bacct", "-l", str(job)]
-        logger.info("Checking job exit code for job via bacct:" + str(job))
+        logger.debug("Checking job exit code for job via bacct:" + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         for line in process.stdout:
             if line.find("Completed <done>") > -1:
-                logger.info("Detected job completed for job: " + str(job))
+                logger.debug("Detected job completed for job: " + str(job))
                 return 0
             elif line.find("Completed <exit>") > -1:
-                logger.info("Detected job failed for job: " + str(job))
+                logger.debug("Detected job failed for job: " + str(job))
                 return 1
-        logger.info("Cant determine exit code for job or job still running: " + str(job))
+        logger.debug("Cant determine exit code for job or job still running: " + str(job))
         return None
 
 class Worker(Thread):
@@ -163,7 +163,7 @@ class LSFBatchSystem(BatchSystemSupport):
         self.currentjobs.add(jobID)
         bsubline = prepareBsub(jobNode.cores, jobNode.memory) + [jobNode.command]
         self.newJobsQueue.put((jobID, bsubline))
-        logger.info("Issued the job command: %s with job id: %s " % (jobNode.command, str(jobID)))
+        logger.debug("Issued the job command: %s with job id: %s " % (jobNode.command, str(jobID)))
         return jobID
 
     def getLsfID(self, jobID):
@@ -180,7 +180,7 @@ class LSFBatchSystem(BatchSystemSupport):
         """Kills the given job IDs.
         """
         for jobID in jobIDs:
-            logger.info("DEL: " + str(self.getLsfID(jobID)))
+            logger.debug("DEL: " + str(self.getLsfID(jobID)))
             self.currentjobs.remove(jobID)
             process = subprocess.Popen(["bkill", self.getLsfID(jobID)])
             del self.jobIDs[self.lsfJobIDs[jobID]]
@@ -277,4 +277,4 @@ class LSFBatchSystem(BatchSystemSupport):
 
         if self.maxCPU is 0 or self.maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
-        logger.info("Got the maxCPU: %s" % (self.maxMEM))
+        logger.debug("Got the maxCPU: %s" % (self.maxMEM))
