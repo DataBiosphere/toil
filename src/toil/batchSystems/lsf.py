@@ -157,13 +157,13 @@ class LSFBatchSystem(BatchSystemSupport):
         #Closes the file handle associated with the results file.
         self.lsfResultsFileHandle.close() #Close the results file, cos were done.
 
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, jobNode):
         jobID = self.nextJobID
         self.nextJobID += 1
         self.currentjobs.add(jobID)
-        bsubline = prepareBsub(cores, memory) + [command]
+        bsubline = prepareBsub(jobNode.cores, jobNode.memory) + [jobNode.command]
         self.newJobsQueue.put((jobID, bsubline))
-        logger.info("Issued the job command: %s with job id: %s " % (command, str(jobID)))
+        logger.info("Issued the job command: %s with job id: %s " % (jobNode.command, str(jobID)))
         return jobID
 
     def getLsfID(self, jobID):
@@ -222,16 +222,15 @@ class LSFBatchSystem(BatchSystemSupport):
         return times
 
     def getUpdatedBatchJob(self, maxWait):
-        i = None
         try:
             sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
             self.updatedJobsQueue.task_done()
-            i = (self.jobIDs[sgeJobID], retcode)
+            jobID, retcode = (self.jobIDs[sgeJobID], retcode)
             self.currentjobs -= {self.jobIDs[sgeJobID]}
         except Empty:
             pass
-
-        return i
+        else:
+            return jobID, retcode, None
 
     def getWaitDuration(self):
         """We give parasol a second to catch its breath (in seconds)

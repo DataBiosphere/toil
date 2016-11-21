@@ -13,13 +13,14 @@
 # limitations under the License.
 
 import logging
+import os
 import re
 import time
 from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize
+from bd2k.util import memoize, parse_iso_utc, less_strict_bool
 from bd2k.util.exceptions import require
 from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
@@ -33,7 +34,7 @@ from cgcloud.lib.util import (allocate_cluster_ordinals,
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners import awsRemainingBillingInterval
+from toil.provisioners import awsRemainingBillingInterval, _filterImpairedNodes
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -121,7 +122,8 @@ class CGCloudProvisioner(AbstractProvisioner):
         workerInstances = [i for i in instances
                            if i.id != self._instanceId  # exclude leader
                            and preemptable != (i.spot_instance_request_id is None)]
-        return workerInstances
+        instancesToTerminate = _filterImpairedNodes(workerInstances, self._ec2)
+        return instancesToTerminate
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):

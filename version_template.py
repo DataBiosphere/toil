@@ -22,7 +22,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 # Note to maintainers:
 #
-#  - don't import at module level unless you intend for the import to be included in the output
+#  - don't import at module level unless you want the imported value to be included in the output
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
 baseVersion = '3.5.0a1'
@@ -58,7 +58,12 @@ def distVersion():
     """
     from pkg_resources import parse_version
     build_number = buildNumber()
-    if build_number is not None and parse_version(baseVersion).is_prerelease:
+    parsedBaseVersion = parse_version(baseVersion)
+    if isinstance(parsedBaseVersion, tuple):
+        raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
+                           "'pip install setuptools --upgrade'")
+
+    if build_number is not None and parsedBaseVersion.is_prerelease:
         return baseVersion + '.dev' + build_number
     else:
         return baseVersion

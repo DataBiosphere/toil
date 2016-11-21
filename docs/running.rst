@@ -290,6 +290,69 @@ arguments for the workflow which includes both Toil's and ones defined inside
 found in :ref:`commandRef`.
 
 
+Environment Variable Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+There are several environment variables that affect the way Toil runs.
+
+TOIL_WORKDIR
+    An absolute path to a directory where Toil will write its
+    temporary files. This directory must exist on each worker node
+    and may be set to a different value on each worker. The --workDir command
+    line option overrides this. On Mesos nodes TOIL_WORKDIR generally defaults
+    to the Mesos sandbox, except on CGCloud-provisioned nodes where it
+    defaults to /var/lib/mesos. In all other cases, the
+    `systems standard <https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir>`_
+    directory for temporary directories is used.
+
+TOIL_TEST_TEMP
+    An absolute path to a directory where Toil tests will write their
+    temporary files. Defaults to the
+    `systems standard <https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir>`_
+    for temporary directories.
+
+TOIL_TEST_INTEGRATIVE
+    If 'True', this allows the integration tests to run. Only valid when
+    running the tests from the source directory via ``make test``.
+
+TOIL_TEST_EXPERIMENTAL
+    If 'True', this allows tests to runs on experimental
+    features, such as the Google and Azure job stores. Only valid when
+    running the tests from the source directory via ``make test``.
+
+TOIL_APPLIANCE_SELF
+    The tag of the Toil Appliance version to use. See :ref:`Autoscaling` and
+    :meth:`toil.applianceSelf` for more.
+
+TOIL_AWS_ZONE
+    Provides a way to set the EC2 zone to provision nodes in, if
+    using Toil's provisioner.
+
+TOIL_AWS_AMI
+    ID of the AMI to use in node provisioning. If in doubt, don't set this
+    variable.
+
+TOIL_AWS_NODE_DEBUG
+    Determines whether to preserve nodes that have failed health
+    checks. If set to 'True', nodes that EC2 fail health checks will never be
+    terminated so they can be examined and the cause of failure determined.
+    If any EC2 nodes are left behind in this manner, the security group
+    will also be left behind by necessity - it cannot be deleted until all the
+    nodes are gone.
+
+TOIL_SLURM_ARGS
+    Arguments for sbatch for the slurm batch system. Do not pass CPU or memory
+    specifications here - rather, define resource requirements for the job.
+    There is no default value for this variable.
+
+TOIL_GRIDENGINE_ARGS
+    Arguments for qsub for the gridengine batch system. Do not pass CPU or
+    memory specifications here - rather, define resource requirements
+    for the job. There is no default value for this variable.
+
+TOIL_GRIDENGINE_PE
+    Parallel environment arguments for qsub for the gridengine batch system.
+    There is no default value for this variable.
+
 Changing the log statements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

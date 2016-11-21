@@ -13,8 +13,13 @@
 # limitations under the License.
 from __future__ import absolute_import
 import datetime
-from bd2k.util import parse_iso_utc
+import logging
+import os
 
+from bd2k.util import parse_iso_utc, less_strict_bool
+
+
+logger = logging.getLogger(__name__)
 
 
 def awsRemainingBillingInterval(instance):
@@ -29,7 +34,24 @@ def awsRemainingBillingInterval(instance):
         now = datetime.datetime.utcnow()
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
+
     return 1.0 - partialBillingInterval(instance)
+
+
+def _filterImpairedNodes(nodes, ec2):
+    # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
+    # failing status checks so they can be debugged
+    nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
+    if not nodeDebug:
+        return nodes
+    nodeIDs = [node.id for node in nodes]
+    statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
+    statusMap = {status.id: status.instance_status for status in statuses}
+    healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+    impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
+    logger.warn('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
+                'will not be terminated.', ' '.join(impairedNodes))
+    return healthyNodes
 
 
 class Cluster(object):
