@@ -29,7 +29,6 @@ log = logging.getLogger(__name__)
 @needs_appliance
 class AWSProvisionerTest(ToilTest):
 
-
     def sshUtil(self, command):
         baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
         callCommand = baseCommand + command
@@ -76,22 +75,23 @@ class AWSProvisionerTest(ToilTest):
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=venv_command)
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download',
+                        '/home/venv']
+        self.sshUtil(venv_command)
 
-        upgrade_command = '/home/venv/bin/pip install setuptools==28.7.1'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=upgrade_command)
+        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        self.sshUtil(upgrade_command)
 
-        yaml_command = '/home/venv/bin/pip install pyyaml==3.12'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=yaml_command)
+        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
+        self.sshUtil(yaml_command)
 
         # install toil scripts
-        install_command = ('/home/venv/bin/pip install toil-scripts==%s' % self.toilScripts)
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
+        install_command = ['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts]
+        self.sshUtil(install_command)
 
         # install curl
-        install_command = 'sudo apt-get -y install curl'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
+        install_command = ['sudo', 'apt-get', '-y', 'install curl']
+        self.sshUtil(install_command)
 
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
