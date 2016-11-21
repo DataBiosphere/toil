@@ -1,4 +1,3 @@
-
 # -*- encoding: utf-8 -*-
 #
 # Copyright © 2012 New Dream Network, LLC (DreamHost)
@@ -36,12 +35,17 @@ def html_page_context(app, pagename, templatename, context, doctree):
     context['toc'] = rendered_toc
     context['display_toc'] = True  # force toctree to display
 
+    if "toctree" not in context:
+        # json builder doesn't use toctree func, so nothing to replace
+        return
+
     def make_toctree(collapse=True):
         return get_rendered_toctree(app.builder,
                                     pagename,
                                     prune=False,
                                     collapse=collapse,
                                     )
+
     context['toctree'] = make_toctree
 
 
