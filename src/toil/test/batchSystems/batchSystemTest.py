@@ -288,7 +288,8 @@ class hidden:
             """
             Tests that the result file name is formatted properly
             """
-            fileName = BatchSystemSupport._getResultsFileName(self._createConfig().jobStore)
+            # noinspection PyUnresolvedReferences
+            fileName = self.batchSystem._getResultsFileName(self._createConfig().jobStore)
             locator = self.config.jobStore
             self.assertTrue(locator.startswith('file:'))
             self.assertEqual(locator[len('file:'):], fileName)
