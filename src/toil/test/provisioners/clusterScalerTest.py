@@ -64,8 +64,8 @@ class ClusterScalerTest(ToilTest):
             randomJobShapes = map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs))
             startTime = time.time()
             numberOfBins = binPacking(randomJobShapes, nodeShape)
-            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds",
-                        nodeShape, numberOfJobs, numberOfBins, time.time() - startTime)
+            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds, %s jobs/bin" % 
+            (nodeShape, numberOfJobs, numberOfBins, time.time() - startTime, float(numberOfJobs)/numberOfBins))
 
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs):
         """

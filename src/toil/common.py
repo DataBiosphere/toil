@@ -107,7 +107,6 @@ class Config(object):
         self.servicePollingInterval = 60
         self.useAsync = True
 
-
         #Debug options
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
@@ -186,6 +185,7 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
 
+        
         setOption("environment", parseSetEnv)
 
         #Autoscaling options
@@ -876,13 +876,13 @@ class Toil(object):
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
-            from toil.leader import mainLoop
-            return mainLoop(config=self.config,
-                            batchSystem=self._batchSystem,
-                            provisioner=self._provisioner,
-                            jobStore=self._jobStore,
-                            rootJobWrapper=rootJob,
-                            jobCache=self._jobCache)
+            from toil.leader import Leader
+            return Leader(config=self.config,
+                          batchSystem=self._batchSystem,
+                          provisioner=self._provisioner,
+                          jobStore=self._jobStore,
+                          rootJobWrapper=rootJob,
+                          jobCache=self._jobCache).run()
 
     def _shutdownBatchSystem(self):
         """

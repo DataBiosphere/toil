@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # preemptable nodes that we have and need for just non-preemptable jobs. However, we may still
 # prefer waiting for preemptable instances to come available.
 #
-# To accomodate this, we set the delta to the difference between the number of provisioned
+# To accommodate this, we set the delta to the difference between the number of provisioned
 # preemptable nodes and the number of nodes that were requested. when the non-preemptable thread
 # wants to provision nodes, it will multiply this delta times a preference for preemptable vs.
 # non-preemptable nodes.
@@ -102,9 +102,11 @@ def binPacking(jobShapes, nodeShape):
               the jobs in jobShapes.
     """
     logger.debug('Running bin packing for node shape %s and %s job(s).', nodeShape, len(jobShapes))
-    # Sort in ascending order. The FFD like-strategy will schedule the jobs in order from longest
+    # Sort in descending order from largest to smallest. The FFD like-strategy will pack the jobs in order from longest
     # to shortest.
     jobShapes.sort()
+    jobShapes.reverse()
+    assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
 
     class NodeReservation(object):
         """
@@ -136,7 +138,7 @@ def binPacking(jobShapes, nodeShape):
 
             def subtract(x, y):
                 """
-                Adjust available the resources of a node allocation as a job is scheduled within it.
+                Adjust available resources of a node allocation as a job is scheduled within it.
                 """
                 return Shape(x.wallTime, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk)
 
@@ -147,7 +149,7 @@ def binPacking(jobShapes, nodeShape):
                 return (Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk),
                         NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk)))
 
-            i = 0
+            i = 0 # Index of node reservation
             while True:
                 # Case a new node reservation is required
                 if i == len(nodeReservations):
@@ -165,11 +167,13 @@ def binPacking(jobShapes, nodeShape):
                 x = nodeReservations[i]
                 y = x
                 t = 0
+                
                 while True:
                     if fits(y.shape, jS):
                         t += y.shape.wallTime
+                        
+                        # If the jS fits in the node allocation from x to y
                         if t >= jS.wallTime:
-                            # Insert into reservation between x and y and return
                             t = 0
                             while x != y:
                                 x.shape = subtract(x.shape, jS)
@@ -184,10 +188,18 @@ def binPacking(jobShapes, nodeShape):
                             else:
                                 assert jS.wallTime - t == x.shape.wallTime
                                 x.shape = subtract(x.shape, jS)
-                            return
-                    else:
+                            return 
+                        
+                        # If the job would fit, but is longer than the total node allocation
+                        # extend the node allocation
+                        elif y.nReservation == None and x == nodeReservations[i]:
+                            # Extend the node reservation to accommodate jS
+                            y.nReservation = NodeReservation(nodeShape)
+                        
+                    else: # Does not fit, reset
                         x = y.nReservation
                         t = 0
+                        
                     y = y.nReservation
                     if y is None:
                         # Reached the end of the reservation without success so stop trying to
@@ -320,18 +332,44 @@ class ScalerThread(ExceptionalThread):
         logger.info('Starting with %s node(s) in the cluster.', totalNodes)
         while not self.scaler.stop:
             with throttle(self.scaler.config.scaleInterval):
-                # Calculate the approx. number nodes needed
-                # TODO: Correct for jobs already running which can be considered fractions of a job
-                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
 
+                # Number of jobs issued
+                # TODO: Make this call thread safe
+                queueSize = self.scaler.jobBatcher.getNumberOfJobsIssued(preemptable=self.preemptable)
+                
+                # Job shapes of completed jobs
                 recentJobShapes = self.jobShapes.get()
                 assert len(recentJobShapes) > 0
+                
+                # Estimate of number of nodes needed to run recent jobs
                 nodesToRunRecentJobs = binPacking(recentJobShapes, self.nodeShape)
+                
+                # Actual calculation of the estimated number of nodes required
                 estimatedNodes = 0 if queueSize == 0 else max(1, int(round(
                     self.scaler.config.alphaPacking
                     * nodesToRunRecentJobs
-                    * float(queueSize)
-                    / len(recentJobShapes))))
+                    * float(queueSize) / len(recentJobShapes))))
+                
+                # Account for case where the average historical runtime of completed jobs is less
+                # than the runtime of currently running jobs. This is important
+                # to avoid a deadlock where the estimated number of nodes to run the jobs
+                # is too small to schedule a set service jobs and their dependent jobs, leading
+                # to service jobs running indefinitely.
+                
+                # Running jobs and how long they have been running
+                runningJobs = self.scaler.jobBatcher.batchSystem.getRunningBatchJobIDs()
+                
+                # Ratio of avg. runtime of currently running and completed jobs
+                historicalAvgRuntime = sum(map(lambda jS : jS.walltime, recentJobShapes))
+                currentAvgRuntime = sum(runningJobs.values())/len(runningJobs)
+                runtimeCorrection = float(currentAvgRuntime)/historicalAvgRuntime
+                
+                # Make correction, if necessary
+                if currentAvgRuntime > historicalAvgRuntime and len(runningJobs) >= estimatedNodes:
+                    logger.warn("Historical avg. runtime (%s) is less than current avg. runtime (%s) and cluster"
+                                " is being well utilised (%s running jobs), increasing cluster requirement by: %s" % 
+                                (historicalAvgRuntime, currentAvgRuntime, len(runningJobs), runtimeCorrection))
+                    estimatedNodes *= runtimeCorrection
 
                 # If we're the non-preemptable scaler, we need to see if we have a deficit of
                 # preemptable nodes that we should compensate for.
@@ -348,11 +386,11 @@ class ScalerThread(ExceptionalThread):
 
                 fix_my_name = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
-                logger.debug('Estimating that cluster needs %s nodes of shape %s, from current '
+                logger.info('Estimating that cluster needs %s nodes of shape %s, from current '
                              'size of %s, given a queue size of %s, the number of jobs per node '
-                             'estimated to be %s and an alpha parameter of %s.',
+                             'estimated to be %s, an alpha parameter of %s and a run-time length correction of %s.',
                              estimatedNodes, self.nodeShape, totalNodes, queueSize, fix_my_name,
-                             self.scaler.config.alphaPacking)
+                             self.scaler.config.alphaPacking, runtimeCorrection)
 
                 # Use inertia parameter to stop small fluctuations
                 if estimatedNodes <= totalNodes * self.scaler.config.betaInertia <= estimatedNodes:
