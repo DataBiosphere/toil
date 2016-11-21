@@ -53,7 +53,21 @@ class StatsAndLogging( object ):
         self._worker.start()
 
     @classmethod
-    def writeLogFiles(cls, jobStoreID, jobLogList, config):
+    def writeLogFiles(cls, jobNames, jobLogList, config):
+        def createName(logPath, jobName, logExtension):
+            logName = jobName.replace('-', '--')
+            logName = logName.replace('/', '-')
+            logName = logName.replace(' ', '_')
+            logName = logName.replace("'", '')
+            counter = 0
+            while True:
+                suffix = str(counter).zfill(3) + logExtension
+                fullName = os.path.join(logPath, logName + suffix)
+                if not os.path.exists(fullName):
+                    return fullName
+                counter += 1
+
+        mainFileName = jobNames[0]
         path = None
         writeFn = None
         extension = '.log'
@@ -67,17 +81,14 @@ class StatsAndLogging( object ):
         if path is None:
             # we don't have anywhere to write the logs, return now
             return
-        logName = jobStoreID.replace('-', '--')
-        logName = logName.replace('/', '-')
-        counter = 0
-        while True:
-            suffix = str(counter).zfill(3) + extension
-            fullName = os.path.join(path, logName + suffix)
-            if not os.path.exists(fullName):
-                break
-            counter += 1
+        fullName = createName(path, mainFileName, extension)
         with writeFn(fullName, 'w') as f:
             f.writelines(l + '\n' for l in jobLogList)
+        for alternateName in jobNames[1:]:
+            # There are chained jobs in this output - indicate this with a symlink
+            # of the job's name to this file
+            name = createName(path, alternateName, extension)
+            os.symlink(fullName, name)
 
     @classmethod
     def statsAndLoggingAggregator(cls, jobStore, stop):
@@ -112,23 +123,10 @@ class StatsAndLogging( object ):
                     logger.debug('Received Toil worker log. Disable debug level '
                                  'logging to hide this output\n%s', logFormat.join(jobLogs))
                 # we may have multiple jobs per worker
-                # logs[0] is guaranteed to exist in this branch
-                currentJobStoreID = logs[0].jobStoreID
-                jobLogs = []
-                for log in logs:
-                    jobStoreID = log.jobStoreID
-                    if jobStoreID == currentJobStoreID:
-                        # aggregate all the job's logs into 1 list
-                        jobLogs.append(log.text)
-                    else:
-                        # we have reached the next job, output the aggregated logs and continue
-                        logWithFormatting(currentJobStoreID, jobLogs)
-                        cls.writeLogFiles(currentJobStoreID, jobLogs, config=config)
-                        jobLogs = []
-                        currentJobStoreID = jobStoreID
-                # output the last job's logs
-                logWithFormatting(currentJobStoreID, jobLogs)
-                cls.writeLogFiles(currentJobStoreID, jobLogs, config=config)
+                jobNames = logs.names
+                messages = logs.messages
+                logWithFormatting(jobNames[0], messages)
+                cls.writeLogFiles(jobNames, messages, config=config)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
@@ -360,11 +358,11 @@ class JobBatcher:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    messages = (line.rstrip('\n') for line in logFileStream)
+                    messages = [line.rstrip('\n') for line in logFileStream]
                     logFormat = '\n%s    ' % jobStoreID
                     logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
                                 jobGraph, logFormat.join(messages))
-                    StatsAndLogging.writeLogFiles(jobStoreID, messages, self.config)
+                    StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, messages, self.config)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
