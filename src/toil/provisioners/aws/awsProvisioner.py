@@ -32,13 +32,13 @@ from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import awsRemainingBillingInterval
+from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes
 
 logger = logging.getLogger(__name__)
 
 
 
-class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
+class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, config, batchSystem):
         super(AWSProvisioner, self).__init__(config, batchSystem)
@@ -81,6 +81,9 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.info('SSH ready')
         tty = sys.stdin.isatty()
         cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+
+    def _remainingBillingInterval(self, instance):
+        return awsRemainingBillingInterval(instance)
 
     @classmethod
     @memoize
@@ -253,10 +256,10 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        instancesToTerminate = cls._filterImpairedNodes(instances, ctx.ec2)
+        instancesToTerminate = awsFilterImpairedNodes(instances, ctx.ec2)
         if instancesToTerminate:
             cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
-            cls._terminateInstance(instances=instancesToTerminate, ctx=ctx)
+            cls._terminateInstances(instances=instancesToTerminate, ctx=ctx)
         if len(instances) == len(instancesToTerminate):
             logger.info('Deleting security group...')
             for attempt in retry_ec2(retry_after=30, retry_for=300, retry_while=expectedShutdownErrors):
@@ -414,7 +417,8 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         logger.debug('All nodes in cluster %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP and
                            preemptable != (i.spot_instance_request_id is None)]
-        logger.debug('Workers found in cluster after filtering %s', workerInstances)
+        logger.debug('Workers found in cluster %s', workerInstances)
+        workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return workerInstances
 
     @classmethod

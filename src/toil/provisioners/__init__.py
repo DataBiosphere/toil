@@ -38,7 +38,7 @@ def awsRemainingBillingInterval(instance):
     return 1.0 - partialBillingInterval(instance)
 
 
-def _filterImpairedNodes(nodes, ec2):
+def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
     nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))

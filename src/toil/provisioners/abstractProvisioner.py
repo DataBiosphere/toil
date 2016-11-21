@@ -79,7 +79,7 @@ class AbstractProvisioner(object):
                                                         preemptable=preemptable)
         elif delta < 0:
             log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
-            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
+            numNodes = numCurrentNodes - self._removeNodes(numCurrentNodes,
                                                            numNodes=-delta,
                                                            preemptable=preemptable,
                                                            force=force)

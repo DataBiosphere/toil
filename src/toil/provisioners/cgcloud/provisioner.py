@@ -34,7 +34,7 @@ from cgcloud.lib.util import (allocate_cluster_ordinals,
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners import awsRemainingBillingInterval, _filterImpairedNodes
+from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -122,7 +122,7 @@ class CGCloudProvisioner(AbstractProvisioner):
         workerInstances = [i for i in instances
                            if i.id != self._instanceId  # exclude leader
                            and preemptable != (i.spot_instance_request_id is None)]
-        instancesToTerminate = _filterImpairedNodes(workerInstances, self._ec2)
+        instancesToTerminate = awsFilterImpairedNodes(workerInstances, self._ec2)
         return instancesToTerminate
 
     @classmethod
