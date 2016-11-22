@@ -17,19 +17,21 @@ from __future__ import absolute_import
 import os
 import sys
 import uuid
-from StringIO import StringIO
 from subprocess import CalledProcessError, check_call
 
 import toil
+import logging
 import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
-from toil.lib.bioio import getTempFile
-from toil.lib.bioio import system
+from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
+
+
+logger = logging.getLogger(__name__)
 
 
 class UtilsTest(ToilTest):
@@ -89,18 +91,25 @@ class UtilsTest(ToilTest):
             system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
                     clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
-            compareTo = "import sys; assert sys.argv[1]=='testString'"
-            AWSProvisioner.sshLeader(clusterName=clusterName,
-                                     args=['python', '-', 'testString'],
-                                     input=compareTo)
-            compareTo = "import sys; assert sys.argv[1]=='  testString'"
-            AWSProvisioner.sshLeader(clusterName=clusterName,
-                                     args=['python', '-', '  testString'],
-                                     input=compareTo)
-            compareTo = "import sys; assert sys.argv[1]=='$PATH'"
-            AWSProvisioner.sshLeader(clusterName=clusterName,
-                                     args=['python', '-', '$PATH'],
-                                     input=compareTo)
+
+            testStrings = ["'foo'",
+                           '"foo"',
+                           '  foo',
+                           '$PATH',
+                           '"',
+                           "'",
+                           '\\',
+                           '| cat',
+                           '&& cat',
+                           '; cat'
+                           ]
+            for test in testStrings:
+                logger.info('Testing SSH with special string: %s', test)
+                compareTo = "import sys; assert sys.argv[1]==%s" % test
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['python', '-', test],
+                                         input=compareTo)
+
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 
