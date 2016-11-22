@@ -89,10 +89,6 @@ class AWSProvisionerTest(ToilTest):
         install_command = ['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts]
         self.sshUtil(install_command)
 
-        # install curl
-        install_command = ['sudo', 'apt-get', '-y', 'install curl']
-        self.sshUtil(install_command)
-
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
                        '--mesosMaster=%s:5050' % leader.private_ip_address,
