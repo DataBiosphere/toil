@@ -144,6 +144,11 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
             kwargs['stdin'] = subprocess.PIPE
         popen = subprocess.Popen(commandTokens, **kwargs)
         stdout, stderr = popen.communicate(input=inputString)
+        # at this point the process has already exited, no need for a timeout
+        resultValue = popen.wait()
+        if resultValue != 0:
+            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
+                               'exit code.' % ' '.join(args))
         assert stderr is None
 
     @classmethod
