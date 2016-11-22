@@ -120,7 +120,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             with attempt:
                 dstBucket = s3.get_bucket(dstBucketName)
                 upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
-        log.debug("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
+        log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
                  srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
         try:
             # We can oversubscribe cores by at least a factor of 16 since each copy task just
@@ -138,7 +138,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             for attempt in retry_s3():
                 with attempt:
                     completed = upload.complete_upload()
-                    log.debug("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
+                    log.info("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
                              srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
                     return completed
 

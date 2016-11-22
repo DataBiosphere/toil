@@ -170,7 +170,8 @@ class JobBatcher:
         logger.debug("Issued %s job: %s and job batch system ID: "
                      "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
                      'preemptable' if jobNode.preemptable else 'non-preemptable',
-                     jobNode, jobNode.cores, jobNode.disk, jobNode.memory)
+                     jobNode, jobBatchSystemID, jobNode.cores,
+                     jobNode.disk, jobNode.memory)
 
     def issueJobs(self, jobs):
         """
@@ -1108,10 +1109,13 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     if jobGraph.remainingRetryCount > 0:
                         jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
                         logger.debug("Job: %s is empty, we are scheduling to clean it up", jobGraph)
-                    else:
+                    elif jobGraph.checkpoint is not None:
+                        # The worker likely crashed before this checkpoint could be
+                        # cleaned up.
                         jobBatcher.processTotallyFailedJob(jobGraph)
-                        logger.critical("Job: %s is empty but completely failed - something is "
-                                        "very wrong", jobGraph)
+                    else:
+                        raise RuntimeError("Job: %s is empty but completely failed - the job "
+                                           "store was not properly cleaned up" % jobGraph)
 
         # The exit criterion
         if len(toilState.updatedJobs) == 0 and jobBatcher.getNumberOfJobsIssued() == 0 and serviceManager.serviceJobsIssuedToServiceManager == 0:
@@ -1127,7 +1131,6 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
             logger.info('Launching service job: %s', serviceJob)
             # This loop issues the jobs to the batch system because the batch system is not
             # thread-safe. FIXME: don't understand this comment
-            # x = JobNode(jobStoreID=serviceJobStoreID, job=
             jobBatcher.issueJob(serviceJob)
 
         # Get jobs whose services have started
