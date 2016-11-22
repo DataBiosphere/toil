@@ -15,7 +15,6 @@ import sys
 import os
 import inspect
 import re
-import subprocess
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -23,6 +22,10 @@ import subprocess
 sys.path.insert(0, os.path.abspath('../src'))
 
 import toil.version
+
+# This makes the modules located in docs/vendor available to import
+sys.path.insert(0, os.path.abspath('./vendor'))
+import sphinxcontrib.fulltoc
 
 
 def real_dir_name(p, n=1):
@@ -53,6 +56,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
+    'sphinxcontrib.fulltoc',
 ]
 
 
