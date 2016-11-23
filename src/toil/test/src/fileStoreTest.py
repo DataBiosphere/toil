@@ -462,6 +462,8 @@ class hidden:
             the chain.  This tests whether the cache is created properly even when the job crashes
             randomly.
             """
+            if testingIsAutomatic and self.jobStoreType != 'file':
+                self.skipTest("To save time")
             self.options.retryCount = 20
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
@@ -1270,10 +1272,6 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(CachingFileStoreTestWithAwsJobStore, self).testExtremeCacheSetup()
-
 
 @needs_azure
 @experimental
@@ -1286,10 +1284,6 @@ class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStor
 class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'azure'
 
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(CachingFileStoreTestWithAzureJobStore, self).testExtremeCacheSetup()
-
 
 @experimental
 @needs_google
@@ -1301,10 +1295,6 @@ class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileSto
 @needs_google
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'
-
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(CachingFileStoreTestWithGoogleJobStore, self).testExtremeCacheSetup()
 
 
 def _exportStaticMethodAsGlobalFunctions(cls):

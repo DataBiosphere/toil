@@ -395,8 +395,8 @@ class CachingFileStore(FileStore):
     reduce I/O between, and during jobs.
     """
 
-    def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
-        super(CachingFileStore, self).__init__(jobStore, jobWrapper, localTempDir, inputBlockFn)
+    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
+        super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # Variables related to asynchronous writes.
         self.workerNumber = 2
         self.queue = Queue()
@@ -434,7 +434,6 @@ class CachingFileStore(FileStore):
         """
         This context manager decorated method allows cache-specific operations to be conducted
         before and after the execution of a job in worker.py
-        :param job: job
         """
         # Create a working directory for the job
         startingDir = os.getcwd()
@@ -567,8 +566,8 @@ class CachingFileStore(FileStore):
                complete.
         :param boolean mutable: If True, the file path returned points to a file that is
                modifiable by the user. Using False is recommended as it saves disk by making
-               multiple workers share a file via hard links. The value defaults to False unless
-               backwards compatibility was requested.
+               multiple workers share a file via hard links. The default is False unless backwards
+               compatibility was requested.
         """
         # Check that the file hasn't been deleted by the user
         if fileStoreID in self.filesToDelete:
@@ -1047,16 +1046,10 @@ class CachingFileStore(FileStore):
         :return: A boolean indicating whether the file is hidden or not.
         :rtype: bool
         """
-        # >>> timeit.timeit('x = a[0] in {".", "_"}', setup='a=".abc"', number=1000000)
-        # 0.14043903350830078
-        # >>> timeit.timeit('x = (a.startswith(".") or a.startswith("_"))', ...)
-        # 0.216400146484375
-        # >>> timeit.timeit('x = a.startswith((".", "_"))', ...)
-        # 0.21130609512329102
         assert isinstance(filePath, str)
         # I can safely assume i will never see an empty string because this is always called on
         # the results of an os.listdir()
-        return filePath[0] in {'.', '_'}
+        return filePath[0] in ('.', '_')
 
     def cleanCache(self, newJobReqs):
         """
@@ -1554,8 +1547,8 @@ class CachingFileStore(FileStore):
 
 
 class NonCachingFileStore(FileStore):
-    def __init__(self, jobStore, jobWrapper, localTempDir, inputBlockFn):
-        super(NonCachingFileStore, self).__init__(jobStore, jobWrapper, localTempDir, inputBlockFn)
+    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
+        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = collections.defaultdict(list)
@@ -1806,7 +1799,8 @@ def shutdownFileStore(workflowDir, workflowID):
     and carry out any necessary filestore-specific cleanup.
 
     This is a destructive operation and it is important to ensure that there are no other running
-    jobs on the system.
+    processes on the system that are modifying or using the file store for this workflow.
+
 
     This is the intended to be the last call to the file store in a Toil run, called by the
     batch system cleanup function upon batch system shutdown.
