@@ -110,6 +110,15 @@ class UtilsTest(ToilTest):
                                          args=['python', '-', test],
                                          input=compareTo)
 
+            try:
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['nonsenseShouldFail'])
+            except RuntimeError:
+                pass
+            else:
+                self.fail('The remote command failed silently where it should have '
+                          'raised an error')
+
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 
