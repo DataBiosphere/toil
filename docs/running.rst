@@ -65,6 +65,8 @@ support for the stable v1.0 specification, only lacking the following features:
   a good workaround.
 - `File literals <http://www.commonwl.org/v1.0/CommandLineTool.html#File>`_ that
   specify only ``contents`` to a File without an explicit file name.
+- Complex file inputs -- from ExpressionTool or a default value, both of which do not yet
+  get cleanly staged into Toil file management.
 
 To run in local batch mode, provide the CWL file and the input object file::
 
