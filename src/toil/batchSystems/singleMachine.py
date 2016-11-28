@@ -112,7 +112,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk', self.acquisitionTimeout)
 
-        log.info('Setting up the thread pool with %i workers, '
+        log.debug('Setting up the thread pool with %i workers, '
                  'given a minimum CPU fraction of %f '
                  'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
         for i in xrange(self.numWorkers):
@@ -168,7 +168,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                   jobCores)
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
-                                log.info("Executing command: '%s'.", self._getDebugCmd(jobCommand))
+                                log.debug("Executing command: '%s'.", self._getDebugCmd(jobCommand))
                                 startTime = time.time() #Time job is started
                                 with self.popenLock:
                                     popen = subprocess.Popen(jobCommand,

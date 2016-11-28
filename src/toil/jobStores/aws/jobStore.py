@@ -659,7 +659,7 @@ class AWSJobStore(AbstractJobStore):
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        log.info("Binding to job store bucket '%s'.", bucket_name)
+        log.debug("Binding to job store bucket '%s'.", bucket_name)
 
         def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
@@ -718,7 +718,7 @@ class AWSJobStore(AbstractJobStore):
         :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
                 retry timeout expires.
         """
-        log.info("Binding to job store domain '%s'.", domain_name)
+        log.debug("Binding to job store domain '%s'.", domain_name)
         for attempt in retry_sdb(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e)):
             with attempt:
                 try:
