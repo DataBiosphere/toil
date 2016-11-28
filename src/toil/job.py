@@ -294,11 +294,11 @@ class Job(JobLikeObject):
         """
         Override this function to perform work and dynamically create successor jobs.
 
-        :param toil.job.Job.FileStore fileStore: Used to create local and globally \
-        sharable temporary files and to send log messages to the leader process.
+        :param toil.fileStore.FileStore fileStore: Used to create local and globally
+               sharable temporary files and to send log messages to the leader process.
 
-        :return: The return value of the function can be passed to other jobs \
-        by means of :func:`toil.job.Job.rv`.
+        :return: The return value of the function can be passed to other jobs by means of
+                 :func:`toil.job.Job.rv`.
         """
         pass
 
@@ -676,7 +676,6 @@ class Job(JobLikeObject):
     ####################################################
     #The following nested classes are used for
     #creating jobtrees (Job.Runner),
-    #managing temporary files (Job.FileStore),
     #and defining a service (Job.Service)
     ####################################################
 
@@ -1267,7 +1266,8 @@ class Job(JobLikeObject):
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
-        :param class fileStore: Instance of Job.FileStore or Job.CachedFileStore
+        :param toil.fileStore.FileStore fileStore: Instance of a Cached on uncached
+               filestore
         :return:
         """
         # Run the job
@@ -1377,7 +1377,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     add successor jobs for the function and perform all the functions the \
     :class:`job.Job` class provides.
 
-    To enable the job function to get access to the :class:`toil.job.Job.FileStore` \
+    To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
     instance (see :func:`toil.job.Job.Run`), it is made a variable of the wrapping job \
     called fileStore.
     """
