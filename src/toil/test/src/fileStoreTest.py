@@ -702,6 +702,7 @@ class hidden:
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
 
+        @unittest.skip('This test is currently non-deterministic')
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
