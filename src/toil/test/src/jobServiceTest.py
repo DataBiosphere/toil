@@ -26,7 +26,7 @@ import logging
 logger = logging.getLogger( __name__ )
 from unittest import skipIf
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.leader import FailedJobsException
+from toil.leader import FailedJobsException, DeadlockException
 
 class JobServiceTest(ToilTest):
     """
@@ -66,7 +66,36 @@ class JobServiceTest(ToilTest):
                 self.assertEquals(int(open(outFile, 'r').readline()), messageInt)
             finally:
                 os.remove(outFile)
-
+                
+    def testServiceDeadlock(self):
+        """
+        Creates a job with more services than maxServices, checks that deadlock is detected.
+        """
+        outFile = getTempFile(rootDir=self._createTempDir())
+        try:
+            def makeWorkflow():
+                job = Job()
+                r1 = job.addService(TestServiceSerialization("woot1"))
+                r2 = job.addService(TestServiceSerialization("woot2"))
+                r3 = job.addService(TestServiceSerialization("woot3"))
+                job.addChildFn(fnTest, [ r1, r2, r3 ], outFile)
+                return job
+            
+            # This should fail as too few services available
+            try:
+                self.runToil(makeWorkflow(), badWorker=0.0, maxServiceJobs=2, deadlockWait=5)
+            except DeadlockException:
+                print "Got expected deadlock exception"
+            else:
+                assert 0
+                
+            # This should pass, as adequate services available
+            self.runToil(makeWorkflow(), maxServiceJobs=3)
+            # Check we get expected output 
+            assert open(outFile, 'r').read() == "woot1 woot2 woot3"
+        finally:
+            os.remove(outFile)
+             
     def testServiceWithCheckpoints(self):
         """
         Tests the creation of a Job.Service with random failures of the worker, making the root job use checkpointing to 
@@ -119,15 +148,17 @@ class JobServiceTest(ToilTest):
             finally:
                 map(os.remove, outFiles)
 
-    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05):
+    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05, maxServiceJobs=sys.maxint, deadlockWait=60):
         # Create the runner for the workflow.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
 
         options.retryCount = retryCount
         options.badWorker = badWorker
         options.badWorkerFailInterval = badWorkedFailInterval
         options.servicePollingInterval = 1
+        options.maxServiceJobs = maxServiceJobs
+        options.deadlockWait=deadlockWait
 
         # Run the workflow
         totalTrys = 0
@@ -311,3 +342,12 @@ class TestServiceSerialization(Job.Service):
 
     def check(self):
         return True
+    
+def fnTest(strings, outputFile):
+    """
+    Function concatenates the strings together and writes them to the output file
+    """
+    with open(outputFile, 'w') as fH:
+        fH.write(" ".join(strings))
+    
+

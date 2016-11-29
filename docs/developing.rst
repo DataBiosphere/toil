@@ -596,6 +596,7 @@ Example::
 
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
+.. _service-dev-ref:
 
 Services
 --------
