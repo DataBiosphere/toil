@@ -20,15 +20,18 @@ import uuid
 from subprocess import CalledProcessError, check_call
 
 import toil
+import logging
 import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
-from toil.lib.bioio import getTempFile
-from toil.lib.bioio import system
+from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
+
+
+logger = logging.getLogger(__name__)
 
 
 class UtilsTest(ToilTest):
@@ -79,14 +82,43 @@ class UtilsTest(ToilTest):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         try:
             system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
-                 clusterName, '--provisioner=aws'])
+                    clusterName, '--provisioner=aws'])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
                     clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
+
+            testStrings = ["'foo'",
+                           '"foo"',
+                           '  foo',
+                           '$PATH',
+                           '"',
+                           "'",
+                           '\\',
+                           '| cat',
+                           '&& cat',
+                           '; cat'
+                           ]
+            for test in testStrings:
+                logger.info('Testing SSH with special string: %s', test)
+                compareTo = "import sys; assert sys.argv[1]==%r" % test
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['python', '-', test],
+                                         input=compareTo)
+
+            try:
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['nonsenseShouldFail'])
+            except RuntimeError:
+                pass
+            else:
+                self.fail('The remote command failed silently where it should have '
+                          'raised an error')
+
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
 

@@ -218,15 +218,13 @@ class AzureJobStore(AbstractJobStore):
             if total_processed % 1000 == 0:
                 # Produce some feedback for the user, because this can take
                 # a long time on, for example, Azure
-                logger.info("Processed %d total jobs" % total_processed)
+                logger.debug("Processed %d total jobs" % total_processed)
 
-        logger.info("Processed %d total jobs" % total_processed)
+        logger.debug("Processed %d total jobs" % total_processed)
 
     def create(self, jobNode):
         jobStoreID = self._newJobID()
-        job = AzureJob(jobStoreID=jobStoreID, command=jobNode.command, name=jobNode.name, job=jobNode.job,
-                       remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                       predecessorNumber=jobNode.predecessorNumber, **jobNode._requirements)
+        job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
         self.jobItems.insert_entity(entity=entity)

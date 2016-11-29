@@ -58,7 +58,7 @@ class MesosExecutor(mesos.interface.Executor):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
-        log.info("Registered with framework")
+        log.debug("Registered with framework")
         self.address = socket.gethostbyname(slaveInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
         nodeInfoThread.daemon = True
@@ -68,7 +68,7 @@ class MesosExecutor(mesos.interface.Executor):
         """
         Invoked when the executor re-registers with a restarted slave.
         """
-        log.info("Re-registered")
+        log.debug("Re-registered")
 
     def disconnected(self, driver):
         """

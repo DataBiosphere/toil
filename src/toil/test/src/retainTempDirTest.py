@@ -20,7 +20,7 @@ from toil.test import ToilTest
 
 class CleanWorkDirTest(ToilTest):
     """
-    Tests testing the Job.FileStore class
+    Tests testing :class:toil.fileStore.FileStore
     """
     def setUp(self):
         super(CleanWorkDirTest, self).setUp()

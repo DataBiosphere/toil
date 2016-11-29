@@ -262,11 +262,11 @@ pipeline that performs merge-sort on a temporary file.
         if __name__ == '__main__':
             main()
 
-2. Run with default settings:: 
+2. Run with default settings::
 
         python toil-sort-example.py file:jobStore.
 
-3. Run with custom options:: 
+3. Run with custom options::
 
         python toil-sort-example.py file:jobStore \
                --num-lines=5000 \
@@ -365,7 +365,7 @@ logLevel, we can change what we see output to screen. For only CRITICAL level
 messages::
 
    python toil-sort-examply.py file:jobStore --logLevel=critical
-   
+
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
 output. For more information see :ref:`loggingRef`.
@@ -382,7 +382,7 @@ looks like in Toil, and how we would go about resuming the pipeline. On line
 ::
 
    python toil-sort-example.py file:jobStore
-   
+
 we'll see a failure log under the header ``---TOIL WORKER OUTPUT LOG---``, that
 contains the stack trace. We see a detailed message telling us that on line 30,
 in the ``down`` function, we encountered an error.
@@ -393,14 +393,14 @@ store is that it is not cleaned up in the event of failure so that you can
 restart it from the last succesful job. We can restart the pipeline by running
 
 ::
-   
+
    python toil-sort-example.py file:jobStore --restart
-   
-   
+
+
 We can also change the number of times Toil will attempt to retry a failed job::
-   
+
    python toil-sort-example.py --retryCount 2 --restart
-   
+
 You'll now see Toil attempt to rerun the failed job, decrementing a counter
 until that job has exhausted the retry count. ``--retryCount`` is useful for
 non-systemic errors, like downloading a file that may experience a sporadic
@@ -412,7 +412,7 @@ line 30, or remove it, and then run
 ::
 
    python toil-sort-example.py --restart
-   
+
 The pipeline will successfully complete, and the job store will be removed.
 
 
@@ -424,9 +424,9 @@ We can execute the pipeline to let use retrieve statistics with
 ::
 
    python toil-sort-example.py --stats
-   
+
 Our pipeline will finish successfully, but leave behind the job store. Now we
-can type 
+can type
 
 ::
 
@@ -435,7 +435,7 @@ can type
 and get back information about total runtime and stats pertaining to each job
 function.
 
-We can then cleanup our jobStore by running 
+We can then cleanup our jobStore by running
 
 ::
 
@@ -449,7 +449,7 @@ There are several recommended ways to run Toil jobs in the cloud. Of these,
 running on Amazon Web Services (AWS) is currently the best-supported solution.
 
 On all cloud providers, it is recommended that you run long-running jobs on
-remote systems under ``screen``. Simply type ``screen`` to open a new ``screen`
+remote systems under ``screen``. Simply type ``screen`` to open a new ``screen``
 session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run
 ``screen -r`` to reconnect to it. Commands running under ``screen`` will
 continue running even when you are disconnected, allowing you to unplug your

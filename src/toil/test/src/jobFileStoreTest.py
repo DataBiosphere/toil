@@ -22,9 +22,12 @@ from toil.test import ToilTest
 
 PREFIX_LENGTH=200
 
+
+# TODO: This test is ancient and while similar tests exist in `fileStoreTest.py`, none of them look
+# at the contents of read files and thus we will let this test remain as-is.
 class JobFileStoreTest(ToilTest):
     """
-    Tests testing the Job.FileStore class
+    Tests testing the methods defined in :class:toil.fileStore.FileStore.
     """
     def testCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -37,12 +40,12 @@ class JobFileStoreTest(ToilTest):
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
-    def testJobFileStoreWithSmallCache(self, retryCount=0, badWorker=0.0,
-                         stringNo=1, stringLength=1000000, cacheSize=10000, testNo=2):
+    def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
+                          testNo=2):
         """
         Creates a chain of jobs, each reading and writing files using the 
-        Job.FileStore interface. Verifies the files written are always what we expect.
-        The chain tests the caching behavior. 
+        toil.fileStore.FileStore interface. Verifies the files written are always what we
+        expect.
         """
         for test in xrange(testNo):
             #Make a list of random strings, each of 100k chars and hash the first 200 
@@ -55,7 +58,6 @@ class JobFileStoreTest(ToilTest):
             testStrings = dict(map(lambda i : randomString(), xrange(stringNo)))
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
-            options.cacheSize = cacheSize
             options.retryCount=retryCount
             options.badWorker=badWorker
             options.badWorkerFailInterval = 1.0
@@ -64,35 +66,24 @@ class JobFileStoreTest(ToilTest):
             Job.Runner.startToil(Job.wrapJobFn(fileTestJob, [], 
                                                testStrings, chainLength), 
                                  options)
-            
-    def testJobFileStoreWithOverLargeCache(self):
-        """
-        Tests case that all files are cached.
-        """
-        self.testJobFileStoreWithSmallCache(retryCount=0, badWorker=0.0, 
-                         stringNo=5, stringLength=1000000, 
-                         cacheSize=10000000)
         
-    def testJobFileStoreWithMediumCache(self):
+    def testJobFileStore(self):
         """
         Tests case that about half the files are cached
         """
-        self.testJobFileStoreWithSmallCache(retryCount=0, badWorker=0.0, 
-                         stringNo=5, stringLength=1000000, 
-                         cacheSize=3000000)
+        self._testJobFileStore(retryCount=0, badWorker=0.0,  stringNo=5, stringLength=1000000)
     
-    def testJobFileStoreWithMediumCacheAndBadWorker(self):
+    def testJobFileStoreWithBadWorker(self):
         """
         Tests case that about half the files are cached and the worker is randomly
         failing.
         """
-        self.testJobFileStoreWithSmallCache(retryCount=100, badWorker=0.5, 
-                         stringNo=5, stringLength=1000000, 
-                         cacheSize=3000000)
-        
+        self._testJobFileStore(retryCount=100, badWorker=0.5,  stringNo=5, stringLength=1000000)
+
+
 def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     """
-    Test job exercises Job.FileStore functions
+    Test job exercises toil.fileStore.FileStore functions
     """
     outputFileStoreIds = [] #Strings passed to the next job in the chain
     

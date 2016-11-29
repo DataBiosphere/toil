@@ -26,6 +26,7 @@ from argparse import ArgumentParser
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
+from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 
@@ -873,6 +874,8 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
+        logProcessContext(self.config, logger)
+
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader

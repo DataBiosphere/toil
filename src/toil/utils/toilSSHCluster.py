@@ -14,6 +14,7 @@
 """
 SSHs into the toil appliance container running on the leader of the cluster
 """
+import argparse
 import logging
 from toil.provisioners import Cluster
 from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
@@ -25,7 +26,8 @@ logger = logging.getLogger( __name__ )
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)
-    cluster.sshCluster()
+    cluster.sshCluster(args=config.args)

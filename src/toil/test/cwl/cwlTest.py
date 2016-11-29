@@ -50,6 +50,36 @@ class CWLTest(ToilTest):
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
+    def test_restart(self):
+        """Enable restarts with CWLtoil -- run failing test, re-run correct test.
+        """
+        from toil.cwl import cwltoil
+        from toil.jobStores.abstractJobStore import NoSuchJobStoreException
+        from toil.leader import FailedJobsException
+        outDir = self._createTempDir()
+        cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
+        cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
+               os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
+        def path_without_rev():
+            return ":".join([d for d in os.environ["PATH"].split(":")
+                             if not os.path.exists(os.path.join(d, "rev"))])
+        orig_path = os.environ["PATH"]
+        # Force a failure and half finished job by removing `rev` from the PATH
+        os.environ["PATH"] = path_without_rev()
+        try:
+            cwltoil.main(cmd)
+            self.fail("Expected problem job with incorrect PATH did not fail")
+        except FailedJobsException:
+            pass
+        # Finish the job with a correct PATH
+        os.environ["PATH"] = orig_path
+        cwltoil.main(cmd + ["--restart"])
+        # Should fail because previous job completed successfully
+        try:
+            cwltoil.main(cmd + ["--restart"])
+            self.fail("Restart with missing directory did not fail")
+        except NoSuchJobStoreException:
+            pass
 
     def test_run_conformance(self):
         rootDir = self._projectRootPath()

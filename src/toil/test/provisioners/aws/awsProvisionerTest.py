@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import pipes
+import subprocess
 
 from uuid import uuid4
 
@@ -27,6 +28,20 @@ log = logging.getLogger(__name__)
 @integrative
 @needs_appliance
 class AWSProvisionerTest(ToilTest):
+
+    def sshUtil(self, command):
+        baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
+        callCommand = baseCommand + command
+        subprocess.check_call(callCommand)
+
+    def destroyClusterUtil(self):
+        callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
+        subprocess.check_call(callCommand)
+
+    def createClusterUtil(self):
+        callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
+                       '--nodeType=%s' % self.instanceType, self.clusterName]
+        subprocess.check_call(callCommand)
 
     def __init__(self, methodName='AWSprovisioner'):
         super(AWSProvisionerTest, self).__init__(methodName=methodName)
@@ -43,8 +58,7 @@ class AWSProvisionerTest(ToilTest):
         self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
-        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        AWSProvisioner.destroyCluster(self.clusterName)
+        self.destroyClusterUtil()
 
     def getMatchingRoles(self, clusterName):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -54,28 +68,26 @@ class AWSProvisionerTest(ToilTest):
 
     def _test(self, spotInstances=False):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-
-        leader = AWSProvisioner.launchCluster(instanceType=self.instanceType, keyName=self.keyName,
-                                              clusterName=self.clusterName)
+        self.createClusterUtil()
+        # get the leader so we know the IP address - we don't need to wait since create cluster
+        # already insures the leader is running
+        leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = 'virtualenv --system-site-packages --never-download /home/venv'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=venv_command)
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download',
+                        '/home/venv']
+        self.sshUtil(venv_command)
 
-        upgrade_command = '/home/venv/bin/pip install setuptools==28.7.1'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=upgrade_command)
+        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        self.sshUtil(upgrade_command)
 
-        yaml_command = '/home/venv/bin/pip install pyyaml==3.12'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=yaml_command)
+        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
+        self.sshUtil(yaml_command)
 
         # install toil scripts
-        install_command = ('/home/venv/bin/pip install toil-scripts==%s' % self.toilScripts)
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
-
-        # install curl
-        install_command = 'sudo apt-get -y install curl'
-        AWSProvisioner._sshAppliance(leader.ip_address, remoteCommand=install_command)
+        install_command = ['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts]
+        self.sshUtil(install_command)
 
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
@@ -100,15 +112,16 @@ class AWSProvisionerTest(ToilTest):
         # TOIL_AWS_NODE_DEBUG prevents the provisioner from killing nodes that
         # fail a status check. This allows for easier debugging of
         # https://github.com/BD2KGenomics/toil/issues/1141
-        runCommand = 'bash -c \\"export PATH=/home/venv/bin/:$PATH;export TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i; export TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) + \
-                     '; export TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore + \
-                     '; export TOIL_AWS_NODE_DEBUG=True' + \
-                     '; /home/venv/bin/python -m unittest -v' + \
-                     ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest\\"'
+        runCommand = ['bash', '-c',
+                      'PATH=/home/venv/bin/:$PATH '
+                      'TOIL_AWS_NODE_DEBUG=True '
+                      'TOIL_SCRIPTS_TEST_NUM_SAMPLES='+str(self.numSamples)+
+                      ' TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) +
+                      ' TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore +
+                      ' /home/venv/bin/python -m unittest -v' +
+                      ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest']
 
-        runCommand %= self.numSamples
-
-        AWSProvisioner._sshAppliance(leader.ip_address, runCommand)
+        self.sshUtil(runCommand)
         assert len(self.getMatchingRoles(self.clusterName)) == 1
 
         AWSProvisioner.destroyCluster(self.clusterName)

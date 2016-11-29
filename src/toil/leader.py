@@ -32,11 +32,14 @@ from toil.jobGraph import JobNode
 from toil.lib.bioio import getTotalCpuTime, logStream
 from toil.provisioners.clusterScaler import ClusterScaler
 
+
 logger = logging.getLogger( __name__ )
+
 
 ####################################################
 ##Stats/logging aggregation
 ####################################################
+
 
 class StatsAndLogging( object ):
     """
@@ -167,9 +170,10 @@ class JobBatcher:
                                     self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
-        logger.debug("Issued job with job store ID: %s and job batch system ID: "
+        logger.debug("Issued %s job: %s and job batch system ID: "
                      "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
-                     jobNode.jobStoreID, str(jobBatchSystemID), jobNode.cores,
+                     'preemptable' if jobNode.preemptable else 'non-preemptable',
+                     jobNode, jobBatchSystemID, jobNode.cores,
                      jobNode.disk, jobNode.memory)
 
     def issueJobs(self, jobs):
@@ -593,7 +597,7 @@ class ToilState( object ):
             or len(jobGraph.services) > 0
             or len(jobGraph.stack) == 0):
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
-                         'with  services: %s, with stack: %s', jobGraph.jobStoreID,
+                         'with  services: %s, with stack: %s', jobGraph,
                          jobGraph.command is not None, jobGraph.checkpoint is not None,
                          len(jobGraph.services) > 0, len(jobGraph.stack) == 0)
             self.updatedJobs.add((jobGraph, 0))
@@ -602,7 +606,7 @@ class ToilState( object ):
                 jobGraph.command = jobGraph.checkpoint
 
         else: # There exist successors
-            logger.debug("Adding job: %s to the state with %s successors" % (jobGraph.jobStoreID, len(jobGraph.stack[-1])))
+            logger.debug("Adding job: %s to the state with %s successors" % (jobGraph, len(jobGraph.stack[-1])))
             
             # Record the number of successors
             self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
@@ -677,7 +681,7 @@ class FailedJobsException( Exception ):
             for jobNode in failedJobs:
                 job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    msg += "\n=========> Failed job %s %s\n" % (jobNode, jobNode.jobStoreID)
+                    msg += "\n=========> Failed job %s \n" % (jobNode)
                     with job.getLogFileHandle(jobStore) as fH:
                         msg += fH.read()
                     msg += "<=========\n"
@@ -793,11 +797,12 @@ class ServiceManager( object ):
         Cleanly terminate worker threads starting and killing services. Will block
         until all services are started and blocked.
         """
-        logger.info('Waiting for service manager thread to finish ...')
+        logger.debug('Waiting for service manager thread to finish ...')
         startTime = time.time()
         self._terminate.set()
         self._serviceStarter.join()
-        logger.info('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
+        logger.debug('... finished shutting down the service manager. Took %s seconds', time.time() -
+                     startTime)
 
     @staticmethod
     def _startServices(jobGraphsWithServicesToStart,
@@ -867,7 +872,7 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobGraph, jobCache=
     serviceManager = ServiceManager(jobStore)
     try:
         assert len(batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
-        logger.info("Checked batch system has no running jobs and no updated jobs")
+        logger.debug("Checked batch system has no running jobs and no updated jobs")
         # Load the jobBatcher class - used to track jobs submitted to the batch-system
         jobBatcher = JobBatcher(config, batchSystem, jobStore, toilState, serviceManager)
         logger.info("Found %s jobs to start and %i jobs with successors to run",
@@ -885,10 +890,10 @@ def mainLoop(config, batchSystem, provisioner, jobStore, rootJobGraph, jobCache=
                 innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManager, statsAndLogging)
             finally:
                 if clusterScaler is not None:
-                    logger.info('Waiting for workers to shutdown')
+                    logger.debug('Waiting for workers to shutdown')
                     startTime = time.time()
                     clusterScaler.shutdown()
-                    logger.info('Worker shutdown complete in %s seconds', time.time() - startTime)
+                    logger.debug('Worker shutdown complete in %s seconds', time.time() - startTime)
         finally:
             # Shutdown the stats and logging thread
             statsAndLogging.shutdown()
@@ -930,7 +935,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
     # Sets up the timing of the jobGraph rescuing method
     timeSinceJobsLastRescued = time.time()
 
-    logger.info("Starting the main loop")
+    logger.debug("Starting the main loop")
     while True:
         # Process jobs that are ready to be scheduled/have successors to schedule
         if len(toilState.updatedJobs) > 0:
@@ -942,8 +947,8 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
 
             for jobGraph, resultStatus in updatedJobs:
 
-                logger.debug('Updating status of job %s with ID %s: with result status: %s',
-                             jobGraph, jobGraph.jobStoreID, resultStatus)
+                logger.debug('Updating status of job %s: with result status: %s',
+                             jobGraph, resultStatus)
 
                 # This stops a job with services being issued by the serviceManager from
                 # being considered further in this loop. This catch is necessary because
@@ -951,7 +956,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                 # added to updated jobs.
                 if jobGraph in serviceManager.jobGraphsWithServicesBeingStarted:
                     logger.debug("Got a job to update which is still owned by the service "
-                                 "manager: %s", jobGraph.jobStoreID)
+                                 "manager: %s", jobGraph)
                     continue
 
                 # If some of the jobs successors failed then either fail the job
@@ -963,24 +968,24 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     # updatedJobs set and then scheduled to be removed
                     if jobGraph.jobStoreID in toilState.servicesIssued:
                         logger.debug("Telling job: %s to terminate its services due to successor failure",
-                                     jobGraph.jobStoreID)
+                                     jobGraph)
                         serviceManager.killServices(toilState.servicesIssued[jobGraph.jobStoreID],
                                                     error=True)
 
                     # If the job has non-service jobs running wait for them to finish
                     # the job will be re-added to the updated jobs when these jobs are done
                     elif jobGraph.jobStoreID in toilState.successorCounts:
-                        logger.debug("Job %s with ID: %s with failed successors still has successor jobs running",
-                                     jobGraph, jobGraph.jobStoreID)
+                        logger.debug("Job %s with failed successors still has successor jobs running",
+                                     jobGraph)
                         continue
 
                     # If the job is a checkpoint and has remaining retries then reissue it.
                     elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 0:
                         logger.warn('Job: %s is being restarted as a checkpoint after the total '
-                                    'failure of jobs in its subtree.', jobGraph.jobStoreID)
+                                    'failure of jobs in its subtree.', jobGraph)
                         jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
                     else: # Mark it totally failed
-                        logger.debug("Job %s is being processed as completely failed", jobGraph.jobStoreID)
+                        logger.debug("Job %s is being processed as completely failed", jobGraph)
                         jobBatcher.processTotallyFailedJob(jobGraph)
 
                 # If the jobGraph has a command it must be run before any successors.
@@ -994,8 +999,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     if (jobGraph.remainingRetryCount == 0
                         or isServiceJob and not jobStore.fileExists(jobGraph.errorJobStoreID)):
                         jobBatcher.processTotallyFailedJob(jobGraph)
-                        logger.warn("Job %s with ID %s is completely failed",
-                                    jobGraph, jobGraph.jobStoreID)
+                        logger.warn("Job %s is completely failed", jobGraph)
                     else:
                         # Otherwise try the job again
                         jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
@@ -1016,13 +1020,13 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     # Use the service manager to start the services
                     serviceManager.scheduleServices(jobGraph)
 
-                    logger.debug("Giving job: %s to service manager to schedule its jobs", jobGraph.jobStoreID)
+                    logger.debug("Giving job: %s to service manager to schedule its jobs", jobGraph)
 
                 # There exist successors to run
                 elif len(jobGraph.stack) > 0:
                     assert len(jobGraph.stack[-1]) > 0
                     logger.debug("Job: %s has %i successors to schedule",
-                                 jobGraph.jobStoreID, len(jobGraph.stack[-1]))
+                                 jobGraph, len(jobGraph.stack[-1]))
                     #Record the number of successors that must be completed before
                     #the jobGraph can be considered again
                     assert jobGraph.jobStoreID not in toilState.successorCounts
@@ -1107,10 +1111,14 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                     # Remove the job
                     if jobGraph.remainingRetryCount > 0:
                         jobBatcher.issueJob(JobNode.fromJobGraph(jobGraph))
-                        logger.debug("Job: %s is empty, we are scheduling to clean it up", jobGraph.jobStoreID)
-                    else:
+                        logger.debug("Job: %s is empty, we are scheduling to clean it up", jobGraph)
+                    elif jobGraph.checkpoint is not None:
+                        # The worker likely crashed before this checkpoint could be
+                        # cleaned up.
                         jobBatcher.processTotallyFailedJob(jobGraph)
-                        logger.warn("Job: %s is empty but completely failed - something is very wrong", jobGraph.jobStoreID)
+                    else:
+                        raise RuntimeError("Job: %s is empty but completely failed - the job "
+                                           "store was not properly cleaned up" % jobGraph)
 
         # The exit criterion
         if len(toilState.updatedJobs) == 0 and jobBatcher.getNumberOfJobsIssued() == 0 and serviceManager.serviceJobsIssuedToServiceManager == 0:
@@ -1123,10 +1131,9 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
             # Stop trying to get jobs when function returns None
             if serviceJob is None:
                 break
-            logger.debug('Launching service job: %s', serviceJob)
+            logger.info('Launching service job: %s', serviceJob)
             # This loop issues the jobs to the batch system because the batch system is not
             # thread-safe. FIXME: don't understand this comment
-            # x = JobNode(jobStoreID=serviceJobStoreID, job=
             jobBatcher.issueJob(serviceJob)
 
         # Get jobs whose services have started
@@ -1134,7 +1141,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
             jobGraph = serviceManager.getJobGraphWhoseServicesAreRunning(0)
             if jobGraph is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', jobGraph.jobStoreID)
+            logger.debug('Job: %s has established its services.', jobGraph)
             jobGraph.services = []
             toilState.updatedJobs.add((jobGraph, 0))
 
@@ -1147,7 +1154,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                 updatedJob = jobBatcher.jobBatchSystemIDToIssuedJob[jobID]
             except KeyError:
                 logger.warn("A result seems to already have been processed "
-                            "for job %s", jobID)
+                            "for job with batch system ID %s", jobID)
             else:
                 if result == 0:
                     logger.debug('Batch system is reporting that the job %s ended successfully',
@@ -1170,7 +1177,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                 #rescue jobs every N seconds, and when we have
                 #apparently exhausted the current jobGraph supply
                 jobBatcher.reissueOverLongJobs()
-                logger.info("Reissued any over long jobs")
+                logger.debug("Reissued any over long jobs")
 
                 hasNoMissingJobs = jobBatcher.reissueMissingJobs()
                 if hasNoMissingJobs:
@@ -1178,7 +1185,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
                 else:
                     timeSinceJobsLastRescued += 60 #This means we'll try again
                     #in a minute, providing things are quiet
-                logger.info("Rescued any (long) missing jobs")
+                logger.debug("Rescued any (long) missing jobs")
 
         # Check on the associated threads and exit if a failure is detected
         statsAndLogging.check()
@@ -1187,7 +1194,7 @@ def innerLoop(jobStore, config, batchSystem, toilState, jobBatcher, serviceManag
         if jobBatcher.clusterScaler is not None:
             jobBatcher.clusterScaler.check()
 
-    logger.info("Finished the main loop")
+    logger.debug("Finished the main loop")
 
     # Consistency check the toil state
     assert toilState.updatedJobs == set()
