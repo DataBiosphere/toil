@@ -57,7 +57,6 @@ def awsFilterImpairedNodes(nodes, ec2):
 class Cluster(object):
     def __init__(self, clusterName, provisioner):
         self.clusterName = clusterName
-        self.provisioner = None
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
@@ -65,7 +64,7 @@ class Cluster(object):
             from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
             self.provisioner = CGCloudProvisioner
         else:
-            raise RuntimeError('The only options are aws and cgcloud')
+            assert False, "Invalid provisioner '%s'" % provisioner
 
     def sshCluster(self, args):
         self.provisioner.sshLeader(self.clusterName, args)

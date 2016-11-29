@@ -114,8 +114,7 @@ class AbstractProvisioner(object):
             instanceIds = [instance.id for instance, nodeInfo in nodes]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances,
-                               key=lambda instance: (self._remainingBillingInterval(instance)))
+            instances = sorted(instances, key=self._remainingBillingInterval)
             instanceIds = [instance.id for instance in islice(instances, numNodes)]
         log.info('Terminating %i instance(s).', len(instanceIds))
         if instanceIds:
