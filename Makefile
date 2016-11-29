@@ -133,7 +133,7 @@ test_parallel: check_venv check_build_reqs docker
 	$(python) run_tests.py test $(tests)
 
 
-integration-test: check_venv check_build_reqs sdist push_docker
+integration_test: check_venv check_build_reqs sdist push_docker
 	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
