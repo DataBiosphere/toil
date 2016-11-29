@@ -159,7 +159,7 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
-    def sshLeader(cls, clusterName):
+    def sshLeader(cls, clusterName, args):
         raise NotImplementedError
 
     @classmethod

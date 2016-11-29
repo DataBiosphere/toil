@@ -130,7 +130,7 @@ class CGCloudProvisioner(AbstractProvisioner):
         raise NotImplementedError
 
     @classmethod
-    def sshLeader(cls, clusterName):
+    def sshLeader(cls, clusterName, args):
         raise NotImplementedError
 
     @classmethod

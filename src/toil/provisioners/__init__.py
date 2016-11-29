@@ -67,8 +67,8 @@ class Cluster(object):
         else:
             raise RuntimeError('The only options are aws and cgcloud')
 
-    def sshCluster(self):
-        self.provisioner.sshLeader(self.clusterName)
+    def sshCluster(self, args):
+        self.provisioner.sshLeader(self.clusterName, args)
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName)
