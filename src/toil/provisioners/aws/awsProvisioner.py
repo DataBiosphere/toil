@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import pipes
 import socket
 import subprocess
 import logging
@@ -36,7 +37,6 @@ from bd2k.util.retry import retry
 from toil.provisioners import BaseAWSProvisioner
 
 logger = logging.getLogger(__name__)
-
 
 
 class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
@@ -93,11 +93,12 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
 
     @classmethod
-    def sshLeader(cls, clusterName, zone=None):
+    def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
         leader = cls._getLeader(clusterName)
         logger.info('SSH ready')
-        tty = sys.stdin.isatty()
-        cls._sshAppliance(leader.ip_address, 'bash', tty=tty)
+        kwargs['tty'] = sys.stdin.isatty()
+        command = args if args else ['bash']
+        cls._sshAppliance(leader.ip_address, *command, **kwargs)
 
     @classmethod
     @memoize
@@ -125,16 +126,36 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
                                'for a full list of available versions.')
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, remoteCommand, tty=False):
-        ttyFlag = 't' if tty else ''
-        localCommand = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "docker exec -i%s leader %s"'
-        localCommand %= (leaderIP, ttyFlag, remoteCommand)
-        return subprocess.check_call(localCommand, shell=True)
+    def _sshAppliance(cls, leaderIP, *args, **kwargs):
+        """
+        :param str leaderIP: IP of the master
+        :param args: arguments to execute in the appliance
+        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
+            interactive SSHing. The default value is False. Input=string is passed as
+            input to the Popen call.
+        """
+        tty = kwargs.pop('tty', False)
+        args = map(pipes.quote, args)
+        ttyFlag = '-t' if tty else ''
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP,
+                         'docker', 'exec', '-i', ttyFlag, 'leader'] + args
+        inputString = kwargs.pop('input', None)
+        if inputString is not None:
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(commandTokens, **kwargs)
+        stdout, stderr = popen.communicate(input=inputString)
+        # at this point the process has already exited, no need for a timeout
+        resultValue = popen.wait()
+        if resultValue != 0:
+            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
+                               'exit code.' % ' '.join(args))
+        assert stderr is None
 
     @classmethod
-    def _sshInstance(cls, leaderIP, command):
-        command = 'ssh -o "StrictHostKeyChecking=no" -t core@%s "%s"' % (leaderIP, command)
-        ouput = subprocess.check_output(command, shell=True)
+    def _sshInstance(cls, leaderIP, *args):
+        args = map(pipes.quote, args)
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP] + args
+        ouput = subprocess.check_output(commandTokens)
         return ouput
 
     @classmethod
@@ -165,7 +186,7 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     def _waitForAppliance(cls, ip_address):
         logger.info('Waiting for leader Toil appliance to start...')
         while True:
-            output = cls._sshInstance(leaderIP=ip_address, command='docker ps')
+            output = cls._sshInstance(ip_address, 'docker', 'ps')
             if 'leader' in output:
                 logger.info('...Toil appliance started')
                 break
@@ -191,13 +212,11 @@ class AWSProvisioner(AbstractProvisioner, BaseAWSProvisioner):
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
         logger.info('Waiting for docker to start...')
-        command = 'ps aux | grep \\"docker daemon\\"'
         while True:
-            output = cls._sshInstance(ip_address, command)
+            output = cls._sshInstance(ip_address, 'ps', 'aux')
             time.sleep(5)
-            if 'root' in output:
-                # ps aux | grep x will always list itself. The actual docker daemon process will
-                # be started by root whereas the ssh-ed command will be executed by the user 'core'
+            if 'docker daemon' in output:
+                # docker daemon has started
                 break
             else:
                 logger.info('... Still waiting...')

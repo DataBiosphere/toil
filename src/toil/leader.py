@@ -32,11 +32,14 @@ from toil.jobGraph import JobNode
 from toil.lib.bioio import getTotalCpuTime, logStream
 from toil.provisioners.clusterScaler import ClusterScaler
 
+
 logger = logging.getLogger( __name__ )
+
 
 ####################################################
 ##Stats/logging aggregation
 ####################################################
+
 
 class StatsAndLogging( object ):
     """

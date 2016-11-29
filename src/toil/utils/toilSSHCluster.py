@@ -14,6 +14,7 @@
 """
 SSHs into the toil appliance container running on the leader of the cluster
 """
+import argparse
 import logging
 from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
@@ -24,6 +25,7 @@ logger = logging.getLogger( __name__ )
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     if config.provisioner == 'aws':
@@ -36,4 +38,4 @@ def main():
     else:
         assert False
 
-    provisioner.sshLeader(clusterName=config.clusterName)
+    provisioner.sshLeader(clusterName=config.clusterName, args=config.args)
