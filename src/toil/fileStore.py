@@ -1593,8 +1593,8 @@ class NonCachingFileStore(FileStore):
                                  "script to avoid the chance of failure due to incorrectly "
                                  "requested resources. " + logString, level=logging.WARNING)
             os.chdir(startingDir)
-            jobState = self._readJobState(self.jobStateFile)
-            deferredFunctions = jobState['deferredFunctions']
+            jobState = self._JobState.read(self.jobStateFile)
+            deferredFunctions = jobState.deferredFunctions
             failures = self._runDeferredFunctions(deferredFunctions)
             for failure in failures:
                 self.logToMaster('Deferred function "%s" failed.' % failure, logging.WARN)
@@ -1691,11 +1691,11 @@ class NonCachingFileStore(FileStore):
         """
         # A list of tuples of (job name, pid or process running job, registered defer functions)
         for jobState in cls._getAllJobStates(nodeInfo):
-            if not cls._pidExists(jobState['jobPID']):
+            if not cls._pidExists(jobState.jobPID):
                 # using same logic to prevent races as CachingFileStore._setupCache
                 myPID = str(os.getpid())
-                cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
-                with open(os.path.join(jobState['jobDir'], '.' + myPID), 'w') as f:
+                cleanupFile = os.path.join(jobState.jobDir, '.cleanup')
+                with open(os.path.join(jobState.jobDir, '.' + myPID), 'w') as f:
                     f.write(myPID)
                 while True:
                     try:
@@ -1715,16 +1715,16 @@ class NonCachingFileStore(FileStore):
                             raise
                     else:
                         logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                       'state of the job on disk.', jobState['jobName'])
+                                       'state of the job on disk.', jobState.jobName)
                         if not batchSystemShutdown:
                             logger.debug("Deleting the stale working directory.")
                             # Delete the old work directory if it still exists.  Do this only during
                             # the life of the program and dont' do it during the batch system
                             # cleanup.  Leave that to the batch system cleanup code.
-                            shutil.rmtree(jobState['jobDir'])
+                            shutil.rmtree(jobState.jobDir)
                         # Run any deferred functions associated with the job
                         logger.debug('Running user-defined deferred functions.')
-                        cls._runDeferredFunctions(jobState['deferredFunctions'])
+                        cls._runDeferredFunctions(jobState.deferredFunctions)
                         break
 
     @staticmethod
@@ -1743,25 +1743,15 @@ class NonCachingFileStore(FileStore):
                 if filename == '.jobState':
                     jobStateFiles.append(os.path.join(root, filename))
         for filename in jobStateFiles:
-            yield NonCachingFileStore._readJobState(filename)
-
-    @staticmethod
-    def _readJobState(jobStateFileName):
-        with open(jobStateFileName) as fH:
-            state = dill.load(fH)
-        return state
+            yield NonCachingFileStore._JobState.read(filename)
 
     def _registerDeferredFunction(self, callable_, *args, **kwargs):
         assert callable(callable_)
-        with open(self.jobStateFile) as fH:
-            jobState = dill.load(fH)
+        with self._JobState.open(self.jobStateFile) as jobState:
             deferredFunction = DeferredFunction(callable=callable_,
                                                 args=args,
                                                 kwargs=kwargs)
-            jobState['deferredFunctions'].append(deferredFunction)
-        with open(self.jobStateFile + '.tmp', 'w') as fH:
-            dill.dump(jobState, fH)
-        os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
+            jobState.deferredFunctions.append(deferredFunction)
         logger.info('Registered the deferred function "%s" to job "%s".', callable_.__name__,
                     self.jobName)
 
@@ -1774,14 +1764,39 @@ class NonCachingFileStore(FileStore):
         :rtype: str
         """
         jobStateFile = os.path.join(self.localTempDir, '.jobState')
-        jobState = {'jobPID': os.getpid(),
-                    'jobName': self.jobName,
-                    'jobDir': self.localTempDir,
-                    'deferredFunctions': []}
-        with open(jobStateFile + '.tmp', 'w') as fH:
-            dill.dump(jobState, fH)
-        os.rename(jobStateFile + '.tmp', jobStateFile)
+        jobStateDict = {'jobPID': os.getpid(),
+                        'jobName': self.jobName,
+                        'jobDir': self.localTempDir,
+                        'deferredFunctions': []}
+        jobState = self._JobState(jobStateDict)
+        jobState.write(jobStateFile)
         return jobStateFile
+
+    class _JobState(FileStore._StateFile):
+        """
+        A class to work with the state of jobs on the node. It is similar to both the _CacheState
+        and _JobSatet classes from the CachingFileStore.
+        """
+        @classmethod
+        @contextmanager
+        def open(cls, outer=None):
+            """
+            This is a context manager that opens the cache state file and reads it into an object
+            that is returned to the user in the yield
+
+            :param str outer: The job state file.
+            """
+            assert os.path.exists(outer)
+            jobState = cls._load(outer)
+            try:
+                yield jobState
+            finally:
+                jobState.write(outer)
+
+        @classmethod
+        def read(cls, fileName):
+            return cls._load(fileName)
+
 
     @classmethod
     def shutdown(cls, dir_):
