@@ -51,6 +51,12 @@ class JobGraph(JobNode):
         # the jobGraph but before the list of files to remove is deleted then this list can be
         # used to clean them up.
         self.filesToDelete = filesToDelete or []
+
+        # This list is for files that have been written to the job store prior to the job
+        # completing successfully. Once the job completes this list should be blanked out.
+        # any files in this list should be cleaned on worker start up and on Toil restart to
+        # prevent unnecessary job store cruft
+        self.pendingFiles = []
         
         # The number of predecessor jobs of a given job. A predecessor is a job which references
         # this job in its stack.

@@ -1272,6 +1272,8 @@ class Job(JobLikeObject):
         """
         # Run the job
         returnValues = self._run(jobGraph, fileStore)
+        # The job has finished running, empty pending files
+        jobGraph.pendingFiles = []
         # Serialize the new jobs defined by the run method to the jobStore
         self._serialiseExistingJob(jobGraph, jobStore, returnValues)
 

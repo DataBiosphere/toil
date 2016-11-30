@@ -583,6 +583,10 @@ class AbstractJobStore(object):
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
+            if jobGraph.pendingFiles:
+                map(self.deleteFile, jobGraph.pendingFiles)
+                changed[0] = True
+
             # Reset the retry count of the jobGraph
             if jobGraph.remainingRetryCount != self._defaultTryCount():
                 jobGraph.remainingRetryCount = self._defaultTryCount()
@@ -596,7 +600,7 @@ class AbstractJobStore(object):
                 changed[0] = True
 
             if changed[0]:  # Update, but only if a change has occurred
-                logger.critical("Repairing job: %s" % jobGraph.jobStoreID)
+                logger.debug("Repairing job: %s" % jobGraph.jobStoreID)
                 self.update(jobGraph)
 
         # Remove any crufty stats/logging files from the previous run
