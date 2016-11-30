@@ -70,10 +70,7 @@ class DeadlockException( Exception ):
 ####################################################
 ##Following class represents the leader
 ####################################################
-
-# Represents a job and its requirements as issued to the batch system
-IssuedJob = namedtuple("IssuedJob", "jobStoreID memory cores disk preemptable")
-              
+             
 class Leader:
     """ Class that encapsulates the logic of the leader.
     """

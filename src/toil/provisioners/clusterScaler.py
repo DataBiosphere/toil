@@ -265,7 +265,7 @@ class ClusterScaler(object):
         """
         Adds the shape of a completed job to the queue, allowing the scalar to use the last N
         completed jobs in factoring how many nodes are required in the cluster.
-        :param IssuedJob job: The memory, core and disk requirements of the completed job
+        :param toil.job.JobNode job: The memory, core and disk requirements of the completed job
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
         s = Shape(wallTime=wallTime, memory=job.memory, cores=job.cores, disk=job.disk)
@@ -290,7 +290,6 @@ class ScalerThread(ExceptionalThread):
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
     """
-
     def __init__(self, scaler, preemptable):
         """
         :param ClusterScaler scaler: the parent class
