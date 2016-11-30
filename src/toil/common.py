@@ -674,7 +674,9 @@ class Toil(object):
             self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
         elif self.config.provisioner == 'aws':
             logger.info('Using AWS provisioner.')
+            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config, self._batchSystem)
         else:
             # Command line parser shold have checked argument validity already
@@ -695,7 +697,9 @@ class Toil(object):
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
         elif name == 'aws':
+            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.jobStores.aws.jobStore import AWSJobStore
+            enable_metadata_credential_caching()
             return AWSJobStore(rest)
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
