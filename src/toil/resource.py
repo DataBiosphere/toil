@@ -535,12 +535,27 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             return head
 
     def toCommand(self):
-        return tuple(map(str,self))
+        return tuple(map(str, self))
 
     @classmethod
     def fromCommand(cls, command):
         assert len(command) == 3
         return cls( dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
+
+    def makeLoadable(self):
+        module = self if self.belongsToToil else self.localize()
+        if module.dirPath not in sys.path:
+            sys.path.append(module.dirPath)
+        return module
+
+    def load(self):
+        module = self.makeLoadable()
+        try:
+            return importlib.import_module(module.name)
+        except ImportError:
+            log.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
+            raise
+
 
 
 class ResourceException(Exception):

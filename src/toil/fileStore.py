@@ -40,11 +40,12 @@ from threading import Thread, Semaphore, Event
 from bd2k.util.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively
 from toil.lib.bioio import makePublicDir
+from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
 
 
-class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name')):
+class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
     >>> df = DeferredFunction.create(dict, {'x':1}, y=2)
     >>> df
@@ -55,7 +56,7 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
     @classmethod
     def create(cls, function, *args, **kwargs):
         """
-        Create an instance of this class that captures the given callable and arguments.
+        Capture the given callable and arguments as an instance of this class.
 
         :param callable function: The deferred action to take in the form of a function
         :param tuple args: Non-keyword arguments to the function
@@ -66,13 +67,16 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
         # concurrently running jobs when the cache state is loaded from disk. By implication we
         # should serialize as early as possible. We need to serialize the function as well as its
         # arguments.
-        return cls(*map(dill.dumps, (function, args, kwargs)), name=function.__name__)
+        return cls(*map(dill.dumps, (function, args, kwargs)),
+                   name=function.__name__,
+                   module=ModuleDescriptor.forModule(function.__module__).globalize())
 
     def invoke(self):
         """
         Invoke the captured function with the captured arguments.
         """
         logger.debug('Running deferred function %s.', self)
+        self.module.makeLoadable()
         function, args, kwargs = map(dill.loads, (self.function, self.args, self.kwargs))
         return function(*args, **kwargs)
 

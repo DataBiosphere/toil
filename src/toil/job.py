@@ -828,15 +828,7 @@ class Job(JobLikeObject):
 
         :type userModule: ModuleDescriptor
         """
-        if not userModule.belongsToToil:
-            userModule = userModule.localize()
-        if userModule.dirPath not in sys.path:
-            sys.path.append(userModule.dirPath)
-        try:
-            return importlib.import_module(userModule.name)
-        except ImportError:
-            logger.error('Failed to import user module %r from sys.path=%r', userModule, sys.path)
-            raise
+        return userModule.load()
 
     @classmethod
     def _loadJob(cls, command, jobStore):
