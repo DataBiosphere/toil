@@ -22,29 +22,8 @@ from bd2k.util import parse_iso_utc, less_strict_bool
 logger = logging.getLogger(__name__)
 
 
-class BaseAWSProvisioner(object):
-    @staticmethod
-    def _remainingBillingInterval(instance):
-        return 1.0 - BaseAWSProvisioner._partialBillingInterval(instance)
-
-    @classmethod
-    def _filterImpairedNodes(cls, nodes, ec2):
-        # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
-        # failing status checks so they can be debugged
-        nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
-        if not nodeDebug:
-            return nodes
-        nodeIDs = [node.id for node in nodes]
-        statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
-        statusMap = {status.id: status.instance_status for status in statuses}
-        healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
-        impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
-        logger.warn('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
-                    'will not be terminated.', ' '.join(impairedNodes))
-        return healthyNodes
-
-    @staticmethod
-    def _partialBillingInterval(instance):
+def awsRemainingBillingInterval(instance):
+    def partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the
         current billing cycle for the given instance. If the return value is .25, we are one
@@ -55,3 +34,40 @@ class BaseAWSProvisioner(object):
         now = datetime.datetime.utcnow()
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
+
+    return 1.0 - partialBillingInterval(instance)
+
+
+def awsFilterImpairedNodes(nodes, ec2):
+    # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
+    # failing status checks so they can be debugged
+    nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
+    if not nodeDebug:
+        return nodes
+    nodeIDs = [node.id for node in nodes]
+    statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
+    statusMap = {status.id: status.instance_status for status in statuses}
+    healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+    impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
+    logger.warn('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
+                'will not be terminated.', ' '.join(impairedNodes))
+    return healthyNodes
+
+
+class Cluster(object):
+    def __init__(self, clusterName, provisioner):
+        self.clusterName = clusterName
+        if provisioner == 'aws':
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            self.provisioner = AWSProvisioner
+        elif provisioner == 'cgcloud':
+            from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
+            self.provisioner = CGCloudProvisioner
+        else:
+            assert False, "Invalid provisioner '%s'" % provisioner
+
+    def sshCluster(self, args):
+        self.provisioner.sshLeader(self.clusterName, args)
+
+    def destroyCluster(self):
+        self.provisioner.destroyCluster(self.clusterName)

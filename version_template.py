@@ -27,7 +27,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 baseVersion = '3.5.0a1'
 
-cgcloudVersion = '1.6.0a1.dev378'
+cgcloudVersion = '1.6.0a1.dev393'
 
 
 def version():

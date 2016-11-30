@@ -21,5 +21,7 @@ def addBasicProvisionerOptions(parser):
                              "parameter in your .boto file, or derived from the instance metadata if "
                              "using this utility on an existing EC2 instance. "
                              "Currently: %s" % zoneString)
-    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by")
+    parser.add_argument("clusterName", help="The name that the cluster will be identifiable by. "
+                                            "Must be lowercase and may not contain the '_' "
+                                            "character.")
     return parser

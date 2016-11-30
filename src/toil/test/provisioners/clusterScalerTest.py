@@ -192,7 +192,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     """
 
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__()
+        super(MockBatchSystemAndProvisioner, self).__init__(config=config, batchSystem=None)
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -237,6 +237,18 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         return self._pick(preemptable).setNodeCount(numNodes=numNodes)
+
+    def _addNodes(self, instances, numNodes, preemptable):
+        pass
+
+    def _getWorkersInCluster(self, preemptable):
+        pass
+
+    def _logAndTerminate(self, instanceIDs):
+        pass
+
+    def _remainingBillingInterval(self, instance):
+        pass
 
     # FIXME: Not part of AbstractScalableBatchSystem but used by the tests
 
