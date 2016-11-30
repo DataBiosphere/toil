@@ -41,6 +41,12 @@ There are several utilites used for starting and managing a Toil cluster using
 the AWS provisioner. They use the ``toil launch-cluster``,
 ``toil ssh-cluster``, and ``toil destroy-cluster`` entry points.
 
+.. note::
+
+   Boto must be `configured`_ with AWS credentials before using cluster utilities.
+
+.. _configured: http://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration
+
 Restart
 -------
 In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
