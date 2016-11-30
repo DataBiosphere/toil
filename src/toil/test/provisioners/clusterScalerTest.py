@@ -64,8 +64,8 @@ class ClusterScalerTest(ToilTest):
             randomJobShapes = map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs))
             startTime = time.time()
             numberOfBins = binPacking(randomJobShapes, nodeShape)
-            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds",
-                        nodeShape, numberOfJobs, numberOfBins, time.time() - startTime)
+            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds, %s jobs/bin" % 
+                        (nodeShape, numberOfJobs, numberOfBins, time.time() - startTime, float(numberOfJobs)/numberOfBins))
 
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs):
         """
@@ -80,42 +80,45 @@ class ClusterScalerTest(ToilTest):
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
         clusterScaler = ClusterScaler(mock, mock, config)
-
-        # Add 100 jobs to complete 
-        logger.info("Creating test jobs")
-        map(lambda x: mock.addJob(), range(numJobs))
-        map(lambda x: mock.addJob(preemptable=True), range(numPreemptableJobs))
-
-        # Add some completed jobs
-        for preemptable in (True, False):
-            if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
-                # Add a 1000 random jobs
-                for i in xrange(1000):
-                    x = mock.getNodeShape(preemptable)
-                    iJ = JobNode(jobStoreID=1,
-                                 requirements=dict(memory=random.choice(range(1, x.memory)),
-                                                   cores=random.choice(range(1, x.cores)),
-                                                   disk=random.choice(range(1, x.disk)),
-                                                   preemptable=preemptable),
-                                 command=None,
-                                 jobName='testClusterScaling', unitName='')
-                    clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
-
-        logger.info("Waiting for jobs to be processed")
-        startTime = time.time()
-        # Wait while the cluster the process chunks through the jobs
-        while (mock.getNumberOfJobsIssued(preemptable=False) > 0
-               or mock.getNumberOfJobsIssued(preemptable=True) > 0
-               or mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(preemptable=True) > 0):
-            logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s, "
-                        "preemptable queue size: %s, preemptable workers: %s",
-                        mock.getNumberOfJobsIssued(preemptable=False),
-                        mock.getNumberOfNodes(preemptable=False),
-                        mock.getNumberOfJobsIssued(preemptable=True),
-                        mock.getNumberOfNodes(preemptable=True))
-            time.sleep(0.5)
-        logger.info("We waited %s for cluster to finish" % (time.time() - startTime))
-        clusterScaler.shutdown()
+        clusterScaler.start()
+        try:
+            # Add 100 jobs to complete 
+            logger.info("Creating test jobs")
+            map(lambda x: mock.addJob(), range(numJobs))
+            map(lambda x: mock.addJob(preemptable=True), range(numPreemptableJobs))
+    
+            # Add some completed jobs
+            for preemptable in (True, False):
+                if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
+                    # Add a 1000 random jobs
+                    for i in xrange(1000):
+                        x = mock.getNodeShape(preemptable)
+                        iJ = JobNode(jobStoreID=1,
+                                     requirements=dict(memory=random.choice(range(1, x.memory)),
+                                                       cores=random.choice(range(1, x.cores)),
+                                                       disk=random.choice(range(1, x.disk)),
+                                                       preemptable=preemptable),
+                                     command=None,
+                                     jobName='testClusterScaling', unitName='')
+                        clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
+    
+            logger.info("Waiting for jobs to be processed")
+            startTime = time.time()
+            # Wait while the cluster the process chunks through the jobs
+            while (mock.getNumberOfJobsIssued(preemptable=False) > 0
+                   or mock.getNumberOfJobsIssued(preemptable=True) > 0
+                   or mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(preemptable=True) > 0):
+                logger.info("Running, non-preemptable queue size: %s, non-preemptable workers: %s, "
+                            "preemptable queue size: %s, preemptable workers: %s" %
+                            (mock.getNumberOfJobsIssued(preemptable=False),
+                             mock.getNumberOfNodes(preemptable=False),
+                             mock.getNumberOfJobsIssued(preemptable=True),
+                             mock.getNumberOfNodes(preemptable=True)))
+                clusterScaler.check()
+                time.sleep(0.5)
+            logger.info("We waited %s for cluster to finish" % (time.time() - startTime))
+        finally:
+            clusterScaler.shutdown()
 
         # Print some info about the autoscaling
         for i, bs in enumerate(mock.delegates):
@@ -206,10 +209,13 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def addJob(self, preemptable=False):
         self._pick(preemptable).addJob()
 
-    # JobBatcher methods
+    # Leader methods
 
     def getNumberOfJobsIssued(self, preemptable=False):
         return self._pick(preemptable).getNumberOfJobsIssued()
+    
+    def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self):
+        return self.getNumberOfJobsIssued(), 50 
 
     # Stub out all AbstractBatchSystem methods since they are never called
 

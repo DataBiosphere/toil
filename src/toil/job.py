@@ -275,7 +275,7 @@ class Job(JobLikeObject):
         self._followOns = []
         #See Job.addService
         self._services = []
-        #A follow-on, service or child of a job A, is a "direct successor" of A, if B
+        #A follow-on, service or child of a job A, is a "direct successor" of A; if B
         #is a direct successor of A, then A is a "direct predecessor" of B.
         self._directPredecessors = set()
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
@@ -517,7 +517,7 @@ class Job(JobLikeObject):
 
     def registerPromise(self, path):
         if self._promiseJobStore is None:
-            raise RuntimeError('Trying to pass a promise from a promising job that is not a '
+            raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
                                'predecessor of the job receiving the promise')
         jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
         self._rvs[path].append(jobStoreFileID)
@@ -1151,7 +1151,7 @@ class Job(JobLikeObject):
                 serviceJob.prepareForPromiseRegistration(jobStore)
                 for childServiceJob in serviceJob.service._childServices:
                     setForServices(childServiceJob)
-            for serviceJob in self._services:
+            for serviceJob in job._services:
                 setForServices(serviceJob)
 
         ordering.reverse()

@@ -84,6 +84,11 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 10
         self.preemptableCompensation = 0.0
+        
+        # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
+        self.maxPreemptableServiceJobs = sys.maxint 
+        self.maxServiceJobs = sys.maxint
+        self.deadlockWait = 60 # Wait one minute before declaring a deadlock
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -107,7 +112,6 @@ class Config(object):
         self.cseKey = None
         self.servicePollingInterval = 60
         self.useAsync = True
-
 
         #Debug options
         self.badWorker = 0.0
@@ -207,6 +211,11 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
+        
+        # Parameters to limit service jobs / detect deadlocks
+        setOption("maxServiceJobs", int)
+        setOption("maxPreemptableServiceJobs", int)
+        setOption("deadlockWait", int)
 
         # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -360,9 +369,15 @@ def _addOptions(addGroupFn, config):
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
-                help=(" default=%s" % config.alphaPacking))
+                help=("The total number of nodes estimated to be required to compute the issued "
+                      "jobs is multiplied by the alpha packing parameter to produce the actual "
+                      "number of nodes requested. Values of this coefficient greater than one will "
+                      "tend to over provision and values less than one will under provision. default=%s" % config.alphaPacking))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
-                help=(" default=%s" % config.betaInertia))
+                help=("A smoothing parameter to prevent unnecessary oscillations in the "
+                      "number of provisioned nodes. If the number of nodes is within the beta "
+                      "inertia of the currently provisioned number of nodes then no change is made "
+                      "to the number of requested nodes. default=%s" % config.betaInertia))
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
@@ -375,6 +390,20 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
+    
+    #        
+    # Parameters to limit service jobs / detect service deadlocks
+    #
+    addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
+                             "Allows the specification of the maximum number of service jobs "
+                             "in a cluster. By keeping this limited "
+                             " we can avoid all the nodes being occupied with services, so causing a deadlock")
+    addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+                help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
+    addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+                help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
+    addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+                help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
 
     #
     #Resource requirements
@@ -879,13 +908,13 @@ class Toil(object):
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
-            from toil.leader import mainLoop
-            return mainLoop(config=self.config,
-                            batchSystem=self._batchSystem,
-                            provisioner=self._provisioner,
-                            jobStore=self._jobStore,
-                            rootJobGraph=rootJob,
-                            jobCache=self._jobCache)
+            from toil.leader import Leader
+            return Leader(config=self.config,
+                          batchSystem=self._batchSystem,
+                          provisioner=self._provisioner,
+                          jobStore=self._jobStore,
+                          rootJob=rootJob,
+                          jobCache=self._jobCache).run()
 
     def _shutdownBatchSystem(self):
         """
