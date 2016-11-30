@@ -702,7 +702,6 @@ class hidden:
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
 
-        @unittest.skip('This test is currently non-deterministic')
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
@@ -736,16 +735,11 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            jobStore = job.fileStore.jobStore
-            oldUpdateFileStream = jobStore.updateFileStream
-            import types
-            from contextlib import contextmanager
-
-            @contextmanager
-            def newUpdateFileStream(self, jobStoreFileID):
-                with oldUpdateFileStream(jobStoreFileID) as fileHandle:
-                    time.sleep(20)
-                    yield fileHandle
+            # Make this take longer so we can test asynchronous writes across jobs/workers.
+            oldHarbingerFileRead = job.fileStore.HarbingerFile.read
+            def newHarbingerFileRead(self):
+                time.sleep(5)
+                return oldHarbingerFileRead(self)
 
             job.fileStore.logToMaster('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
@@ -756,7 +750,7 @@ class hidden:
             fsID = job.fileStore.writeGlobalFile(testFile.name)
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAsssertions(job, fsID)
             # Make this take longer so we can test asynchronous writes across jobs/workers.
-            jobStore.updateFileStream = types.MethodType(newUpdateFileStream, jobStore)
+            job.fileStore.HarbingerFile.read = newHarbingerFileRead
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
