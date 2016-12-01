@@ -354,10 +354,10 @@ Toil also allows jobs to be created dynamically within jobs. For example::
 
     from toil.job import Job
     
-    def binaryStringFn(job, message="", depth):
+    def binaryStringFn(job, depth, message=""):
         if depth > 0:
-            job.addChildJobFn(binaryStringFn, message + "0", depth-1)
-            job.addChildJobFn(binaryStringFn, message + "1", depth-1)
+            job.addChildJobFn(binaryStringFn, depth-1, message + "0")
+            job.addChildJobFn(binaryStringFn, depth-1, message + "1")
         else:
             job.fileStore.logToMaster("Binary string: %s" % message)
     
