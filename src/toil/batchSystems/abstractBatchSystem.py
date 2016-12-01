@@ -286,10 +286,13 @@ class BatchSystemSupport(AbstractBatchSystem):
 
     def _getResultsFileName(self, toilPath):
         """
-        Get a path for the batch systems to store results. GridEngine
-        and LSF currently use this.
+        Get a path for the batch systems to store results. GridEngine, slurm,
+        and LSF currently use this and only work if locator is file.
         """
-        return os.path.join(toilPath, "results.txt")
+        # Use  parser to extract the path and type
+        locator, filePath = Toil.parseLocator(toilPath)
+        assert locator == "file"
+        return os.path.join(filePath, "results.txt")
 
     @staticmethod
     def workerCleanup(info):
