@@ -47,10 +47,10 @@ logger = logging.getLogger(__name__)
 
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
-    >>> df = DeferredFunction.create(dict, {'x':1}, y=2)
+    >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
     >>> df
-    DeferredFunction(dict, ...)
-    >>> df.invoke() == dict(x=1, y=2)
+    DeferredFunction(defaultdict, ...)
+    >>> df.invoke() == defaultdict(None, x=1, y=2)
     True
     """
     @classmethod
