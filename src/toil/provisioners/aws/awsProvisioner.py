@@ -374,9 +374,11 @@ class AWSProvisioner(AbstractProvisioner):
                           entrypoint='mesos-slave',
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)
-        kwargs = {'key_name': self.keyName, 'security_groups': [self.clusterName],
+        kwargs = {'key_name': self.keyName,
+                  'security_groups': [self.clusterName],
                   'instance_type': self.instanceType.name,
-                  'user_data': userData, 'block_device_map': bdm,
+                  'user_data': userData,
+                  'block_device_map': bdm,
                   'instance_profile_arn': arn}
 
         instancesLaunched = []
@@ -387,13 +389,16 @@ class AWSProvisioner(AbstractProvisioner):
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
+            kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType, self.ctx)
             # force generator to evaluate
             instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                       price=self.spotBid,
-                                       image_id=self._discoverAMI(self.ctx),
-                                       tags={'clusterName': self.clusterName},
-                                       spec=kwargs,
-                                       num_instances=numNodes))
+                                                           price=self.spotBid,
+                                                           image_id=self._discoverAMI(self.ctx),
+                                                           tags={'clusterName': self.clusterName},
+                                                           spec=kwargs,
+                                                           num_instances=numNodes,
+                                                           tentative=True)
+                                     )
         wait_instances_running(self.ctx.ec2, instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
