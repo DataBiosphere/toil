@@ -244,6 +244,11 @@ def main():
             jobStore.update(jobGraph) #Update first, before deleting any files
             jobStore.deleteFile(oldLogFile)
 
+        # clean up any files written during any previous invocations of this job
+        if jobGraph.pendingFiles:
+            map(jobStore.deleteFile, jobGraph.pendingFiles)
+            jobStore.update(jobGraph)
+
         ##########################################
         # If a checkpoint exists, restart from the checkpoint
         ##########################################
