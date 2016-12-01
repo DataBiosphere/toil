@@ -470,10 +470,6 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     # the following authorizes all port access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
-            for attempt in retry(predicate=groupNotFound, timeout=300):
-                with attempt:
-                    # open port 5050-5051 for mesos web interface
-                    web.authorize(ip_protocol='tcp', from_port=5050, to_port=5051, cidr_ip='0.0.0.0/0')
 
     @classmethod
     def _getProfileARN(cls, ctx):
