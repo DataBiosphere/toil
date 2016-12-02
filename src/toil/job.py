@@ -293,7 +293,7 @@ class Job(JobLikeObject):
         # entire return value.
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
-        self.fileStore = None
+        self._fileStore = None
 
     def run(self, fileStore):
         """
@@ -671,9 +671,9 @@ class Job(JobLikeObject):
 
         :param dict kwargs: The keyword arguments to the function
         """
-        require( self.fileStore is not None, 'A deferred function may only be registered with a '
+        require(self._fileStore is not None, 'A deferred function may only be registered with a '
                                              'job while that job is running.')
-        self.fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
+        self._fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
 
 
     ####################################################
@@ -1280,7 +1280,9 @@ class Job(JobLikeObject):
                filestore
         :return:
         """
-        # Run the job
+        # Make fileStore available as an attribute during run() ...
+        self._fileStore = fileStore
+        # ... but also pass it to run() as an argument for backwards compatibility.
         returnValues = self._run(jobGraph, fileStore)
         # Serialize the new jobs defined by the run method to the jobStore
         self._serialiseExistingJob(jobGraph, jobStore, returnValues)
@@ -1391,9 +1393,13 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
     called fileStore.
     """
+
+    @property
+    def fileStore(self):
+        return self._fileStore
+
     def run(self, fileStore):
         userFunction = self._getUserFunction()
-        self.fileStore = fileStore
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
 
@@ -1537,11 +1543,11 @@ class ServiceJob(Job):
         # the job is run. It is used to access the start and terminate flags.
         self.jobGraph = None
 
+    @property
+    def fileStore(self):
+        return self._fileStore
+
     def run(self, fileStore):
-
-        # we need access to the filestore from underneath the service job
-        self.fileStore = fileStore
-
         # Unpickle the service
         logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
