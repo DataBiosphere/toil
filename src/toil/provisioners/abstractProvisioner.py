@@ -153,6 +153,11 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
+    def rsyncLeader(cls, clusterName, src, dst):
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
         raise NotImplementedError
 

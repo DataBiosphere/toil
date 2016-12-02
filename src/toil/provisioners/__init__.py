@@ -69,5 +69,8 @@ class Cluster(object):
     def sshCluster(self, args):
         self.provisioner.sshLeader(self.clusterName, args)
 
+    def rsyncCluster(self, args):
+        self.provisioner.rsyncLeader(self.clusterName, args)
+
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName)

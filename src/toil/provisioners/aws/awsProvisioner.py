@@ -145,6 +145,28 @@ class AWSProvisioner(AbstractProvisioner):
         return ouput
 
     @classmethod
+    def rsyncLeader(cls, clusterName, args):
+        leader = cls._getLeader(clusterName)
+        sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
+        remoteRsync = "docker exec -i leader rsync"  # Access rsync inside appliance
+        parsedArgs = []
+        hostInserted = False
+        # Insert remote host address
+        for i in args:
+            if i.startswith(":") and not hostInserted:
+                i = ("core@%s" % leader.ip_address) + i
+                hostInserted = True
+            elif i.startswith(":") and hostInserted:
+                raise ValueError("Cannot rsync between two remote hosts")
+            parsedArgs.append(i)
+        if not hostInserted:
+            raise ValueError("No remote host found in argument list")
+        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
+        logger.debug("Running %r.", command + parsedArgs)
+
+        return subprocess.check_call(command + parsedArgs)
+
+    @classmethod
     def _toNameSpace(cls, clusterName):
         assert isinstance(clusterName, str)
         if any((char.isupper() for char in clusterName)) or '_' in clusterName:
