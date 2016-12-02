@@ -30,10 +30,12 @@ from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
+from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
 from toil.common import Toil, addOptions
+from toil.fileStore import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
@@ -289,6 +291,7 @@ class Job(JobLikeObject):
         # entire return value.
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
+        self.fileStore = None
 
     def run(self, fileStore):
         """
@@ -644,33 +647,31 @@ class Job(JobLikeObject):
                 if len(y._children) != 0 and len(y._followOns) != 0 and len(y._services) != 0:
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
-    def defer(self, callable, *args, **kwargs):
+    def defer(self, function, *args, **kwargs):
         """
-        Register a deferred function, i.e. a callable that will be invoked after the current attempt
-        at running this job concludes. A job attempt is said to conclude when the job function (or
-        the Job.run method for class-based jobs) returns, raises an exception or after the process
-        running it terminates abnormally. A deferred function will be called on the node that
-        attempted to run the job, even if a subsequent attempt is made on another node. A deferred
-        function should be idempotent because it may be called multiple times on the same node or
-        even in the same process. More than one deferred function may be registered per job attempt
-        by calling this method repeatedly with different arguments. If the same callable is
-        registered twice, it will be called twice per job attempt.
+        Register a deferred function, i.e. a callable that will be invoked after the current
+        attempt at running this job concludes. A job attempt is said to conclude when the job
+        function (or the :meth:`Job.run` method for class-based jobs) returns, raises an
+        exception or after the process running it terminates abnormally. A deferred function will
+        be called on the node that attempted to run the job, even if a subsequent attempt is made
+        on another node. A deferred function should be idempotent because it may be called
+        multiple times on the same node or even in the same process. More than one deferred
+        function may be registered per job attempt by calling this method repeatedly with
+        different arguments. If the same function is registered twice with the same or different
+        arguments, it will be called twice per job attempt.
 
-        The functions one would typically provide here are cleanup functions that handle
-        Toil-external events upon a failure within Toil (killing Docker containers, etc).
+        Examples for deferred functions are ones that handle cleanup of resources external to
+        Toil, like Docker containers, files outside the work directory, etc.
 
-        :param function callable: The function to be run after this job.
+        :param callable function: The function to be called after this job concludes.
+
         :param list args: The arguments to the function
+
         :param dict kwargs: The keyword arguments to the function
-        :return: None
         """
-        try:
-            getattr(self, 'fileStore')
-        except AttributeError:
-            raise RuntimeError('A deferred function may only be registered from within the job it '
-                               'is being registered with. "%s" was illegally registered.',
-                               callable.__name__)
-        self.fileStore._registerDeferredFunction(callable, *args, **kwargs)
+        require( self.fileStore is not None, 'A deferred function may only be registered with a '
+                                             'job while that job is running.')
+        self.fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
 
 
     ####################################################
@@ -827,15 +828,7 @@ class Job(JobLikeObject):
 
         :type userModule: ModuleDescriptor
         """
-        if not userModule.belongsToToil:
-            userModule = userModule.localize()
-        if userModule.dirPath not in sys.path:
-            sys.path.append(userModule.dirPath)
-        try:
-            return importlib.import_module(userModule.name)
-        except ImportError:
-            logger.error('Failed to import user module %r from sys.path=%r', userModule, sys.path)
-            raise
+        return userModule.load()
 
     @classmethod
     def _loadJob(cls, command, jobStore):

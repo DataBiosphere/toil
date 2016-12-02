@@ -230,8 +230,8 @@ class AbstractJobStore(object):
             try:
                 module = import_module(moduleName)
             except ImportError:
-                logger.info("Unable to import '%s'. You may want to try reinstalling Toil with "
-                            "additional extras.", moduleName)
+                logger.debug("Unable to import '%s' as is expected if the corresponding extra was "
+                             "omitted at installation time.", moduleName)
             else:
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)
