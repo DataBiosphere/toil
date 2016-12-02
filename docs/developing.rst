@@ -354,10 +354,10 @@ Toil also allows jobs to be created dynamically within jobs. For example::
 
     from toil.job import Job
     
-    def binaryStringFn(job, message="", depth):
+    def binaryStringFn(job, depth, message=""):
         if depth > 0:
-            job.addChildJobFn(binaryStringFn, message + "0", depth-1)
-            job.addChildJobFn(binaryStringFn, message + "1", depth-1)
+            job.addChildJobFn(binaryStringFn, depth-1, message + "0")
+            job.addChildJobFn(binaryStringFn, depth-1, message + "1")
         else:
             job.fileStore.logToMaster("Binary string: %s" % message)
     
@@ -1030,3 +1030,26 @@ process, and whose favored software distribution utility is `incapable`_ of
 properly resolving overlapping dependencies and detecting conflicts.
 
 .. _incapable: https://github.com/pypa/pip/issues/988
+
+
+.. _appliance_dev:
+
+Developing with the Toil Appliance
+----------------------------------
+
+To develop on features reliant on the Toil Appliance (i.e. autoscaling), you
+should consider setting up a personal registry on `Quay`_ or `Docker Hub`_. Because
+the Toil Appliance images are tagged with the Git commit they are based on and
+because only commits on our master branch trigger an appliance build on Quay,
+as soon as a developer makes a commit or dirties the working copy they will no
+longer be able to rely on Toil to automatically detect the proper Toil Appliance
+image. Instead, developers wishing to test any appliance changes in autoscaling
+should build and push their own appliance image to a personal Docker registry.
+See :ref:`Autoscaling` and :meth:`toil.applianceSelf` for information on how to
+configure Toil to pull the Toil Appliance image from your personal repo instead
+of the our official Quay account.
+
+.. _Quay: https://quay.io/
+
+.. _Docker Hub: https://hub.docker.com/
+

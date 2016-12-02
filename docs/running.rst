@@ -472,7 +472,8 @@ Appliance, a Docker image that bundles Toil and all its requirements, e.g.
 Mesos. Toil will automatically choose an appliance image that matches the
 current Toil version but that choice can be overriden by setting the
 environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
-``TOIL_APPLIANCE_SELF`` (see :func:`toil.applianceSelf` for details)::
+``TOIL_APPLIANCE_SELF`` (see :func:`toil.applianceSelf` and
+:ref:`appliance_dev` for details)::
 
     toil launch-cluster -p aws CLUSTER-NAME-HERE \
          --nodeType=t2.micro \
