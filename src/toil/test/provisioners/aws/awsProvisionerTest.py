@@ -93,7 +93,8 @@ class AWSProvisionerTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--mesosMaster=%s:5050' % leader.private_ip_address,
                        '--clean=always',
-                       '--retryCount=2']
+                       '--retryCount=2',
+                       '--clusterStats=/home/']
 
         toilOptions.extend(['--provisioner=aws',
                             '--nodeType=' + self.instanceType,
@@ -123,6 +124,14 @@ class AWSProvisionerTest(ToilTest):
 
         self.sshUtil(runCommand)
         assert len(self.getMatchingRoles(self.clusterName)) == 1
+
+        checkStatsCommand = ['/home/venv/bin/python', '-c',
+                             'import json; import os; '
+                             'json.load("/home/" + [f for f in os.listdir("/home/") '
+                                                   'if f.endswith(".json")].pop())'
+                             ]
+
+        self.sshUtil(checkStatsCommand)
 
         AWSProvisioner.destroyCluster(self.clusterName)
         assert len(self.getMatchingRoles(self.clusterName)) == 0
