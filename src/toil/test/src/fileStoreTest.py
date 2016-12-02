@@ -18,6 +18,7 @@ from abc import ABCMeta
 from struct import pack, unpack
 from uuid import uuid4
 
+from toil.common import Toil
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
@@ -453,7 +454,7 @@ class hidden:
             ID to an external file before dying/being killed.  Ensure that the file is deleted from
             the jobstore at the appropriate time.
 
-            :param str testCase: Is this the `A-is-killed` test or the `A-failed` test?
+            :param str testCase: indicated if this is the `A-is-killed` test or the `A-failed` test
             """
             assert testCase in ('kill', 'fail')
             # There can be no retries
@@ -464,20 +465,50 @@ class hidden:
             # nonLocalFile has to exist and be empty
             open(nonLocalFile, 'w').close()
             assert os.path.exists(nonLocalFile)
-            root = Job()
-            A = Job.wrapJobFn(self._testOrphanedFilesAreDeletedFromJobStore_A,
-                              nonLocalFile=nonLocalFile, testCase=testCase)
-            B = Job.wrapJobFn(self._testOrphanedFilesAreDeletedFromJobStore_B,
-                              nonLocalFile=nonLocalFile, testCase=testCase)
-            C = Job.wrapJobFn(self._testOrphanedFilesAreDeletedFromJobStore_C,
-                              nonLocalFile=nonLocalFile)
-            root.addChild(A)
-            root.addChild(B)
-            B.addChild(C)
+            root = Job.wrapJobFn(self._testOrphanedFilesAreDeletedFromJobStore_A,
+                              nonLocalFile=nonLocalFile, testCase=testCase,
+                              memory='32M', disk='32M', cores=0.1)
+            # insure files are cleaned after
             try:
-                Job.Runner.startToil(root, self.options)
+                with Toil(self.options) as toil:
+                    toil.start(root)
             except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 2)  # root and A
+                # we failed as expected
+                self.assertEqual(err.numberOfFailedJobs, 1)
+                self.options.restart = True
+                # insure the file was written to properly
+                fileInfo = dill.load(nonLocalFile)
+                try:
+                    # now that we know the file isn't empty, the job will test if
+                    # the old global file was deleted properly on restart
+                    with Toil(self.options) as toil:
+                        toil.restart()
+                except FailedJobsException as err:
+                    self.assertEqual(err.numberOfFailedJobs, 1)
+
+            else:
+                # the job shouldn't finish so we should have failed job exception
+                self.fail('The root job succeeded when it should have failed')
+            os.remove(nonLocalFile)
+            assert not os.path.exists(nonLocalFile)
+
+            nonLocalFile = os.path.join(workdir, str(uuid4()))
+            # nonLocalFile has to exist and be empty
+            open(nonLocalFile, 'w').close()
+
+            # Now test deletion of files on the worker
+            self.options.retryCount = 2
+            try:
+                with Toil(self.options) as toil:
+                    toil.start(root)
+            except FailedJobsException as err:
+                self.assertEqual(err.numberOfFailedJobs, 1)
+                # insure the file was written to properly
+                fileInfo = dill.load(nonLocalFile)
+            else:
+                # the job shouldn't finish so we should have failed job exception
+                self.fail('The root job succeeded when it should have failed')
+            os.remove(nonLocalFile)
             assert not os.path.exists(nonLocalFile)
 
         @staticmethod
@@ -493,6 +524,20 @@ class hidden:
             """
             assert testCase in ('kill', 'fail')
             jsID = job.fileStore.writeGlobalFile(job.fileStore.getLocalTempFile())
+            contents = ''
+            with open(nonLocalFile, 'w') as fH:
+                contents = fH.read()
+            if contents:
+                info = dill.loads(contents)
+                try:
+                    job.fileStore.readGlobalFile(fileStoreID=info.jsID)
+                except NoSuchFileException:
+                    # the file should not exist since the job failed on
+                    # its previous invocation
+                    pass
+                else:
+                    raise RuntimeError('The file was not deleted from the job store'
+                                       'despite the job failing.')
             with open(nonLocalFile, 'w') as fH:
                 dill.dump({'jsID': jsID, 'pid': os.getpid()}, fH)
             if testCase == 'kill':
@@ -500,86 +545,6 @@ class hidden:
             else:
                 assert False
 
-        @staticmethod
-        def _testOrphanedFilesAreDeletedFromJobStore_B(job, nonLocalFile, testCase):
-            """
-            Wait for nonLocalFile to get populated. Ensure that the file exists in the jobstore.
-            After this job function returns, the sole child of this job will then will check for
-            non-existence of the jobstore file after the scheduled cleanup.
-
-            :param job: Job
-            :param str nonLocalFile: A file outside the scope of the working directory that can
-                   persist across jobs.
-            :param str testCase: Is this the `A-is-killed` test or the `A-failed` test?
-            """
-            assert testCase in ('kill', 'fail')
-            attempt = 1
-            while attempt <= 10:
-                try:
-                    with open(nonLocalFile, 'r') as fH:
-                        jobAInfo = dill.load(fH)
-                except EOFError:
-                    time.sleep(3)
-                    attempt += 1
-                else:
-                    attempt = 1
-                    while job.fileStore._pidExists(jobAInfo['pid']):
-                        # This should never infinitely loop but we maintain an attempt counter
-                        # anyway and limit the maximum wait time to ~10s.
-                        if attempt == 10:
-                            raise RuntimeError('Timed out waiting for nonLocalFile.')
-                        else:
-                            time.sleep(1)
-                            attempt += 1
-                    break
-            else:
-                raise RuntimeError('Timed out waiting for nonLocalFile.')
-
-            fileExists = hidden.AbstractFileStoreTest._orphanFileExists(job, jobAInfo['jsID'])
-            if testCase == 'kill':
-                # In the "A-is-killed" version of this test, `C` will clean up the orphaned file and
-                # since `B` is a sibling of `A` and a parent to `C`, `A` has completed but `C`
-                # hasn't run yet and hence the file exists.
-                assert fileExists, "The file does not exist in the job store."
-            else:
-                # In the "A-failed" version of this test, `A` should clean itself up before it
-                # completes and hence the file shouldn't exist at this point (since we don't reach
-                # here till the pid of A no longer exists on the machine).
-                assert not fileExists, "The file still exists in the job store."
-            return None
-
-        @staticmethod
-        def _testOrphanedFilesAreDeletedFromJobStore_C(job, nonLocalFile):
-            """
-            Ensure that the test jsID in nonLocalFile does not exist in the jobstore.
-
-            :param job: Job
-            :param str nonLocalFile: A file outside the scope of the working directory that can
-                   persist across jobs.
-            """
-            with open(nonLocalFile, 'r') as fH:
-                jobAInfo = dill.load(fH)
-            # The file should not exist at this point.
-            fileExists = hidden.AbstractFileStoreTest._orphanFileExists(job, jobAInfo['jsID'])
-            assert not fileExists, "The file still exists in the job store."
-
-        @staticmethod
-        def _orphanFileExists(job, jsID):
-            """
-            Does the orphaned file exist in the job store?
-
-            :param job: job
-            :param str jsID: The jobstore file ID for the potentially orphaned file
-            :return: True if the file exists else False
-            :rtype: bool
-            """
-            try:
-                job.fileStore.readGlobalFile(jsID)
-            except NoSuchFileException:
-                fileExists = False
-            else:
-                fileExists = True
-            return fileExists
 
     class AbstractNonCachingFileStoreTest(AbstractFileStoreTest):
         """
