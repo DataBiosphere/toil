@@ -76,7 +76,8 @@ class AbstractProvisioner(object):
             for thread in self.statsThreads:
                 thread.join()
             fileName = getFileName()
-            json.dump(self.stats, fileName)
+            with open(fileName, 'w') as f:
+                json.dump(self.stats, f)
         log.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
         if totalNodes != 0:

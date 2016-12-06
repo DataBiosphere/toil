@@ -127,8 +127,8 @@ class AWSProvisionerTest(ToilTest):
 
         checkStatsCommand = ['/home/venv/bin/python', '-c',
                              'import json; import os; '
-                             'json.load("/home/" + [f for f in os.listdir("/home/") '
-                                                   'if f.endswith(".json")].pop())'
+                             'json.load(open("/home/" + [f for f in os.listdir("/home/") '
+                                                   'if f.endswith(".json")].pop()))'
                              ]
 
         self.sshUtil(checkStatsCommand)
