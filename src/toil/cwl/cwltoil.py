@@ -227,6 +227,7 @@ class CWLJob(Job):
         #super(CWLJob, self).__init__()
         self.cwltool = tool
         self.cwljob = cwljob
+        self.jobName = os.path.basename(self.cwltool.tool['id'])
         self.executor_options = kwargs
 
     def run(self, fileStore):
