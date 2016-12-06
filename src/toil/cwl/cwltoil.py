@@ -227,7 +227,12 @@ class CWLJob(Job):
         #super(CWLJob, self).__init__()
         self.cwltool = tool
         self.cwljob = cwljob
-        self.jobName = os.path.basename(self.cwltool.tool['id'])
+        try:
+            name = self.cwltool.tool['id']
+            self.jobName = os.path.basename(name)
+        except KeyError:
+            # fall back to the Toil defined class name if the tool doesn't have an identifier
+            pass
         self.executor_options = kwargs
 
     def run(self, fileStore):
