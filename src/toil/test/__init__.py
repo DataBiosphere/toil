@@ -20,7 +20,6 @@ import os
 import re
 import shutil
 import signal
-import subprocess
 import tempfile
 import threading
 import time
@@ -29,6 +28,7 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
+from subprocess import PIPE, Popen, CalledProcessError, check_output, check_call
 from textwrap import dedent
 from unittest.util import strclass
 from urllib2 import urlopen
@@ -39,8 +39,8 @@ from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
 
-from toil.version import distVersion
 from toil import toilPackageDirPath, applianceSelf
+from toil.version import distVersion
 
 log = logging.getLogger(__name__)
 
@@ -210,14 +210,14 @@ class ToilTest(unittest.TestCase):
         capture = kwargs.pop('capture', False)
         _input = kwargs.pop('input', None)
         if capture:
-            kwargs['stdout'] = subprocess.PIPE
+            kwargs['stdout'] = PIPE
         if _input is not None:
-            kwargs['stdin'] = subprocess.PIPE
-        popen = subprocess.Popen(args, **kwargs)
+            kwargs['stdin'] = PIPE
+        popen = Popen(args, **kwargs)
         stdout, stderr = popen.communicate(input=_input)
         assert stderr is None
         if popen.returncode != 0:
-            raise subprocess.CalledProcessError(popen.returncode, args)
+            raise CalledProcessError(popen.returncode, args)
         if capture:
             return stdout
 
@@ -410,8 +410,8 @@ def needs_appliance(test_item):
     if next(which('docker'), None):
         image = applianceSelf()
         try:
-            images = subprocess.check_output(['docker', 'inspect', image])
-        except subprocess.CalledProcessError:
+            images = check_output(['docker', 'inspect', image])
+        except CalledProcessError:
             images = []
         else:
             images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
@@ -732,7 +732,7 @@ class ApplianceTestSupport(ToilTest):
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
-                self.popen = subprocess.Popen(args)
+                self.popen = Popen(args)
             self.start()
             self.__wait_running()
             return self
@@ -740,10 +740,10 @@ class ApplianceTestSupport(ToilTest):
         # noinspection PyUnusedLocal
         def __exit__(self, exc_type, exc_val, exc_tb):
             try:
-                subprocess.check_call(['docker', 'stop', self.containerName])
+                check_call(['docker', 'stop', self.containerName])
                 self.join()
             finally:
-                subprocess.check_call(['docker', 'rm', '-f', self.containerName])
+                check_call(['docker', 'rm', '-f', self.containerName])
             return False  # don't swallow exception
 
         def __wait_running(self):
@@ -751,10 +751,10 @@ class ApplianceTestSupport(ToilTest):
                      "Expect to see 'Error: No such image or container'.", self._getRole())
             while self.isAlive():
                 try:
-                    running = subprocess.check_output(
+                    running = check_output(
                         ['docker', 'inspect', '--format={{ .State.Running }}',
                          self.containerName]).strip()
-                except subprocess.CalledProcessError:
+                except CalledProcessError:
                     pass
                 else:
                     if 'true' == running:
