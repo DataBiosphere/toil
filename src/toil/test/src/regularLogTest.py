@@ -14,7 +14,6 @@
 import subprocess
 import sys
 import os
-import mimetypes
 from toil.test import ToilTest
 from toil.test.mesos import helloWorld
 
@@ -34,10 +33,13 @@ class RegularLogTest(ToilTest):
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         assert onlyLogs
         for log in onlyLogs:
-            mime = mimetypes.guess_type(log)
-            # The first element in the tuple is type of file ('text/plain', etc.),
-            # but is unfortunately platform dependent.
-            assert mime[1] == encoding
+            with open(log, "r") as f:
+                if encoding == "gzip":
+                    # Check for gzip magic header '\x1f\x8b'
+                    assert f.read().startswith('\x1f\x8b')
+                else:
+                    raise NotImplementedError
+
 
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
