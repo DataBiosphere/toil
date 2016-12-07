@@ -59,6 +59,7 @@ class StatsAndLogging( object ):
             logName = logName.replace('/', '-')
             logName = logName.replace(' ', '_')
             logName = logName.replace("'", '')
+            logName = logName.replace('"', '')
             counter = 0
             while True:
                 suffix = str(counter).zfill(3) + logExtension
