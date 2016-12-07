@@ -72,10 +72,14 @@ class StatsAndLogging( object ):
         path = None
         writeFn = None
         extension = '.log'
+
+        assert not (config.writeLogs and config.writeLogsGzip), \
+            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+
         if config.writeLogs:
             path = config.writeLogs
             writeFn = open
-        if config.writeLogsGzip:
+        elif config.writeLogsGzip:
             path = config.writeLogsGzip
             writeFn = gzip.open
             extension += '.gz'
