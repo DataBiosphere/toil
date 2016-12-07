@@ -69,8 +69,6 @@ class StatsAndLogging( object ):
                 counter += 1
 
         mainFileName = jobNames[0]
-        path = None
-        writeFn = None
         extension = '.log'
 
         assert not (config.writeLogs and config.writeLogsGzip), \
@@ -83,9 +81,10 @@ class StatsAndLogging( object ):
             path = config.writeLogsGzip
             writeFn = gzip.open
             extension += '.gz'
-        if path is None:
+        else:
             # we don't have anywhere to write the logs, return now
             return
+
         fullName = createName(path, mainFileName, extension)
         with writeFn(fullName, 'w') as f:
             f.writelines(l + '\n' for l in jobLogList)
