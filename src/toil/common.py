@@ -453,7 +453,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                 help=("The maximum size of a job log file to keep (in bytes), log files "
                       "larger than this will be truncated to the last X bytes. Setting "
-                      "this option to a negative value will prevent any truncation. "
+                      "this option to zero will prevent any truncation. Setting this "
+                      "option to a negative value will truncate from the beginning."
                       "Default=%s" % bytes2human(config.maxLogFileSize)))
     addOptionFn("--writeLogs", dest="writeLogs", nargs='?', action='store',
                 default=None, const=os.getcwd(),

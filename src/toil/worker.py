@@ -500,38 +500,44 @@ def main():
     #Flush at the OS level
     os.fsync(1)
     os.fsync(2)
-    
+
     #Close redirected stdout and replace with the original standard output.
     os.dup2(origStdOut, 1)
-    
+
     #Close redirected stderr and replace with the original standard error.
     os.dup2(origStdErr, 2)
-    
+
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
-    
+
     #Close our extra handles to the original standard output and standard error
     #streams, so we don't leak file handles.
     os.close(origStdOut)
     os.close(origStdErr)
-    
+
     #Now our file handles are in exactly the state they were in before.
-    
+
     #Copy back the log file to the global dir, if needed
     if workerFailed:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "r") as f:
-                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit > 0:
-                    f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
+                    if logFileByteReportLimit > 0:
+                        f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                    elif logFileByteReportLimit < 0:
+                        f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
                 w.write(f.read())
         jobStore.update(jobGraph)
 
     elif debugging:  # write log messages
         with open(tempWorkerLogPath, 'r') as logFile:
-            if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
-                logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+            if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
+                if logFileByteReportLimit > 0:
+                    logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                elif logFileByteReportLimit < 0:
+                    logFile.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
             logMessages = logFile.read().splitlines()
         statsDict.logs.names = listOfJobs
         statsDict.logs.messages = logMessages
