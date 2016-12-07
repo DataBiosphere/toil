@@ -39,7 +39,7 @@ unixBlockSize = 512
 
 class Config(object):
     """
-    Class to represent configuration operations for a toil workflow run. 
+    Class to represent configuration operations for a toil workflow run.
     """
     def __init__(self):
         # Core options
@@ -451,11 +451,10 @@ def _addOptions(addGroupFn, config):
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
-                      help=("The maximum size of a job log file to keep (in bytes), log files "
-                            "larger than this will be truncated to the last X bytes. Setting "
-                            "this option to a negative "
-                            "value will prevent any truncation. Default=%s" %
-                            bytes2human(config.maxLogFileSize)))
+                help=("The maximum size of a job log file to keep (in bytes), log files "
+                      "larger than this will be truncated to the last X bytes. Setting "
+                      "this option to a negative value will prevent any truncation. "
+                      "Default=%s" % bytes2human(config.maxLogFileSize)))
     addOptionFn("--writeLogs", dest="writeLogs", nargs='?', action='store',
                 default=None, const=os.getcwd(),
                 help="Write worker logs received by the leader into their own files at the "
