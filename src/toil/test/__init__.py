@@ -28,7 +28,7 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
-from subprocess import PIPE, Popen, CalledProcessError, check_output, check_call
+from subprocess import PIPE, Popen, CalledProcessError, check_output
 from textwrap import dedent
 from unittest.util import strclass
 from urllib2 import urlopen
@@ -675,7 +675,10 @@ class ApplianceTestSupport(ToilTest):
 
         :param dict|None mounts: Dictionary mapping host paths to container paths. Both the leader
                and the worker container will be started with one -v argument per dictionary entry,
-               as in -v KEY:VALUE
+               as in -v KEY:VALUE.
+
+               Beware that if KEY is a path to a directory, its entire content will be deleted
+               when the cluster is torn down.
 
         :param int numCores: The number of cores to be offered by the Mesos slave process running
                in the worker container.
@@ -687,7 +690,8 @@ class ApplianceTestSupport(ToilTest):
         """
         if numCores is None:
             numCores = multiprocessing.cpu_count()
-        with self.LeaderThread(self, mounts) as leader:
+        # The last container to stop (and the first to start) should clean the mounts.
+        with self.LeaderThread(self, mounts, cleanMounts=True) as leader:
             with self.WorkerThread(self, mounts, numCores) as worker:
                 yield leader, worker
 
@@ -709,13 +713,15 @@ class ApplianceTestSupport(ToilTest):
         # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
         lock = threading.Lock()
 
-        def __init__(self, outer, mounts):
+        def __init__(self, outer, mounts, cleanMounts=False):
             """
             :param ApplianceTestSupport outer:
             """
+            assert all(' ' not in v for v in mounts.itervalues()), 'No spaces allowed in mounts'
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
+            self.cleanMounts = cleanMounts
             self.containerName = str(uuid.uuid4())
             self.popen = None
 
@@ -740,10 +746,14 @@ class ApplianceTestSupport(ToilTest):
         # noinspection PyUnusedLocal
         def __exit__(self, exc_type, exc_val, exc_tb):
             try:
-                check_call(['docker', 'stop', self.containerName])
-                self.join()
+                try:
+                    self.outer._run('docker', 'stop', self.containerName)
+                    self.join()
+                finally:
+                    if self.cleanMounts:
+                        self.__cleanMounts()
             finally:
-                check_call(['docker', 'rm', '-f', self.containerName])
+                self.outer._run('docker', 'rm', '-f', self.containerName)
             return False  # don't swallow exception
 
         def __wait_running(self):
@@ -751,15 +761,34 @@ class ApplianceTestSupport(ToilTest):
                      "Expect to see 'Error: No such image or container'.", self._getRole())
             while self.isAlive():
                 try:
-                    running = check_output(
-                        ['docker', 'inspect', '--format={{ .State.Running }}',
-                         self.containerName]).strip()
+                    running = self.outer._run('docker', 'inspect',
+                                              '--format={{ .State.Running }}',
+                                              self.containerName,
+                                              capture=True).strip()
                 except CalledProcessError:
                     pass
                 else:
                     if 'true' == running:
                         break
                 time.sleep(1)
+
+        def __cleanMounts(self):
+            """
+            Deletes all files in every mounted directory. Without this step, we risk leaking
+            files owned by root on the host. To avoid races, this method should be called after
+            the appliance container was stopped, otherwise the running container might still be
+            writing files.
+            """
+            # Delete all files within each mounted directory, but not the directory itself.
+            cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
+                                                           for k, v in self.mounts.iteritems()
+                                                           if os.path.isdir(k))
+            self.outer._run('docker', 'run',
+                            '--rm',
+                            '--entrypoint=/bin/bash',
+                            applianceSelf(),
+                            '-c',
+                            cmd)
 
         def tryRun(self):
             self.popen.wait()

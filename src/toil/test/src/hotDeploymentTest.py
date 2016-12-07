@@ -32,16 +32,12 @@ class HotDeploymentTest(ApplianceTestSupport):
         """
         dataDirPath = self._createTempDir(purpose='data')
         with self._applianceCluster(mounts={dataDirPath: '/data'}) as (leader, worker):
-            try:
-                leader.runOnAppliance('virtualenv',
-                                      '--system-site-packages',
-                                      '--never-download',  # prevent silent upgrades to pip etc
-                                      'venv')
-                leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
-                yield leader, worker
-            finally:
-                # Without this step, we would leak files owned by root on the host's file system
-                leader.runOnAppliance('rm', '-rf', '/data/*')
+            leader.runOnAppliance('virtualenv',
+                                  '--system-site-packages',
+                                  '--never-download',  # prevent silent upgrades to pip etc
+                                  'venv')
+            leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
+            yield leader, worker
 
     sitePackages = 'venv/lib/python2.7/site-packages'
 
