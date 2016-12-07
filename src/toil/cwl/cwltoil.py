@@ -228,8 +228,8 @@ class CWLJob(Job):
         self.cwltool = tool
         self.cwljob = cwljob
         try:
-            name = self.cwltool.tool['id']
-            self.jobName = os.path.basename(name)
+            name = str(self.cwltool.tool['id'])
+            self.jobName = name
         except KeyError:
             # fall back to the Toil defined class name if the tool doesn't have an identifier
             pass
