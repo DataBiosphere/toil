@@ -1,3 +1,4 @@
+# coding=utf-8
 import logging
 from contextlib import contextmanager
 from subprocess import CalledProcessError
@@ -12,6 +13,13 @@ log = logging.getLogger(__name__)
 @needs_mesos
 @needs_appliance
 class HotDeploymentTest(ApplianceTestSupport):
+    """
+    Tests various hot-deployment scenarios. Using the appliance, i.e. a docker container,
+    for these tests allows for running worker processes on the same node as the leader process
+    while keeping their file systems separate from each other and the leader process. Separate
+    file systems are crucial to prove that hot-deployment does its job.
+    """
+
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
         super(HotDeploymentTest, self).setUp()
@@ -24,16 +32,12 @@ class HotDeploymentTest(ApplianceTestSupport):
         """
         dataDirPath = self._createTempDir(purpose='data')
         with self._applianceCluster(mounts={dataDirPath: '/data'}) as (leader, worker):
-            try:
-                leader.runOnAppliance('virtualenv',
-                                      '--system-site-packages',
-                                      '--never-download',  # prevent silent upgrades to pip etc
-                                      'venv')
-                leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
-                yield leader, worker
-            finally:
-                # Without this step, we would leak files owned by root on the host's file system
-                leader.runOnAppliance('rm', '-rf', '/data/*')
+            leader.runOnAppliance('virtualenv',
+                                  '--system-site-packages',
+                                  '--never-download',  # prevent silent upgrades to pip etc
+                                  'venv')
+            leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
+            yield leader, worker
 
     sitePackages = 'venv/lib/python2.7/site-packages'
 
@@ -189,4 +193,290 @@ class HotDeploymentTest(ApplianceTestSupport):
                                   '--batchSystem=mesos',
                                   '--mesosMaster=localhost:5050',
                                   '--defaultMemory=10M',
+                                  '--defaultDisk=10M',
+                                  '/data/jobstore')
+
+    def testDeferralWithConcurrentEncapsulation(self):
+        """
+        Ensure that the following DAG succeeds:
+
+                      ┌───────────┐
+                      │ Root (W1) │
+                      └───────────┘
+                            │
+                 ┌──────────┴─────────┐
+                 ▼                    ▼
+        ┌────────────────┐ ┌────────────────────┐
+        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════╗
+        └────────────────┘ └────────────────────┘               ║
+                                      │                         ║
+                                      ▼                         ▼
+                            ┌───────────────────┐      ┌────────────────┐
+                            │ Encapsulated (W3) │      │ Follow-on (W6) │
+                            └───────────────────┘      └────────────────┘
+                                      │                         │
+                              ┌───────┴────────┐                │
+                              ▼                ▼                ▼
+                      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                      │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
+                      └──────────────┘ └──────────────┘ └──────────────┘
+
+        The Wn numbers denote the worker processes that a particular job is run in. `Deferring`
+        adds a deferred function and then runs for a long time. The deferred function will be
+        present in the cache state for the duration of `Deferred`. `Follow-on` is the generic Job
+        instance that's added by encapsulating a job. It runs on the same worker node but in a
+        separate worker process, as the first job in that worker. Because …
+
+        1) it is the first job in its worker process (the user script has not been made available
+        on the sys.path by a previous job in that worker) and
+
+        2) it shares the cache state with the `Deferring` job and
+
+        3) it is an instance of Job (and so does not introduce the user script to sys.path itself),
+
+        … it might cause problems with deserializing a defered function defined in the user script.
+
+        `Encapsulated` has two children to ensure that `Follow-on` is run in a separate worker.
+        """
+        with self._venvApplianceCluster() as (leader, worker):
+            def userScript():
+                import time
+                import logging
+                from toil.job import Job
+                from toil.common import Toil
+
+                log = logging.getLogger(__name__)
+
+                def root(rootJob):
+                    def nullFile():
+                        return rootJob.fileStore.jobStore.importFile('file:///dev/null')
+
+                    startFile = nullFile()
+                    endFile = nullFile()
+                    rootJob.addChildJobFn(deferring, startFile, endFile)
+                    encapsulatedJob = Job.wrapJobFn(encapsulated, startFile)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatingJob = encapsulatedJob.encapsulate()
+                    rootJob.addChild(encapsulatingJob)
+                    encapsulatingJob.addChildJobFn(last, endFile)
+
+                def dummy():
+                    pass
+
+                def deferred():
+                    pass
+
+                # noinspection PyUnusedLocal
+                def deferring(job, startFile, endFile):
+                    job.defer(deferred)
+                    job.fileStore.jobStore.deleteFile(startFile)
+                    timeout = time.time() + 10
+                    while job.fileStore.jobStore.fileExists(endFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+
+                def encapsulated(job, startFile):
+                    timeout = time.time() + 10
+                    while job.fileStore.jobStore.fileExists(startFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+
+                def last(job, endFile):
+                    job.fileStore.jobStore.deleteFile(endFile)
+
+                if __name__ == '__main__':
+                    options = Job.Runner.getDefaultArgumentParser().parse_args()
+                    with Toil(options) as toil:
+                        rootJob = Job.wrapJobFn(root)
+                        toil.start(rootJob)
+
+            userScript = self._getScriptSource(userScript)
+
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+
+            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
+                                  '--logDebug',
+                                  '--batchSystem=mesos',
+                                  '--mesosMaster=localhost:5050',
+                                  '--retryCount=0',
+                                  '--defaultMemory=10M',
+                                  '--defaultDisk=10M',
+                                  '/data/jobstore')
+
+    def testDeferralWithFailureAndEncapsulation(self):
+        """
+        Ensure that the following DAG succeeds:
+
+                      ┌───────────┐
+                      │ Root (W1) │
+                      └───────────┘
+                            │
+                 ┌──────────┴─────────┐
+                 ▼                    ▼
+        ┌────────────────┐ ┌────────────────────┐
+        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════════════╗
+        └────────────────┘ └────────────────────┘                       ║
+                                      │                                 ║
+                                      ▼                                 ▼
+                            ┌───────────────────┐              ┌────────────────┐
+                            │ Encapsulated (W3) │════════════╗ │ Follow-on (W7) │
+                            └───────────────────┘            ║ └────────────────┘
+                                      │                      ║
+                               ┌──────┴──────┐               ║
+                               ▼             ▼               ▼
+                        ┌────────────┐┌────────────┐ ┌──────────────┐
+                        │ Dummy (W4) ││ Dummy (W5) │ │ Trigger (W6) │
+                        └────────────┘└────────────┘ └──────────────┘
+
+        `Trigger` causes `Deferring` to crash. `Follow-on` runs next, detects `Deferring`'s
+        left-overs and runs the deferred function. `Follow-on` is an instance of `Job` and the
+        first job in its worker process. This test ensures that despite these circumstances,
+        the user script is loaded before the deferred functions defined in it are being run.
+
+        `Encapsulated` has two children to ensure that `Follow-on` is run in a new worker. That's
+        the only way to guarantee that the user script has not been loaded yet, which would cause
+        the test to succeed coincidentally. We want to test that hot-deploying and loading of the
+        user script are done properly *before* deferred functions are being run and before any
+        jobs have been executed by that worker.
+        """
+        with self._venvApplianceCluster() as (leader, worker):
+            def userScript():
+                import os
+                import time
+                from toil.job import Job
+                from toil.common import Toil
+                from toil.leader import FailedJobsException
+
+                TIMEOUT = 10
+
+                def root(rootJob):
+                    def nullFile():
+                        return rootJob.fileStore.jobStore.importFile('file:///dev/null')
+
+                    startFile = nullFile()
+                    endFile = nullFile()
+
+                    rootJob.addChildJobFn(deferring, startFile, endFile)
+                    encapsulatedJob = Job.wrapJobFn(encapsulated, startFile)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatedJob.addChildFn(dummy)
+                    encapsulatedJob.addFollowOnJobFn(trigger, endFile)
+                    encapsulatingJob = encapsulatedJob.encapsulate()
+                    rootJob.addChild(encapsulatingJob)
+
+                def dummy():
+                    pass
+
+                def deferredFile(config):
+                    """
+                    Return path to a file at the root of the job store, exploiting the fact that
+                    the job store is shared between leader and worker container.
+                    """
+                    prefix = 'file:'
+                    locator = config.jobStore
+                    assert locator.startswith(prefix)
+                    return os.path.join(locator[len(prefix):], 'testDeferredFile')
+
+                def deferred(deferredFilePath):
+                    """
+                    The deferred function that is supposed to run.
+                    """
+                    os.unlink(deferredFilePath)
+
+                # noinspection PyUnusedLocal
+                def deferring(job, startFile, endFile):
+                    """
+                    A job that adds the deferred function and then crashes once the `trigger` job
+                    tells it to.
+                    """
+                    job.defer(deferred, deferredFile(job._config))
+                    jobStore = job.fileStore.jobStore
+                    jobStore.deleteFile(startFile)
+                    with jobStore.updateFileStream(endFile) as fH:
+                        fH.write(str(os.getpid()))
+                    timeout = time.time() + TIMEOUT
+                    while jobStore.fileExists(endFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+                    os.kill(os.getpid(), 9)
+
+                def encapsulated(job, startFile):
+                    """
+                    A job that waits until the `deferring` job is running and waiting to be crashed.
+                    """
+                    timeout = time.time() + TIMEOUT
+                    while job.fileStore.jobStore.fileExists(startFile):
+                        assert time.time() < timeout
+                        time.sleep(1)
+
+                def trigger(job, endFile):
+                    """
+                    A job that determines the PID of the worker running the `deferring` job,
+                    tells the `deferring` job to crash and then waits for the corresponding
+                    worker process to end. By waiting we can be sure that the `follow-on` job
+                    finds the left-overs of the `deferring` job.
+                    """
+                    import errno
+                    jobStore = job.fileStore.jobStore
+                    with jobStore.readFileStream(endFile) as fH:
+                        pid = int(fH.read())
+                    os.kill(pid, 0)
+                    jobStore.deleteFile(endFile)
+                    timeout = time.time() + TIMEOUT
+                    while True:
+                        try:
+                            os.kill(pid, 0)
+                        except OSError as e:
+                            if e.errno == errno.ESRCH:
+                                break
+                            else:
+                                raise
+                        else:
+                            assert time.time() < timeout
+                            time.sleep(1)
+
+                def tryUnlink(deferredFilePath):
+                    try:
+                        os.unlink(deferredFilePath)
+                    except OSError as e:
+                        if e.errno == errno.ENOENT:
+                            pass
+                        else:
+                            raise
+
+                if __name__ == '__main__':
+                    import errno
+                    options = Job.Runner.getDefaultArgumentParser().parse_args()
+                    with Toil(options) as toil:
+                        deferredFilePath = deferredFile(toil.config)
+                        open(deferredFilePath, 'w').close()
+                        try:
+                            assert os.path.exists(deferredFilePath)
+                            try:
+                                toil.start(Job.wrapJobFn(root))
+                            except FailedJobsException as e:
+                                assert e.numberOfFailedJobs == 2 # `root` and `deferring`
+                                assert not os.path.exists(deferredFilePath), \
+                                    'Apparently, the deferred function did not run.'
+                            else:
+                                assert False, 'Workflow should not have succeeded.'
+                        finally:
+                            tryUnlink(deferredFilePath)
+
+            userScript = self._getScriptSource(userScript)
+
+            leader.deployScript(path=self.sitePackages,
+                                packagePath='foo.bar',
+                                script=userScript)
+
+            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
+                                  '--logDebug',
+                                  '--batchSystem=mesos',
+                                  '--mesosMaster=localhost:5050',
+                                  '--retryCount=0',
+                                  '--defaultMemory=10M',
+                                  '--defaultDisk=10M',
                                   '/data/jobstore')

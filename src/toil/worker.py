@@ -75,6 +75,14 @@ def main():
     from toil.lib.bioio import getTotalCpuTime
     from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
     from toil.job import Job
+    try:
+        import boto
+    except ImportError:
+        pass
+    else:
+        # boto is installed, monkey patch it now
+        from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+        enable_metadata_credential_caching()
     ##########################################
     #Input args
     ##########################################

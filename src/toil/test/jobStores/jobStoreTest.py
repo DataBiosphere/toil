@@ -43,8 +43,7 @@ from toil.common import Config, Toil
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
-                                             NoSuchFileException,
-                                             BucketLocationConflictException)
+                                             NoSuchFileException)
 from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
@@ -894,6 +893,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
+        from toil.jobStores.aws.jobStore import BucketLocationConflictException
         externalAWSLocation = Location.USWest
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region

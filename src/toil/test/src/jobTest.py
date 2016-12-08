@@ -186,7 +186,7 @@ class JobTest(ToilTest):
             # Test making multiple roots
             childEdges2 = childEdges.copy()
             childEdges2.add((nodeNumber, 1))  # This creates an extra root at "nodeNumber"
-            rootJob2 = self.makeJobGraph(nodeNumber + 1, childEdges2, followOnEdges, None)
+            rootJob2 = self.makeJobGraph(nodeNumber + 1, childEdges2, followOnEdges, None, False)
             try:
                 rootJob2.checkJobGraphConnected()
                 self.assertTrue(False)  # Multiple roots were not detected
@@ -208,13 +208,13 @@ class JobTest(ToilTest):
                 adjacencyList[fNode].remove(tNode)
                 # Check is now acyclic again
                 self.makeJobGraph(nodeNumber, childEdges,
-                                  followOnEdges, None).checkJobGraphAcylic()
+                                  followOnEdges, None, False).checkJobGraphAcylic()
                                   
             def checkFollowOnEdgeCycleDetection(fNode, tNode):
                 followOnEdges.add((fNode, tNode))  # Create a cycle
                 try:
                     self.makeJobGraph(nodeNumber, childEdges,
-                                      followOnEdges, None).checkJobGraphAcylic()
+                                      followOnEdges, None, False).checkJobGraphAcylic()
                     # self.assertTrue(False) #The cycle was not detected
                 except JobGraphDeadlockException:
                     pass  # This is the expected behaviour
@@ -222,7 +222,7 @@ class JobTest(ToilTest):
                 followOnEdges.remove((fNode, tNode))
                 # Check is now acyclic again
                 self.makeJobGraph(nodeNumber, childEdges,
-                                  followOnEdges, None).checkJobGraphAcylic()
+                                  followOnEdges, None, False).checkJobGraphAcylic()
 
             # Now try adding edges that create a cycle
 
@@ -298,7 +298,7 @@ class JobTest(ToilTest):
                     numberOfFailedJobs = 0
                 except FailedJobsException as e:
                     numberOfFailedJobs = e.numberOfFailedJobs
-                    if totalTrys > 32: #p(fail after this many restarts) = 0.5**32
+                    if totalTrys > 32: #p(fail after this many restarts) ~= 0.5**32
                         self.fail() #Exceeded a reasonable number of restarts    
                     totalTrys += 1
             
@@ -427,7 +427,7 @@ class JobTest(ToilTest):
 
         return followOnEdges
 
-    def makeJobGraph(self, nodeNumber, childEdges, followOnEdges, outPath):
+    def makeJobGraph(self, nodeNumber, childEdges, followOnEdges, outPath, addServices=True):
         """
         Converts a DAG into a job graph. childEdges and followOnEdges are the lists of child and
         followOn edges.
@@ -438,17 +438,21 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string))
+                             None if outPath is None else os.path.join(outPath, string)) 
             jobsToPromisesMap[job] = promises
             return job
 
         # Make the jobs
         jobs = map(lambda i: makeJob(str(i)), xrange(nodeNumber))
+        
         # Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
         for fNode, tNode in followOnEdges:
             jobs[fNode].addFollowOn(jobs[tNode])
+            
+        # Map of jobs to return values
+        jobsToRvs = dict(map(lambda job : (job, job.addService(TrivialService(job.rv())) if addServices else job.rv()), jobs))
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(job._directPredecessors))
@@ -456,13 +460,13 @@ class JobTest(ToilTest):
                 predecessor = random.choice(list(predecessor._directPredecessors))
             return predecessor
 
-        # Connect up set of random promises compatible with graph
+        # Connect up set of random promises compatible with graph                                          
         while random.random() > 0.01:
             job = random.choice(jobsToPromisesMap.keys())
             promises = jobsToPromisesMap[job]
             if len(job._directPredecessors) > 0:
                 predecessor = getRandomPredecessor(job)
-                promises.append(predecessor.rv())
+                promises.append(jobsToRvs[predecessor])
 
         return jobs[0]
 
@@ -547,6 +551,22 @@ def child(job):
 
 def errorChild(job):
     raise RuntimeError('Child failure')
+
+class TrivialService(Job.Service):
+    def __init__(self, message, *args, **kwargs):
+        """ Service that does nothing, used to check for deadlocks
+        """
+        Job.Service.__init__(self, *args, **kwargs)
+        self.message = message
+
+    def start(self, job):
+        return self.message
+
+    def stop(self, job):
+        pass
+
+    def check(self):
+        pass
 
 
 if __name__ == '__main__':

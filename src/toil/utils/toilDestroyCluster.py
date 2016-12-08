@@ -15,8 +15,10 @@
 Terminates the specified cluster and associated resources
 """
 import logging
+from toil.provisioners import Cluster
 from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+
 
 logger = logging.getLogger( __name__ )
 
@@ -26,14 +28,5 @@ def main():
     parser = addBasicProvisionerOptions(parser)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    if config.provisioner == 'aws':
-        logger.info('Using aws provisioner.')
-        try:
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        except ImportError:
-            raise RuntimeError('The aws extra must be installed to use this provisioner')
-        provisioner = AWSProvisioner
-    else:
-        assert False
-
-    provisioner.destroyCluster(clusterName=config.clusterName)
+    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)
+    cluster.destroyCluster()

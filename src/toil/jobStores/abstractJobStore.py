@@ -100,13 +100,6 @@ class JobStoreExistsException(Exception):
             "the job store with 'toil clean' to start the workflow from scratch" % locator)
 
 
-class BucketLocationConflictException(Exception):
-    def __init__(self, bucketRegion):
-        message = ('A bucket with the same name as the jobstore was found in another region (%s). '
-                   'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)
-        super(BucketLocationConflictException, self).__init__(message)
-
-
 class AbstractJobStore(object):
     """ 
     Represents the physical storage for the jobs and files in a Toil workflow.
@@ -230,8 +223,8 @@ class AbstractJobStore(object):
             try:
                 module = import_module(moduleName)
             except ImportError:
-                logger.info("Unable to import '%s'. You may want to try reinstalling Toil with "
-                            "additional extras.", moduleName)
+                logger.debug("Unable to import '%s' as is expected if the corresponding extra was "
+                             "omitted at installation time.", moduleName)
             else:
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)

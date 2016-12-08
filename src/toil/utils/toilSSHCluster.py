@@ -14,7 +14,9 @@
 """
 SSHs into the toil appliance container running on the leader of the cluster
 """
+import argparse
 import logging
+from toil.provisioners import Cluster
 from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 
@@ -24,16 +26,8 @@ logger = logging.getLogger( __name__ )
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    if config.provisioner == 'aws':
-        logger.info('Using aws provisioner.')
-        try:
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        except ImportError:
-            raise RuntimeError('The aws extra must be installed to use this provisioner')
-        provisioner = AWSProvisioner
-    else:
-        assert False
-
-    provisioner.sshLeader(clusterName=config.clusterName)
+    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)
+    cluster.sshCluster(args=config.args)
