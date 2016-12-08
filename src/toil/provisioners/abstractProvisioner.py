@@ -109,13 +109,16 @@ class AbstractProvisioner(object):
                 while not self.stop:
                     nodeInfo = self.batchSystem.getNodes(preemptable)
                     for nodeIP in nodeInfo.keys():
-                        try:
-                            # if the node is already registered update the dictionary with
-                            # the newly reported stats
-                            stats[nodeIP].append(toDict(nodeInfo[nodeIP]))
-                        except KeyError:
-                            # create a new entry for the node
-                            stats[nodeIP] = [toDict(nodeInfo[nodeIP])]
+                        nodeStats = nodeInfo[nodeIP]
+                        if nodeStats is not None:
+                            nodeStats = toDict(nodeStats)
+                            try:
+                                # if the node is already registered update the dictionary with
+                                # the newly reported stats
+                                stats[nodeIP].append(nodeStats)
+                            except KeyError:
+                                # create a new entry for the node
+                                stats[nodeIP] = [nodeStats]
                     time.sleep(60)
             finally:
                 threadName = 'Preemptable' if preemptable else 'Non-preemptable'
