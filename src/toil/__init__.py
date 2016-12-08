@@ -17,7 +17,6 @@ from __future__ import absolute_import
 import logging
 import os
 import sys
-from pprint import pformat
 
 from subprocess import check_output
 
@@ -141,9 +140,9 @@ def lookupEnvVar(name, envName, defaultValue):
         return value
 
 
-def logProcessContext(config, logger):
+def logProcessContext(config):
     # toil.version.version (string) canont be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
-    logger.info("Running Toil version %s.", version)
-    logger.info("Configuration:\n %s", pformat(config.__dict__))
+    log.info("Running Toil version %s.", version)
+    log.info("Configuration: %s", config.__dict__)
