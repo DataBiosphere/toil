@@ -14,3 +14,6 @@ __pycache__
 /docker/leader/
 /docker/worker/
 /docker/toil-*.tar.gz
+.project
+.pydevproject
+.gitignore
