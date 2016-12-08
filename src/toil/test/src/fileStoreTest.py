@@ -525,7 +525,7 @@ class hidden:
             assert testCase in ('kill', 'fail')
             jsID = job.fileStore.writeGlobalFile(job.fileStore.getLocalTempFile())
             contents = ''
-            with open(nonLocalFile, 'w') as fH:
+            with open(nonLocalFile) as fH:
                 contents = fH.read()
             if contents:
                 info = dill.loads(contents)
