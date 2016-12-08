@@ -88,6 +88,12 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                    url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
                    contentHash=contentHash.hexdigest())
 
+    def refresh(self, jobStore):
+        return type(self)(name=self.name,
+                          pathHash=self.pathHash,
+                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          contentHash=self.contentHash)
+
     @classmethod
     def prepareSystem(cls):
         """
