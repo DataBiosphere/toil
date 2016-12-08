@@ -21,4 +21,8 @@ __pycache__
 .project
 .pydevproject
 .gitignore
+<<<<<<< HEAD
 >>>>>>> ca66e03... cleanup unnecessary files
+=======
+._*
+>>>>>>> 27fd6a5... Clean up
