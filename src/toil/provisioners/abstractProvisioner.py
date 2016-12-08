@@ -94,6 +94,15 @@ class AbstractProvisioner(object):
             thread.join(timeout=0)
 
     def _gatherStats(self, preemptable):
+        def toDict(nodeInfo):
+            # namedtuples don't retain attribute names when dumped to JSON.
+            # convert them to dicts instead to improve stats output. Also add
+            # time.
+            return dict(memory=nodeInfo.memory,
+                        cores=nodeInfo.cores,
+                        workers=nodeInfo.workers,
+                        time=time.time()
+                        )
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
             stats = {}
             try:
@@ -103,10 +112,10 @@ class AbstractProvisioner(object):
                         try:
                             # if the node is already registered update the dictionary with
                             # the newly reported stats
-                            stats[nodeIP].append(nodeInfo[nodeIP])
+                            stats[nodeIP].append(toDict(nodeInfo[nodeIP]))
                         except KeyError:
                             # create a new entry for the node
-                            stats[nodeIP] = [nodeInfo[nodeIP]]
+                            stats[nodeIP] = [toDict(nodeInfo[nodeIP])]
                     time.sleep(60)
             finally:
                 threadName = 'Preemptable' if preemptable else 'Non-preemptable'
