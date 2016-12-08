@@ -13,6 +13,12 @@ __pycache__
 /docs/generated_rst/
 /docker/Dockerfile
 /docker/toil-*.tar.gz
+<<<<<<< HEAD
 /src/toil/version.py
 .project
 .pydevproject
+=======
+.project
+.pydevproject
+.gitignore
+>>>>>>> ca66e03... cleanup unnecessary files
