@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import threading
 from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
@@ -57,8 +58,18 @@ class AbstractProvisioner(object):
         self.stats = {}
         self.statsThreads = []
         self.statsPath = config.clusterStats
+        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
 
     def shutDown(self, preemptable):
+        if not self.stop:
+            # only shutdown the stats threads once
+            self._shutDownStats()
+        log.debug('Forcing provisioner to reduce cluster size to zero.')
+        totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
+        if totalNodes != 0:
+            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
+
+    def _shutDownStats(self):
         def getFileName():
             extension = '.json'
             file = '%s-stats' % self.config.jobStore
@@ -69,19 +80,13 @@ class AbstractProvisioner(object):
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
-        if self.config.clusterStats:
-            log.debug('Shutting down %s provisioner stats thread.',
-                      'preemptable' if preemptable else 'non-preemptable')
+        if self.config.clusterStats and self.scaleable:
             self.stop = True
             for thread in self.statsThreads:
                 thread.join()
             fileName = getFileName()
             with open(fileName, 'w') as f:
                 json.dump(self.stats, f)
-        log.debug('Forcing provisioner to reduce cluster size to zero.')
-        totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes != 0:
-            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
 
     def startStats(self, preemptable):
         thread = ExceptionalThread(target=self._gatherStats, args=[preemptable])
@@ -103,7 +108,7 @@ class AbstractProvisioner(object):
                         workers=nodeInfo.workers,
                         time=time.time()
                         )
-        if isinstance(self.batchSystem, AbstractScalableBatchSystem):
+        if self.scaleable:
             stats = {}
             try:
                 while not self.stop:
