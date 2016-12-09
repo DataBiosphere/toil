@@ -930,13 +930,6 @@ Here we created a virtualenv in the ``.env`` subdirectory of our project, we
 installed the ``fairydust`` distribution from PyPI and finally we installed the
 two packages that our project consists of.
 
-If you create a ``setup.py`` for your project (see `setuptools`_), the ``cp``
-step can be replaced with ``python setup.py install``. Note that ``python
-setup.py develop`` would not work here because it does not copy source files
-but creates .egg-links instead, which Toil is not able to hot-deploy.
-
-.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
-
 The main caveat to this solution is that the workflow's external dependencies
 may not contain native code, i.e. they must be pure Python. If you have
 dependencies that rely on native code, you must manually install them on each
@@ -947,6 +940,31 @@ installed packages visible inside the virtualenv. It is essential because, as
 we'll see later, Toil and its dependencies must be installed globally and would
 be inaccessible without that option.
 
+If you create a ``setup.py`` for your project (see `setuptools`_), the ``cp``
+step can be replaced with ``pip install .``. Your ``setup.py`` should declare
+the ``fairydust`` dependency, also making redundant the manual installation of
+that package in the steps above. Note that it is not possible to use ``python
+setup.py develop`` or ``pip install -e .`` instead of ``pip install .`` because
+the former two do not copy the source files but create an ``.egg-link`` file
+instead, which Toil is not able to hot-deploy. Similarly, ``python setup.py
+install`` does not work either because it installs the project as a Python Egg
+(a ``.egg`` file), which is not supported by Toil although that may `change`_
+in the future. You might be tempted to prevent the installation of the ``.egg``
+by passing ``--single-version-externally-managed`` to ``setup.py install`` but
+that would also disable the automatic installation of your project's
+dependencies.
+
+.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
+.. _change: https://github.com/BD2KGenomics/toil/issues/1367
+
+If you publish your project to PyPI, others will be able to install it on their
+leader using pip, provided they 1) already installed Toil on the leader and
+workers nodes and 2) use a virtualenv created with ``--system-site-packages``::
+
+   $ virtualenv --system-site-packages my-project
+   $ . my-project/bin/activate
+   $ pip install my-project
+   $ python -m workflow.main --batchSystem=mesos …
 
 Relying on shared filesystems
 -----------------------------
