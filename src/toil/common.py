@@ -59,6 +59,7 @@ class Config(object):
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
         self.cleanWorkDir = None
+        self.clusterStats = None
 
         #Restarting the workflow options
         self.restart = False
@@ -186,6 +187,7 @@ class Config(object):
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
+        setOption('clusterStats')
 
         #Restarting the workflow options
         setOption("restart")
@@ -303,6 +305,13 @@ def _addOptions(addGroupFn, config):
                 help=("Determines deletion of temporary worker directory upon completion of a job. Choices: 'always', "
                       "'never', 'onSuccess'. Default = always. WARNING: This option should be changed for debugging "
                       "only. Running a full pipeline with this option could fill your disk with intermediate data."))
+    addOptionFn("--clusterStats", dest="clusterStats", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="If enabled, writes out JSON resource usage statistics to a file. "
+                     "The default location for this file is the current working directory, "
+                     "but an absolute path can also be passed to specify where this file "
+                     "should be written. This options only applies when using scalable batch "
+                     "systems.")
     #
     #Restarting the workflow options
     #

@@ -11,12 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
+import os
+import threading
 from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
 
 from itertools import islice
+
+import time
+
+from bd2k.util.threading import ExceptionalThread
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 
@@ -47,6 +54,83 @@ class AbstractProvisioner(object):
     def __init__(self, config, batchSystem):
         self.config = config
         self.batchSystem = batchSystem
+        self.stop = False
+        self.stats = {}
+        self.statsThreads = []
+        self.statsPath = config.clusterStats
+        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
+
+    def shutDown(self, preemptable):
+        if not self.stop:
+            # only shutdown the stats threads once
+            self._shutDownStats()
+        log.debug('Forcing provisioner to reduce cluster size to zero.')
+        totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
+        if totalNodes != 0:
+            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
+
+    def _shutDownStats(self):
+        def getFileName():
+            extension = '.json'
+            file = '%s-stats' % self.config.jobStore
+            counter = 0
+            while True:
+                suffix = str(counter).zfill(3) + extension
+                fullName = os.path.join(self.statsPath, file + suffix)
+                if not os.path.exists(fullName):
+                    return fullName
+                counter += 1
+        if self.config.clusterStats and self.scaleable:
+            self.stop = True
+            for thread in self.statsThreads:
+                thread.join()
+            fileName = getFileName()
+            with open(fileName, 'w') as f:
+                json.dump(self.stats, f)
+
+    def startStats(self, preemptable):
+        thread = ExceptionalThread(target=self._gatherStats, args=[preemptable])
+        thread.start()
+        self.statsThreads.append(thread)
+
+    def checkStats(self):
+        for thread in self.statsThreads:
+            # propagate any errors raised in the threads execution
+            thread.join(timeout=0)
+
+    def _gatherStats(self, preemptable):
+        def toDict(nodeInfo):
+            # namedtuples don't retain attribute names when dumped to JSON.
+            # convert them to dicts instead to improve stats output. Also add
+            # time.
+            return dict(memory=nodeInfo.memory,
+                        cores=nodeInfo.cores,
+                        workers=nodeInfo.workers,
+                        time=time.time()
+                        )
+        if self.scaleable:
+            stats = {}
+            try:
+                while not self.stop:
+                    nodeInfo = self.batchSystem.getNodes(preemptable)
+                    for nodeIP in nodeInfo.keys():
+                        nodeStats = nodeInfo[nodeIP]
+                        if nodeStats is not None:
+                            nodeStats = toDict(nodeStats)
+                            try:
+                                # if the node is already registered update the dictionary with
+                                # the newly reported stats
+                                stats[nodeIP].append(nodeStats)
+                            except KeyError:
+                                # create a new entry for the node
+                                stats[nodeIP] = [nodeStats]
+                    time.sleep(60)
+            finally:
+                threadName = 'Preemptable' if preemptable else 'Non-preemptable'
+                log.debug('%s provisioner stats thread shut down successfully.', threadName)
+                self.stats[threadName] = stats
+        else:
+            pass
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         """

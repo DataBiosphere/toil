@@ -305,12 +305,14 @@ class ScalerThread(ExceptionalThread):
         # Minimum/maximum number of either preemptable or non-preemptable nodes in the cluster
         self.minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
-        
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             self.totalNodes = len(self.scaler.leader.batchSystem.getNodes(self.preemptable))
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
+        
+        if scaler.config.clusterStats:
+            self.scaler.provisioner.startStats(preemptable=preemptable)
 
     def tryRun(self):
         global _preemptableNodeDeficit
@@ -414,12 +416,8 @@ class ScalerThread(ExceptionalThread):
                             _preemptableNodeDeficit = deficit
                         else:
                             _preemptableNodeDeficit = 0
+
+                self.scaler.provisioner.checkStats()
                     
-        logger.info('Forcing provisioner to reduce cluster size to zero.')
-        self.totalNodes = self.scaler.provisioner.setNodeCount(numNodes=0,
-                                                               preemptable=self.preemptable,
-                                                               force=True)
-        if self.totalNodes != 0:
-            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
-        else:
-            logger.info('Scaler exited normally.')
+        self.scaler.provisioner.shutDown(preemptable=self.preemptable)
+        logger.info('Scaler exited normally.')

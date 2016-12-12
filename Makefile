@@ -126,7 +126,7 @@ clean_sdist:
 
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) -m pytest -vv src
+	    $(python) -m pytest -vv $(tests)
 
 
 test_parallel: check_venv check_build_reqs docker

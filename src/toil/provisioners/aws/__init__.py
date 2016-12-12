@@ -45,7 +45,7 @@ def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
             assert bool(spotBid) == bool(nodeType) == bool(ctx)
             # if the zone is unset and we are using the spot market, optimize our
             # choice based on the spot history
-            return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=spotBid)
+            return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
         if not zone:
             zone = boto.config.get('Boto', 'ec2_region_name')
             if zone is not None:
