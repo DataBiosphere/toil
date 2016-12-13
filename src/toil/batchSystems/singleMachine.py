@@ -290,8 +290,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         return 5400
 
-    @staticmethod
-    def setOptions(setOption):
+    @classmethod
+    def setOptions(cls, setOption):
         setOption("scale", default=1)
         
 class Info(object):
