@@ -42,7 +42,7 @@ import functools
 
 # Python 3 compatibility imports
 from six.moves import xrange
-from six import iteritems
+from six import iteritems, string_types
 import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
@@ -317,7 +317,7 @@ class CWLScatter(Job):
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
 
-        if isinstance(self.step.tool["scatter"], basestring):
+        if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
         else:
             scatter = self.step.tool["scatter"]

@@ -30,6 +30,7 @@ import subprocess
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from six import string_types
 
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
@@ -167,7 +168,7 @@ def system(command):
     :type command: str | sequence[string]
     """
     logger.debug('Running: %r', command)
-    subprocess.check_call(command, shell=isinstance(command,basestring), bufsize=-1)
+    subprocess.check_call(command, shell=isinstance(command, string_types), bufsize=-1)
 
 def getTotalCpuTimeAndMemoryUsage():
     """Gives the total cpu time and memory usage of itself and its children.
