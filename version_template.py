@@ -118,7 +118,7 @@ def dirty():
 
 
 def expand_(name=None):
-    variables = {k: v for k, v in globals().iteritems()
+    variables = {k: v for k, v in globals().items()
                  if not k.startswith('_') and not k.endswith('_')}
 
     def resolve(k):
@@ -128,7 +128,7 @@ def expand_(name=None):
         return v
 
     if name is None:
-        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.iteritems())
+        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.items())
     else:
         return resolve(name)
 
