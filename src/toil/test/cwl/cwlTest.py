@@ -19,6 +19,7 @@ import re
 
 # Python 3 compatibility imports
 from six.moves import StringIO
+from six import u as unicode
 
 from toil.test import ToilTest, needs_cwl
 
