@@ -22,14 +22,13 @@ from multiprocessing import cpu_count
 import os
 import re
 import uuid
-import cPickle
 import base64
 import hashlib
 import itertools
 import repr as reprlib
 
 # Python 3 compatibility imports
-from six.moves import xrange
+from six.moves import xrange, cPickle
 from six import iteritems
 
 from bd2k.util import strict_bool

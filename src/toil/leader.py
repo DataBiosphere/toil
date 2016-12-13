@@ -17,10 +17,12 @@ The leader script (of the leader/worker pair) for running jobs.
 """
 from __future__ import absolute_import
 
-import cPickle
 import logging
 import time
 from collections import namedtuple
+
+# Python 3 compatibility imports
+from six.moves import cPickle
 
 from bd2k.util.expando import Expando
 

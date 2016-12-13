@@ -7,8 +7,11 @@ from StringIO import StringIO
 from bd2k.util.threading import ExceptionalThread
 import boto
 import logging
-import cPickle
 import time
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)

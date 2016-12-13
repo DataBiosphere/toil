@@ -24,9 +24,12 @@ import traceback
 import time
 import socket
 import logging
-import cPickle
 import shutil
 from threading import Thread
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore

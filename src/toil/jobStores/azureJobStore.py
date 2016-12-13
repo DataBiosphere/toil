@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 
 import bz2
-import cPickle
 import httplib
 import inspect
 import logging
@@ -27,6 +26,9 @@ from ConfigParser import RawConfigParser, NoOptionError
 from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+
+# Python 3 compatibility imports
+from six.moves import cPickle
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy

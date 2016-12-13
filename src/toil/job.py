@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import, print_function
 
-import cPickle
 import collections
 import importlib
 import inspect
@@ -31,6 +30,7 @@ from contextlib import contextmanager
 from io import BytesIO
 
 # Python 3 compatibility imports
+from six.moves import cPickle
 from six import iteritems
 
 from bd2k.util.exceptions import require

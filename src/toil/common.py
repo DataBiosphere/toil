@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 
-import cPickle
 import logging
 import os
 import re
@@ -25,6 +24,7 @@ from argparse import ArgumentParser
 from threading import Thread
 
 # Python 3 compatibility imports
+from six.moves import cPickle
 from six import iteritems
 
 from bd2k.util.exceptions import require
