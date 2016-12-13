@@ -572,8 +572,8 @@ class MesosBatchSystem(BatchSystemSupport,
         log.warning("Executor '%s' lost.", executorId)
 
 
-    @staticmethod
-    def setOptions(config):
+    @classmethod
+    def setOptions(cl, config):
         super.setOptions(config)
         config.setOptions.setOption("mesosMasterAddress", None, None, 'localhost:5050')
         

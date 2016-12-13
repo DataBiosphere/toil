@@ -184,10 +184,11 @@ class AbstractBatchSystem(object):
         raise NotImplementedError()
 
 
-    @staticmethod
-    def setOptions(setOption):
+    @classmethod
+    def setOptions(cls, setOption):
         """
-        Process command line or configuration options relevant to this batch system
+        Process command line or configuration options relevant to this batch system.
+        The 
         
         :param common.Config: the Config object
         """

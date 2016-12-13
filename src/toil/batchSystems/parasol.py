@@ -370,8 +370,8 @@ class ParasolBatchSystem(BatchSystemSupport):
         os.rmdir(self.parasolResultsDir)
 
 
-    @staticmethod
-    def setOptions(setOption):
+    @classmethod
+    def setOptions(cls, setOption):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)

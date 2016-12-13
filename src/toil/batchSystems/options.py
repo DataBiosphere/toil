@@ -33,6 +33,7 @@ def _mesosOptions(addOptionFn):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
         help=("The host and port of the Mesos master separated by colon. default=%s" % 'localhost:5050'))
 
+# Built in batch systems that have options
 _OPTIONS = [
     _parasolOptions,
     _singleMachineOptions,
