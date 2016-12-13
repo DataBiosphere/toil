@@ -15,11 +15,11 @@
 from __future__ import absolute_import
 import time
 from threading import Thread, Event
-from Queue import Queue, Empty
 import logging
 import random
 
 # Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 from six.moves import xrange
 from six import iteritems
 

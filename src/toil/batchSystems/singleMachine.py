@@ -22,9 +22,9 @@ import time
 import math
 from threading import Thread
 from threading import Lock, Condition
-from Queue import Queue, Empty
 
 # Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 from six.moves import xrange
 from six import iteritems
 

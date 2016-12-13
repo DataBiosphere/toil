@@ -19,10 +19,10 @@ from pipes import quote
 import subprocess
 import time
 import math
-from Queue import Queue, Empty
 from threading import Thread
 
 # Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.batchSystems import MemoryString

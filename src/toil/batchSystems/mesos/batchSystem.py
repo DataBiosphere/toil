@@ -21,7 +21,6 @@ import pickle
 import pwd
 import socket
 import time
-from Queue import Queue, Empty
 from collections import defaultdict
 from operator import attrgetter
 from struct import unpack
@@ -29,6 +28,7 @@ from struct import unpack
 import itertools
 
 # Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 from six import iteritems
 
 import mesos.interface

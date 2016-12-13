@@ -21,9 +21,11 @@ from __future__ import absolute_import
 import logging
 import subprocess
 import time
-from Queue import Queue, Empty
 from threading import Thread
 from datetime import date
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport

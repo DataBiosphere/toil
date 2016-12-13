@@ -27,13 +27,13 @@ import urllib2
 import urlparse
 import uuid
 from stubserver import FTPStubServer
-from Queue import Queue
 from abc import abstractmethod, ABCMeta
 from itertools import chain, islice, count
 from threading import Thread
 from unittest import skip
 
 # Python 3 compatibility imports
+from six.moves.queue import Queue
 from six.moves import xrange
 from six import iteritems
 

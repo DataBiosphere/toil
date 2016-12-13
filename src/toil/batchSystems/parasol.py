@@ -20,11 +20,10 @@ import sys
 import subprocess
 import tempfile
 import time
-from Queue import Empty
-from Queue import Queue
 from threading import Thread
 
 # Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 from six import itervalues
 
 from bd2k.util.iterables import concat
