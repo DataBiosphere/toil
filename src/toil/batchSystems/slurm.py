@@ -22,6 +22,9 @@ import math
 from Queue import Queue, Empty
 from threading import Thread
 
+# Python 3 compatibility imports
+from six import iteritems
+
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
@@ -183,7 +186,7 @@ class Worker(Thread):
         sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
-            for k, v in self.boss.environment.iteritems():
+            for k, v in iteritems(self.boss.environment):
                 quoted_value = quote(os.environ[k] if v is None else v)
                 sbatch_line.append('--export={}={}'.format(k, quoted_value))
 

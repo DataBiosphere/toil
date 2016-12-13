@@ -35,6 +35,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from six import iteritems
 
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
@@ -407,7 +408,7 @@ class AbstractJobStoreTest:
 
         @classmethod
         def cleanUpExternalStores(cls):
-            for test, store in cls.externalStoreCache.iteritems():
+            for test, store in iteritems(cls.externalStoreCache):
                 logger.info('Cleaning up external store for %s.', test)
                 test._cleanUpExternalStore(store)
 

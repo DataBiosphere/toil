@@ -30,6 +30,9 @@ from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
+# Python 3 compatibility imports
+from six import iteritems
+
 from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
@@ -894,7 +897,7 @@ class Job(JobLikeObject):
         """
         Sets the values for promises using the return values from this job's run() function.
         """
-        for path, promiseFileStoreIDs in self._rvs.iteritems():
+        for path, promiseFileStoreIDs in iteritems(self._rvs):
             if not path:
                 # Note that its possible for returnValues to be a promise, not an actual return
                 # value. This is the case if the job returns a promise from another job. In

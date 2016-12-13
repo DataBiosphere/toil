@@ -24,6 +24,9 @@ import time
 from argparse import ArgumentParser
 from threading import Thread
 
+# Python 3 compatibility imports
+from six import iteritems
+
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
@@ -887,7 +890,7 @@ class Toil(object):
         Sets the environment variables required by the job store and those passed on command line.
         """
         for envDict in (self._jobStore.getEnv(), self.config.environment):
-            for k, v in envDict.iteritems():
+            for k, v in iteritems(envDict):
                 self._batchSystem.setEnv(k, v)
 
     def _serialiseEnv(self):

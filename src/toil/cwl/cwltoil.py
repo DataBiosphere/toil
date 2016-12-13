@@ -43,6 +43,7 @@ import urlparse
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from six import iteritems
 
 cwllogger = logging.getLogger("cwltool")
 
@@ -105,7 +106,7 @@ def resolve_indirect_inner(d):
 def resolve_indirect(d):
     inner = IndirectDict() if isinstance(d, IndirectDict) else {}
     needEval = False
-    for k, v in d.iteritems():
+    for k, v in iteritems(d):
         if isinstance(v, StepValueFrom):
             inner[k] = v.inner
             needEval = True
@@ -114,7 +115,7 @@ def resolve_indirect(d):
     res = resolve_indirect_inner(inner)
     if needEval:
         ev = {}
-        for k, v in d.iteritems():
+        for k, v in iteritems(d):
             if isinstance(v, StepValueFrom):
                 ev[k] = v.do_eval(res, res[k])
             else:
@@ -328,7 +329,7 @@ class CWLScatter(Job):
 
         valueFrom = {shortname(i["id"]): i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
         def postScatterEval(io):
-            shortio = {shortname(k): v for k, v in io.iteritems()}
+            shortio = {shortname(k): v for k, v in iteritems(io)}
             def valueFromFunc(k, v):
                 if k in valueFrom:
                     return cwltool.expression.do_eval(

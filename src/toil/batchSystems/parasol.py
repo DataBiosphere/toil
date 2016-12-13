@@ -24,6 +24,9 @@ from Queue import Empty
 from Queue import Queue
 from threading import Thread
 
+# Python 3 compatibility imports
+from six import itervalues
+
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 
@@ -234,7 +237,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         created by other users.
         """
         issuedJobs = set()
-        for resultsFile in self.resultsFiles.itervalues():
+        for resultsFile in itervalues(self.resultsFiles):
             issuedJobs.update(self.getJobIDsForResultsFile(resultsFile))
 
         return list(issuedJobs)
@@ -352,7 +355,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
-        for results in self.resultsFiles.itervalues():
+        for results in itervalues(self.resultsFiles):
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
                                          autoRetry=False)[0]
             if exitValue is not None:

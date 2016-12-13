@@ -33,6 +33,9 @@ from textwrap import dedent
 from unittest.util import strclass
 from urllib2 import urlopen
 
+# Python 3 compatibility imports
+from six import iteritems, itervalues
+
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
 from bd2k.util.iterables import concat
@@ -573,7 +576,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
 
         :return: the popped key, value tuple
         """
-        k, v = next(iter(kwargs.iteritems()))
+        k, v = next(iter(iteritems(kwargs)))
         d.pop(k)
         return k, v
 
@@ -717,7 +720,7 @@ class ApplianceTestSupport(ToilTest):
             """
             :param ApplianceTestSupport outer:
             """
-            assert all(' ' not in v for v in mounts.itervalues()), 'No spaces allowed in mounts'
+            assert all(' ' not in v for v in itervalues(mounts)), 'No spaces allowed in mounts'
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
@@ -734,7 +737,7 @@ class ApplianceTestSupport(ToilTest):
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
-                                   ['--volume=%s:%s' % mount for mount in self.mounts.iteritems()],
+                                   ['--volume=%s:%s' % mount for mount in iteritems(self.mounts)],
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
@@ -781,7 +784,7 @@ class ApplianceTestSupport(ToilTest):
             """
             # Delete all files within each mounted directory, but not the directory itself.
             cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
-                                                           for k, v in self.mounts.iteritems()
+                                                           for k, v in iteritems(self.mounts)
                                                            if os.path.isdir(k))
             self.outer._run('docker', 'run',
                             '--rm',

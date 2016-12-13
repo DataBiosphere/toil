@@ -24,6 +24,9 @@ from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
 
+# Python 3 compatibility imports
+from six import itervalues
+
 from bd2k.util.retry import retry_http
 
 from toil.job import JobException
@@ -446,7 +449,7 @@ class AbstractJobStore(object):
 
         def getJobs():
             if jobCache is not None:
-                return jobCache.itervalues()
+                return itervalues(jobCache)
             else:
                 return self.jobs()
 

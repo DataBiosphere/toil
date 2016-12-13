@@ -21,6 +21,7 @@ import random
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from six import iteritems
 
 from bd2k.util.objects import InnerClass
 
@@ -222,7 +223,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     # Stub out all AbstractBatchSystem methods since they are never called
 
-    for name, value in AbstractBatchSystem.__dict__.iteritems():
+    for name, value in iteritems(AbstractBatchSystem.__dict__):
         if getattr(value, '__isabstractmethod__', False):
             exec 'def %s(): pass' % name
         # Without this, the class would end up with .name and .value attributes
