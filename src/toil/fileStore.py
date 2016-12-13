@@ -857,7 +857,7 @@ class CachingFileStore(FileStore):
             # will be renamed into the cache for this node.
             personalCacheDir = ''.join([os.path.dirname(self.localCacheDir), '/.ctmp-',
                                         str(uuid.uuid4())])
-            os.mkdir(personalCacheDir, 0755)
+            os.mkdir(personalCacheDir, 0o755)
             self._createCacheLockFile(personalCacheDir)
             try:
                 os.rename(personalCacheDir, self.localCacheDir)
@@ -1384,7 +1384,7 @@ class CachingFileStore(FileStore):
             with open(self.harbingerFileName + '.tmp', 'w') as harbingerFile:
                 harbingerFile.write(str(os.getpid()))
             # Make this File read only to prevent overwrites
-            os.chmod(self.harbingerFileName + '.tmp', 0444)
+            os.chmod(self.harbingerFileName + '.tmp', 0o444)
             os.rename(self.harbingerFileName + '.tmp', self.harbingerFileName)
 
         def waitOnDownload(self, lockFileHandle):

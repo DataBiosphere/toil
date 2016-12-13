@@ -291,7 +291,7 @@ def makePublicDir(dirName):
     """
     if not os.path.exists(dirName):
         os.mkdir(dirName)
-        os.chmod(dirName, 0777)
+        os.chmod(dirName, 0o777)
     return dirName
 
 def getTempFile(suffix="", rootDir=None):
@@ -304,5 +304,5 @@ def getTempFile(suffix="", rootDir=None):
     else:
         tmpFile = os.path.join(rootDir, "tmp_" + getRandomAlphaNumericString() + suffix)
         open(tmpFile, 'w').close()
-        os.chmod(tmpFile, 0777) #Ensure everyone has access to the file.
+        os.chmod(tmpFile, 0o777) #Ensure everyone has access to the file.
         return tmpFile
