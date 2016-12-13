@@ -33,6 +33,9 @@ from itertools import chain, islice, count
 from threading import Thread
 from unittest import skip
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
 # noinspection PyPackageRequirements

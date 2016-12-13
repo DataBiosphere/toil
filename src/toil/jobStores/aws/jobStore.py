@@ -28,6 +28,9 @@ import hashlib
 import itertools
 import repr as reprlib
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass

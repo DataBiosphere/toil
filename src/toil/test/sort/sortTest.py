@@ -19,6 +19,10 @@ import random
 from uuid import uuid4
 import logging
 import subprocess
+
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport

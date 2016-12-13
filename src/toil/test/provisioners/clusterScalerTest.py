@@ -19,6 +19,9 @@ from Queue import Queue, Empty
 import logging
 import random
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from bd2k.util.objects import InnerClass
 
 from toil.job import JobNode

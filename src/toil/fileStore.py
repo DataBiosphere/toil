@@ -37,6 +37,9 @@ from hashlib import sha1
 from Queue import Queue, Empty
 from threading import Thread, Semaphore, Event
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from bd2k.util.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively
 from toil.lib.bioio import makePublicDir

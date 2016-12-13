@@ -24,6 +24,9 @@ from threading import Thread
 from threading import Lock, Condition
 from Queue import Queue, Empty
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 import toil
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
 

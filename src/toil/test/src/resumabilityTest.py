@@ -15,6 +15,10 @@
 from __future__ import absolute_import
 import os
 from StringIO import StringIO
+
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from toil.job import Job
 from toil.test import ToilTest
 from toil.jobStores.abstractJobStore import NoSuchFileException

@@ -27,6 +27,10 @@ import shutil
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
 import subprocess
+
+# Python 3 compatibility imports
+from six.moves import xrange
+
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
 

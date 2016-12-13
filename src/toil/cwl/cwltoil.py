@@ -41,6 +41,9 @@ import shutil
 import functools
 import urlparse
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 cwllogger = logging.getLogger("cwltool")
 
 # The job object passed into CWLJob and CWLWorkflow

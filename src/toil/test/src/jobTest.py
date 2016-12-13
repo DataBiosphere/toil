@@ -16,6 +16,9 @@ import unittest
 import os
 import random
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
