@@ -183,14 +183,9 @@ class Worker(Thread):
         sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
-            comma = ''
-            ex = '--export='
             for k, v in self.boss.environment.iteritems():
                 quoted_value = quote(os.environ[k] if v is None else v)
-                ex = ex + ('{}{}={}'.format(comma, k, quoted_value))
-                comma = ','
-            print(ex)
-            sbatch_line.append(ex)
+                sbatch_line.append('--export={}={}'.format(k, quoted_value))
 
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
