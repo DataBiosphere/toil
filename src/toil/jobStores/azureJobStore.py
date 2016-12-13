@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 
 import bz2
-import httplib
 import inspect
 import logging
 import os
@@ -29,6 +28,7 @@ from datetime import datetime, timedelta
 
 # Python 3 compatibility imports
 from six.moves import cPickle
+from six.moves.http_client import HTTPException
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy
@@ -797,7 +797,7 @@ def defaultRetryPredicate(exception):
     True
     >>> defaultRetryPredicate(socket.gaierror())
     True
-    >>> defaultRetryPredicate(httplib.HTTPException())
+    >>> defaultRetryPredicate(HTTPException())
     True
     >>> defaultRetryPredicate(requests.ConnectionError())
     True
@@ -814,7 +814,7 @@ def defaultRetryPredicate(exception):
     """
     return (isinstance(exception, (socket.error,
                                    socket.gaierror,
-                                   httplib.HTTPException,
+                                   HTTPException,
                                    requests.ConnectionError))
             or isinstance(exception, AzureException) and
             any(message in str(exception).lower() for message in (
