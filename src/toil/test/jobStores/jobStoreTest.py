@@ -17,7 +17,6 @@ from __future__ import absolute_import
 import hashlib
 import logging
 import threading
-import SimpleHTTPServer
 import os
 import shutil
 import tempfile
@@ -31,7 +30,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves.queue import Queue
-from six.moves import xrange, socketserver as SocketServer
+from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer
 from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
