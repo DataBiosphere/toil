@@ -17,10 +17,10 @@ import os
 import re
 import time
 from collections import Iterable
-from urllib2 import urlopen
 
 # Python 3 compatibility imports
 from six import iterkeys, itervalues
+from six.moves.urllib.request import urlopen
 
 import boto.ec2
 from bd2k.util import memoize, parse_iso_utc, less_strict_bool

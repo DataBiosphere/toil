@@ -31,10 +31,10 @@ from inspect import getsource
 from subprocess import PIPE, Popen, CalledProcessError, check_output
 from textwrap import dedent
 from unittest.util import strclass
-from urllib2 import urlopen
 
 # Python 3 compatibility imports
 from six import iteritems, itervalues
+from six.moves.urllib.request import urlopen
 
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p

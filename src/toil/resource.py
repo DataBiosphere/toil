@@ -27,8 +27,10 @@ from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
-from urllib2 import urlopen
 from zipfile import ZipFile, PyZipFile
+
+# Python 3 compatibility imports
+from six.moves.urllib.request import urlopen
 
 from bd2k.util import strict_bool
 from bd2k.util.iterables import concat

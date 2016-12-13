@@ -39,11 +39,11 @@ import logging
 import copy
 import shutil
 import functools
-import urlparse
 
 # Python 3 compatibility imports
 from six.moves import xrange
 from six import iteritems
+import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
 

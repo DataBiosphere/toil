@@ -23,8 +23,6 @@ import os
 import shutil
 import tempfile
 import time
-import urllib2
-import urlparse
 import uuid
 from stubserver import FTPStubServer
 from abc import abstractmethod, ABCMeta
@@ -36,6 +34,8 @@ from unittest import skip
 from six.moves.queue import Queue
 from six.moves import xrange
 from six import iteritems
+import six.moves.urllib.parse as urlparse
+from six.moves.urllib.request import urlopen, Request
 
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
@@ -649,7 +649,7 @@ class AbstractJobStoreTest:
                 self.assertTrue(os.path.exists(path))
             else:
                 try:
-                    urllib2.urlopen(urllib2.Request(url))
+                    urlopen(Request(url))
                 except:
                     self.fail()
 
