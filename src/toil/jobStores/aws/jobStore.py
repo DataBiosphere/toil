@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 
-from StringIO import StringIO
 from contextlib import contextmanager, closing
 import logging
 from multiprocessing import cpu_count
@@ -28,7 +27,7 @@ import itertools
 import repr as reprlib
 
 # Python 3 compatibility imports
-from six.moves import xrange, cPickle
+from six.moves import xrange, cPickle, StringIO
 from six import iteritems
 
 from bd2k.util import strict_bool

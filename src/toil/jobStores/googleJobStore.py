@@ -3,14 +3,13 @@ from contextlib import contextmanager
 import hashlib
 import os
 import uuid
-from StringIO import StringIO
 from bd2k.util.threading import ExceptionalThread
 import boto
 import logging
 import time
 
 # Python 3 compatibility imports
-from six.moves import cPickle
+from six.moves import cPickle, StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,

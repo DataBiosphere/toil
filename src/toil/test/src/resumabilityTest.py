@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 import os
-from StringIO import StringIO
 
 # Python 3 compatibility imports
 from six.moves import xrange
