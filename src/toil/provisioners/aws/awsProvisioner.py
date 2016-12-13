@@ -147,6 +147,10 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def rsyncLeader(cls, clusterName, args):
         leader = cls._getLeader(clusterName)
+        cls._rsyncNode(leader.ip_address, args)
+
+    @classmethod
+    def _rsyncNode(cls, ip, args):
         sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
         remoteRsync = "docker exec -i toil_leader rsync"  # Access rsync inside appliance
         parsedArgs = []
@@ -154,7 +158,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Insert remote host address
         for i in args:
             if i.startswith(":") and not hostInserted:
-                i = ("core@%s" % leader.ip_address) + i
+                i = ("core@%s" % ip) + i
                 hostInserted = True
             elif i.startswith(":") and hostInserted:
                 raise ValueError("Cannot rsync between two remote hosts")
@@ -422,8 +426,15 @@ class AWSProvisioner(AbstractProvisioner):
                                                            tentative=True)
                                      )
         wait_instances_running(self.ctx.ec2, instancesLaunched)
+        self._propagateKey(instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
+
+    def _propagateKey(self, instances):
+        if not self.config.sseKey:
+            return
+        for node in instances:
+            self._rsyncNode(node.ip_address, [self.config.sseKey, ':' + self.config.sseKey])
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):
