@@ -189,6 +189,7 @@ class Worker(Thread):
                 quoted_value = quote(os.environ[k] if v is None else v)
                 ex = ex + ('{}{}={}'.format(comma, k, quoted_value))
                 comma = ','
+            print(ex)
             sbatch_line.append(ex)
 
         if mem is not None:
