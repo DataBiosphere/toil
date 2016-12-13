@@ -13,7 +13,13 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+import sys
 
+if sys.version_info >= (3, 0):
+
+    # https://docs.python.org/3.0/whatsnew/3.0.html#ordering-comparisons
+    def cmp(a, b):
+        return (a > b) - (a < b)
 
 class MemoryString:
     def __init__(self, string):
