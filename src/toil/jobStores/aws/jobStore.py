@@ -24,10 +24,9 @@ import uuid
 import base64
 import hashlib
 import itertools
-import repr as reprlib
 
 # Python 3 compatibility imports
-from six.moves import xrange, cPickle, StringIO
+from six.moves import xrange, cPickle, StringIO, reprlib
 from six import iteritems
 
 from bd2k.util import strict_bool
