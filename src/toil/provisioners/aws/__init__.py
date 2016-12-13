@@ -283,4 +283,7 @@ coreos:
             --name=toil_{role} \
             {image} \
             {args}
+
+ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
 """

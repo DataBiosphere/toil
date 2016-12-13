@@ -55,6 +55,12 @@ class AWSProvisioner(AbstractProvisioner):
             self.instanceType = ec2_instance_types[config.nodeType]
         self.leaderIP = self.instanceMetaData['local-ipv4']
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
+        self.masterPublicKey = ''
+        with open('/var/lib/toil/id_rsa.pub') as f:
+            self.masterPublicKey = f.read()
+        self.masterPublicKey = self.masterPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert self.masterPublicKey.startswith('AAAAB3NzaC1yc2E')
 
     def getNodeShape(self, preemptable=False):
         instanceType = self.instanceType
@@ -120,6 +126,7 @@ class AWSProvisioner(AbstractProvisioner):
             interactive SSHing. The default value is False. Input=string is passed as
             input to the Popen call.
         """
+        logger.debug('Appliance %s: %s', leaderIP, ' '.join(args))
         tty = kwargs.pop('tty', False)
         args = map(pipes.quote, args)
         ttyFlag = '-t' if tty else ''
@@ -138,9 +145,10 @@ class AWSProvisioner(AbstractProvisioner):
         assert stderr is None
 
     @classmethod
-    def _sshInstance(cls, leaderIP, *args):
+    def _sshInstance(cls, nodeIP, *args):
+        logger.debug('Node %s: %s', nodeIP, ' '.join(args))
         args = map(pipes.quote, args)
-        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP] + args
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % nodeIP] + args
         ouput = subprocess.check_output(commandTokens)
         return ouput
 
@@ -188,23 +196,29 @@ class AWSProvisioner(AbstractProvisioner):
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
         if wait:
-            logger.info("Waiting for leader to enter 'running' state...")
+            logger.info("Waiting for toil_leader to enter 'running' state...")
             wait_transition(leader, {'pending'}, 'running')
-            logger.info('... leader is running')
-            cls._waitForIP(leader)
-            leaderIP = leader.ip_address
-            cls._waitForSSHPort(leaderIP)
-            # wait here so docker commands can be used reliably afterwards
-            cls._waitForDockerDaemon(leaderIP)
-            cls._waitForAppliance(leaderIP)
+            logger.info('... toil_leader is running')
+            cls._waitForNode(leader, 'toil_leader')
         return leader
 
     @classmethod
-    def _waitForAppliance(cls, ip_address):
-        logger.info('Waiting for leader Toil appliance to start...')
+    def _waitForNode(cls, instance, role):
+        # returns the node's IP
+        cls._waitForIP(instance)
+        instanceIP = instance.ip_address
+        cls._waitForSSHPort(instanceIP)
+        # wait here so docker commands can be used reliably afterwards
+        cls._waitForDockerDaemon(instanceIP)
+        cls._waitForAppliance(instanceIP, role=role)
+        return instanceIP
+
+    @classmethod
+    def _waitForAppliance(cls, ip_address, role):
+        logger.info('Waiting for %s Toil appliance to start...', role)
         while True:
-            output = cls._sshInstance(ip_address, 'docker', 'ps')
-            if 'toil_leader' in output:
+            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps')
+            if role in output:
                 logger.info('...Toil appliance started')
                 break
             else:
@@ -218,19 +232,19 @@ class AWSProvisioner(AbstractProvisioner):
 
         :type instance: boto.ec2.instance.Instance
         """
-        logger.info('Waiting for leader ip...')
+        logger.info('Waiting for ip...')
         while True:
             time.sleep(a_short_time)
             instance.update()
             if instance.ip_address or instance.public_dns_name:
-                logger.info('...got leader ip')
+                logger.info('...got ip')
                 break
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
-        logger.info('Waiting for docker to start...')
+        logger.info('Waiting for docker on %s to start...', ip_address)
         while True:
-            output = cls._sshInstance(ip_address, 'ps', 'aux')
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
             time.sleep(5)
             if 'docker daemon' in output:
                 # docker daemon has started
@@ -247,7 +261,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: the number of unsuccessful attempts to connect to the port before a the first
         success
         """
-        logger.info('Waiting for leader ssh port to open...')
+        logger.info('Waiting for ssh port to open...')
         for i in count():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
@@ -270,6 +284,7 @@ class AWSProvisioner(AbstractProvisioner):
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
+                          sshKey='AAAAB3NzaC1yc2Enoauthorizedkeyneeded', # just placeholder in leader, set to real value in workers
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_groups': [clusterName],
@@ -289,7 +304,14 @@ class AWSProvisioner(AbstractProvisioner):
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        return cls._getLeader(clusterName=clusterName, wait=True)
+        instance = cls._getLeader(clusterName=clusterName, wait=True)
+        # make ssh key for the leader so it can ssh/rsync things onto the worker nodes
+        cls._sshInstance(instance.ip_address,
+                         'ssh-keygen', '-f', '/home/core/.ssh/id_rsa', '-t', 'rsa', '-N', '')
+        cls._sshInstance(instance.ip_address, 'bash', '-c', 'eval $(/usr/bin/ssh-agent); ssh-add')
+        # now, give the appliance access to the public key
+        cls._sshInstance(instance.ip_address,
+                         'sudo', 'cp', '/home/core/.ssh/id_rsa.pub', '/var/lib/toil/id_rsa.pub')
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
@@ -398,6 +420,7 @@ class AWSProvisioner(AbstractProvisioner):
         workerData = dict(role='worker',
                           image=applianceSelf(),
                           entrypoint='mesos-slave',
+                          sshKey=self.masterPublicKey,
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable))
         userData = awsUserData.format(**workerData)
         kwargs = {'key_name': self.keyName,
@@ -434,7 +457,9 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.config.sseKey:
             return
         for node in instances:
-            self._rsyncNode(node.ip_address, [self.config.sseKey, ':' + self.config.sseKey])
+            # since we're going to be rsyncing into the appliance we need the appliance to be running first
+            ipAddress = self._waitForNode(node, 'toil_worker')
+            self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey])
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):
