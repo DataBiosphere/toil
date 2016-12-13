@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import unittest
 import os
 import random
@@ -317,10 +317,10 @@ class JobTest(ToilTest):
                         adjacencyList[int(j)].add(i)
             # Check the ordering retains an acyclic graph
             if not self.isAcyclic(adjacencyList):
-                print "ORDERING", ordering
-                print "CHILD EDGES", childEdges
-                print "FOLLOW ON EDGES", followOnEdges
-                print "ADJACENCY LIST", adjacencyList
+                print("ORDERING", ordering)
+                print("CHILD EDGES", childEdges)
+                print("FOLLOW ON EDGES", followOnEdges)
+                print("ADJACENCY LIST", adjacencyList)
             self.assertTrue(self.isAcyclic(adjacencyList))
 
     @staticmethod

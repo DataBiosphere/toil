@@ -16,7 +16,7 @@
 Reports statistical data about a given Toil workflow.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 from functools import partial
 import logging
 import json
@@ -55,7 +55,7 @@ class ColumnWidths(object):
     def report(self):
         for c in self.categories:
             for f in self.fields:
-                print '%s %s %d' % (c, f, self.getWidth(c, f))
+                print('%s %s %d' % (c, f, self.getWidth(c, f)))
 
 def initializeOptions(parser):
     parser.add_argument("jobStore", type=str,
@@ -588,7 +588,7 @@ def reportData(tree, options):
         fileHandle.write(out_str)
         fileHandle.close()
     # Now dump onto the screen
-    print out_str
+    print(out_str)
 
 def main():
     """ Reports stats on the workflow, use with --stats option to toil.

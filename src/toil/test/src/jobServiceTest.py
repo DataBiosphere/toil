@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import os
 import random
 import unittest
@@ -88,7 +88,7 @@ class JobServiceTest(ToilTest):
             try:
                 self.runToil(makeWorkflow(), badWorker=0.0, maxServiceJobs=2, deadlockWait=5)
             except DeadlockException:
-                print "Got expected deadlock exception"
+                print("Got expected deadlock exception")
             else:
                 assert 0
                 

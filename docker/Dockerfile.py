@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
 import os
 import textwrap
 
@@ -52,7 +53,7 @@ motd = heredoc('''
 # Prepare motd to be echoed in the Dockerfile using a RUN statement that uses bash's print
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
-print heredoc('''
+print(heredoc('''
     FROM ubuntu:14.04
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
@@ -101,4 +102,4 @@ print heredoc('''
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
-''')
+'''))

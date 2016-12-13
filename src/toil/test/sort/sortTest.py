@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import unittest
 import os
 import random
@@ -301,7 +301,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             l = open(tempFile, 'r').read()
             fileSize = os.path.getsize(tempFile)
             midPoint = getMidPoint(tempFile, 0, fileSize)
-            print "the mid point is %i of a file of %i bytes" % (midPoint, fileSize)
+            print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))
             assert midPoint < fileSize
             assert l[midPoint] == '\n'
             assert midPoint >= 0

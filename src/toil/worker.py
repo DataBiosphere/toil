@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import os
 import sys
 import copy
@@ -207,7 +207,7 @@ def main():
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        print "---TOIL WORKER OUTPUT LOG---"
+        print("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         #Log the number of open file descriptors so we can tell if we're leaking
