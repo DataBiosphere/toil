@@ -21,7 +21,6 @@ import os
 import re
 import socket
 import uuid
-from ConfigParser import RawConfigParser, NoOptionError
 from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -29,6 +28,7 @@ from datetime import datetime, timedelta
 # Python 3 compatibility imports
 from six.moves import cPickle
 from six.moves.http_client import HTTPException
+from six.moves.configparser import RawConfigParser, NoOptionError
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy
