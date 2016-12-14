@@ -22,10 +22,12 @@ import sys
 import tempfile
 import time
 from argparse import ArgumentParser
+from threading import Thread
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 
+from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import setOptions as setBatchOptions
@@ -59,6 +61,7 @@ class Config(object):
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
         self.cleanWorkDir = None
+        self.clusterStats = None
 
         #Restarting the workflow options
         self.restart = False
@@ -81,6 +84,11 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 10
         self.preemptableCompensation = 0.0
+        
+        # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
+        self.maxPreemptableServiceJobs = sys.maxint 
+        self.maxServiceJobs = sys.maxint
+        self.deadlockWait = 60 # Wait one minute before declaring a deadlock
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -104,7 +112,6 @@ class Config(object):
         self.cseKey = None
         self.servicePollingInterval = 60
         self.useAsync = True
-
 
         #Debug options
         self.badWorker = 0.0
@@ -150,6 +157,11 @@ class Config(object):
         setOption("jobStore", parsingFn=parseJobStore)
         #TODO: LOG LEVEL STRING
         setOption("workDir")
+        if self.workDir is not None:
+            self.workDir = os.path.abspath(self.workDir)
+            if not os.path.exists(self.workDir):
+                raise RuntimeError("The path provided to --workDir (%s) does not exist."
+                                   % self.workDir)
         setOption("stats")
         setOption("cleanWorkDir")
         setOption("clean")
@@ -162,6 +174,7 @@ class Config(object):
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
+        setOption('clusterStats')
 
         #Restarting the workflow options
         setOption("restart")
@@ -190,6 +203,11 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
+        
+        # Parameters to limit service jobs / detect deadlocks
+        setOption("maxServiceJobs", int)
+        setOption("maxPreemptableServiceJobs", int)
+        setOption("deadlockWait", int)
 
         # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -271,6 +289,13 @@ def _addOptions(addGroupFn, config):
                 help=("Determines deletion of temporary worker directory upon completion of a job. Choices: 'always', "
                       "'never', 'onSuccess'. Default = always. WARNING: This option should be changed for debugging "
                       "only. Running a full pipeline with this option could fill your disk with intermediate data."))
+    addOptionFn("--clusterStats", dest="clusterStats", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="If enabled, writes out JSON resource usage statistics to a file. "
+                     "The default location for this file is the current working directory, "
+                     "but an absolute path can also be passed to specify where this file "
+                     "should be written. This options only applies when using scalable batch "
+                     "systems.")
     #
     #Restarting the workflow options
     #
@@ -329,9 +354,15 @@ def _addOptions(addGroupFn, config):
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
-                help=(" default=%s" % config.alphaPacking))
+                help=("The total number of nodes estimated to be required to compute the issued "
+                      "jobs is multiplied by the alpha packing parameter to produce the actual "
+                      "number of nodes requested. Values of this coefficient greater than one will "
+                      "tend to over provision and values less than one will under provision. default=%s" % config.alphaPacking))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
-                help=(" default=%s" % config.betaInertia))
+                help=("A smoothing parameter to prevent unnecessary oscillations in the "
+                      "number of provisioned nodes. If the number of nodes is within the beta "
+                      "inertia of the currently provisioned number of nodes then no change is made "
+                      "to the number of requested nodes. default=%s" % config.betaInertia))
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
@@ -344,6 +375,20 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
+    
+    #        
+    # Parameters to limit service jobs / detect service deadlocks
+    #
+    addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
+                             "Allows the specification of the maximum number of service jobs "
+                             "in a cluster. By keeping this limited "
+                             " we can avoid all the nodes being occupied with services, so causing a deadlock")
+    addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+                help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
+    addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+                help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
+    addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+                help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
 
     #
     #Resource requirements
@@ -573,11 +618,11 @@ class Toil(object):
                 cPickle.dump(promise, fH)
 
             # Setup the first wrapper and cache it
-            rootJobWrapper = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(rootJobWrapper)
+            rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(rootJobGraph)
 
             self._setProvisioner()
-            return self._runMainLoop(rootJobWrapper)
+            return self._runMainLoop(rootJobGraph)
         finally:
             self._shutdownBatchSystem()
 
@@ -600,8 +645,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJobWrapper = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJobWrapper)
+            rootJobGraph = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobGraph)
         finally:
             self._shutdownBatchSystem()
 
@@ -614,7 +659,9 @@ class Toil(object):
             self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
         elif self.config.provisioner == 'aws':
             logger.info('Using AWS provisioner.')
+            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config, self._batchSystem)
         else:
             # Command line parser shold have checked argument validity already
@@ -635,7 +682,9 @@ class Toil(object):
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
         elif name == 'aws':
+            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.jobStores.aws.jobStore import AWSJobStore
+            enable_metadata_credential_caching()
             return AWSJobStore(rest)
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
@@ -742,9 +791,36 @@ class Toil(object):
         if userScript is None:
             logger.info('No user script to hot-deploy.')
         else:
-            logger.info('Saving user script %s as a resource', userScript)
+            logger.debug('Saving user script %s as a resource', userScript)
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
-            logger.info('Hot-deploying user script resource %s.', userScriptResource)
+            logger.debug('Injecting user script %s into batch system.', userScriptResource)
+            self._batchSystem.setUserScript(userScriptResource)
+            thread = Thread(target=self._refreshUserScript,
+                            name='refreshUserScript',
+                            kwargs=dict(userScriptResource=userScriptResource))
+            thread.daemon = True
+            thread.start()
+
+    def _refreshUserScript(self, userScriptResource):
+        """
+        Periodically refresh the user script in the job store to prevent credential
+        expiration from causing the public URL to the user script to expire.
+        """
+        while True:
+            # Boto refreshes IAM credentials if they will be expiring within the next five
+            # minutes, but it will only check the expiry if and when credentials are needed to
+            # sign an actual AWS request. This means that we should be refreshing the user script
+            # at least every 5 minutes. Note that refreshing the user script in the job store
+            # involves an S3 request requiring credentials and therefore also triggers refreshing
+            # the IAM role credentials. In the worst case, refresh() is called 5 minutes plus
+            # epsilon before IAM credential expiration. The resource is refreshed three minutes
+            # after that, leaving two minutes plus epsilon generating a new signed URL, this time
+            # with refreshed IAM role credentials. This consideration only applies to AWS and
+            # Boto2, of course. See https://github.com/BD2KGenomics/toil/issues/1372.
+            time.sleep(3 * 60)
+            logger.debug('Refreshing user script resource %s.', userScriptResource)
+            userScriptResource = userScriptResource.refresh(self._jobStore)
+            logger.debug('Injecting refreshed user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
@@ -777,14 +853,14 @@ class Toil(object):
         Downloads all jobs in the current job store into self.jobCache.
         """
         logger.info('Caching all jobs in job store')
-        self._jobCache = {jobWrapper.jobStoreID: jobWrapper for jobWrapper in self._jobStore.jobs()}
+        self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
         logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
         Adds given job to current job cache.
 
-        :param toil.jobWrapper.JobWrapper job: job to be added to current job cache
+        :param toil.jobGraph.JobGraph job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
 
@@ -822,16 +898,18 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
+        logProcessContext(self.config, logger)
+
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
             # FIXME: common should not import from leader
-            from toil.leader import mainLoop
-            return mainLoop(config=self.config,
-                            batchSystem=self._batchSystem,
-                            provisioner=self._provisioner,
-                            jobStore=self._jobStore,
-                            rootJobWrapper=rootJob,
-                            jobCache=self._jobCache)
+            from toil.leader import Leader
+            return Leader(config=self.config,
+                          batchSystem=self._batchSystem,
+                          provisioner=self._provisioner,
+                          jobStore=self._jobStore,
+                          rootJob=rootJob,
+                          jobCache=self._jobCache).run()
 
     def _shutdownBatchSystem(self):
         """

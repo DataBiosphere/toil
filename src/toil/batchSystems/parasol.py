@@ -57,7 +57,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 command = next(which(command))
             except StopIteration:
                 raise RuntimeError("Can't find %s on PATH." % command)
-        logger.info('Using Parasol at %s', command)
+        logger.debug('Using Parasol at %s', command)
         self.parasolCommand = command
         self.parasolResultsDir = tempfile.mkdtemp(dir=config.jobStore)
 
@@ -119,14 +119,14 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, jobNode):
         """
         Issues parasol with job commands.
         """
-        self.checkResourceRequest(memory, cores, disk)
+        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (memory / MiB) * MiB
+        truncatedMemory = (jobNode.memory / MiB) * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -134,21 +134,21 @@ class ParasolBatchSystem(BatchSystemSupport):
         if len(self.resultsFiles) >= self.maxBatches:
             raise RuntimeError( 'Number of batches reached limit of %i' % self.maxBatches)
         try:
-            results = self.resultsFiles[(truncatedMemory, cores)]
+            results = self.resultsFiles[(truncatedMemory, jobNode.cores)]
         except KeyError:
             results = getTempFile(rootDir=self.parasolResultsDir)
-            self.resultsFiles[(truncatedMemory, cores)] = results
+            self.resultsFiles[(truncatedMemory, jobNode.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(), command))
+        command = ' '.join(concat('env', self.__environment(), jobNode.command))
         parasolCommand = ['-verbose',
-                          '-ram=%i' % memory,
-                          '-cpu=%i' % cores,
+                          '-ram=%i' % jobNode.memory,
+                          '-cpu=%i' % jobNode.cores,
                           '-results=' + results,
                           'add', 'job', command]
         # Deal with the cpus
-        self.usedCpus += cores
+        self.usedCpus += jobNode.cores
         while True:  # Process finished results with no wait
             try:
                 jobID = self.cpuUsageQueue.get_nowait()
@@ -169,11 +169,11 @@ class ParasolBatchSystem(BatchSystemSupport):
             if match is None:
                 # This is because parasol add job will return success, even if the job was not
                 # properly issued!
-                logger.info('We failed to properly add the job, we will try again after a 5s.')
+                logger.debug('We failed to properly add the job, we will try again after a 5s.')
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
-                self.jobIDsToCpu[jobID] = cores
+                self.jobIDsToCpu[jobID] = jobNode.cores
                 self.runningJobs.add(jobID)
                 logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
                 return jobID
@@ -196,7 +196,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                     self.runningJobs.remove(jobID)
                 exitValue = self._runParasol(['remove', 'job', str(jobID)],
                                              autoRetry=False)[0]
-                logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
+                logger.debug("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break

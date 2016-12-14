@@ -14,12 +14,16 @@
 
 from __future__ import absolute_import
 
+import logging
 import os
 import sys
+from pprint import pformat
 
 from subprocess import check_output
 
 from bd2k.util import memoize
+
+log = logging.getLogger(__name__)
 
 
 def toilPackageDirPath():
@@ -86,3 +90,60 @@ def physicalDisk(config, toilWorkflowDir=None):
     diskStats = os.statvfs(toilWorkflowDir)
     return diskStats.f_frsize * diskStats.f_bavail
 
+
+def applianceSelf():
+    """
+    Returns the fully qualified name of the Docker image to start Toil appliance containers from.
+    The result is determined by the current version of Toil and three environment variables:
+    ``TOIL_DOCKER_REGISTRY``, ``TOIL_DOCKER_NAME`` and ``TOIL_APPLIANCE_SELF``.
+
+    ``TOIL_DOCKER_REGISTRY`` specifies an account on a publicly hosted docker registry like Quay
+    or Docker Hub. The default is UCSC's CGL account on Quay.io where the Toil team publishes the
+    official appliance images. ``TOIL_DOCKER_NAME`` specifies the base name of the image. The
+    default of `toil` will be adequate in most cases. ``TOIL_APPLIANCE_SELF`` fully qualifies the
+    appliance image, complete with registry, image name and version tag, overriding both
+    ``TOIL_DOCKER_NAME`` and `TOIL_DOCKER_REGISTRY`` as well as the version tag of the image.
+    Setting TOIL_APPLIANCE_SELF will not be necessary in most cases.
+
+    :rtype: str
+    """
+    import toil.version
+    registry = lookupEnvVar(name='docker registry',
+                            envName='TOIL_DOCKER_REGISTRY',
+                            defaultValue=toil.version.dockerRegistry)
+    name = lookupEnvVar(name='docker name',
+                        envName='TOIL_DOCKER_NAME',
+                        defaultValue=toil.version.dockerName)
+    appliance = lookupEnvVar(name='docker appliance',
+                             envName='TOIL_APPLIANCE_SELF',
+                             defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
+    return appliance
+
+
+def lookupEnvVar(name, envName, defaultValue):
+    """
+    Use this for looking up environment variables that control Toil and are important enough to
+    log the result of that lookup.
+
+    :param str name: the human readable name of the variable
+    :param str envName: the name of the environment variable to lookup
+    :param str defaultValue: the fall-back value
+    :return: the value of the environment variable or the default value the variable is not set
+    :rtype: str
+    """
+    try:
+        value = os.environ[envName]
+    except KeyError:
+        log.info('Using default %s of %s as %s is not set.', name, defaultValue, envName)
+        return defaultValue
+    else:
+        log.info('Overriding %s of %s with %s from %s.', name, defaultValue, value, envName)
+        return value
+
+
+def logProcessContext(config, logger):
+    # toil.version.version (string) canont be imported at top level because it conflicts with
+    # toil.version (module) and Sphinx doesn't like that.
+    from toil.version import version
+    logger.info("Running Toil version %s.", version)
+    logger.info("Configuration:\n %s", pformat(config.__dict__))

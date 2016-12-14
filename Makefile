@@ -28,26 +28,42 @@ in develop mode with all extras, run
 
 	make develop extras=[mesos,aws,google,azure,cwl,encryption]
 
-The 'sdist' target creates a source distribution of Toil suitable for hot-deployment (not
-implemented yet).
+The 'sdist' target creates a source distribution of Toil. It is used for some unit tests and for
+installing the currently checked out version of Toil into the appliance image.
 
-The 'clean' target undoes the effect of 'develop', 'docs', and 'sdist'.
+The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', 'pypi' and 'docker'
+on this machine. It does not undo externally visible effects like removing packages already
+uploaded to PyPI.
 
 The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
-The 'test' target runs Toil's unit tests. Set the 'tests' variable to run a particular test, e.g.
+The 'test' target runs Toil's unit tests serially with pytest.
 
-	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
+The 'test_parallel' target runs Toil's unit tests in parallel and generates a test report
+from the results. Set the 'tests' variable to run a particular test, e.g.
+
+	make test_parallel tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
-copy and the index are clean, and tagging it as an unstable .dev build.
+copy and the index are clean.
 
-The 'docker' target builds the Docker images that make up the Toil appliance.
+The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
+TOIL_DOCKER_REGISTRY variable to override the default registry that the 'docker_push' target pushes
+the appliance images to, for example:
 
-The 'push_docker' target pushes the Toil appliance images to a remote Docker registry. It requires
-the docker_registry variable to be set, e.g.
+	TOIL_DOCKER_REGISTRY=quay.io/USER make docker
 
-	make push_docker docker_registry=quay.io/USERNAME
+If Docker is not installed, Docker-related targets tasks and tests will be skipped. The
+same can be achieved by setting TOIL_DOCKER_REGISTRY to an empty string.
+
+The 'push_docker' target pushes the Toil appliance images to a remote Docker registry. It
+requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the default to avoid
+accidentally pushing to the official Docker registry for Toil.
+
+The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
+is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team's
+continuous integration system overrides this variable to avoid conflicts between concurrently
+executing builds for the same revision, e.g. toil-pr and toil-it.
 
 endef
 export help
@@ -60,16 +76,30 @@ python=python2.7
 pip=pip2.7
 tests=src
 extras=
-toil_version:=$(shell $(python) version.py)
-sdist_name:=toil-$(toil_version).tar.gz
-current_commit:=$(shell git log --pretty=oneline -n 1 -- $(pwd) | cut -f1 -d " ")
-dirty:=$(shell (git diff --exit-code && git diff --cached --exit-code) > /dev/null || printf -- --DIRTY)
-docker_tag:=$(toil_version)--$(current_commit)$(dirty)
-docker_base_name?=toil
 
+dist_version:=$(shell $(python) version_template.py distVersion)
+sdist_name:=toil-$(dist_version).tar.gz
+
+docker_tag:=$(shell $(python) version_template.py dockerTag)
+default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
+docker_path:=$(strip $(shell which docker))
+ifdef docker_path
+    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+else
+    $(warning Cannot find 'docker' executable. Docker-related targets will be skipped.)
+    export TOIL_DOCKER_REGISTRY:=
+endif
+export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+# Note that setting TOIL_DOCKER_REGISTRY to an empty string yields an invalid TOIL_APPLIANCE_SELF
+# which will coax the @needs_appliance decorator to skip the test.
+export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+
+ifndef BUILD_NUMBER
 green=\033[0;32m
-normal=\033[0m\n
+normal=\033[0m
 red=\033[0;31m
+cyan=\033[0;36m
+endif
 
 
 develop: check_venv
@@ -77,6 +107,7 @@ develop: check_venv
 clean_develop: check_venv
 	- $(pip) uninstall -y toil
 	- rm -rf src/*.egg-info
+	- rm src/toil/version.py
 
 sdist: dist/$(sdist_name)
 dist/$(sdist_name): check_venv
@@ -85,82 +116,82 @@ dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
-	         && printf "$(green)No significant changes to sdist, reinstating backup.$(normal)" \
+	         && printf "$(cyan)No significant changes to sdist, reinstating backup.$(normal)\n" \
 	         || rm dist/$(sdist_name).old ) \
 	    || true
 clean_sdist:
 	- rm -rf dist
+	- rm src/toil/version.py
 
 
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) run_tests.py test $(tests)
+	    $(python) -m pytest -vv $(tests)
 
 
-integration-test: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True \
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) run_tests.py integration-test $(tests)
+test_parallel: check_venv check_build_reqs docker
+	$(python) run_tests.py test $(tests)
+
+
+integration_test: check_venv check_build_reqs sdist push_docker
+	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
-	set -x \
-	&& tag_build=`$(python) -c 'pass;\
-	    from version import version as v;\
-	    from pkg_resources import parse_version as pv;\
-	    import os;\
-	    print "--tag-build=.dev" + os.getenv("BUILD_NUMBER") if pv(v).is_prerelease else ""'` \
-	&& $(python) setup.py egg_info $$tag_build sdist bdist_egg upload
+	$(python) setup.py egg_info sdist bdist_egg upload
 clean_pypi:
 	- rm -rf build/
 
 
-docker: check_docker_registry docker/worker/Dockerfile docker/leader/Dockerfile
+ifdef TOIL_DOCKER_REGISTRY
+
+docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
+docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
+docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
+
+define tag_docker
+	@printf "$(cyan)Removing old tag $2. This may fail but that's expected.$(normal)\n"
+	-docker rmi $2
+	docker tag $1 $2
+	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
+endef
+
+
+docker: docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; for role in leader worker; do \
-	    docker build --tag=$(docker_registry)/$(docker_base_name)-$${role}:$(docker_tag) \
-	                 -f $${role}/Dockerfile \
-	                 . \
-	; done
-	# On versions of docker >= 1.10, the `docker rmi` invocation is redundant, their `docker tag`
-	# automatically removes the tag from previous images. In older versions, `docker tag -f` does
-	# the same. The only way that works on both version is to explicitly untag the old image. IOW,
-	# it is ok if the `rmi` command below fails.
-	-docker rmi $(docker_registry)/$(docker_base_name):$(docker_tag)
-	docker tag $(docker_registry)/$(docker_base_name)-leader:$(docker_tag) \
-	           $(docker_registry)/$(docker_base_name):$(docker_tag)
+	; docker build --tag=$(docker_image):$(docker_tag) -f Dockerfile .
+ifdef BUILD_NUMBER
+	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
+	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
+endif
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
-docker/%/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
-	mkdir -p docker/$*
-	$(python) docker/Dockerfile.py \
-	    --role=$* \
-	    --sdist=$(sdist_name) \
-	    --self=$(docker_registry)/$(docker_base_name)-$*:$(docker_tag) > $@
+docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
+	_TOIL_SDIST_NAME=$(sdist_name) $(python) docker/Dockerfile.py > $@
 
-clean_docker: check_docker_registry
-	-rm docker/Dockerfile.{leader,worker} docker/$(sdist_name)
-	-@set -x \
-	; for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker rmi $(docker_registry)/$${repo}:$(docker_tag) \
-	; done
+clean_docker:
+	-rm docker/Dockerfile docker/$(sdist_name)
+	-docker rmi $(docker_image):$(docker_tag)
 
 obliterate_docker: clean_docker
 	-@set -x \
-	; for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker images $(docker_registry)/$${repo} \
-	        | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
-	        | xargs docker rmi \
-	; done
+	; docker images $(docker_image) \
+	    | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
+	    | xargs docker rmi
 	-docker images -qf dangling=true | xargs docker rmi
 
-push_docker: docker
-	for repo in $(docker_base_name){,-leader,-worker}; do \
-	    docker push $(docker_registry)/$${repo}:$(docker_tag) \
-	; done
+push_docker: docker check_docker_registry
+	docker push $(docker_image):$(docker_tag)
+
+else
+
+docker docker_push clean_docker:
+	@printf "$(cyan)Skipping '$@' target as TOIL_DOCKER_REGISTRY is empty or Docker is not installed.$(normal)\n"
+
+endif
 
 
 docs: check_venv check_build_reqs
@@ -175,7 +206,7 @@ clean: clean_develop clean_sdist clean_pypi clean_docs
 
 check_build_reqs:
 	@$(python) -c 'import mock; import pytest' \
-		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)" ; false )
+		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 
 prepare: check_venv
@@ -184,30 +215,32 @@ prepare: check_venv
 
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
-		|| ( printf "$(red)A virtualenv must be active.$(normal)" ; false )
+		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 
 check_clean_working_copy:
-	@printf "$(green)Checking if your working copy is clean ...$(normal)"
+	@printf "$(green)Checking if your working copy is clean ...$(normal)\n"
 	@git diff --exit-code > /dev/null \
-		|| ( printf "$(red)Your working copy looks dirty.$(normal)" ; false )
+		|| ( printf "$(red)Your working copy looks dirty.$(normal)\n" ; false )
 	@git diff --cached --exit-code > /dev/null \
-		|| ( printf "$(red)Your index looks dirty.$(normal)" ; false )
+		|| ( printf "$(red)Your index looks dirty.$(normal)\n" ; false )
 	@test -z "$$(git ls-files --other --exclude-standard --directory)" \
-		|| ( printf "$(red)You have are untracked files:$(normal)" \
+		|| ( printf "$(red)You have are untracked files:$(normal)\n" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
 
 check_running_on_jenkins:
-	@printf "$(green)Checking if running on Jenkins ...$(normal)"
+	@printf "$(green)Checking if running on Jenkins ...$(normal)\n"
 	@test -n "$$BUILD_NUMBER" \
-		|| ( printf "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
+		|| ( printf "$(red)This target should only be invoked on Jenkins.$(normal)\n" ; false )
 
 
 check_docker_registry:
-	@test -n "$(docker_registry)" \
-		|| ( printf '$(red)Please set docker_registry, e.g. to quay.io/USER.$(normal)' ; false )
+	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
+		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
+	$(default_docker_registry) and ensure that you have permissions to push \
+	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
 
 .PHONY: help \

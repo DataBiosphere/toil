@@ -13,7 +13,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 
 log = logging.getLogger(__name__)
 
@@ -110,13 +110,12 @@ class GoogleJobStore(AbstractJobStore):
                 except boto.exception.GSResponseError:
                     pass
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newID()
-        job = JobWrapper(jobStoreID=jobStoreID,
-                         command=command, memory=memory, cores=cores, disk=disk,
-                         remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                         preemptable=preemptable,
-                         predecessorNumber=predecessorNumber)
+        job = JobGraph(jobStoreID=jobStoreID, unitName=jobNode.name, jobName=jobNode.job,
+                       command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
+                       logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
+                       **jobNode._requirements)
         self._writeString(jobStoreID, cPickle.dumps(job))
         return job
 

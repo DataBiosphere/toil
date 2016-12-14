@@ -23,7 +23,7 @@ from collections import namedtuple
 from bd2k.util.objects import abstractclassmethod
 
 from toil.common import Toil, cacheDirName
-from toil.fileStore import shutdownCache
+from toil.fileStore import shutdownFileStore
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -84,7 +84,7 @@ class AbstractBatchSystem(object):
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, jobNode):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
@@ -297,10 +297,13 @@ class BatchSystemSupport(AbstractBatchSystem):
 
     def _getResultsFileName(self, toilPath):
         """
-        Get a path for the batch systems to store results. GridEngine
-        and LSF currently use this.
+        Get a path for the batch systems to store results. GridEngine, slurm,
+        and LSF currently use this and only work if locator is file.
         """
-        return os.path.join(toilPath, "results.txt")
+        # Use  parser to extract the path and type
+        locator, filePath = Toil.parseLocator(toilPath)
+        assert locator == "file"
+        return os.path.join(filePath, "results.txt")
 
     @staticmethod
     def workerCleanup(info):
@@ -313,7 +316,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
         workflowDirContents = os.listdir(workflowDir)
-        shutdownCache(os.path.join(workflowDir, cacheDirName(info.workflowID)))
+        shutdownFileStore(workflowDir, info.workflowID)
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):

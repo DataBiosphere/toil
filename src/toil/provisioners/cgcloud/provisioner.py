@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
 import logging
+import os
 import re
 import time
 from collections import Iterable
 from urllib2 import urlopen
 
 import boto.ec2
-from bd2k.util import memoize, parse_iso_utc
+from bd2k.util import memoize, parse_iso_utc, less_strict_bool
 from bd2k.util.exceptions import require
 from bd2k.util.throttle import throttle
 from boto.ec2.instance import Instance
@@ -30,12 +30,11 @@ from cgcloud.lib.ec2 import (ec2_instance_types,
                              tag_object_persistently)
 from cgcloud.lib.util import (allocate_cluster_ordinals,
                               thread_pool)
-from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.common import Config
-from toil.provisioners import BaseAWSProvisioner
+from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape)
 
@@ -48,7 +47,7 @@ log = logging.getLogger(__name__)
 provisioning_timeout = 10 * 60
 
 
-class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
+class CGCloudProvisioner(AbstractProvisioner):
     """
     A provisioner that uses CGCloud's toil-box role to boot up worker nodes in EC2. It uses the
     spot market to provision preemptable instances, but defaults to on-demand instances.
@@ -73,7 +72,7 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         :type config: Config
         :type batchSystem: AbstractBatchSystem
         """
-        super(CGCloudProvisioner, self).__init__()
+        super(CGCloudProvisioner, self).__init__(config, batchSystem)
         self.batchSystem = batchSystem
         self.imageId = self._instance.image_id
         require(config.nodeType, 'Must pass --nodeType when using the cgcloud provisioner')
@@ -118,39 +117,28 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         except KeyError:
             raise RuntimeError("Invalid or unknown instance type '%s'" % instanceType)
 
-    def setNodeCount(self, numNodes, preemptable=False, force=False):
+    def _getWorkersInCluster(self, preemptable):
         instances = list(self._getAllRunningInstances())
         workerInstances = [i for i in instances
                            if i.id != self._instanceId  # exclude leader
                            and preemptable != (i.spot_instance_request_id is None)]
-        numCurrentNodes = len(workerInstances)
-        delta = numNodes - numCurrentNodes
-        if delta > 0:
-            log.info('Adding %i nodes to get to desired cluster size of %i.', delta, numNodes)
-            numNodes = numCurrentNodes + self._addNodes(workerInstances,
-                                                        numNodes=delta,
-                                                        preemptable=preemptable)
-        elif delta < 0:
-            log.info('Removing %i nodes to get to desired cluster size of %i.', -delta, numNodes)
-            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
-                                                           numNodes=-delta,
-                                                           preemptable=preemptable,
-                                                           force=force)
-        else:
-            log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
-        return numNodes
+        instancesToTerminate = awsFilterImpairedNodes(workerInstances, self._ec2)
+        return instancesToTerminate
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
         raise NotImplementedError
 
     @classmethod
-    def sshLeader(cls, clusterName):
+    def sshLeader(cls, clusterName, args):
         raise NotImplementedError
 
     @classmethod
     def destroyCluster(cls, clusterName):
         raise NotImplementedError
+
+    def _remainingBillingInterval(self, instance):
+        return awsRemainingBillingInterval(instance)
 
     def _addNodes(self, instances, numNodes, preemptable=False):
         deadline = time.time() + provisioning_timeout
@@ -240,43 +228,6 @@ class CGCloudProvisioner(AbstractProvisioner, BaseAWSProvisioner):
         else:
             log.warn('Batch system is not scalable. Assuming all instances joined the cluster.')
         return numInstancesAdded
-
-
-    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
-        # If the batch system is scalable, we can use the number of currently running workers on
-        # each node as the primary criterion to select which nodes to terminate.
-        if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            nodes = self.batchSystem.getNodes(preemptable)
-            # Join nodes and instances on private IP address.
-            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
-            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
-            # the batch system to report stale nodes for which the corresponding instance was
-            # terminated already. There can also be instances that the batch system doesn't have
-            # nodes for yet. We'll ignore those, too, unless forced.
-            nodes = [(instance, nodeInfo)
-                     for instance, nodeInfo in nodes
-                     if force or nodeInfo is not None and nodeInfo.workers < 1]
-            # Sort nodes by number of workers and time left in billing cycle
-            nodes.sort(key=lambda (instance, nodeInfo): (
-                nodeInfo.workers if nodeInfo else 1,
-                self._remainingBillingInterval(instance)))
-            nodes = nodes[:numNodes]
-            if log.isEnabledFor(logging.DEBUG):
-                for instance, nodeInfo in nodes:
-                    log.debug("Instance %s is about to be terminated. Its node info is %r. It "
-                              "would be billed again in %s minutes.", instance.id, nodeInfo,
-                              60 * self._remainingBillingInterval(instance))
-            instanceIds = [instance.id for instance, nodeInfo in nodes]
-        else:
-            # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances,
-                               key=lambda instance: (self._remainingBillingInterval(instance)))
-            instanceIds = [instance.id for instance in islice(instances, numNodes)]
-        log.info('Terminating %i instance(s).', len(instanceIds))
-        if instanceIds:
-            self._logAndTerminate(instanceIds)
-        return len(instanceIds)
-
 
     def _logAndTerminate(self, instanceIds):
         log.debug('IDs of terminated instances: %r', instanceIds)

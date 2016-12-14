@@ -14,6 +14,16 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
+from abc import abstractmethod, ABCMeta
+from struct import pack, unpack
+from uuid import uuid4
+
+from toil.job import Job
+from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
+from toil.leader import FailedJobsException
+from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.fileStore import CacheUnbalancedError
 
 import collections
 import inspect
@@ -22,16 +32,7 @@ import random
 import signal
 import time
 import unittest
-from abc import abstractmethod, ABCMeta
 
-from struct import pack, unpack
-from uuid import uuid4
-
-from toil.job import Job
-from toil.fileStore import IllegalDeletionCacheError, FileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
-from toil.leader import FailedJobsException
-from toil.jobStores.abstractJobStore import NoSuchFileException
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -40,18 +41,33 @@ testingIsAutomatic = True
 
 class hidden:
     """
-    Hiding the abstract test class from the Unittest loader so it can be inherited in different test
-    suites for the different job stores.
+    Hiding the abstract test classes from the Unittest loader so it can be inherited in different
+    test suites for the different job stores.
     """
-
-    class AbstractCacheTest(ToilTest):
+    class AbstractFileStoreTest(ToilTest):
         """
-        Abstract tests for the the various cache functions in Job.CachedFileStore
+        An abstract base class for testing the various general functions described in
+        :class:toil.fileStore.FileStore
         """
+        # This is overwritten in the inheriting classs
+        jobStoreType = None
         __metaclass__ = ABCMeta
 
+        def _getTestJobStore(self):
+            if self.jobStoreType == 'file':
+                return self._getTestJobStorePath()
+            elif self.jobStoreType == 'aws':
+                return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+            elif self.jobStoreType == 'azure':
+                return 'azure:toiltest:cache-tests-' + str(uuid4())
+            elif self.jobStoreType == 'google':
+                projectID = 'cgc-05-0006'
+                return 'google:' + projectID + ':cache-tests-' + str(uuid4())
+            else:
+                raise RuntimeError('Illegal job store type.')
+
         def setUp(self):
-            super(hidden.AbstractCacheTest, self).setUp()
+            super(hidden.AbstractFileStoreTest, self).setUp()
             testDir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'INFO'
@@ -59,11 +75,14 @@ class hidden:
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
 
-        @abstractmethod
-        def _getTestJobStore(self):
-            raise NotImplementedError()
+        @staticmethod
+        def _uselessFunc(job):
+            """
+            I do nothing.  Don't judge me.
+            """
+            return None
 
-        # Sanity
+        # Sanity test
         def testToilIsNotBroken(self):
             """
             Runs a simple DAG to test if if any features other that caching were broken.
@@ -78,13 +97,364 @@ class hidden:
             C.addChild(D)
             Job.Runner.startToil(A, self.options)
 
-        # noinspection PyUnusedLocal
+        # Test filestore operations.  This is a slightly less intense version of the cache specific
+        # test `testReturnFileSizes`
+        def testFileStoreOperations(self):
+            """
+            Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
+            and locally deleted files.
+            """
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            F = Job.wrapJobFn(self._testFileStoreOperations,
+                              nonLocalDir=workdir,
+                              numIters=30, disk='2G')
+            Job.Runner.startToil(F, self.options)
+
         @staticmethod
-        def _uselessFunc(job):
+        def _testFileStoreOperations(job, nonLocalDir, numIters=100):
             """
-            I do nothing.  Don't judge me.
+            Aux function for testFileStoreOperations Conduct numIters operations.
             """
+            work_dir = job.fileStore.getLocalTempDir()
+            writtenFiles = {}  # fsID: (size, isLocal)
+            localFileIDs = set()
+            # Add one file for the sake of having something in the job store
+            writeFileSize = random.randint(0, 30)
+            cls = hidden.AbstractNonCachingFileStoreTest
+            fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
+                                               fileMB=writeFileSize)
+            writtenFiles[fsId] = writeFileSize
+            localFileIDs.add(writtenFiles.keys()[0])
+            i = 0
+            while i <= numIters:
+                randVal = random.random()
+                if randVal < 0.33:  # Write
+                    writeFileSize = random.randint(0, 30)
+                    isLocalFile = True if random.random() <= 0.5 else False
+                    fsID, _ = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
+                                                       nonLocalDir=nonLocalDir,
+                                                       fileMB=writeFileSize)
+                    writtenFiles[fsID] = writeFileSize
+                    localFileIDs.add(fsID)
+                else:
+                    if len(writtenFiles) == 0:
+                        continue
+                    else:
+                        fsID, rdelFileSize = random.choice(writtenFiles.items())
+                        rdelRandVal = random.random()
+                    if randVal < 0.66:  # Read
+                        mutable = True if random.random() <= 0.5 else False
+                        cache = True if random.random() <= 0.5 else False
+                        job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
+                                                     cache=cache, mutable=mutable)
+                        localFileIDs.add(fsID)
+                    else:  # Delete
+                        if rdelRandVal <= 0.5:  # Local Delete
+                            if fsID not in localFileIDs:
+                                continue
+                            job.fileStore.deleteLocalFile(fsID)
+                        else:  # Global Delete
+                            job.fileStore.deleteGlobalFile(fsID)
+                            writtenFiles.pop(fsID)
+                        if fsID in localFileIDs:
+                            localFileIDs.remove(fsID)
+                i += 1
+
+        # Tests for the various defer possibilities
+        def testDeferredFunctionRunsWithMethod(self):
+            """
+            Refer docstring in _testDeferredFunctionRuns.
+            Test with Method
+            """
+            self._testDeferredFunctionRuns(self._writeNonLocalFilesMethod)
+
+        def testDeferredFunctionRunsWithClassMethod(self):
+            """
+            Refer docstring in _testDeferredFunctionRuns.
+            Test with Class Method
+            """
+            self._testDeferredFunctionRuns(self._writeNonLocalFilesClassMethod)
+
+        def testDeferredFunctionRunsWithLambda(self):
+            """
+            Refer docstring in _testDeferredFunctionRuns.
+            Test with Lambda
+            """
+            self._testDeferredFunctionRuns(self._writeNonLocalFilesLambda)
+
+        def _testDeferredFunctionRuns(self, callableFn):
+            """
+            Create 2 files. Make a job that writes data to them. Register a deferred function that
+            deletes the two files (one passed as an arg, adn one as a kwarg) and later assert that
+            the files have been deleted.
+
+            :param function callableFn: The function to use in the test.
+            :return: None
+            """
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
+            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
+            open(nonLocalFile1, 'w').close()
+            open(nonLocalFile2, 'w').close()
+            assert os.path.exists(nonLocalFile1)
+            assert os.path.exists(nonLocalFile2)
+            A = Job.wrapJobFn(callableFn, files=(nonLocalFile1, nonLocalFile2))
+            Job.Runner.startToil(A, self.options)
+            assert not os.path.exists(nonLocalFile1)
+            assert not os.path.exists(nonLocalFile2)
+
+        @staticmethod
+        def _writeNonLocalFilesMethod(job, files):
+            """
+            Write some data to 2 files.  Pass them to a registered deferred method.
+
+            :param tuple files: the tuple of the two files to work with
+            :return: None
+            """
+            for nlf in files:
+                with open(nlf, 'w') as nonLocalFileHandle:
+                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
+            job.defer(_deleteMethods._deleteFileMethod, files[0], nlf=files[1])
             return None
+
+        @staticmethod
+        def _writeNonLocalFilesClassMethod(job, files):
+            """
+            Write some data to 2 files.  Pass them to a registered deferred class method.
+
+            :param tuple files: the tuple of the two files to work with
+            :return: None
+            """
+            for nlf in files:
+                with open(nlf, 'w') as nonLocalFileHandle:
+                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
+            job.defer(_deleteMethods._deleteFileClassMethod, files[0], nlf=files[1])
+            return None
+
+        @staticmethod
+        def _writeNonLocalFilesLambda(job, files):
+            """
+            Write some data to 2 files.  Pass them to a registered deferred Lambda.
+
+            :param tuple files: the tuple of the two files to work with
+            :return: None
+            """
+            lmd = lambda x, nlf: [os.remove(x), os.remove(nlf)]
+            for nlf in files:
+                with open(nlf, 'w') as nonLocalFileHandle:
+                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
+            job.defer(lmd, files[0], nlf=files[1])
+            return None
+
+        def testDeferredFunctionRunsWithFailures(self):
+            """
+            Create 2 non local filesto use as flags.  Create a job that registers a function that
+            deletes one non local file.  If that file exists, the job SIGKILLs itself. If it doesn't
+            exist, the job registers a second deferred function to delete the second non local file
+            and exits normally.
+
+            Initially the first file exists, so the job should SIGKILL itself and neither deferred
+            function will run (in fact, the second should not even be registered). On the restart,
+            the first deferred function should run and the first file should not exist, but the
+            second one should.  We assert the presence of the second, then register the second
+            deferred function and exit normally.  At the end of the test, neither file should exist.
+
+            Incidentally, this also tests for multiple registered deferred functions, and the case
+            where a deferred function fails (since the first file doesn't exist on the retry).
+            """
+            self.options.retryCount = 1
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
+            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
+            open(nonLocalFile1, 'w').close()
+            open(nonLocalFile2, 'w').close()
+            assert os.path.exists(nonLocalFile1)
+            assert os.path.exists(nonLocalFile2)
+            A = Job.wrapJobFn(self._deferredFunctionRunsWithFailuresFn,
+                              files=(nonLocalFile1, nonLocalFile2))
+            Job.Runner.startToil(A, self.options)
+            assert not os.path.exists(nonLocalFile1)
+            assert not os.path.exists(nonLocalFile2)
+
+        @staticmethod
+        def _deferredFunctionRunsWithFailuresFn(job, files):
+            """
+            Refer testDeferredFunctionRunsWithFailures
+
+            :param tuple files: the tuple of the two files to work with
+            :return: None
+            """
+            cls = hidden.AbstractNonCachingFileStoreTest
+            job.defer(cls._deleteFile, files[0])
+            if os.path.exists(files[0]):
+                os.kill(os.getpid(), signal.SIGKILL)
+            else:
+                assert os.path.exists(files[1])
+                job.defer(cls._deleteFile, files[1])
+
+        @staticmethod
+        def _deleteFile(nonLocalFile, nlf=None):
+            """
+            Delete nonLocalFile and nlf
+            :param str nonLocalFile:
+            :param str nlf:
+            :return: None
+            """
+            os.remove(nonLocalFile)
+            if nlf is not None:
+                os.remove(nlf)
+
+        def testNewJobsCanHandleOtherJobDeaths(self):
+            """
+            Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
+            to delete the second non-local file, deletes the first non-local file and then kills
+            itself.  The second job waits for the first file to be deleted, then sleeps for a few
+            seconds and then spawns a child. the child of the second does nothing. However starting
+            it should handle the untimely demise of the first job and run the registered deferred
+            function that deletes the first file.  We assert the absence of the two files at the
+            end of the run.
+            """
+            # There can be no retries
+            self.options.retryCount = 0
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
+            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
+            open(nonLocalFile1, 'w').close()
+            open(nonLocalFile2, 'w').close()
+            assert os.path.exists(nonLocalFile1)
+            assert os.path.exists(nonLocalFile2)
+            files = [nonLocalFile1, nonLocalFile2]
+            root = Job()
+            A = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_A, files=files)
+            B = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_B, files=files)
+            C = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_C, files=files,
+                              expectedResult=False)
+            root.addChild(A)
+            root.addChild(B)
+            B.addChild(C)
+            try:
+                Job.Runner.startToil(root, self.options)
+            except FailedJobsException as e:
+                pass
+
+        @staticmethod
+        def _testNewJobsCanHandleOtherJobDeaths_A(job, files):
+            """
+            Defer deletion of files[1], then wait for _testNewJobsCanHandleOtherJobDeaths_B to
+            start up, and finally delete files[0] before sigkilling self.
+
+            :param tuple files: the tuple of the two files to work with
+            :return: None
+            """
+            # Write the pid to files[1] such that we can be sure that this process has died before
+            # we spawn the next job that will do the cleanup.
+            with open(files[1], 'w') as fileHandle:
+                fileHandle.write(str(os.getpid()))
+            job.defer(hidden.AbstractNonCachingFileStoreTest._deleteFile, files[1])
+            while os.stat(files[0]).st_size == 0:
+                time.sleep(0.5)
+            os.remove(files[0])
+            os.kill(os.getpid(), signal.SIGKILL)
+
+        @staticmethod
+        def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
+            # Write something to files[0] such that we can be sure that this process has started
+            # before _testNewJobsCanHandleOtherJobDeaths_A kills itself.
+            with open(files[0], 'w') as fileHandle:
+                fileHandle.write(str(os.getpid()))
+            while os.path.exists(files[0]):
+                time.sleep(0.5)
+            # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
+            with open(files[1], 'r') as fileHandle:
+                meeseeksPID = int(fileHandle.read())
+            while CachingFileStore._pidExists(meeseeksPID):
+                time.sleep(0.5)
+            # Now that we are convinced that_testNewJobsCanHandleOtherJobDeaths_A has died, we can
+            # spawn the next job
+            return None
+
+        @staticmethod
+        def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
+            """
+            Asserts whether the files exist or not.
+
+            :param Job job: Job
+            :param list files: list of files to test
+            :param bool expectedResult: Are we expecting the files to exist or not?
+            """
+            for testFile in files:
+                assert os.path.exists(testFile) is expectedResult
+
+        def testBatchSystemCleanupCanHandleWorkerDeaths(self):
+            """
+            Create a non-local files. Create a job that registers a deferred job to delete the file
+            and then kills itself.
+
+            Assert that the file is missing after the pipeline fails.
+            """
+            # There can be no retries
+            self.options.retryCount = 0
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
+            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
+            # The first file has to be non zero or meseeks will go into an infinite sleep
+            file1 = open(nonLocalFile1, 'w')
+            file1.write('test')
+            file1.close()
+            open(nonLocalFile2, 'w').close()
+            assert os.path.exists(nonLocalFile1)
+            assert os.path.exists(nonLocalFile2)
+            A = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_A,
+                              files=(nonLocalFile1, nonLocalFile2))
+            try:
+                Job.Runner.startToil(A, self.options)
+            except FailedJobsException:
+                pass
+            assert not os.path.exists(nonLocalFile1)
+            assert not os.path.exists(nonLocalFile2)
+
+        @staticmethod
+        def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
+            """
+            This function creates a file and writes it to the jobstore.
+
+            :param bool isLocalFile: Is the file local(T) or Non-Local(F)?
+            :param str nonLocalDir: A dir to write the file to.  If unspecified, a local directory
+                                    is created.
+            :param int fileMB: Size of the created file in MB
+            """
+            if isLocalFile:
+                work_dir = job.fileStore.getLocalTempDir()
+            else:
+                assert nonLocalDir is not None
+                work_dir = nonLocalDir
+            with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
+                testFile.write(os.urandom(fileMB * 1024 * 1024))
+
+            return job.fileStore.writeGlobalFile(testFile.name), testFile
+
+    class AbstractNonCachingFileStoreTest(AbstractFileStoreTest):
+        """
+        Abstract tests for the the various functions in :class:toil.fileStore.NonCachingFileStore.
+        These tests are general enough that they can also be used for
+        :class:toil.fileStore.CachingFileStore.
+        """
+        __metaclass__ = ABCMeta
+
+        def setUp(self):
+            super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
+            self.options.disableCaching = True
+
+    class AbstractCachingFileStoreTest(AbstractFileStoreTest):
+        """
+        Abstract tests for the the various cache-related functions in
+        :class:toil.fileStore.CachingFileStore.
+        """
+        __metaclass__ = ABCMeta
+
+        def setUp(self):
+            super(hidden.AbstractCachingFileStoreTest, self).setUp()
+            self.options.disableCaching = False
 
         def testExtremeCacheSetup(self):
             """
@@ -92,6 +462,8 @@ class hidden:
             the chain.  This tests whether the cache is created properly even when the job crashes
             randomly.
             """
+            if testingIsAutomatic and self.jobStoreType != 'file':
+                self.skipTest("To save time")
             self.options.retryCount = 20
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
@@ -232,11 +604,13 @@ class hidden:
             else:
                 expectedResult = 50 - file1MB if diskRequestMB <= file1MB else 0
             try:
-                A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, fileMB=file1MB)
+                A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
+                                  fileMB=file1MB)
                 # Sleep for 1 second after writing the first file so that their ctimes are
                 # guaranteed to be distinct for the purpose of this test.
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
-                C = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, fileMB=file2MB)
+                C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
+                                  fileMB=file2MB)
                 D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
@@ -252,15 +626,15 @@ class hidden:
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
-                errType, errMsg = self._parseAssertionError(self.options.logFile)
-                if (errType == 'AssertionError' and
-                        errMsg == 'Unable to free up enough space for caching.'):
+                with open(self.options.logFile) as f:
+                    logContents = f.read()
+                if CacheUnbalancedError.message in logContents:
                     self.assertEqual(expectedResult, 'Fail')
                 else:
                     self.fail('Toil did not raise the expected AssertionError')
 
         @staticmethod
-        def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
+        def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1):
             """
             This function creates a file and writes it to the jobstore.
 
@@ -269,16 +643,8 @@ class hidden:
                                     is created.
             :param int fileMB: Size of the created file in MB
             """
-            if isLocalFile:
-                work_dir = job.fileStore.getLocalTempDir()
-            else:
-                assert nonLocalDir is not None
-                work_dir = nonLocalDir
-            with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
-                testFile.write(os.urandom(fileMB * 1024 * 1024))
-
-            fsID = job.fileStore.writeGlobalFile(testFile.name)
-
+            cls = hidden.AbstractNonCachingFileStoreTest
+            fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
             actual = os.stat(testFile.name).st_nlink
             if isLocalFile:
                 # Since the file has been hard linked it should have nlink_count = threshold + 1
@@ -290,7 +656,6 @@ class hidden:
                 assert actual == 1, 'Should have one nlink. Got %i.' % actual
             return fsID
 
-        # noinspection PyUnusedLocal
         @staticmethod
         def _sleepy(job, timeToSleep):
             """
@@ -337,50 +702,24 @@ class hidden:
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
 
-        @staticmethod
-        def _parseAssertionError(logFile):
-            """
-            Parse the assertion error message from a failed toil logfile
-
-            :param logFile: path to the logfile
-            :return: tuple of (error type, string) of the error
-            """
-            workerLogName = None
-            with open(logFile, 'r') as logFileHandle:
-                for line in logFileHandle:
-                    line = line.strip()
-                    if workerLogName is None:
-                        if line.startswith('The job seems to have left '
-                                           'a log file, indicating failure:'):
-                            workerLogName = line.split()[-1]
-                        continue
-                    if not line.startswith(workerLogName):
-                        continue
-                    else:
-                        fields = line.split()
-                        if fields[1].endswith('Error:'):
-                            return fields[1][:-1], ' '.join(fields[2:])
-            raise RuntimeError('An error was not found in the error log.')
-
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
             modifies the cache lock file to 1GB. The second asks for 1GB of disk and  writes a 900MB
-            file into cache and then rewrites it to the job store. The third asks for 1GB of disk
-            and then requests the file.
-
-            The second writeGlobalFile in the writing job should trigger an async write to the job
-            store and the since the first was written to cache, the second won't have space to be.
-            The third job should wait for the second to finish writing to the job store (through the
-            harbinger mechanism) and there should be no read-only error thrown by the async write
-            threads.
+            file into cache then rewrites it to the job store triggering an async write since the
+            two unique jobstore IDs point to the same local file.  Also, the second write is not
+            cached since the first was written to cache, and there "isn't enough space" to cache the
+            second.  Imediately assert that the second write isn't cached, and is being
+            asynchronously written to the job store (through the presence of a harbinger file).
+             Attempting to get the file from the jobstore should not fail.
             """
             self.options.retryCount = 0
+            self.options.logLevel = 'DEBUG'
             A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=1024, disk='1G')
-            B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=900, disk='1G')
-            C = Job.wrapJobFn(self._readFromJobStoreWithoutAsssertions, fsID=B.rv(), disk='1G')
+            B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk='900M')
             # Set it to > 2GB such that the cleanup jobs don't die.
-            D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
+            C = Job.wrapJobFn(self._readFromJobStoreWithoutAsssertions, fsID=B.rv(), disk='1G')
+            D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='1G')
             A.addChild(B)
             B.addChild(C)
             C.addChild(D)
@@ -396,12 +735,22 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
+            # Make this take longer so we can test asynchronous writes across jobs/workers.
+            oldHarbingerFileRead = job.fileStore.HarbingerFile.read
+            def newHarbingerFileRead(self):
+                time.sleep(5)
+                return oldHarbingerFileRead(self)
+
             job.fileStore.logToMaster('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
             with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
             job.fileStore.writeGlobalFile(testFile.name)
+            fsID = job.fileStore.writeGlobalFile(testFile.name)
+            hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAsssertions(job, fsID)
+            # Make this take longer so we can test asynchronous writes across jobs/workers.
+            job.fileStore.HarbingerFile.read = newHarbingerFileRead
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
@@ -425,7 +774,8 @@ class hidden:
             Ensure the file is not cached.
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=False, nonLocalDir=workdir)
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
+                              nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
 
         def testWriteLocalFileToJobStore(self):
@@ -433,7 +783,7 @@ class hidden:
             Write a file from the localTempDir to the job store.  Such a file will be cached by
             default.  Ensure the file is cached.
             """
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True)
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
             Job.Runner.startToil(A, self.options)
 
         # readGlobalFile tests
@@ -458,7 +808,8 @@ class hidden:
             :param cacheReadFile: Does the read file need to be cached(T) or not(F)
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=False, nonLocalDir=workdir)
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
+                              nonLocalDir=workdir)
             B = Job.wrapJobFn(self._readFromJobStore, isCachedFile=False,
                               cacheReadFile=cacheReadFile, fsID=A.rv())
             A.addChild(B)
@@ -504,7 +855,7 @@ class hidden:
             Read a file from the file store that has a corresponding cached copy.  Ensure the number
             of links on the file are appropriate.
             """
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True)
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
             B = Job.wrapJobFn(self._readFromJobStore, isCachedFile=True, cacheReadFile=None,
                               fsID=A.rv())
             A.addChild(B)
@@ -540,7 +891,8 @@ class hidden:
             workdir = self._createTempDir(purpose=dirPurpose)
             with open(os.path.join(workdir, 'test'), 'w') as x:
                 x.write(str(0))
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=cacheHit, nonLocalDir=workdir,
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=cacheHit,
+                              nonLocalDir=workdir,
                               fileMB=256)
             B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             jobs = {}
@@ -641,8 +993,8 @@ class hidden:
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             jobDisk -= writeFileSize * 1024 * 1024
-            cls = hidden.AbstractCacheTest
-            fsId = cls._writeFileToJobStore(job, isLocalFile=True, fileMB=writeFileSize)
+            cls = hidden.AbstractCachingFileStoreTest
+            fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
             if job.fileStore._fileIsCached(writtenFiles.keys()[0]):
                 cached += writeFileSize * 1024 * 1024
@@ -654,16 +1006,17 @@ class hidden:
                 if randVal < 0.33:  # Write
                     writeFileSize = random.randint(0, 30)
                     if random.random() <= 0.5:  # Write a local file
-                        fsID = cls._writeFileToJobStore(job, isLocalFile=True, fileMB=writeFileSize)
+                        fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True,
+                                                                   fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('local')
                         jobDisk -= writeFileSize * 1024 * 1024
                         if job.fileStore._fileIsCached(fsID):
                             cached += writeFileSize * 1024 * 1024
                     else:  # Write a non-local file
-                        fsID = cls._writeFileToJobStore(job, isLocalFile=False,
-                                                        nonLocalDir=nonLocalDir,
-                                                        fileMB=writeFileSize)
+                        fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
+                                                                   nonLocalDir=nonLocalDir,
+                                                                   fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('non-local')
                         # No change to the job since there was no caching
@@ -752,7 +1105,7 @@ class hidden:
             :param float jobDisk: Disk space supplied for this job
             :param str testDir: T3sting directory
             """
-            cls = hidden.AbstractCacheTest
+            cls = hidden.AbstractCachingFileStoreTest
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
                 with open(os.path.join(testDir, 'testfile.test'), 'r') as fH:
                     cached = unpack('d', fH.read())[0]
@@ -778,7 +1131,7 @@ class hidden:
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
             self.options.retryCount = 0
-            A = Job.wrapJobFn(self._writeFileToJobStore, isLocalFile=True, memory='10M')
+            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory='10M')
             B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
                               memory='20M')
             A.addChild(B)
@@ -872,259 +1225,6 @@ class hidden:
             except NoSuchFileException:
                 pass
 
-        # These tests don't test the cache functions but they test code that heavily inherits cache
-        # code
-        def testDeferredFunctionRunsWithMethod(self):
-            """
-            Refer docstring in _testDeferredFunctionRuns.
-            Test with Method
-            """
-            self._testDeferredFunctionRuns(self._writeNonLocalFilesMethod)
-
-        def testDeferredFunctionRunsWithClassMethod(self):
-            """
-            Refer docstring in _testDeferredFunctionRuns.
-            Test with Class Method
-            """
-            self._testDeferredFunctionRuns(self._writeNonLocalFilesClassMethod)
-
-        def testDeferredFunctionRunsWithLambda(self):
-            """
-            Refer docstring in _testDeferredFunctionRuns.
-            Test with Lambda
-            """
-            self._testDeferredFunctionRuns(self._writeNonLocalFilesLambda)
-
-        def _testDeferredFunctionRuns(self, callableFn):
-            """
-            Create 2 files. Make a job that writes data to them. Register a deferred function that
-            deletes the two files (one passed as an arg, adn one as a kwarg) and later assert that
-            the files have been deleted.
-
-            :param function callableFn: The function to use in the test.
-            :return: None
-            """
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-            open(nonLocalFile1, 'w').close()
-            open(nonLocalFile2, 'w').close()
-            assert os.path.exists(nonLocalFile1)
-            assert os.path.exists(nonLocalFile2)
-            A = Job.wrapJobFn(callableFn, files=(nonLocalFile1, nonLocalFile2))
-            Job.Runner.startToil(A, self.options)
-            assert not os.path.exists(nonLocalFile1)
-            assert not os.path.exists(nonLocalFile2)
-
-        @staticmethod
-        def _writeNonLocalFilesMethod(job, files):
-            """
-            Write some data to 2 files.  Pass them to a registered deferred method.
-
-            :param tuple files: the tuple of the two files to work with
-            :return: None
-            """
-            for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
-                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
-            job.defer(_deleteMethods._deleteFileMethod, files[0], nlf=files[1])
-            return None
-
-        @staticmethod
-        def _writeNonLocalFilesClassMethod(job, files):
-            """
-            Write some data to 2 files.  Pass them to a registered deferred class method.
-
-            :param tuple files: the tuple of the two files to work with
-            :return: None
-            """
-            for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
-                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
-            job.defer(_deleteMethods._deleteFileClassMethod, files[0], nlf=files[1])
-            return None
-
-        @staticmethod
-        def _writeNonLocalFilesLambda(job, files):
-            """
-            Write some data to 2 files.  Pass them to a registered deferred Lambda.
-
-            :param tuple files: the tuple of the two files to work with
-            :return: None
-            """
-            lmd = lambda x, nlf: [os.remove(x), os.remove(nlf)]
-            for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
-                    nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
-            job.defer(lmd, files[0], nlf=files[1])
-            return None
-
-        def testDeferredFunctionRunsWithFailures(self):
-            """
-            Create 2 non local filesto use as flags.  Create a job that registers a function that
-            deletes one non local file.  If that file exists, the job SIGKILLs itself. If it doesn't
-            exist, the job registers a second deferred function to delete the second non local file
-            and exits normally.
-
-            Initially the first file exists, so the job should SIGKILL itself and neither deferred
-            function will run (in fact, the second should not even be registered). On the restart,
-            the first deferred function should run and the first file should not exist, but the
-            second one should.  We assert the presence of the second, then register the second
-            deferred function and exit normally.  At the end of the test, neither file should exist.
-
-            Incidentally, this also tests for multiple registered deferred functions, and the case
-            where a deferred function fails (since the first file doesn't exist on the retry).
-            """
-            self.options.retryCount = 1
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-            open(nonLocalFile1, 'w').close()
-            open(nonLocalFile2, 'w').close()
-            assert os.path.exists(nonLocalFile1)
-            assert os.path.exists(nonLocalFile2)
-            A = Job.wrapJobFn(self._deferredFunctionRunsWithFailuresFn,
-                              files=(nonLocalFile1, nonLocalFile2))
-            Job.Runner.startToil(A, self.options)
-            assert not os.path.exists(nonLocalFile1)
-            assert not os.path.exists(nonLocalFile2)
-
-        @staticmethod
-        def _deferredFunctionRunsWithFailuresFn(job, files):
-            """
-            Refer testDeferredFunctionRunsWithFailures
-
-            :param tuple files: the tuple of the two files to work with
-            :return: None
-            """
-            job.defer(hidden.AbstractCacheTest._deleteFile, files[0])
-            if os.path.exists(files[0]):
-                os.kill(os.getpid(), signal.SIGKILL)
-            else:
-                assert os.path.exists(files[1])
-                job.defer(hidden.AbstractCacheTest._deleteFile, files[1])
-
-        @staticmethod
-        def _deleteFile(nonLocalFile, nlf=None):
-            """
-            Delete nonLocalFile and nlf
-            :param str nonLocalFile:
-            :param str nlf:
-            :return: None
-            """
-            os.remove(nonLocalFile)
-            if nlf is not None:
-                os.remove(nlf)
-
-        def testNewJobsCanHandleOtherJobDeaths(self):
-            """
-            Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
-            to delete the second non-local file, deletes the first non-local file and then kills
-            itself.  The second job waits for the first file to be deleted, then sleeps for a few
-            seconds and then spawns a child. the child of the second does nothing. However starting
-            it should handle the untimely demise of the first job and run the registered deferred
-            function that deletes the first file.  We assert the absence of the two files at the
-            end of the run.
-            """
-            # There can be no retries
-            self.options.retryCount = 0
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-            open(nonLocalFile1, 'w').close()
-            open(nonLocalFile2, 'w').close()
-            assert os.path.exists(nonLocalFile1)
-            assert os.path.exists(nonLocalFile2)
-            files = [nonLocalFile1, nonLocalFile2]
-            root = Job()
-            A = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_A, files=files)
-            B = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_B, files=files)
-            C = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_C, files=files,
-                              expectedResult=False)
-            root.addChild(A)
-            root.addChild(B)
-            B.addChild(C)
-            try:
-                Job.Runner.startToil(root, self.options)
-            except FailedJobsException as e:
-                pass
-
-        @staticmethod
-        def _testNewJobsCanHandleOtherJobDeaths_A(job, files):
-            """
-            Defer deletion of files[1], then wait for _testNewJobsCanHandleOtherJobDeaths_B to
-            start up, and finally delete files[0] before sigkilling self.
-
-            :param tuple files: the tuple of the two files to work with
-            :return: None
-            """
-            # Write the pid to files[1] such that we can be sure that this process has died before
-            # we spawn the next job that will do the cleanup.
-            with open(files[1], 'w') as fileHandle:
-                fileHandle.write(str(os.getpid()))
-            job.defer(hidden.AbstractCacheTest._deleteFile, files[1])
-            while os.stat(files[0]).st_size == 0:
-                time.sleep(0.5)
-            os.remove(files[0])
-            os.kill(os.getpid(), signal.SIGKILL)
-
-        @staticmethod
-        def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
-            # Write something to files[0] such that we can be sure that this process has started
-            # before _testNewJobsCanHandleOtherJobDeaths_A kills itself.
-            with open(files[0], 'w') as fileHandle:
-                fileHandle.write(str(os.getpid()))
-            while os.path.exists(files[0]):
-                time.sleep(0.5)
-            # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
-            with open(files[1], 'r') as fileHandle:
-                meeseeksPID = int(fileHandle.read())
-            while FileStore.HarbingerFile._pidExists(meeseeksPID):
-                time.sleep(0.5)
-            # Now that we are convinced that_testNewJobsCanHandleOtherJobDeaths_A has died, we can
-            # spawn the next job
-            return None
-
-        @staticmethod
-        def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
-            """
-            Asserts whether the files exist or not.
-
-            :param Job job: Job
-            :param list files: list of files to test
-            :param bool expectedResult: Are we expecting the files to exist or not?
-            """
-            for testFile in files:
-                assert os.path.exists(testFile) is expectedResult
-
-        def testBatchSystemCleanupCanHandleWorkerDeaths(self):
-            """
-            Create a non-local files. Create a job that registers a deferred job to delete the file
-            and then kills itself.
-
-            Assert that the file is missing after the pipeline fails.
-            """
-            # There can be no retries
-            self.options.retryCount = 0
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-            nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-            # The first file has to be non zero or meseeks will go into an infinite sleep
-            file1 = open(nonLocalFile1, 'w')
-            file1.write('test')
-            file1.close()
-            open(nonLocalFile2, 'w').close()
-            assert os.path.exists(nonLocalFile1)
-            assert os.path.exists(nonLocalFile2)
-            A = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_A,
-                              files=(nonLocalFile1, nonLocalFile2))
-            try:
-                Job.Runner.startToil(A, self.options)
-            except FailedJobsException:
-                pass
-            assert not os.path.exists(nonLocalFile1)
-            assert not os.path.exists(nonLocalFile2)
-
 
 class _deleteMethods(object):
     @staticmethod
@@ -1150,42 +1250,46 @@ class _deleteMethods(object):
             os.remove(nlf)
 
 
-class FileJobStoreCacheTest(hidden.AbstractCacheTest):
-    def _getTestJobStore(self):
-        return self._getTestJobStorePath()
+class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
+    jobStoreType = 'file'
+
+
+class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
+    jobStoreType = 'file'
 
 
 @needs_aws
-class AwsJobStoreCacheTest(hidden.AbstractCacheTest):
-    def _getTestJobStore(self):
-        return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
+    jobStoreType = 'aws'
 
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(AwsJobStoreCacheTest, self).testExtremeCacheSetup()
+
+@needs_aws
+class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
+    jobStoreType = 'aws'
 
 
 @needs_azure
 @experimental
-class AzureJobStoreCacheTest(hidden.AbstractCacheTest):
-    def _getTestJobStore(self):
-        return 'azure:toiltest:cache-tests-' + str(uuid4())
+class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStoreTest):
+    jobStoreType = 'azure'
 
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(AzureJobStoreCacheTest, self).testExtremeCacheSetup()
+
+@needs_azure
+@experimental
+class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
+    jobStoreType = 'azure'
 
 
 @experimental
 @needs_google
-class GoogleJobStoreCacheTest(hidden.AbstractCacheTest):
-    def _getTestJobStore(self):
-        projectID = 'cgc-05-0006'
-        return 'google:' + projectID + ':cache-tests-' + str(uuid4())
+class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
+    jobStoreType = 'google'
 
-    @unittest.skipIf(testingIsAutomatic, "To save time")
-    def testExtremeCacheSetup(self):
-        super(GoogleJobStoreCacheTest, self).testExtremeCacheSetup()
+
+@experimental
+@needs_google
+class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
+    jobStoreType = 'google'
 
 
 def _exportStaticMethodAsGlobalFunctions(cls):
@@ -1201,4 +1305,6 @@ def _exportStaticMethodAsGlobalFunctions(cls):
                 globals()[name] = method
 
 
-_exportStaticMethodAsGlobalFunctions(hidden.AbstractCacheTest)
+_exportStaticMethodAsGlobalFunctions(hidden.AbstractFileStoreTest)
+_exportStaticMethodAsGlobalFunctions(hidden.AbstractCachingFileStoreTest)
+_exportStaticMethodAsGlobalFunctions(hidden.AbstractNonCachingFileStoreTest)

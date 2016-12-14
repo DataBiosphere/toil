@@ -15,7 +15,6 @@ import sys
 import os
 import inspect
 import re
-import subprocess
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -24,12 +23,15 @@ sys.path.insert(0, os.path.abspath('../src'))
 
 import toil.version
 
+# This makes the modules located in docs/vendor available to import
+sys.path.insert(0, os.path.abspath('./vendor'))
+import sphinxcontrib.fulltoc
+
 
 def real_dir_name(p, n=1):
     p = os.path.realpath(p)
     for i in range(n):
         p = os.path.dirname(p)
-    print p
     return p
 
 if not hasattr(sys, 'real_prefix'):
@@ -38,7 +40,7 @@ path_to_dir = os.path.dirname(os.path.abspath(__file__))
 
 assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
     "Another Toil installation seems to have precedence over this working directory."
-toilVersion = toil.version.version
+toilVersion = toil.version.baseVersion
 
 # -- General configuration ------------------------------------------------
 
@@ -54,13 +56,14 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
+    'sphinxcontrib.fulltoc',
 ]
 
 
 def skip(app, what, name, obj, skip, options):
-    if name == '__init__':
-        return False
-    return skip or inspect.isclass(obj) or name.startswith('_')
+    return name != '__init__' and (skip
+                                   or inspect.isclass(obj)
+                                   or name.startswith('_') and not inspect.ismodule(obj))
 
 
 def setup(app):
@@ -83,7 +86,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Toil'
-copyright = u'2015, UCSC Computational Genomics Lab'
+copyright = u'2015, 2016, UCSC Computational Genomics Lab'
 author = u'UCSC Computational Genomics Lab'
 
 # The version info for the project you're documenting, acts as replacement for
