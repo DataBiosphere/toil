@@ -145,4 +145,5 @@ def logProcessContext(config):
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
     log.info("Running Toil version %s.", version)
-    log.info("Configuration: %s", config.__dict__)
+    log.debug("Configuration: %s", config.__dict__)
+
