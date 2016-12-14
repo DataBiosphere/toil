@@ -26,6 +26,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'libssl-dev',
                          'wget',
                          'curl',
+                         'openssh-server',
                          'mesos=1.0.0-2.0.89.ubuntu1404',
                          'rsync',
                          'screen'])
@@ -62,6 +63,8 @@ print heredoc('''
         && apt-get -y update \
         && apt-get -y install {dependencies} \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    RUN mkdir /home/.ssh
 
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==8.1.2

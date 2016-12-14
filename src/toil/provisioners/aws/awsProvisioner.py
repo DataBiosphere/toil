@@ -55,12 +55,17 @@ class AWSProvisioner(AbstractProvisioner):
             self.instanceType = ec2_instance_types[config.nodeType]
         self.leaderIP = self.instanceMetaData['local-ipv4']
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
-        self.masterPublicKey = ''
-        with open('/var/lib/toil/id_rsa.pub') as f:
-            self.masterPublicKey = f.read()
-        self.masterPublicKey = self.masterPublicKey.split(' ')[1]  # take 'body' of key
+        self.masterPublicKey = self.setSSH()
+
+    def setSSH(self):
+        subprocess.check_call(['ssh-keygen', '-f', '/home/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add'])
+        with open('/home/.ssh/id_rsa.pub') as f:
+            masterPublicKey = f.read()
+        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
         # confirm it really is an RSA public key
-        assert self.masterPublicKey.startswith('AAAAB3NzaC1yc2E')
+        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+        return masterPublicKey
 
     def getNodeShape(self, preemptable=False):
         instanceType = self.instanceType
@@ -304,14 +309,7 @@ class AWSProvisioner(AbstractProvisioner):
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        instance = cls._getLeader(clusterName=clusterName, wait=True)
-        # make ssh key for the leader so it can ssh/rsync things onto the worker nodes
-        cls._sshInstance(instance.ip_address,
-                         'ssh-keygen', '-f', '/home/core/.ssh/id_rsa', '-t', 'rsa', '-N', '')
-        cls._sshInstance(instance.ip_address, 'bash', '-c', 'eval $(/usr/bin/ssh-agent); ssh-add')
-        # now, give the appliance access to the public key
-        cls._sshInstance(instance.ip_address,
-                         'sudo', 'cp', '/home/core/.ssh/id_rsa.pub', '/var/lib/toil/id_rsa.pub')
+        return cls._getLeader(clusterName=clusterName, wait=True)
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
