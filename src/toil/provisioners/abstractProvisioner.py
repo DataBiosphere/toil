@@ -139,7 +139,7 @@ class AbstractProvisioner(object):
         the necessary additions or removals of worker nodes, return the resulting number of
         preemptable or non-preemptable nodes currently in the cluster.
 
-        :param int numNodes: Number of nodes to add.
+        :param int numNodes: Desired size of the cluster
 
         :param bool preemptable: whether the added nodes will be preemptable, i.e. whether they
                may be removed spontaneously by the underlying platform at any time.
