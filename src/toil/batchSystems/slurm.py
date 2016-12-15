@@ -183,14 +183,10 @@ class Worker(Thread):
         sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
-            comma = ''
-            ex = '--export='
             for k, v in self.boss.environment.iteritems():
                 quoted_value = quote(os.environ[k] if v is None else v)
-                ex = ex + ('{}{}={}'.format(comma, k, quoted_value))
-                comma = ','
-            sbatch_line.append(ex)
-            
+                sbatch_line.append('--export={}={}'.format(k, quoted_value))
+
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
             sbatch_line.append('--mem={}'.format(int(mem) / 2 ** 20))
@@ -222,23 +218,8 @@ class Worker(Thread):
         except OSError as e:
             logger.error("sbatch command failed")
             raise e
-    
-    def getJobExitCode(self, slurmJobID):
-        logger.debug("Getting exit code for slurm job %d", slurmJobID)
-        
-        state, rc = self._getJobExitCodeFromSacct(self, slurmJobID)
-        
-        if rc == -999:
-            state, rc = self._getJobDetailsFromScontrol(slurmJobID)
-        
-        logger.debug("s job state is %s", state)
-        # If Job is in a running state, return None to indicate we don't have an update                                 
-        if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
-            return None
 
-        return rc
-    
-    def _getJobExitCodeFromSacct(self, slurmJobID):
+    def getJobExitCode(self, slurmJobID):
         logger.debug("Getting exit code for slurm job %d", slurmJobID)
         # SLURM job exit codes are obtained by running sacct.
         args = ['sacct',
@@ -249,54 +230,20 @@ class Worker(Thread):
                 '-S', '1970-01-01'] # override start time limit
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in process.stdout:
-            
-            if line == 'SLURM accounting storage is disabled':
-                return (None, -999)
-            
             values = line.strip().split('|')
             if len(values) < 2:
                 continue
             state, exitcode = values
             logger.debug("sacct job state is %s", state)
             # If Job is in a running state, return None to indicate we don't have an update
+            if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
+                return None
             status, _ = exitcode.split(':')
             logger.debug("sacct exit code is %s, returning status %s", exitcode, status)
-            return (state, int(status))
-        
+            return int(status)
         logger.debug("Did not find exit code for job in sacct output")
-        return (None, None)
+        return None
 
-    def _getJobDetailsFromScontrol(self, slurmJobID):
-        args = ['scontrol',
-                'show',
-                'job',
-                str(slurmJobID)]
-        process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-        job = dict()
-        for line in process.stdout:
-            values = line.strip().split()
-
-            if len(values)>0 and values[0] == 'slurm_load_jobs':
-                return None
-
-            for v in values:
-                bits = v.split('=')
-                job[bits[0]] = bits[1]
-
-        state = job['JobState']
-        try:
-            exitcode = job['ExitCode']
-            if exitcode is not None:
-                status, _ = exitcode.split(':')
-                logger.debug("scontrol exit code is %s, returning status %s", exitcode, status)
-                rc = int(status)
-            else:
-                rc = None
-        except KeyError:
-            rc = None
-        
-        return (state, rc)
 
 class SlurmBatchSystem(BatchSystemSupport):
     """
