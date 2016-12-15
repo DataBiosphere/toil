@@ -14,3 +14,5 @@ __pycache__
 /docker/Dockerfile
 /docker/toil-*.tar.gz
 /src/toil/version.py
+.project
+.pydevproject
