@@ -142,12 +142,13 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _sshInstance(cls, nodeIP, *args, **kwargs):
+        kwargs['collectStdout'] = True
         return cls._coreSSH(nodeIP, *args, **kwargs)
 
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
         """
-        kwargs: input, tty, appliance, startagent
+        kwargs: input, tty, appliance, collectStdout
         """
         commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % nodeIP]
         appliance = kwargs.pop('appliance', None)
@@ -156,21 +157,15 @@ class AWSProvisioner(AbstractProvisioner):
             tty = kwargs.pop('tty', None)
             ttyFlag = '-t' if tty else ''
             commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
-        startAgent = kwargs.pop('startAgent', None)
         inputString = kwargs.pop('input', None)
         if inputString is not None:
             kwargs['stdin'] = subprocess.PIPE
-        stdout = kwargs.pop('stdout', None)
-        if stdout is None:
+        collectStdout = kwargs.pop('collectStdout', None)
+        if collectStdout:
             kwargs['stdout'] = subprocess.PIPE
         logger.debug('Node %s: %s', nodeIP, ' '.join(args))
         args = map(pipes.quote, args)
-        if startAgent:
-            # We are ssh-ing from the appliance - we need to configure ssh before doing so
-            commandTokens = ['bash', '-c', 'eval $(ssh-agent) && ssh-add -k && ' + ' '.join(commandTokens) +
-                             ' ' + ' '.join(args)]
-        else:
-            commandTokens += args
+        commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
         popen = subprocess.Popen(commandTokens, **kwargs)
         stdout, stderr = popen.communicate(input=inputString)
@@ -188,11 +183,9 @@ class AWSProvisioner(AbstractProvisioner):
         cls._rsyncNode(leader.ip_address, args)
 
     @classmethod
-    def _rsyncNode(cls, ip, args, startAgent=False):
+    def _rsyncNode(cls, ip, args, applianceName='toil_leader'):
         sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
-        if startAgent:
-            sshCommand = 'eval $(ssh-agent) && key-add -k && ' + sshCommand
-        remoteRsync = "docker exec -i toil_leader rsync"  # Access rsync inside appliance
+        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         hostInserted = False
         # Insert remote host address
@@ -235,21 +228,21 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     @classmethod
-    def _waitForNode(cls, instance, role, startAgent=False):
+    def _waitForNode(cls, instance, role):
         # returns the node's IP
         cls._waitForIP(instance)
         instanceIP = instance.ip_address
         cls._waitForSSHPort(instanceIP)
         # wait here so docker commands can be used reliably afterwards
-        cls._waitForDockerDaemon(instanceIP, startAgent=startAgent)
-        cls._waitForAppliance(instanceIP, role=role, startAgent=startAgent)
+        cls._waitForDockerDaemon(instanceIP)
+        cls._waitForAppliance(instanceIP, role=role)
         return instanceIP
 
     @classmethod
-    def _waitForDockerDaemon(cls, ip_address, startAgent):
+    def _waitForDockerDaemon(cls, ip_address):
         logger.info('Waiting for docker on %s to start...', ip_address)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', startAgent=startAgent)
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
             time.sleep(5)
             if 'docker daemon' in output:
                 # docker daemon has started
@@ -259,10 +252,10 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Docker daemon running')
 
     @classmethod
-    def _waitForAppliance(cls, ip_address, role, startAgent):
+    def _waitForAppliance(cls, ip_address, role):
         logger.info('Waiting for %s Toil appliance to start...', role)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps', startAgent=startAgent)
+            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps')
             if role in output:
                 logger.info('...Toil appliance started')
                 break
@@ -483,13 +476,13 @@ class AWSProvisioner(AbstractProvisioner):
     def _propagateKey(self, instances):
         if not self.config.sseKey:
             return
-        # wait 5 minutes so geniuses at coreos have time to modify the ssh auth key file properly.
+        # wait 5 minutes so coreos has time to modify the ssh auth key file properly.
         logger.debug('Waiting for 5 minutes')
         time.sleep(5 * 60)
         for node in instances:
             # since we're going to be rsyncing into the appliance we need the appliance to be running first
-            ipAddress = self._waitForNode(node, 'toil_worker', startAgent=False)
-            self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey])
+            ipAddress = self._waitForNode(node, 'toil_worker')
+            self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):
