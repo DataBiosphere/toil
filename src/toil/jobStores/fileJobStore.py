@@ -16,7 +16,7 @@ from __future__ import absolute_import
 
 from contextlib import contextmanager
 import logging
-import marshal as pickler
+import pickle as pickler
 import random
 import shutil
 import os
@@ -32,7 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 
 logger = logging.getLogger( __name__ )
 
@@ -53,7 +53,7 @@ class FileJobStore(AbstractJobStore):
         """
         super(FileJobStore, self).__init__()
         self.jobStoreDir = absSymPath(path)
-        logger.info("Path to job store directory is '%s'.", self.jobStoreDir)
+        logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
 
@@ -83,18 +83,14 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ########################################## 
 
-    def create(self, command, memory, cores, disk, preemptable,
-               predecessorNumber=0):
+    def create(self, jobNode):
         # The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         # Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         # Make the job
-        job = JobWrapper(command=command, memory=memory, cores=cores, disk=disk,
-                         preemptable=preemptable,
-                         jobStoreID=self._getRelativePath(absJobDir),
-                         remainingRetryCount=self._defaultTryCount( ),
-                         predecessorNumber=predecessorNumber)
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
+                                   tryCount=self._defaultTryCount())
         # Write job file to disk
         self.update(job)
         return job
@@ -122,7 +118,7 @@ class FileJobStore(AbstractJobStore):
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            job = JobWrapper.fromDict(pickler.load(fileHandle))
+            job = pickler.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -137,7 +133,7 @@ class FileJobStore(AbstractJobStore):
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
         with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
-            pickler.dump(job.toDict(), f)
+            pickler.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
 
@@ -352,7 +348,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFileName(self, jobStoreID):
         """
-        Return the path to the file containing the serialised JobWrapper instance for the given
+        Return the path to the file containing the serialised JobGraph instance for the given
         job.
 
         :rtype: str

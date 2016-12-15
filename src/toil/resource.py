@@ -69,6 +69,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         and returns a resource object representing that content for the purpose of obtaining it
         again at a generic, public URL. This method should be invoked on the leader node.
 
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
+
+        :param str leaderPath:
+
         :rtype: Resource
         """
         pathHash = cls._pathHash(leaderPath)
@@ -83,6 +87,12 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                    pathHash=pathHash,
                    url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
                    contentHash=contentHash.hexdigest())
+
+    def refresh(self, jobStore):
+        return type(self)(name=self.name,
+                          pathHash=self.pathHash,
+                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          contentHash=self.contentHash)
 
     @classmethod
     def prepareSystem(cls):
@@ -535,12 +545,26 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             return head
 
     def toCommand(self):
-        return tuple(map(str,self))
+        return tuple(map(str, self))
 
     @classmethod
     def fromCommand(cls, command):
         assert len(command) == 3
-        return cls( dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
+        return cls(dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
+
+    def makeLoadable(self):
+        module = self if self.belongsToToil else self.localize()
+        if module.dirPath not in sys.path:
+            sys.path.append(module.dirPath)
+        return module
+
+    def load(self):
+        module = self.makeLoadable()
+        try:
+            return importlib.import_module(module.name)
+        except ImportError:
+            log.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
+            raise
 
 
 class ResourceException(Exception):

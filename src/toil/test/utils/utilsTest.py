@@ -17,18 +17,23 @@ from __future__ import absolute_import
 import os
 import sys
 import uuid
+import shutil
 from subprocess import CalledProcessError, check_call
+import tempfile
 
 import toil
+import logging
 import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
-from toil.lib.bioio import getTempFile
-from toil.lib.bioio import system
+from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
+
+
+logger = logging.getLogger(__name__)
 
 
 class UtilsTest(ToilTest):
@@ -79,16 +84,67 @@ class UtilsTest(ToilTest):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         try:
             system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
-                 clusterName, '--provisioner=aws'])
+                    clusterName, '--provisioner=aws'])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
+            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
                     clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
+
+            testStrings = ["'foo'",
+                           '"foo"',
+                           '  foo',
+                           '$PATH',
+                           '"',
+                           "'",
+                           '\\',
+                           '| cat',
+                           '&& cat',
+                           '; cat'
+                           ]
+            for test in testStrings:
+                logger.info('Testing SSH with special string: %s', test)
+                compareTo = "import sys; assert sys.argv[1]==%r" % test
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['python', '-', test],
+                                         input=compareTo)
+
+            try:
+                AWSProvisioner.sshLeader(clusterName=clusterName,
+                                         args=['nonsenseShouldFail'])
+            except RuntimeError:
+                pass
+            else:
+                self.fail('The remote command failed silently where it should have '
+                          'raised an error')
+
+            # `toil rsync-cluster`
+            # Testing special characters - string.punctuation
+            fname = '!"#$%&\'()*+,-.;<=>:\ ?@[\\\\]^_`{|}~'
+            testData = os.urandom(3*(10**6))
+            with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
+                relpath = os.path.basename(tmpFile.name)
+                tmpFile.write(testData)
+                tmpFile.flush()
+                # Upload file to leader
+                AWSProvisioner.rsyncLeader(clusterName=clusterName, args=[tmpFile.name, ":"])
+                # Ensure file exists
+                AWSProvisioner.sshLeader(clusterName=clusterName, args=["test", "-e", relpath])
+            tmpDir = tempfile.mkdtemp()
+            # Download the file again and make sure it's the same file
+            # `--protect-args` needed because remote bash chokes on special characters
+            AWSProvisioner.rsyncLeader(clusterName=clusterName, args=["--protect-args", ":" + relpath, tmpDir])
+            with open(os.path.join(tmpDir, relpath), "r") as f:
+                self.assertEqual(f.read(), testData, "Downloaded file does not match original file")
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
+            try:
+                shutil.rmtree(tmpDir)
+            except NameError:
+                pass
 
     def testUtilsSort(self):
         """

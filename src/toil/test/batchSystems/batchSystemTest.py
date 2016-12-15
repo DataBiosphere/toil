@@ -36,7 +36,7 @@ from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    AbstractBatchSystem,
                                                    BatchSystemSupport)
-from toil.job import Job
+from toil.job import Job, JobNode
 from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
@@ -53,7 +53,7 @@ numCores = 2
 
 preemptable = False
 
-defaultRequirements = dict(memory=100e6, cores=1, disk=1000, preemptable=preemptable)
+defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
 
 
 class hidden:
@@ -79,11 +79,12 @@ class hidden:
         def supportsWallTime(self):
             return False
 
-        @staticmethod
-        def _createDummyConfig():
+        @classmethod
+        def createConfig(cls):
             """
             Returns a dummy config for the batch system tests.  We need a workflowID to be set up
-            since we are running tests without setting up a jobstore.
+            since we are running tests without setting up a jobstore. This is the class version
+            to be used when an instance is not available.
 
             :rtype: toil.common.Config
             """
@@ -92,6 +93,15 @@ class hidden:
             config.workflowID = str(uuid4())
             return config
 
+        def _createConfig(self):
+            """
+            Returns a dummy config for the batch system tests.  We need a workflowID to be set up
+            since we are running tests without setting up a jobstore.
+
+            :rtype: toil.common.Config
+            """
+            return self.createConfig()
+
         @classmethod
         def setUpClass(cls):
             super(hidden.AbstractBatchSystemTest, cls).setUpClass()
@@ -99,7 +109,7 @@ class hidden:
 
         def setUp(self):
             super(hidden.AbstractBatchSystemTest, self).setUp()
-            self.config = self._createDummyConfig()
+            self.config = self._createConfig()
             self.batchSystem = self.createBatchSystem()
             self.tempDir = self._createTempDir('testFiles')
 
@@ -112,9 +122,12 @@ class hidden:
 
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
-
-            job1 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
-            job2 = self.batchSystem.issueBatchJob("sleep 1000", **defaultRequirements)
+            jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
+                               jobStoreID=None, requirements=defaultRequirements)
+            jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
+                               jobStoreID=None, requirements=defaultRequirements)
+            job1 = self.batchSystem.issueBatchJob(jobNode1)
+            job2 = self.batchSystem.issueBatchJob(jobNode2)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -130,15 +143,17 @@ class hidden:
             # Issue a job and then allow it to finish by itself, causing it to be added to the
             # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
-            job3 = self.batchSystem.issueBatchJob("touch %s" % testPath, **defaultRequirements)
+            jobNode3 = JobNode(command="touch %s" % testPath, jobName='test3', unitName=None,
+                               jobStoreID=None, requirements=defaultRequirements)
+            job3 = self.batchSystem.issueBatchJob(jobNode3)
 
-            updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
-            # fail with updatedID being equal to job1 or job2.
+            # fail with jobID being equal to job1 or job2.
             self.assertEqual(exitStatus, 0)
-            self.assertEqual(updatedID, job3)
+            self.assertEqual(jobID, job3)
             if self.supportsWallTime():
                 self.assertTrue(wallTime > 0)
             else:
@@ -163,16 +178,20 @@ class hidden:
             with tempFileContaining(script_body, suffix='.py') as script_path:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
-                job4 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
+                                   jobStoreID=None, requirements=defaultRequirements)
+                job4 = self.batchSystem.issueBatchJob(jobNode4)
+                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
-                self.assertEqual(updatedID, job4)
+                self.assertEqual(jobID, job4)
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
-                job5 = self.batchSystem.issueBatchJob(command, **defaultRequirements)
-                updatedID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+                jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
+                                   jobStoreID=None, requirements=defaultRequirements)
+                job5 = self.batchSystem.issueBatchJob(jobNode5)
+                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
-                self.assertEqual(updatedID, job5)
+                self.assertEqual(jobID, job5)
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
@@ -261,6 +280,29 @@ class hidden:
                 Job.Runner.startToil(root, options)
                 _, maxValue = getCounters(counterPath)
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
+
+    class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
+        """
+        An abstract class to reduce redundancy between Grid Engine, Slurm, and other similar batch
+        systems
+        """
+
+        def _createConfig(self):
+            config = super(hidden.AbstractGridEngineBatchSystemTest, self)._createConfig()
+            # can't use _getTestJobStorePath since that method removes the directory
+            config.jobStore = 'file:' + self._createTempDir('jobStore')
+            return config
+
+        def testResultFile(self):
+            """
+            Tests that the result file name is formatted properly
+            """
+            # noinspection PyUnresolvedReferences
+            fileName = self.batchSystem._getResultsFileName(self.config.jobStore)
+            filePath, _ = os.path.split(fileName)  # removes file so dir matches config.jobStore
+            locator = self.config.jobStore
+            self.assertTrue(locator.startswith('file:'))
+            self.assertEqual(locator[len('file:'):], filePath)
 
 
 @needs_mesos
@@ -385,7 +427,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     if jobs >= 1 and minCores <= coresPerJob < maxCores:
                         self.assertEquals(maxCores, float(maxCores))
                         bs = SingleMachineBatchSystem(
-                            config=hidden.AbstractBatchSystemTest._createDummyConfig(),
+                            config=hidden.AbstractBatchSystemTest.createConfig(),
                             maxCores=float(maxCores),
                             # Ensure that memory or disk requirements don't get in the way.
                             maxMemory=jobs * 10,
@@ -393,11 +435,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(command=self.scriptCommand(),
-                                                            cores=float(coresPerJob),
-                                                            memory=1,
-                                                            disk=1,
-                                                            preemptable=preemptable))
+                                jobIds.add(bs.issueBatchJob(JobNode(command=self.scriptCommand(),
+                                                                    requirements=dict(
+                                                                        cores=float( coresPerJob),
+                                                                        memory=1, disk=1,
+                                                                        preemptable=preemptable),
+                                                                    jobName=str(i), unitName='', jobStoreID=str(i))))
                             self.assertEquals(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
@@ -478,8 +521,8 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def supportsWallTime(self):
         return True
 
-    def _createDummyConfig(self):
-        config = super(ParasolBatchSystemTest, self)._createDummyConfig()
+    def _createConfig(self):
+        config = super(ParasolBatchSystemTest, self)._createConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir('jobStore')
         return config
@@ -497,11 +540,19 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        job1 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        jobNode1 = JobNode(command="sleep 1000",
+                           requirements=dict(memory=1 << 30, cores=1,
+                                             disk=1000, preemptable=preemptable),
+                           jobName='testResourceLimits', unitName=None,
+                           jobStoreID=None)
+        job1 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job1)
-        job2 = self.batchSystem.issueBatchJob("sleep 1000", memory=2 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        jobNode2 = JobNode(command="sleep 1000",
+                           requirements=dict(memory=2 << 30, cores=1,
+                                             disk=1000, preemptable=preemptable),
+                           jobName='testResourceLimits', unitName=None,
+                           jobStoreID=None)
+        job2 = self.batchSystem.issueBatchJob(jobNode2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -510,8 +561,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob("sleep 1000", memory=1 << 30, cores=1, disk=1000,
-                                              preemptable=preemptable)
+        job3 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job3)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
@@ -538,16 +588,10 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
 
 
 @needs_gridengine
-class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
+class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the GridEngine batch system
     """
-
-    def _createDummyConfig(self):
-        config = super(GridEngineBatchSystemTest, self)._createDummyConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = 'file:'+ self._createTempDir('jobStore')
-        return config
 
     def createBatchSystem(self):
         from toil.batchSystems.gridengine import GridengineBatchSystem
@@ -562,16 +606,10 @@ class GridEngineBatchSystemTest(hidden.AbstractBatchSystemTest):
             os.unlink(f)
 
 @needs_slurm
-class SlurmBatchSystemTest(hidden.AbstractBatchSystemTest):
+class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the Slurm batch system
     """
-
-    def _createDummyConfig(self):
-        config = super(SlurmBatchSystemTest, self)._createDummyConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
-        return config
 
     def createBatchSystem(self):
         from toil.batchSystems.slurm import SlurmBatchSystem

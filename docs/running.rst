@@ -262,11 +262,11 @@ pipeline that performs merge-sort on a temporary file.
         if __name__ == '__main__':
             main()
 
-2. Run with default settings:: 
+2. Run with default settings::
 
         python toil-sort-example.py file:jobStore.
 
-3. Run with custom options:: 
+3. Run with custom options::
 
         python toil-sort-example.py file:jobStore \
                --num-lines=5000 \
@@ -290,6 +290,69 @@ arguments for the workflow which includes both Toil's and ones defined inside
 found in :ref:`commandRef`.
 
 
+Environment Variable Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+There are several environment variables that affect the way Toil runs.
+
+TOIL_WORKDIR
+    An absolute path to a directory where Toil will write its
+    temporary files. This directory must exist on each worker node
+    and may be set to a different value on each worker. The --workDir command
+    line option overrides this. On Mesos nodes TOIL_WORKDIR generally defaults
+    to the Mesos sandbox, except on CGCloud-provisioned nodes where it
+    defaults to /var/lib/mesos. In all other cases, the
+    `systems standard <https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir>`_
+    directory for temporary directories is used.
+
+TOIL_TEST_TEMP
+    An absolute path to a directory where Toil tests will write their
+    temporary files. Defaults to the
+    `systems standard <https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir>`_
+    for temporary directories.
+
+TOIL_TEST_INTEGRATIVE
+    If 'True', this allows the integration tests to run. Only valid when
+    running the tests from the source directory via ``make test``.
+
+TOIL_TEST_EXPERIMENTAL
+    If 'True', this allows tests to runs on experimental
+    features, such as the Google and Azure job stores. Only valid when
+    running the tests from the source directory via ``make test``.
+
+TOIL_APPLIANCE_SELF
+    The tag of the Toil Appliance version to use. See :ref:`Autoscaling` and
+    :meth:`toil.applianceSelf` for more.
+
+TOIL_AWS_ZONE
+    Provides a way to set the EC2 zone to provision nodes in, if
+    using Toil's provisioner.
+
+TOIL_AWS_AMI
+    ID of the AMI to use in node provisioning. If in doubt, don't set this
+    variable.
+
+TOIL_AWS_NODE_DEBUG
+    Determines whether to preserve nodes that have failed health
+    checks. If set to 'True', nodes that EC2 fail health checks will never be
+    terminated so they can be examined and the cause of failure determined.
+    If any EC2 nodes are left behind in this manner, the security group
+    will also be left behind by necessity - it cannot be deleted until all the
+    nodes are gone.
+
+TOIL_SLURM_ARGS
+    Arguments for sbatch for the slurm batch system. Do not pass CPU or memory
+    specifications here - rather, define resource requirements for the job.
+    There is no default value for this variable.
+
+TOIL_GRIDENGINE_ARGS
+    Arguments for qsub for the gridengine batch system. Do not pass CPU or
+    memory specifications here - rather, define resource requirements
+    for the job. There is no default value for this variable.
+
+TOIL_GRIDENGINE_PE
+    Parallel environment arguments for qsub for the gridengine batch system.
+    There is no default value for this variable.
+
 Changing the log statements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -302,7 +365,7 @@ logLevel, we can change what we see output to screen. For only CRITICAL level
 messages::
 
    python toil-sort-examply.py file:jobStore --logLevel=critical
-   
+
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
 output. For more information see :ref:`loggingRef`.
@@ -319,7 +382,7 @@ looks like in Toil, and how we would go about resuming the pipeline. On line
 ::
 
    python toil-sort-example.py file:jobStore
-   
+
 we'll see a failure log under the header ``---TOIL WORKER OUTPUT LOG---``, that
 contains the stack trace. We see a detailed message telling us that on line 30,
 in the ``down`` function, we encountered an error.
@@ -330,14 +393,14 @@ store is that it is not cleaned up in the event of failure so that you can
 restart it from the last succesful job. We can restart the pipeline by running
 
 ::
-   
+
    python toil-sort-example.py file:jobStore --restart
-   
-   
+
+
 We can also change the number of times Toil will attempt to retry a failed job::
-   
+
    python toil-sort-example.py --retryCount 2 --restart
-   
+
 You'll now see Toil attempt to rerun the failed job, decrementing a counter
 until that job has exhausted the retry count. ``--retryCount`` is useful for
 non-systemic errors, like downloading a file that may experience a sporadic
@@ -349,7 +412,7 @@ line 30, or remove it, and then run
 ::
 
    python toil-sort-example.py --restart
-   
+
 The pipeline will successfully complete, and the job store will be removed.
 
 
@@ -361,9 +424,9 @@ We can execute the pipeline to let use retrieve statistics with
 ::
 
    python toil-sort-example.py --stats
-   
+
 Our pipeline will finish successfully, but leave behind the job store. Now we
-can type 
+can type
 
 ::
 
@@ -372,7 +435,7 @@ can type
 and get back information about total runtime and stats pertaining to each job
 function.
 
-We can then cleanup our jobStore by running 
+We can then cleanup our jobStore by running
 
 ::
 
@@ -386,7 +449,7 @@ There are several recommended ways to run Toil jobs in the cloud. Of these,
 running on Amazon Web Services (AWS) is currently the best-supported solution.
 
 On all cloud providers, it is recommended that you run long-running jobs on
-remote systems under ``screen``. Simply type ``screen`` to open a new ``screen`
+remote systems under ``screen``. Simply type ``screen`` to open a new ``screen``
 session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run
 ``screen -r`` to reconnect to it. Commands running under ``screen`` will
 continue running even when you are disconnected, allowing you to unplug your
@@ -409,7 +472,8 @@ Appliance, a Docker image that bundles Toil and all its requirements, e.g.
 Mesos. Toil will automatically choose an appliance image that matches the
 current Toil version but that choice can be overriden by setting the
 environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
-``TOIL_APPLIANCE_SELF`` (see :func:`toil.applianceSelf` for details)::
+``TOIL_APPLIANCE_SELF`` (see :func:`toil.applianceSelf` and
+:ref:`appliance_dev` for details)::
 
     toil launch-cluster -p aws CLUSTER-NAME-HERE \
          --nodeType=t2.micro \
@@ -644,3 +708,5 @@ The ``projectID`` component of the job store argument above refers your Google
 Cloud Project ID in the Google Cloud Console, and will be visible in the
 console's banner at the top of the screen. The ``jobStore`` component is a name
 of your choosing that you will use to refer to this job store.
+
+

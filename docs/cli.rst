@@ -15,7 +15,6 @@ Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOpti
     
     Job.Runner.startToil(Job(), options) # Run the script
  
-
 .. _loggingRef:
 
 Logging
@@ -39,8 +38,14 @@ The job store will never be deleted with ``--stats``, as it overrides ``--clean`
 Cluster Utilities
 -----------------
 There are several utilites used for starting and managing a Toil cluster using
-the AWS provisioner. They use the ``toil launch-cluster``,
+the AWS provisioner. They use the ``toil launch-cluster``, ``toil rsync-cluster``, 
 ``toil ssh-cluster``, and ``toil destroy-cluster`` entry points.
+
+.. note::
+
+   Boto must be `configured`_ with AWS credentials before using cluster utilities.
+
+.. _configured: http://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration
 
 Restart
 -------
@@ -80,7 +85,7 @@ Job store
 ---------
 
 Running toil scripts has one required positional argument: the job store.  The default job store is just a path
-to where the user would like the job store to be created. To use the :ref:`quickstart` example,
+to where the user would like the job store to be created. To use the :ref:`quick start <quickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.  Toil uses the colon as way to explicitly name what type of
@@ -102,3 +107,30 @@ defined before launching the Job, i.e:
 ```
 export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
 ```
+
+Running Workflows with Services
+-------------------------------
+
+Toil supports jobs, or clusters of jobs, that run as *services* (see :ref:`service-dev-ref` ) to other 
+*accessor* jobs. Example services include server databases or Apache Spark 
+Clusters. As service jobs exist to provide services to accessor jobs their 
+runtime is dependent on the concurrent running of their accessor jobs. The dependencies 
+between services and their accessor jobs can create potential deadlock scenarios, 
+where the running of the workflow hangs because only service jobs are being 
+run and their accessor jobs can not be scheduled because of too limited resources 
+to run both simultaneously. To cope with this situation Toil attempts to 
+schedule services and accessors intelligently, however to avoid a deadlock 
+with workflows running service jobs it is advisable to use the following parameters:
+
+* ``--maxServiceJobs`` The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. 
+* ``--maxPreemptableServiceJobs`` The maximum number of service jobs that can run concurrently on preemptable nodes. 
+
+Specifying these parameters so that at a maximum cluster size there will be 
+sufficient resources to run accessors in addition to services will ensure that 
+such a deadlock can not occur. 
+
+If too low a limit is specified then a deadlock can occur in which toil can
+not schedule sufficient service jobs concurrently to complete the workflow. 
+Toil will detect this situation if it occurs and throw a 
+:class:`toil.src.leader.DeadlockException` exception. Increasing the cluster size 
+and these limits will resolve the issue. 

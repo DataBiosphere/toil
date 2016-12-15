@@ -22,19 +22,34 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 # Note to maintainers:
 #
-#  - don't import at module level unless you intend for the import to be included in the output
-#  - only import from the Python standard run-time library
+#  - don't import at module level unless you want the imported value to be included in the output
+#  - only import from the Python standard run-time library (you can't have any dependencies)
 
 baseVersion = '3.5.0a1'
 
-cgcloudVersion = '1.6.0a1.dev378'
+cgcloudVersion = '1.6.0a1.dev393'
 
 
 def version():
     """
-    A version identifier that includes the commit and whether the working copy is dirty.
+    A version identifier that includes the full-legth commit SHA1 and an optional suffix to
+    indicate that the working copy is dirty.
     """
-    return distVersion() + '-' + currentCommit() + ('-dirty' if dirty() else '')
+    return _version()
+
+
+def shortVersion():
+    """
+    A version identifier that includes the abbreviated commit SHA1 and an optional suffix to
+    indicate that the working copy is dirty.
+    """
+    return _version(shorten=True)
+
+
+def _version(shorten=False):
+    return '-'.join(filter(None, [distVersion(),
+                                  currentCommit()[:7 if shorten else None],
+                                  ('dirty' if dirty() else None)]))
 
 
 def distVersion():
@@ -43,7 +58,12 @@ def distVersion():
     """
     from pkg_resources import parse_version
     build_number = buildNumber()
-    if build_number is not None and parse_version(baseVersion).is_prerelease:
+    parsedBaseVersion = parse_version(baseVersion)
+    if isinstance(parsedBaseVersion, tuple):
+        raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
+                           "'pip install setuptools --upgrade'")
+
+    if build_number is not None and parsedBaseVersion.is_prerelease:
         return baseVersion + '.dev' + build_number
     else:
         return baseVersion
@@ -51,13 +71,32 @@ def distVersion():
 
 def dockerTag():
     """
-    The version that is used to tag the Docker image for the appliance.
+    The primary tag of the Docker image for the appliance. This uniquely identifies the appliance
+    image.
     """
     return version()
+
+
+def dockerShortTag():
+    """
+    A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for
+    convenience.
+    """
+    return shortVersion()
+
+
+def dockerMinimalTag():
+    """
+    A minimal tag with which to tag the appliance image for convenience. Does not include
+    information about the git commit or working copy dirtyness.
+    """
+    return distVersion()
+
 
 dockerRegistry = 'quay.io/ucsc_cgl'
 
 dockerName = 'toil'
+
 
 def buildNumber():
     """

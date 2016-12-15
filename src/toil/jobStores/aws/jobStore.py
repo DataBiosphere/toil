@@ -48,7 +48,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
                                              NoSuchFileException,
                                              NoSuchJobStoreException,
-                                             BucketLocationConflictException,
                                              JobStoreExistsException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
@@ -59,7 +58,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       region_to_bucket_location)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobWrapper import JobWrapper
+from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
@@ -306,14 +305,11 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
 
-    def create(self, command, memory, cores, disk, preemptable, predecessorNumber=0):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if command is None else command)
-        job = AWSJob(jobStoreID=jobStoreID, command=command,
-                     memory=memory, cores=cores, disk=disk, preemptable=preemptable,
-                     remainingRetryCount=self._defaultTryCount(), logJobStoreFileID=None,
-                     predecessorNumber=predecessorNumber)
+                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        job = AWSJob.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(*job.toItem())
@@ -662,30 +658,29 @@ class AWSJobStore(AbstractJobStore):
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        log.info("Binding to job store bucket '%s'.", bucket_name)
+        log.debug("Binding to job store bucket '%s'.", bucket_name)
 
         def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
-            return (isinstance(e, S3CreateError)
+            # https://github.com/BD2KGenomics/toil/issues/1093
+            return (isinstance(e, (S3CreateError, S3ResponseError))
                     and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
 
+        bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
             with attempt:
                 try:
                     bucket = self.s3.get_bucket(bucket_name, validate=True)
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
+                        bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
                             bucket = self.s3.create_bucket(bucket_name, location=location)
                             assert self.__getBucketRegion(bucket) == self.region
-                            if versioning:
-                                bucket.configure_versioning(versioning)
-                            log.debug("Created new job store bucket '%s'.", bucket_name)
-                            return bucket
                         elif block:
                             raise
                         else:
@@ -701,9 +696,20 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     if self.__getBucketRegion(bucket) != self.region:
                         raise BucketLocationConflictException(self.__getBucketRegion(bucket))
-                    assert versioning is self.__getBucketVersioning(bucket)
-                    log.debug("Using existing job store bucket '%s'.", bucket_name)
-                    return bucket
+                if versioning:
+                    bucket.configure_versioning(True)
+                else:
+                    bucket_versioning = self.__getBucketVersioning(bucket)
+                    if bucket_versioning is True:
+                        assert False, 'Cannot disable bucket versioning if it is already enabled'
+                    elif bucket_versioning is None:
+                        assert False, 'Cannot use a bucket with versioning suspended'
+                if bucketExisted:
+                    log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
+                else:
+                    log.debug("Created new job store bucket '%s'.", bucket_name)
+
+                return bucket
 
     def _bindDomain(self, domain_name, create=False, block=True):
         """
@@ -721,7 +727,7 @@ class AWSJobStore(AbstractJobStore):
         :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
                 retry timeout expires.
         """
-        log.info("Binding to job store domain '%s'.", domain_name)
+        log.debug("Binding to job store domain '%s'.", domain_name)
         for attempt in retry_sdb(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e)):
             with attempt:
                 try:
@@ -1247,21 +1253,20 @@ class AWSJobStore(AbstractJobStore):
 
     def __getBucketVersioning(self, bucket):
         """
-        A valueable lesson in how to botch a simple tri-state boolean.
-
-        For newly created buckets get_versioning_status returns None. We map that to False.
-
-        TBD: This may actually be a result of eventual consistency
+        For newly created buckets get_versioning_status returns an empty dict. In the past we've
+        seen None in this case. We map both to a return value of False.
 
         Otherwise, the 'Versioning' entry in the dictionary returned by get_versioning_status can
         be 'Enabled', 'Suspended' or 'Disabled' which we map to True, None and False
-        respectively. Calling configure_versioning with False on a bucket will cause
-        get_versioning_status to then return 'Suspended' for some reason.
+        respectively. Note that we've never seen a versioning status of 'Disabled', only the
+        empty dictionary. Calling configure_versioning with False on a bucket will cause
+        get_versioning_status to then return 'Suspended' even on a new bucket that never had
+        versioning enabled.
         """
         for attempt in retry_s3():
             with attempt:
                 status = bucket.get_versioning_status()
-        return bool(status) and self.versionings[status['Versioning']]
+                return self.versionings[status['Versioning']] if status else False
 
     def __getBucketRegion(self, bucket):
         for attempt in retry_s3():
@@ -1307,12 +1312,8 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     for upload in bucket.list_multipart_uploads():
                         upload.cancel_upload()
-                    if self.__getBucketVersioning(bucket) in (True, None):
-                        for key in list(bucket.list_versions()):
-                            bucket.delete_key(key.name, version_id=key.version_id)
-                    else:
-                        for key in list(bucket.list()):
-                            key.delete()
+                    for key in list(bucket.list_versions()):
+                        bucket.delete_key(key.name, version_id=key.version_id)
                     bucket.delete()
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
@@ -1326,7 +1327,7 @@ aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quo
 custom_repr = aRepr.repr
 
 
-class AWSJob(JobWrapper, SDBHelper):
+class AWSJob(JobGraph, SDBHelper):
     """
     A Job that can be converted to and from an SDB item.
     """
@@ -1352,3 +1353,10 @@ class AWSJob(JobWrapper, SDBHelper):
         :return: a str for the item's name and a dictionary for the item's attributes
         """
         return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self))
+
+
+class BucketLocationConflictException(Exception):
+    def __init__(self, bucketRegion):
+        super(BucketLocationConflictException, self).__init__(
+            'A bucket with the same name as the jobstore was found in another region (%s). '
+            'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)

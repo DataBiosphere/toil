@@ -137,25 +137,22 @@ class MesosBatchSystem(BatchSystemSupport,
     def setUserScript(self, userScript):
         self.userScript = userScript
 
-    def issueBatchJob(self, command, memory, cores, disk, preemptable):
+    def issueBatchJob(self, jobNode):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
         needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
-        self.checkResourceRequest(memory, cores, disk)
+        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
-                      resources=ResourceRequirement(memory=memory,
-                                                    cores=cores,
-                                                    disk=disk,
-                                                    preemptable=preemptable),
-                      command=command,
+                      resources=ResourceRequirement(**jobNode._requirements),
+                      command=jobNode.command,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
                       workerCleanupInfo=self.workerCleanupInfo)
         jobType = job.resources
-        log.debug("Queueing the job command: %s with job id: %s ...", command, str(jobID))
+        log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
         self.jobQueues[jobType].append(job)
         log.debug("... queued")
         return jobID
@@ -274,11 +271,11 @@ class MesosBatchSystem(BatchSystemSupport,
         return ':'.join(address)
 
     def shutdown(self):
-        log.info("Stopping Mesos driver")
+        log.debug("Stopping Mesos driver")
         self.driver.stop()
-        log.info("Joining Mesos driver")
+        log.debug("Joining Mesos driver")
         driver_result = self.driver.join()
-        log.info("Joined Mesos driver")
+        log.debug("Joined Mesos driver")
         if driver_result != mesos_pb2.DRIVER_STOPPED:
             raise RuntimeError("Mesos driver failed with %i", driver_result)
 
@@ -392,8 +389,8 @@ class MesosBatchSystem(BatchSystemSupport,
                     # TODO: ... so we can understand why it exists.
                     assert int(task.task_id.value) not in self.runningJobMap
                     runnableTasksOfType.append(task)
-                    log.info("Preparing to launch Mesos task %s using offer %s ...",
-                             task.task_id.value, offer.id.value)
+                    log.debug("Preparing to launch Mesos task %s using offer %s ...",
+                              task.task_id.value, offer.id.value)
                     remainingCores -= jobType.cores
                     remainingMemory -= toMiB(jobType.memory)
                     remainingDisk -= toMiB(jobType.disk)
@@ -415,7 +412,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 driver.launchTasks(offer.id, runnableTasks)
                 for task in runnableTasks:
                     self._updateStateToRunning(offer, task)
-                    log.info('Launched Mesos task %s.', task.task_id.value)
+                    log.debug('Launched Mesos task %s.', task.task_id.value)
             else:
                 log.debug('Although there are queued jobs, none of them could be run with offer %s '
                           'extended to the framework.', offer.id)
@@ -423,7 +420,7 @@ class MesosBatchSystem(BatchSystemSupport,
 
         if unableToRun and time.time() > (self.lastTimeOfferLogged + self.logPeriod):
             self.lastTimeOfferLogged = time.time()
-            log.info('Although there are queued jobs, none of them were able to run in '
+            log.debug('Although there are queued jobs, none of them were able to run in '
                      'any of the offers extended to the framework. There are currently '
                      '%i jobs running. Enable debug level logging to see more details about '
                      'job types and offers received.', len(self.runningJobMap))
@@ -451,7 +448,8 @@ class MesosBatchSystem(BatchSystemSupport,
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
-        task.name = "task %d" % job.jobID
+        # FIXME: what bout
+        task.name = str(job)
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
 

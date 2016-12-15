@@ -53,7 +53,7 @@ gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
 
 The :func:`toil.job.Job.run` method is the function the user overrides to get
 work done. Here it just logs a message using
-:func:`toil.job.Job.FileStore.logToMaster`, which will be registered in the log
+:func:`toil.fileStore.FileStore.logToMaster`, which will be registered in the log
 output of the leader process of the workflow.
 
 
@@ -234,7 +234,7 @@ argument in a class, this allows access to the methods of the wrapping job, see
     def helloWorld(job, message):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.FileStore class
         
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
@@ -242,7 +242,7 @@ argument in a class, this allows access to the methods of the wrapping job, see
         print Job.Runner.startToil(Job.wrapJobFn(helloWorld, "woot"), options)
 
 Here ``helloWorld()`` is a job function. It accesses the
-:class:`toil.job.Job.FileStore` attribute of the job to log a message that will
+:class:`toil.fileStore.FileStore` attribute of the job to log a message that will
 be printed to the output console. Here the only subtle difference to note is
 the line::
 
@@ -276,7 +276,7 @@ earlier ``helloWorld()`` job function::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.FileStore class
         
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = Job.wrapJobFn(helloWorld, "second or third")
@@ -303,7 +303,7 @@ example::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.FileStore class
     
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -329,7 +329,7 @@ specified as a DAG as follows::
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
         job.fileStore.logToMaster("Hello world, " 
         "I have a message: %s" % message) # This uses a logging function 
-        # of the Job.FileStore class
+        # of the toil.fileStore.FileStore class
     
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -354,10 +354,10 @@ Toil also allows jobs to be created dynamically within jobs. For example::
 
     from toil.job import Job
     
-    def binaryStringFn(job, message="", depth):
+    def binaryStringFn(job, depth, message=""):
         if depth > 0:
-            job.addChildJobFn(binaryStringFn, message + "0", depth-1)
-            job.addChildJobFn(binaryStringFn, message + "1", depth-1)
+            job.addChildJobFn(binaryStringFn, depth-1, message + "0")
+            job.addChildJobFn(binaryStringFn, depth-1, message + "1")
         else:
             job.fileStore.logToMaster("Binary string: %s" % message)
     
@@ -444,7 +444,7 @@ Managing files within a workflow
 --------------------------------
 
 It is frequently the case that a workflow will want to create files, both
-persistent and temporary, during its run. The :class:`toil.job.Job.FileStore`
+persistent and temporary, during its run. The :class:`toil.fileStore.FileStore`
 class is used by jobs to manage these files in a manner that guarantees cleanup
 and resumption on failure.
 
@@ -493,7 +493,7 @@ example::
     def globalFileStoreJobFn(job):
         job.fileStore.logToMaster("The following example exercises all the"
                                   " methods provided by the"
-                                  " Job.FileStore class")
+                                  " toil.fileStore.FileStore class")
     
         scratchFile = job.fileStore.getLocalTempFile() # Create a local 
         # temporary file.
@@ -596,6 +596,7 @@ Example::
 
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
+.. _service-dev-ref:
 
 Services
 --------
@@ -929,13 +930,6 @@ Here we created a virtualenv in the ``.env`` subdirectory of our project, we
 installed the ``fairydust`` distribution from PyPI and finally we installed the
 two packages that our project consists of.
 
-If you create a ``setup.py`` for your project (see `setuptools`_), the ``cp``
-step can be replaced with ``python setup.py install``. Note that ``python
-setup.py develop`` would not work here because it does not copy source files
-but creates .egg-links instead, which Toil is not able to hot-deploy.
-
-.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
-
 The main caveat to this solution is that the workflow's external dependencies
 may not contain native code, i.e. they must be pure Python. If you have
 dependencies that rely on native code, you must manually install them on each
@@ -946,6 +940,31 @@ installed packages visible inside the virtualenv. It is essential because, as
 we'll see later, Toil and its dependencies must be installed globally and would
 be inaccessible without that option.
 
+If you create a ``setup.py`` for your project (see `setuptools`_), the ``cp``
+step can be replaced with ``pip install .``. Your ``setup.py`` should declare
+the ``fairydust`` dependency, also making redundant the manual installation of
+that package in the steps above. Note that it is not possible to use ``python
+setup.py develop`` or ``pip install -e .`` instead of ``pip install .`` because
+the former two do not copy the source files but create an ``.egg-link`` file
+instead, which Toil is not able to hot-deploy. Similarly, ``python setup.py
+install`` does not work either because it installs the project as a Python Egg
+(a ``.egg`` file), which is not supported by Toil although that may `change`_
+in the future. You might be tempted to prevent the installation of the ``.egg``
+by passing ``--single-version-externally-managed`` to ``setup.py install`` but
+that would also disable the automatic installation of your project's
+dependencies.
+
+.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
+.. _change: https://github.com/BD2KGenomics/toil/issues/1367
+
+If you publish your project to PyPI, others will be able to install it on their
+leader using pip, provided they 1) already installed Toil on the leader and
+workers nodes and 2) use a virtualenv created with ``--system-site-packages``::
+
+   $ virtualenv --system-site-packages my-project
+   $ . my-project/bin/activate
+   $ pip install my-project
+   $ python -m workflow.main --batchSystem=mesos …
 
 Relying on shared filesystems
 -----------------------------
@@ -1029,3 +1048,26 @@ process, and whose favored software distribution utility is `incapable`_ of
 properly resolving overlapping dependencies and detecting conflicts.
 
 .. _incapable: https://github.com/pypa/pip/issues/988
+
+
+.. _appliance_dev:
+
+Developing with the Toil Appliance
+----------------------------------
+
+To develop on features reliant on the Toil Appliance (i.e. autoscaling), you
+should consider setting up a personal registry on `Quay`_ or `Docker Hub`_. Because
+the Toil Appliance images are tagged with the Git commit they are based on and
+because only commits on our master branch trigger an appliance build on Quay,
+as soon as a developer makes a commit or dirties the working copy they will no
+longer be able to rely on Toil to automatically detect the proper Toil Appliance
+image. Instead, developers wishing to test any appliance changes in autoscaling
+should build and push their own appliance image to a personal Docker registry.
+See :ref:`Autoscaling` and :meth:`toil.applianceSelf` for information on how to
+configure Toil to pull the Toil Appliance image from your personal repo instead
+of the our official Quay account.
+
+.. _Quay: https://quay.io/
+
+.. _Docker Hub: https://hub.docker.com/
+
