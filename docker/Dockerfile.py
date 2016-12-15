@@ -64,7 +64,12 @@ print heredoc('''
         && apt-get -y install {dependencies} \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    RUN mkdir /home/.ssh
+    RUN mkdir /root/.ssh && \
+        chmod 700 /root/.ssh
+
+    ADD waitForKey.sh /usr/bin/waitForKey.sh
+
+    RUN chmod 777 /usr/bin/waitForKey.sh
 
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==8.1.2
