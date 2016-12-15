@@ -40,7 +40,7 @@ unixBlockSize = 512
 
 class Config(object):
     """
-    Class to represent configuration operations for a toil workflow run. 
+    Class to represent configuration operations for a toil workflow run.
     """
     def __init__(self):
         # Core options
@@ -109,7 +109,9 @@ class Config(object):
 
         #Misc
         self.disableCaching = False
-        self.maxLogFileSize=50120
+        self.maxLogFileSize = 64000
+        self.writeLogs = None
+        self.writeLogsGzip = None
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -243,6 +245,9 @@ class Config(object):
         #Misc
         setOption("disableCaching")
         setOption("maxLogFileSize", h2b, iC(1))
+        setOption("writeLogs")
+        setOption("writeLogsGzip")
+
         def checkSse(sseKey):
             with open(sseKey) as f:
                 assert(len(f.readline().rstrip()) == 32)
@@ -490,9 +495,22 @@ def _addOptions(addGroupFn, config):
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
-                      help=("The maximum size of a job log file to keep (in bytes), log files larger "
-                            "than this will be truncated to the last X bytes. Default is 50 "
-                            "kilobytes, default=%s" % config.maxLogFileSize))
+                help=("The maximum size of a job log file to keep (in bytes), log files "
+                      "larger than this will be truncated to the last X bytes. Setting "
+                      "this option to zero will prevent any truncation. Setting this "
+                      "option to a negative value will truncate from the beginning."
+                      "Default=%s" % bytes2human(config.maxLogFileSize)))
+    addOptionFn("--writeLogs", dest="writeLogs", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="Write worker logs received by the leader into their own files at the "
+                     "specified path. The current working directory will be used if a path is "
+                     "not specified explicitly. Note: By default "
+                     "only the logs of failed jobs are returned to leader. Set log level to "
+                     "'debug' to get logs back from successful jobs, and adjust 'maxLogFileSize' "
+                     "to control the truncation limit for worker logs.")
+    addOptionFn("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="Identical to --writeLogs except the logs files are gzipped on the leader.")
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 

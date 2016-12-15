@@ -446,6 +446,7 @@ class CachingFileStore(FileStore):
         # at a time on a worker, we can bookkeep the job's file store operated files in a
         # dictionary.
         self.jobSpecificFiles = {}
+        self.jobName = str(self.jobGraph)
         self.jobID = sha1(self.jobName).hexdigest()
         logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
@@ -1568,6 +1569,14 @@ class CachingFileStore(FileStore):
 
 class NonCachingFileStore(FileStore):
     def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
+        self.jobStore = jobStore
+        self.jobGraph = jobGraph
+        self.jobName = str(self.jobGraph)
+        self.localTempDir = os.path.abspath(localTempDir)
+        self.inputBlockFn = inputBlockFn
+        self.jobsToDelete = set()
+        self.loggingMessages = []
+        self.filesToDelete = set()
         super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # This will be defined in the `open` method.
         self.jobStateFile = None
