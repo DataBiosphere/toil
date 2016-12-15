@@ -190,7 +190,8 @@ class AbstractBatchSystem(object):
         Process command line or configuration options relevant to this batch system.
         The 
         
-        :param common.Config: the Config object
+        :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
+           used to update run configuration
         """
         pass
         
