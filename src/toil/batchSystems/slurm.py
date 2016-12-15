@@ -226,7 +226,7 @@ class Worker(Thread):
     def getJobExitCode(self, slurmJobID):
         logger.debug("Getting exit code for slurm job %d", slurmJobID)
         
-        state, rc = self._getJobExitCodeFromSacct(self, slurmJobID)
+        state, rc = self._getJobDetailsFromSacct(self, slurmJobID)
         
         if rc == -999:
             state, rc = self._getJobDetailsFromScontrol(slurmJobID)
@@ -238,8 +238,7 @@ class Worker(Thread):
 
         return rc
     
-    def _getJobExitCodeFromSacct(self, slurmJobID):
-        logger.debug("Getting exit code for slurm job %d", slurmJobID)
+    def _getJobDetailsFromSacct(self, slurmJobID):
         # SLURM job exit codes are obtained by running sacct.
         args = ['sacct',
                 '-n', # no header
