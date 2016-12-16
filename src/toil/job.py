@@ -75,7 +75,7 @@ class JobLikeObject(object):
         if self._disk is not None:
             return self._disk
         elif self._config is not None:
-            return self._config.defaultDisk
+            return self._parseResource('disk', self._config.defaultDisk)
         else:
             raise AttributeError("Default value for 'disk' cannot be determined")
 
@@ -87,7 +87,7 @@ class JobLikeObject(object):
         if self._memory is not None:
             return self._memory
         elif self._config is not None:
-            return self._config.defaultMemory
+            return self._parseResource('memory', self._config.defaultMemory)
         else:
             raise AttributeError("Default value for 'memory' cannot be determined")
 
@@ -99,7 +99,7 @@ class JobLikeObject(object):
         if self._cores is not None:
             return self._cores
         elif self._config is not None:
-            return self._config.defaultCores
+            return self._parseResource('cores', self._config.defaultCores)
         else:
             raise AttributeError("Default value for 'cores' cannot be determined")
 
