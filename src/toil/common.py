@@ -967,7 +967,7 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        logProcessContext(self.config, logger)
+        logProcessContext(self.config)
 
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):

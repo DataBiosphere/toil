@@ -190,13 +190,6 @@ def main():
     #Close the descriptor we used to open the file
     os.close(logFh)
 
-    for handler in list(logger.handlers): #Remove old handlers
-        logger.removeHandler(handler)
-    
-    #Add the new handler. The sys.stderr stream has been redirected by swapping
-    #the file descriptor out from under it.
-    logger.addHandler(logging.StreamHandler(sys.stderr))
-
     debugging = logging.getLogger().isEnabledFor(logging.DEBUG)
     ##########################################
     #Worker log file trapped from here on in
@@ -219,7 +212,7 @@ def main():
         logger.debug("Next available file descriptor: {}".format(
             nextOpenDescriptor()))
 
-        logProcessContext(config, logger)
+        logProcessContext(config)
 
         ##########################################
         #Load the jobGraph
