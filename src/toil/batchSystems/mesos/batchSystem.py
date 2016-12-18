@@ -573,9 +573,8 @@ class MesosBatchSystem(BatchSystemSupport,
 
 
     @classmethod
-    def setOptions(cl, config):
-        super.setOptions(config)
-        config.setOptions.setOption("mesosMasterAddress", None, None, 'localhost:5050')
+    def setOptions(cl, setOption):
+        setOption("mesosMasterAddress", None, None, 'localhost:5050')
         
 
 def toMiB(n):
