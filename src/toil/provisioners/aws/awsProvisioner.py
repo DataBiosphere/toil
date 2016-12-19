@@ -468,6 +468,8 @@ class AWSProvisioner(AbstractProvisioner):
                                                            num_instances=numNodes,
                                                            tentative=True)
                                      )
+            # flatten the list 
+            instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
         wait_instances_running(self.ctx.ec2, instancesLaunched)
         self._propagateKey(instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
