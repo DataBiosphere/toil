@@ -280,7 +280,7 @@ coreos:
             -v /var/lib/mesos:/var/lib/mesos \
             -v /var/lib/docker:/var/lib/docker \
             -v /var/lib/toil:/var/lib/toil \
-            --name={role} \
+            --name=toil_{role} \
             {image} \
             {args}
 """

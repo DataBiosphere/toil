@@ -124,7 +124,7 @@ class AWSProvisioner(AbstractProvisioner):
         args = map(pipes.quote, args)
         ttyFlag = '-t' if tty else ''
         commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % leaderIP,
-                         'docker', 'exec', '-i', ttyFlag, 'leader'] + args
+                         'docker', 'exec', '-i', ttyFlag, 'toil_leader'] + args
         inputString = kwargs.pop('input', None)
         if inputString is not None:
             kwargs['stdin'] = subprocess.PIPE
@@ -148,7 +148,7 @@ class AWSProvisioner(AbstractProvisioner):
     def rsyncLeader(cls, clusterName, args):
         leader = cls._getLeader(clusterName)
         sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
-        remoteRsync = "docker exec -i leader rsync"  # Access rsync inside appliance
+        remoteRsync = "docker exec -i toil_leader rsync"  # Access rsync inside appliance
         parsedArgs = []
         hostInserted = False
         # Insert remote host address
@@ -200,7 +200,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Waiting for leader Toil appliance to start...')
         while True:
             output = cls._sshInstance(ip_address, 'docker', 'ps')
-            if 'leader' in output:
+            if 'toil_leader' in output:
                 logger.info('...Toil appliance started')
                 break
             else:
