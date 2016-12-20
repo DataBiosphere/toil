@@ -572,6 +572,12 @@ class MesosBatchSystem(BatchSystemSupport,
         log.warning("Executor '%s' lost.", executorId)
 
 
+    @classmethod
+    def setOptions(cl, config):
+        super.setOptions(config)
+        config.setOptions.setOption("mesosMasterAddress", None, None, 'localhost:5050')
+        
+
 def toMiB(n):
     return n / 1024 / 1024
 

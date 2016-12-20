@@ -184,6 +184,17 @@ class AbstractBatchSystem(object):
         raise NotImplementedError()
 
 
+    @classmethod
+    def setOptions(cls, setOption):
+        """
+        Process command line or configuration options relevant to this batch system.
+        The 
+        
+        :param common.Config: the Config object
+        """
+        pass
+        
+    
 class BatchSystemSupport(AbstractBatchSystem):
     """
     Partial implementation of AbstractBatchSystem, support methods.
@@ -310,7 +321,6 @@ class BatchSystemSupport(AbstractBatchSystem):
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir)
-
 
 class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
     """
