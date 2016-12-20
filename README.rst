@@ -7,7 +7,7 @@ written entirely in Python, and designed around the principles of functional
 programming. Full documentation for the latest stable release can be found at
 `Read the Docs`_.
 
-I found a typo toil-sort-example.py:162 at `Typo`_. 
+I found a typo toil-sort-example.py:162 at `Typo`_. 'make_file_to_srt' should be 'make_file_to_sort'
  
 .. _Read the Docs: http://toil.readthedocs.org/
 .. _Typo: http://toil.readthedocs.io/en/releases-3.3.x/running.html#running-a-toil-pipeline-in-detail
