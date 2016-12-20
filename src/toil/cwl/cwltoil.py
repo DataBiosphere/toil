@@ -222,9 +222,10 @@ class CWLJob(Job):
         builder.resources = {}
         req = tool.evalResources(builder, {})
         self.cwltool = tool
-        unitName = str(self.cwltool.tool.get("baseCommand", ''))
         # pass the default of None if basecommand is empty
-        unitName = unitName if unitName else None
+        unitName = self.cwltool.tool.get("baseCommand", None)
+        if isinstance(unitName, list):
+            unitName = ' '.join(unitName)
         super(CWLJob, self).__init__(cores=req["cores"],
                                      memory=(req["ram"]*1024*1024),
                                      disk=((req["tmpdirSize"]*1024*1024) + (req["outdirSize"]*1024*1024)),
