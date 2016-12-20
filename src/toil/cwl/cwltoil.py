@@ -224,7 +224,7 @@ class CWLJob(Job):
         self.cwltool = tool
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
-        if isinstance(unitName, list):
+        if isinstance(unitName, (list, tuple)):
             unitName = ' '.join(unitName)
         super(CWLJob, self).__init__(cores=req["cores"],
                                      memory=(req["ram"]*1024*1024),
