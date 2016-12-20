@@ -10,7 +10,7 @@ programming. Full documentation for the latest stable release can be found at
 I found a typo toil-sort-example.py:162 at `Typo`_. 
  
 .. _Read the Docs: http://toil.readthedocs.org/
-.. _Typo: http://toil.readthedocs.io/en/releases-3.3.x/running.html#running-cwl-workflows
+.. _Typo: http://toil.readthedocs.io/en/releases-3.3.x/running.html#running-a-toil-pipeline-in-detail
 
 .. image:: https://badges.gitter.im/bd2k-genomics-toil/Lobby.svg
    :alt: Join the chat at https://gitter.im/bd2k-genomics-toil/Lobby
