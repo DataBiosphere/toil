@@ -18,7 +18,7 @@ def dockerCall(job,
     """
         Calls Docker for a particular tool with the specified parameters
 
-        Example of using docker_call in a Toil pipeline:
+        Example of using docker_call in a Toil pipeline to index a FASTA file with SAMtools:
             def toil_job(job):
                 work_dir = job.fileStore.getLocalTempDir()
                 path = job.fileStore.readGlobalFile(ref_id, os.path.join(work_dir, 'ref.fasta')
