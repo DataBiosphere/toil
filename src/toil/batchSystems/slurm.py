@@ -226,18 +226,18 @@ class Worker(Thread):
     def getJobExitCode(self, slurmJobID):
         logger.debug("Getting exit code for slurm job %d", slurmJobID)
         
-        state, rc = self._getJobDetailsFromSacct(self, slurmJobID)
+        state, rc = self._getJobDetailsFromSacct(slurmJobID)
         
         if rc == -999:
             state, rc = self._getJobDetailsFromScontrol(slurmJobID)
-        
+
         logger.debug("s job state is %s", state)
         # If Job is in a running state, return None to indicate we don't have an update                                 
         if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
             return None
 
         return rc
-    
+
     def _getJobDetailsFromSacct(self, slurmJobID):
         # SLURM job exit codes are obtained by running sacct.
         args = ['sacct',
@@ -246,12 +246,15 @@ class Worker(Thread):
                 '--format', 'State,ExitCode', # specify output columns
                 '-P', # separate columns with pipes
                 '-S', '1970-01-01'] # override start time limit
+
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        rc = process.returncode
+
+        if rc != 0:
+            # no accounting system or some other error
+            return (None, -999)
+
         for line in process.stdout:
-            
-            if line == 'SLURM accounting storage is disabled':
-                return (None, -999)
-            
             values = line.strip().split('|')
             if len(values) < 2:
                 continue
@@ -270,6 +273,7 @@ class Worker(Thread):
                 'show',
                 'job',
                 str(slurmJobID)]
+
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         job = dict()
