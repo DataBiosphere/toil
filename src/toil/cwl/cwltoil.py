@@ -221,12 +221,22 @@ class CWLJob(Job):
         builder.timeout = 0
         builder.resources = {}
         req = tool.evalResources(builder, {})
-        super(CWLJob, self).__init__(cores=req["cores"],
-                     memory=(req["ram"]*1024*1024),
-                     disk=((req["tmpdirSize"]*1024*1024) + (req["outdirSize"]*1024*1024)))
-        #super(CWLJob, self).__init__()
         self.cwltool = tool
+        # pass the default of None if basecommand is empty
+        unitName = self.cwltool.tool.get("baseCommand", None)
+        if isinstance(unitName, (list, tuple)):
+            unitName = ' '.join(unitName)
+        super(CWLJob, self).__init__(cores=req["cores"],
+                                     memory=(req["ram"]*1024*1024),
+                                     disk=((req["tmpdirSize"]*1024*1024) + (req["outdirSize"]*1024*1024)),
+                                     unitName=unitName)
+        #super(CWLJob, self).__init__()
         self.cwljob = cwljob
+        try:
+            self.jobName = str(self.cwltool.tool['id'])
+        except KeyError:
+            # fall back to the Toil defined class name if the tool doesn't have an identifier
+            pass
         self.executor_options = kwargs
 
     def run(self, fileStore):

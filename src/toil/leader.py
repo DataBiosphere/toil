@@ -48,7 +48,7 @@ class FailedJobsException( Exception ):
             for jobNode in failedJobs:
                 job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    msg += "\n=========> Failed job %s %s\n" % (jobNode, jobNode.jobStoreID)
+                    msg += "\n=========> Failed job %s \n" % jobNode
                     with job.getLogFileHandle(jobStore) as fH:
                         msg += fH.read()
                     msg += "<=========\n"
@@ -187,8 +187,7 @@ class Leader:
                      ("successfully" if len(self.toilState.totalFailedJobs) == 0 else ("with %s failed jobs" % len(self.toilState.totalFailedJobs))))
 
         if len(self.toilState.totalFailedJobs):
-            logger.info("Failed jobs at end of the run: %s", self.toilState.totalFailedJobs)
-
+            logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
         # Cleanup
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
