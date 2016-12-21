@@ -93,6 +93,13 @@ class hidden:
             config.workflowID = str(uuid4())
             return config
 
+        @classmethod
+        def setBatchSystemOptions(cls):
+            """
+            Set the appropriate default options for this batch system
+            """
+            pass
+        
         def _createConfig(self):
             """
             Returns a dummy config for the batch system tests.  We need a workflowID to be set up
@@ -317,9 +324,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     def createBatchSystem(self):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
+        self.config.masterAddress='127.0.0.1:5050'
         return MesosBatchSystem(config=self.config,
-                                maxCores=numCores, maxMemory=1e9, maxDisk=1001,
-                                masterAddress='127.0.0.1:5050')
+                                maxCores=numCores, maxMemory=1e9, maxDisk=1001)
 
     def tearDown(self):
         self._stopMesos()
@@ -335,10 +342,10 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return True
 
     def createBatchSystem(self):
+        self.config.scale = 1
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
-
+        
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
     This test ensures that single machine batch system doesn't exceed the configured number of
@@ -530,6 +537,9 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def createBatchSystem(self):
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
+        self.config.parasolCommand = 'parasol'
+        self.config.parasolMaxBatches = 10000
+        
         return ParasolBatchSystem(config=self.config,
                                   maxCores=numCores,
                                   maxMemory=memory,

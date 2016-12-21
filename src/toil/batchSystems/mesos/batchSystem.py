@@ -71,7 +71,7 @@ class MesosBatchSystem(BatchSystemSupport,
             self.nodeInfo = nodeInfo
             self.lastSeen = lastSeen
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk, masterAddress):
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
         # The hot-deployed resource representing the user script. Will be passed along in every
@@ -86,7 +86,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.jobQueues = defaultdict(list)
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
-        self.masterAddress = masterAddress
+        self.masterAddress = config.masterAddress
 
         # Written to when Mesos kills tasks, as directed by Toil
         self.killedJobIds = set()
