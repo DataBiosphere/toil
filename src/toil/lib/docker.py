@@ -87,7 +87,7 @@ def dockerCall(job,
 
     # Make subprocess call
     call = baseDockerCall + [tool] + parameters
-    job.fileStore.logToMaster("Calling docker with {}.".format(' '.join(call)))
+    job.fileStore.logToMaster("Calling docker with " + repr(call))
 
     if outfile:
         subprocess.check_call(call, stdout=outfile)
