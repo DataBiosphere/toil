@@ -100,45 +100,45 @@ dockerCall.STOP = 1
 dockerCall.RM = 2
 
 
-def _dockerKill(container_name, action):
+def _dockerKill(containerName, action):
     """
     Kills the specified container.
 
-    :param str container_name: The name of the container created by docker_call
+    :param str containerName: The name of the container created by docker_call
     :param int action: What action should be taken on the container?  See `defer=` in
            :func:`docker_call`
     """
-    running = _containerIsRunning(container_name)
+    running = _containerIsRunning(containerName)
     if running is None:
         # This means that the container doesn't exist.  We will see this if the container was run
         # with --rm and has already exited before this call.
         _logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
-                    'do.', container_name)
+                    'do.', containerName)
     else:
         if action in (None, dockerCall.FORGO):
             _logger.info('The container with name %s continues to exist as we were asked to forgo a '
-                        'post-job action on it.', container_name)
+                        'post-job action on it.', containerName)
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
-                         container_name)
+                         containerName)
             if running and (action == dockerCall.STOP or action==dockerCall.RM):
-                _logger.info('Stopping container "%s".', container_name)
-                subprocess.check_call(['docker', 'stop', container_name])
+                _logger.info('Stopping container "%s".', containerName)
+                subprocess.check_call(['docker', 'stop', containerName])
             else:
-                _logger.info('The container "%s" was not found to be running.', container_name)
+                _logger.info('The container "%s" was not found to be running.', containerName)
             if action == dockerCall.RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
-                running = _containerIsRunning(container_name)
+                running = _containerIsRunning(containerName)
                 if running is not None:
-                    _logger.info('Removing container "%s".', container_name)
+                    _logger.info('Removing container "%s".', containerName)
                     try:
-                        subprocess.check_call(['docker', 'rm', '-f', container_name])
+                        subprocess.check_call(['docker', 'rm', '-f', containerName])
                     except subprocess.CalledProcessError:
-                        _logger.exception("'docker rm' failed: " + str(container_name))
+                        _logger.exception("'docker rm' failed: " + str(containerName))
                 else:
                     _logger.warn('The container "%s" was not found on the system.  Nothing to remove.',
-                                 container_name)
+                                 containerName)
 
 
 def _fixPermissions(baseDockerCall, tool, workDir):
