@@ -6,7 +6,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 def dockerCall(job,
                tool,
                parameters=None,
@@ -42,10 +41,6 @@ def dockerCall(job,
                using `docker rm -f`.
                The default value is None and that shadows docker_call.FORGO, unless --rm is being passed in.
     """
-    dockerCall.FORGO = 0
-    dockerCall.STOP = 1
-    dockerCall.RM = 2
-
     if parameters is None:
         parameters = []
     if workDir is None:
@@ -98,8 +93,10 @@ def dockerCall(job,
         else:
             subprocess.check_call(call)
 
-    # Fix root ownership of output files
-    _fixPermissions(baseDockerCall, tool, workDir)
+
+dockerCall.FORGO = 0
+dockerCall.STOP = 1
+dockerCall.RM = 2
 
 
 def _dockerKill(container_name, action):
@@ -110,10 +107,6 @@ def _dockerKill(container_name, action):
     :param int action: What action should be taken on the container?  See `defer=` in
            :func:`docker_call`
     """
-    dockerCall.FORGO = 0
-    dockerCall.STOP = 1
-    dockerCall.RM = 2
-
     running = _containerIsRunning(container_name)
     if running is None:
         # This means that the container doesn't exist.  We will see this if the container was run
