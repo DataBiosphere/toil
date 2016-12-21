@@ -16,7 +16,7 @@ def dockerCall(job,
                checkOutput=False,
                defer=None):
     """
-        Calls Docker for a particular tool with the specified parameters
+        Calls Docker for a particular tool with the specified parameters. Assumes `docker` is on the PATH.
 
         Example of using docker_call in a Toil pipeline to index a FASTA file with SAMtools:
             def toil_job(job):
