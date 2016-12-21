@@ -73,7 +73,7 @@ def dockerCall(job,
         containerName = _getContainerName(job)
         baseDockerCall.extend(['--name', containerName])
     except IndexError:
-        raise RuntimeError("Couldn't parse Docker's `--name=` option, check parameters: " + str(baseDockerCall))
+        raise RuntimeError("Couldn't parse Docker's `--name=` option, check parameters: " + str(dockerParameters))
 
     # Defer the container on-exit action
     if '--rm' in baseDockerCall and defer is None:
