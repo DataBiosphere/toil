@@ -48,7 +48,7 @@ The 'pypi' target publishes the current commit of Toil to PyPI after enforcing t
 copy and the index are clean.
 
 The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
-TOIL_DOCKER_REGISTRY variable to override the default registry that the 'docker_push' target pushes
+TOIL_DOCKER_REGISTRY variable to override the default registry that the 'push_docker' target pushes
 the appliance images to, for example:
 
 	TOIL_DOCKER_REGISTRY=quay.io/USER make docker
@@ -84,7 +84,11 @@ docker_tag:=$(shell $(python) version_template.py dockerTag)
 default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
 ifdef docker_path
-    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+    ifdef docker_registry
+        export TOIL_DOCKER_REGISTRY?=$(docker_registry)
+    else
+        export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+    endif
 else
     $(warning Cannot find 'docker' executable. Docker-related targets will be skipped.)
     export TOIL_DOCKER_REGISTRY:=

@@ -194,7 +194,7 @@ iamFullPolicy = dict(Version="2012-10-17", Statement=[
 
 logDir = '--log_dir=/var/lib/mesos'
 leaderArgs = logDir + ' --registry=in_memory --cluster={name}'
-workerArgs = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
+workerArgs = '{keyPath} --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
 
 awsUserData = """#cloud-config
 
@@ -283,4 +283,7 @@ coreos:
             --name=toil_{role} \
             {image} \
             {args}
+
+ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
 """
