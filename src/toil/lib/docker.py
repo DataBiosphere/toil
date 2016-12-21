@@ -102,7 +102,7 @@ def Docker(job,
         baseDockerCall += dockerParameters
     else:
         baseDockerCall += ['--rm', '--log-driver', 'none', '-v',
-                             os.path.abspath(workDir) + ':/data']
+                           os.path.abspath(workDir) + ':/data']
 
     # Ensure the user has passed a valid value for defer
     require(defer in (None, Docker.FORGO, Docker.STOP, Docker.RM),
@@ -166,11 +166,11 @@ def _dockerKill(containerName, action):
     else:
         if action in (None, Docker.FORGO):
             _logger.info('The container with name %s continues to exist as we were asked to forgo a '
-                        'post-job action on it.', containerName)
+                         'post-job action on it.', containerName)
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
                          containerName)
-            if running and (action == dockerCall.STOP or action==dockerCall.RM):
+            if running and (action == Docker.STOP or action == Docker.RM):
                 _logger.info('Stopping container "%s".', containerName)
                 subprocess.check_call(['docker', 'stop', containerName])
             else:
