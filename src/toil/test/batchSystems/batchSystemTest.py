@@ -123,9 +123,9 @@ class hidden:
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='1', requirements=defaultRequirements)
             jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='2', requirements=defaultRequirements)
             job1 = self.batchSystem.issueBatchJob(jobNode1)
             job2 = self.batchSystem.issueBatchJob(jobNode2)
 
@@ -144,7 +144,7 @@ class hidden:
             # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
             jobNode3 = JobNode(command="touch %s" % testPath, jobName='test3', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='3', requirements=defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
             jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
@@ -179,7 +179,7 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
-                                   jobStoreID=None, requirements=defaultRequirements)
+                                   jobStoreID='4', requirements=defaultRequirements)
                 job4 = self.batchSystem.issueBatchJob(jobNode4)
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
@@ -187,7 +187,7 @@ class hidden:
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
-                                   jobStoreID=None, requirements=defaultRequirements)
+                                   jobStoreID='5', requirements=defaultRequirements)
                 job5 = self.batchSystem.issueBatchJob(jobNode5)
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
@@ -544,14 +544,14 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
                            requirements=dict(memory=1 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
-                           jobStoreID=None)
+                           jobStoreID='1')
         job1 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job1)
         jobNode2 = JobNode(command="sleep 1000",
                            requirements=dict(memory=2 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
-                           jobStoreID=None)
+                           jobStoreID='2')
         job2 = self.batchSystem.issueBatchJob(jobNode2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
