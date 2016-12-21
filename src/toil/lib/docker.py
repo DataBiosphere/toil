@@ -1,8 +1,9 @@
 import base64
+import logging
 import os
 import subprocess
-from toil_lib import require
-import logging
+
+from bd2k.util.exceptions import require
 
 _logger = logging.getLogger(__name__)
 
