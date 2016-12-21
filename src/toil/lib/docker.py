@@ -78,6 +78,8 @@ def dockerCall(job,
     # Defer the container on-exit action
     if '--rm' in baseDockerCall and defer is None:
         defer = dockerCall.RM
+    if '--rm' in baseDockerCall and defer is not dockerCall.RM:
+        logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
     job.defer(_dockerKill, containerName, action=defer)
     # Defer the permission fixing function which will run after this job concludes.
     # We call this explicitly later on in this function, but we defer it as well to handle unexpected job failure.
