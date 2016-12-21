@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 def dockerCall(job,
                tool,
                parameters=None,
-               workDir='.',
+               workDir=None,
                dockerParameters=None,
                outfile=None,
                checkOutput=False,
@@ -48,6 +48,8 @@ def dockerCall(job,
 
     if parameters is None:
         parameters = []
+    if workDir is None:
+        workDir = os.getcwd()
 
     # Setup the outgoing subprocess call for docker
     baseDockerCall = ['docker', 'run']
