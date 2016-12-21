@@ -146,6 +146,8 @@ def _dockerKill(container_name, action):
 def _fixPermissions(baseDockerCall, tool, workDir):
     """
     Fix permission of a mounted Docker directory by reusing the tool to change ownership.
+    Docker natively runs as a root inside the container, and files written to the
+    mounted directory are implicitly owned by root.
 
     :param list baseDockerCall: Docker run parameters
     :param str tool: Name of tool
