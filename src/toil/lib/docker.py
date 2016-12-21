@@ -79,8 +79,8 @@ def dockerCall(job,
     if '--rm' in baseDockerCall and defer is None:
         defer = dockerCall.RM
     job.defer(_dockerKill, containerName, action=defer)
-    # Defer the permission fixing function.  We call this explicitly later on in this function, but
-    # we defer it as well to handle unexpected job failure.
+    # Defer the permission fixing function which will run after this job concludes.
+    # We call this explicitly later on in this function, but we defer it as well to handle unexpected job failure.
     job.defer(_fixPermissions, baseDockerCall, tool, workDir)
 
     # Make subprocess call
