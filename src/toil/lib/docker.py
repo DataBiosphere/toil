@@ -118,7 +118,6 @@ def _dockerKill(container_name, action):
         if action in (None, dockerCall.FORGO):
             _logger.info('The container with name %s continues to exist as we were asked to forgo a '
                         'post-job action on it.', container_name)
-            return
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
                          container_name)
