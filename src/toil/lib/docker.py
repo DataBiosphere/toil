@@ -121,12 +121,12 @@ def _dockerKill(container_name, action):
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
                          container_name)
-            if running and action >= dockerCall.STOP:
+            if running and (action == dockerCall.STOP or action==dockerCall.RM):
                 _logger.info('Stopping container "%s".', container_name)
                 subprocess.check_call(['docker', 'stop', container_name])
             else:
                 _logger.info('The container "%s" was not found to be running.', container_name)
-            if action >= dockerCall.RM:
+            if action == dockerCall.RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
                 running = _containerIsRunning(container_name)
