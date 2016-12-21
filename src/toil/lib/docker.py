@@ -89,6 +89,7 @@ def dockerCall(job,
     call = baseDockerCall + [tool] + parameters
     job.fileStore.logToMaster("Calling docker with " + repr(call))
 
+    require(outfile is None or not checkOutput, 'outfile and checkOutput are mutually exclusive.')
     if outfile:
         subprocess.check_call(call, stdout=outfile)
     else:
