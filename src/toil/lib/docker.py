@@ -162,7 +162,7 @@ def _fixPermissions(baseDockerCall, tool, workDir):
 
 
 def _getContainerName(job):
-    return '--'.join([job.fileStore.jobStore.config.workflowID,
+    return '--'.join([str(job),
                       job.fileStore.jobID,
                       base64.b64encode(os.urandom(9), '-_')])
 
