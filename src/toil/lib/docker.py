@@ -4,7 +4,8 @@ import subprocess
 from toil_lib import require
 import logging
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
+
 
 def dockerCall(job,
                tool,
@@ -74,7 +75,7 @@ def dockerCall(job,
     if '--rm' in baseDockerCall and defer is None:
         defer = dockerCall.RM
     if '--rm' in baseDockerCall and defer is not dockerCall.RM:
-        logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
+        _logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
     job.defer(_dockerKill, containerName, action=defer)
     # Defer the permission fixing function which will run after this job concludes.
     # We call this explicitly later on in this function, but we defer it as well to handle unexpected job failure.
@@ -111,34 +112,34 @@ def _dockerKill(container_name, action):
     if running is None:
         # This means that the container doesn't exist.  We will see this if the container was run
         # with --rm and has already exited before this call.
-        logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
+        _logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
                     'do.', container_name)
     else:
         if action in (None, dockerCall.FORGO):
-            logger.info('The container with name %s continues to exist as we were asked to forgo a '
+            _logger.info('The container with name %s continues to exist as we were asked to forgo a '
                         'post-job action on it.', container_name)
             return
         else:
-            logger.info('The container with name %s exists. Running user-specified defer functions.',
-                        container_name)
+            _logger.info('The container with name %s exists. Running user-specified defer functions.',
+                         container_name)
             if running and action >= dockerCall.STOP:
-                logger.info('Stopping container "%s".', container_name)
+                _logger.info('Stopping container "%s".', container_name)
                 subprocess.check_call(['docker', 'stop', container_name])
             else:
-                logger.info('The container "%s" was not found to be running.', container_name)
+                _logger.info('The container "%s" was not found to be running.', container_name)
             if action >= dockerCall.RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
                 running = _containerIsRunning(container_name)
                 if running is not None:
-                    logger.info('Removing container "%s".', container_name)
+                    _logger.info('Removing container "%s".', container_name)
                     try:
                         subprocess.check_call(['docker', 'rm', '-f', container_name])
                     except subprocess.CalledProcessError:
-                        logger.exception("'docker rm' failed.")
+                        _logger.exception("'docker rm' failed.")
                 else:
-                    logger.info('The container "%s" was not found on the system.  Nothing to remove.',
-                                container_name)
+                    _logger.info('The container "%s" was not found on the system.  Nothing to remove.',
+                                 container_name)
 
 
 def _fixPermissions(baseDockerCall, tool, workDir):
@@ -178,8 +179,8 @@ def _containerIsRunning(container_name):
                                           container_name]).strip()
     except subprocess.CalledProcessError:
         # This will be raised if the container didn't exist.
-        logger.debug("'docker inspect' failed. Assuming container %s doesn't exist.", container_name,
-                     exc_info=True)
+        _logger.debug("'docker inspect' failed. Assuming container %s doesn't exist.", container_name,
+                      exc_info=True)
         return None
     if output == 'true':
         return True
