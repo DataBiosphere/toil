@@ -538,6 +538,7 @@ class MesosBatchSystem(BatchSystemSupport,
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
                 executor.nodeInfo = NodeInfo(**v)
+                self.executors[nodeAddress] = executor
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
 

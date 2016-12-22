@@ -178,6 +178,7 @@ class AbstractProvisioner(object):
             nodes = self.batchSystem.getNodes(preemptable)
             # Join nodes and instances on private IP address.
             nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
+            log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
             # Unless forced, exclude nodes with runnning workers. Note that it is possible for
             # the batch system to report stale nodes for which the corresponding instance was
             # terminated already. There can also be instances that the batch system doesn't have
