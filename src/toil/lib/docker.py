@@ -8,7 +8,13 @@ from bd2k.util.exceptions import require
 _logger = logging.getLogger(__name__)
 
 
-def dockerCall(job, tool, parameters=None, workDir=None, dockerParameters=None, outfile=None, defer=None):
+def dockerCall(job,
+               tool,
+               parameters=None,
+               workDir=None,
+               dockerParameters=None,
+               outfile=None,
+               defer=None):
     """
     Wrapper call to Docker. See docstring for docker()
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
@@ -33,7 +39,12 @@ def dockerCall(job, tool, parameters=None, workDir=None, dockerParameters=None, 
             outfile=outfile, checkOutput=False, defer=defer)
 
 
-def dockerCheckOutput(job, tool, parameters=None, workDir=None, dockerParameters=None, defer=None):
+def dockerCheckOutput(job,
+                      tool,
+                      parameters=None,
+                      workDir=None,
+                      dockerParameters=None,
+                      defer=None):
     """
     Wrapper call to Docker. See docstring for docker()
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
