@@ -10,7 +10,8 @@ _logger = logging.getLogger(__name__)
 
 def dockerCall(job, tool, parameters=None, workDir=None, dockerParameters=None, outfile=None, defer=None):
     """
-    Wrapper call to Docker. See docstring for Docker()
+    Wrapper call to Docker. See docstring for docker()
+    Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
@@ -28,13 +29,14 @@ def dockerCall(job, tool, parameters=None, workDir=None, dockerParameters=None, 
            using `docker rm -f`.
            The default value is None and that shadows docker_call.FORGO, unless --rm is being passed in.
     """
-    Docker(job, tool=tool, parameters=parameters, workDir=workDir, dockerParameters=dockerParameters,
-           outfile=outfile, checkOutput=False, defer=defer)
+    _docker(job, tool=tool, parameters=parameters, workDir=workDir, dockerParameters=dockerParameters,
+            outfile=outfile, checkOutput=False, defer=defer)
 
 
 def dockerCheckOutput(job, tool, parameters=None, workDir=None, dockerParameters=None, defer=None):
     """
-    Wrapper call to Docker. See docstring for Docker()
+    Wrapper call to Docker. See docstring for docker()
+    Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
@@ -53,18 +55,18 @@ def dockerCheckOutput(job, tool, parameters=None, workDir=None, dockerParameters
     :returns: Stdout from the docker call
     :rtype: str
     """
-    return Docker(job, tool=tool, parameters=parameters, workDir=workDir,
-                  dockerParameters=dockerParameters, checkOutput=True, defer=defer)
+    return _docker(job, tool=tool, parameters=parameters, workDir=workDir,
+                   dockerParameters=dockerParameters, checkOutput=True, defer=defer)
 
 
-def Docker(job,
-           tool,
-           parameters=None,
-           workDir=None,
-           dockerParameters=None,
-           outfile=None,
-           checkOutput=False,
-           defer=None):
+def _docker(job,
+            tool,
+            parameters=None,
+            workDir=None,
+            dockerParameters=None,
+            outfile=None,
+            checkOutput=False,
+            defer=None):
     """
     Calls Docker for a particular tool with the specified parameters. Assumes `docker` is on the PATH.
 
@@ -106,7 +108,7 @@ def Docker(job,
                            os.path.abspath(workDir) + ':/data']
 
     # Ensure the user has passed a valid value for defer
-    require(defer in (None, Docker.FORGO, Docker.STOP, Docker.RM),
+    require(defer in (None, _docker.FORGO, _docker.STOP, _docker.RM),
             'Please provide a valid value for defer.')
 
     # Get container name which is needed for _dockerKill
@@ -123,8 +125,8 @@ def Docker(job,
 
     # Defer the container on-exit action
     if '--rm' in baseDockerCall and defer is None:
-        defer = Docker.RM
-    if '--rm' in baseDockerCall and defer is not Docker.RM:
+        defer = _docker.RM
+    if '--rm' in baseDockerCall and defer is not _docker.RM:
         _logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
     job.defer(_dockerKill, containerName, action=defer)
     # Defer the permission fixing function which will run after this job concludes.
@@ -144,9 +146,9 @@ def Docker(job,
             subprocess.check_call(call)
 
 
-Docker.FORGO = 0
-Docker.STOP = 1
-Docker.RM = 2
+_docker.FORGO = 0
+_docker.STOP = 1
+_docker.RM = 2
 
 
 def _dockerKill(containerName, action):
@@ -164,18 +166,18 @@ def _dockerKill(containerName, action):
         _logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
                     'do.', containerName)
     else:
-        if action in (None, Docker.FORGO):
+        if action in (None, _docker.FORGO):
             _logger.info('The container with name %s continues to exist as we were asked to forgo a '
                          'post-job action on it.', containerName)
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
                          containerName)
-            if running and (action == Docker.STOP or action == Docker.RM):
+            if running and (action == _docker.STOP or action == _docker.RM):
                 _logger.info('Stopping container "%s".', containerName)
                 subprocess.check_call(['docker', 'stop', containerName])
             else:
                 _logger.info('The container "%s" was not found to be running.', containerName)
-            if action == Docker.RM:
+            if action == _docker.RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
                 running = _containerIsRunning(containerName)
