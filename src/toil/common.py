@@ -32,6 +32,7 @@ from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromO
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.batchSystems.options import addOptions as addBatchOptions
+from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,7 @@ class Config(object):
         self.restart = False
 
         #Batch system common options
-        self.batchSystem = "singleMachine"
-        self.environment = {}
+        setDefaultBatchOptions(self)
 
         #Autoscaling options
         self.provisioner = None

@@ -63,4 +63,21 @@ def addOptions(addOptionFn):
     for o in _options:
         o(addOptionFn)
 
+def setDefaultOptions(config):
+    '''
+    Set default options for builtin batch systems. This is required if a Config 
+    object is not constructed from an Options object.
+    '''
+    
+    config.batchSystem = "singleMachine"
+    config.environment = {}
 
+    # single machine
+    config.scale = 1
+    
+    # mesos
+    config.masterAddress = 'localhost:5050'
+    
+    # parasol
+    config.parasolCommand = 'parasol'
+    config.parasolMaxBatches = 10000
