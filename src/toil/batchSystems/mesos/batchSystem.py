@@ -146,6 +146,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
+                      name=str(jobNode),
                       resources=ResourceRequirement(**jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
@@ -449,7 +450,7 @@ class MesosBatchSystem(BatchSystemSupport,
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
         # FIXME: what bout
-        task.name = str(job)
+        task.name = job.name
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
 
