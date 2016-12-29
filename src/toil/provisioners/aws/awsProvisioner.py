@@ -23,8 +23,7 @@ import sys
 from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time,
-                             wait_transition, create_ondemand_instances,
+from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
                              create_spot_instances, wait_instances_running)
 from itertools import count
 
@@ -231,10 +230,16 @@ class AWSProvisioner(AbstractProvisioner):
         leader = instances[0]  # assume leader was launched first
         if wait:
             logger.info("Waiting for toil_leader to enter 'running' state...")
-            wait_transition(leader, {'pending'}, 'running')
+            cls._tagWhenRunning(ctx.ec2, [leader], clusterName)
             logger.info('... toil_leader is running')
             cls._waitForNode(leader, 'toil_leader')
         return leader
+
+    @classmethod
+    def _tagWhenRunning(cls, ec2, instances, tag):
+        wait_instances_running(ec2, instances)
+        for instance in instances:
+            instance.add_tag("Name", tag)
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -494,7 +499,7 @@ class AWSProvisioner(AbstractProvisioner):
                                      )
             # flatten the list 
             instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
-        wait_instances_running(self.ctx.ec2, instancesLaunched)
+        self._tagWhenRunning(self.ctx.ec2, instancesLaunched, self.clusterName)
         self._propagateKey(instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
