@@ -142,15 +142,24 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _sshInstance(cls, nodeIP, *args, **kwargs):
+        # returns the output from the command
         kwargs['collectStdout'] = True
         return cls._coreSSH(nodeIP, *args, **kwargs)
 
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
         """
-        kwargs: input, tty, appliance, collectStdout
+        kwargs: input, tty, appliance, collectStdout, sshOptions
         """
-        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % nodeIP]
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t']
+        appliance = kwargs.pop('sshOptions', None)
+        sshOptions = kwargs.pop('appliance', None)
+        if sshOptions:
+            # add specified options to ssh command
+            assert isinstance(sshOptions, [])
+            commandTokens.extend(sshOptions)
+        # specify host
+        commandTokens.append('core@%s' % nodeIP)
         appliance = kwargs.pop('appliance', None)
         if appliance:
             # run the args in the appliance
@@ -233,10 +242,25 @@ class AWSProvisioner(AbstractProvisioner):
         cls._waitForIP(instance)
         instanceIP = instance.ip_address
         cls._waitForSSHPort(instanceIP)
+        cls._waitForSSHKeys(instanceIP)
         # wait here so docker commands can be used reliably afterwards
         cls._waitForDockerDaemon(instanceIP)
         cls._waitForAppliance(instanceIP, role=role)
         return instanceIP
+
+    @classmethod
+    def _waitForSSHKeys(cls, instanceIP):
+        # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
+        # the keys are propagated and the instance can be SSH into
+        while True:
+            try:
+                cls._sshInstance(instanceIP, sshOptions=['-oBatchMode=yes'])
+            except RuntimeError:
+                break
+            else:
+                # ssh succeeded
+                return
+
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
@@ -478,9 +502,6 @@ class AWSProvisioner(AbstractProvisioner):
     def _propagateKey(self, instances):
         if not self.config.sseKey:
             return
-        # wait 5 minutes so coreos has time to modify the ssh auth key file properly.
-        logger.debug('Waiting for 5 minutes')
-        time.sleep(5 * 60)
         for node in instances:
             # since we're going to be rsyncing into the appliance we need the appliance to be running first
             ipAddress = self._waitForNode(node, 'toil_worker')
