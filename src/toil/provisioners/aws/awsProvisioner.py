@@ -151,11 +151,10 @@ class AWSProvisioner(AbstractProvisioner):
         kwargs: input, tty, appliance, collectStdout, sshOptions
         """
         commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t']
-        appliance = kwargs.pop('sshOptions', None)
-        sshOptions = kwargs.pop('appliance', None)
+        sshOptions = kwargs.pop('sshOptions', None)
         if sshOptions:
             # add specified options to ssh command
-            assert isinstance(sshOptions, [])
+            assert isinstance(sshOptions, list)
             commandTokens.extend(sshOptions)
         # specify host
         commandTokens.append('core@%s' % nodeIP)
