@@ -25,6 +25,7 @@ import time
 from collections import namedtuple
 
 from bd2k.util.expando import Expando
+from bd2k.util.humanize import bytes2human
 
 from toil import resolveEntryPoint
 from toil.jobStores.abstractJobStore import NoSuchJobException
@@ -139,6 +140,10 @@ class Leader:
         # Set used to monitor deadlocked jobs
         self.potentialDeadlockedJobs = None
         self.potentialDeadlockTime = 0
+
+        # internal jobs we should not expose at top level debugging
+        self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
+                              "ResolveIndirect")
 
     def run(self):
         """
@@ -420,11 +425,12 @@ class Leader:
                                 "for job %s", jobID)
                 else:
                     if result == 0:
-                        logger.debug('Batch system is reporting that the job %s ended successfully',
-                                     updatedJob)
+                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(self.debugJobNames)
+                                      else logger.info)
+                        cur_logger('Job ended successfully: %s', updatedJob)
                     else:
-                        logger.warn('Batch system is reporting that the job %s failed with exit value %i',
-                                    updatedJob, result)
+                        logger.warn('Job failed with exit value %1: %s',
+                                    result, updatedJob)
                     self.processFinishedJob(jobID, result, wallTime=wallTime)
 
             else:
@@ -514,10 +520,12 @@ class Leader:
                                     self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
-        logger.debug("Issued job with job store ID: %s and job batch system ID: "
-                     "%s and cores: %.2f, disk: %.2f, and memory: %.2f",
-                     jobNode.jobStoreID, str(jobBatchSystemID), jobNode.cores,
-                     jobNode.disk, jobNode.memory)
+        cur_logger = (logger.debug if jobNode.jobName.startswith(self.debugJobNames)
+                      else logger.info)
+        cur_logger("Issued job %s with job batch system ID: "
+                   "%s and cores: %s, disk: %s, and memory: %s",
+                   jobNode, str(jobBatchSystemID), int(jobNode.cores),
+                   bytes2human(jobNode.disk), bytes2human(jobNode.memory))
 
     def issueJobs(self, jobs):
         """

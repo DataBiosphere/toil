@@ -491,7 +491,7 @@ class CachingFileStore(FileStore):
                                            disk=diskUsed,
                                            humanRequestedDisk=bytes2human(jobReqs),
                                            requestedDisk=jobReqs))
-            self.logToMaster(logString, level=logging.INFO)
+            self.logToMaster(logString, level=logging.DEBUG)
             if diskUsed > jobReqs:
                 self.logToMaster("Job used more disk than requested. Please reconsider modifying "
                                  "the user script to avoid the chance  of failure due to "
@@ -628,7 +628,7 @@ class CachingFileStore(FileStore):
         # userPath. Cache operations can only occur on local files.
         with self.cacheLock() as lockFileHandle:
             if fileIsLocal and self._fileIsCached(fileStoreID):
-                logger.info('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
+                logger.debug('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
                 assert not os.path.exists(localFilePath)
                 if mutable:
                     shutil.copyfile(cachedFileName, localFilePath)
@@ -719,10 +719,10 @@ class CachingFileStore(FileStore):
 
         # If fileStoreID is in the cache provide a handle from the local cache
         if self._fileIsCached(fileStoreID):
-            logger.info('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
+            logger.debug('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
             return open(self.encodedFileID(fileStoreID), 'r')
         else:
-            logger.info('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
+            logger.debug('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
             return self.jobStore.readFileStream(fileStoreID)
 
     def deleteLocalFile(self, fileStoreID):
@@ -797,9 +797,9 @@ class CachingFileStore(FileStore):
                         os.remove(cachedFile)
                         cacheInfo.cached -= fileSize
                 self.logToMaster('Successfully deleted cached copy of file with ID '
-                                 '\'%s\'.' % fileStoreID)
+                                 '\'%s\'.' % fileStoreID, level=logging.DEBUG)
             self.logToMaster('Successfully deleted local copies of file with ID '
-                             '\'%s\'.' % fileStoreID)
+                             '\'%s\'.' % fileStoreID, level=logging.DEBUG)
 
     def deleteGlobalFile(self, fileStoreID):
         jobStateIsPopulated = False
@@ -823,7 +823,7 @@ class CachingFileStore(FileStore):
         # Add the file to the list of files to be deleted once the run method completes.
         self.filesToDelete.add(fileStoreID)
         self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
-                         ' globally deleted.')
+                         ' globally deleted.', level=logging.DEBUG)
 
     # Cache related methods
     @contextmanager
@@ -1029,11 +1029,11 @@ class CachingFileStore(FileStore):
                     self.returnFileSize(jobStoreFileID, localFilePath, lockFileHandle,
                                         fileAlreadyCached=False)
                 if callingFunc == 'read':
-                    logger.info('CACHE: Read file with ID \'%s\' from the cache.' %
-                                jobStoreFileID)
+                    logger.debug('CACHE: Read file with ID \'%s\' from the cache.' %
+                                 jobStoreFileID)
                 else:
-                    logger.info('CACHE: Added file with ID \'%s\' to the cache.' %
-                                jobStoreFileID)
+                    logger.debug('CACHE: Added file with ID \'%s\' to the cache.' %
+                                 jobStoreFileID)
 
     def returnFileSize(self, fileStoreID, cachedFileSource, lockFileHandle,
                        fileAlreadyCached=False):
@@ -1603,7 +1603,7 @@ class NonCachingFileStore(FileStore):
                                            disk=diskUsed,
                                            humanRequestedDisk=bytes2human(jobReqs),
                                            requestedDisk=jobReqs))
-            self.logToMaster(logString, level=logging.INFO)
+            self.logToMaster(logString, level=logging.DEBUG)
             if diskUsed > jobReqs:
                 self.logToMaster("Job used more disk than requested. Cconsider modifying the user "
                                  "script to avoid the chance of failure due to incorrectly "
