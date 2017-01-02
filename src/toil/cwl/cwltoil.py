@@ -117,7 +117,7 @@ def resolve_indirect(d):
             if isinstance(v, StepValueFrom):
                 ev[k] = v.do_eval(res, res[k])
             else:
-                ev[k] = v
+                ev[k] = res[k]
         return ev
     else:
         return res
