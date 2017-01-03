@@ -258,10 +258,13 @@ class AWSProvisioner(AbstractProvisioner):
         # the keys are propagated and the instance can be SSH into
         while True:
             try:
-                cls._sshInstance(instanceIP, sshOptions=['-oBatchMode=yes'])
+                logger.info('Attempting to establish SSH connection...')
+                cls._sshInstance(instanceIP, 'ps', sshOptions=['-oBatchMode=yes'])
             except RuntimeError:
-                break
+                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                time.sleep(10)
             else:
+                logger.info('...SSH connection established.')
                 # ssh succeeded
                 return
 
