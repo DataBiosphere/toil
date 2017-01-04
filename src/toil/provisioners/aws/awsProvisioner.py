@@ -23,8 +23,7 @@ import sys
 from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time,
-                             wait_transition, create_ondemand_instances,
+from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
                              create_spot_instances, wait_instances_running)
 from itertools import count
 
@@ -142,15 +141,23 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _sshInstance(cls, nodeIP, *args, **kwargs):
+        # returns the output from the command
         kwargs['collectStdout'] = True
         return cls._coreSSH(nodeIP, *args, **kwargs)
 
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
         """
-        kwargs: input, tty, appliance, collectStdout
+        kwargs: input, tty, appliance, collectStdout, sshOptions
         """
-        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t', 'core@%s' % nodeIP]
+        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t']
+        sshOptions = kwargs.pop('sshOptions', None)
+        if sshOptions:
+            # add specified options to ssh command
+            assert isinstance(sshOptions, list)
+            commandTokens.extend(sshOptions)
+        # specify host
+        commandTokens.append('core@%s' % nodeIP)
         appliance = kwargs.pop('appliance', None)
         if appliance:
             # run the args in the appliance
@@ -222,10 +229,16 @@ class AWSProvisioner(AbstractProvisioner):
         leader = instances[0]  # assume leader was launched first
         if wait:
             logger.info("Waiting for toil_leader to enter 'running' state...")
-            wait_transition(leader, {'pending'}, 'running')
+            cls._tagWhenRunning(ctx.ec2, [leader], clusterName)
             logger.info('... toil_leader is running')
             cls._waitForNode(leader, 'toil_leader')
         return leader
+
+    @classmethod
+    def _tagWhenRunning(cls, ec2, instances, tag):
+        wait_instances_running(ec2, instances)
+        for instance in instances:
+            instance.add_tag("Name", tag)
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -233,10 +246,28 @@ class AWSProvisioner(AbstractProvisioner):
         cls._waitForIP(instance)
         instanceIP = instance.ip_address
         cls._waitForSSHPort(instanceIP)
+        cls._waitForSSHKeys(instanceIP)
         # wait here so docker commands can be used reliably afterwards
         cls._waitForDockerDaemon(instanceIP)
         cls._waitForAppliance(instanceIP, role=role)
         return instanceIP
+
+    @classmethod
+    def _waitForSSHKeys(cls, instanceIP):
+        # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
+        # the keys are propagated and the instance can be SSH into
+        while True:
+            try:
+                logger.info('Attempting to establish SSH connection...')
+                cls._sshInstance(instanceIP, 'ps', sshOptions=['-oBatchMode=yes'])
+            except RuntimeError:
+                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                time.sleep(10)
+            else:
+                logger.info('...SSH connection established.')
+                # ssh succeeded
+                return
+
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
@@ -470,7 +501,7 @@ class AWSProvisioner(AbstractProvisioner):
                                      )
             # flatten the list 
             instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
-        wait_instances_running(self.ctx.ec2, instancesLaunched)
+        self._tagWhenRunning(self.ctx.ec2, instancesLaunched, self.clusterName)
         self._propagateKey(instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
@@ -478,9 +509,6 @@ class AWSProvisioner(AbstractProvisioner):
     def _propagateKey(self, instances):
         if not self.config.sseKey:
             return
-        # wait 5 minutes so coreos has time to modify the ssh auth key file properly.
-        logger.debug('Waiting for 5 minutes')
-        time.sleep(5 * 60)
         for node in instances:
             # since we're going to be rsyncing into the appliance we need the appliance to be running first
             ipAddress = self._waitForNode(node, 'toil_worker')
