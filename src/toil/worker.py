@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import os
 import sys
 import copy
@@ -24,9 +24,12 @@ import traceback
 import time
 import socket
 import logging
-import cPickle
 import shutil
 from threading import Thread
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
@@ -149,7 +152,7 @@ def main():
         
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
-    os.chmod(localWorkerTempDir, 0755)
+    os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################
     #Setup the logging
@@ -204,7 +207,7 @@ def main():
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        print "---TOIL WORKER OUTPUT LOG---"
+        print("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         #Log the number of open file descriptors so we can tell if we're leaking

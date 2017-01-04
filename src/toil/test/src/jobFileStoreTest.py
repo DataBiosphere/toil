@@ -16,6 +16,9 @@ import random
 import os
 import errno
 
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from toil.common import Toil
 from toil.job import Job
 from toil.test import ToilTest

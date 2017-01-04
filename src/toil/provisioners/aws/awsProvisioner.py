@@ -20,6 +20,10 @@ import logging
 import time
 
 import sys
+
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError

@@ -41,7 +41,11 @@ import logging
 import copy
 import shutil
 import functools
-import urlparse
+
+# Python 3 compatibility imports
+from six.moves import xrange
+from six import iteritems, string_types
+import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
 
@@ -104,7 +108,7 @@ def resolve_indirect_inner(d):
 def resolve_indirect(d):
     inner = IndirectDict() if isinstance(d, IndirectDict) else {}
     needEval = False
-    for k, v in d.iteritems():
+    for k, v in iteritems(d):
         if isinstance(v, StepValueFrom):
             inner[k] = v.inner
             needEval = True
@@ -113,7 +117,7 @@ def resolve_indirect(d):
     res = resolve_indirect_inner(inner)
     if needEval:
         ev = {}
-        for k, v in d.iteritems():
+        for k, v in iteritems(d):
             if isinstance(v, StepValueFrom):
                 ev[k] = v.do_eval(res, res[k])
             else:
@@ -341,7 +345,7 @@ class CWLScatter(Job):
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
 
-        if isinstance(self.step.tool["scatter"], basestring):
+        if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
         else:
             scatter = self.step.tool["scatter"]
@@ -353,7 +357,7 @@ class CWLScatter(Job):
 
         valueFrom = {shortname(i["id"]): i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
         def postScatterEval(io):
-            shortio = {shortname(k): v for k, v in io.iteritems()}
+            shortio = {shortname(k): v for k, v in iteritems(io)}
             def valueFromFunc(k, v):
                 if k in valueFrom:
                     return cwltool.expression.do_eval(

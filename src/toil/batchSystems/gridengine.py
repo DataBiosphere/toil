@@ -19,8 +19,11 @@ from pipes import quote
 import subprocess
 import time
 import math
-from Queue import Queue, Empty
 from threading import Thread
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
+from six import iteritems
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
@@ -165,7 +168,7 @@ class Worker(Thread):
         if self.boss.environment:
             qsubline.append('-v')
             qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                     for k, v in self.boss.environment.iteritems()))
+                                     for k, v in iteritems(self.boss.environment)))
 
         reqline = list()
         if mem is not None:

@@ -20,8 +20,10 @@ import subprocess
 from abc import abstractmethod, ABCMeta
 from inspect import getsource
 from textwrap import dedent
-from urlparse import urlparse
 from uuid import uuid4
+
+# Python 3 compatibility imports
+import six.moves.urllib.parse as urlparse
 
 from bd2k.util.iterables import concat
 from cgcloud.lib.test import CgcloudTestCase
@@ -254,7 +256,7 @@ class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
         self.numSamples = 2
 
     def _getScript(self):
-        toilScripts = urlparse(self.toilScripts)
+        toilScripts = urlparse.urlparse(self.toilScripts)
         if toilScripts.netloc:
             self._leader('mkdir toil-scripts'
                          '; curl -L ' + toilScripts.geturl() +

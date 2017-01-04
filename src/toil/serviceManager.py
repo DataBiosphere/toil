@@ -16,8 +16,10 @@ from __future__ import absolute_import
 
 import logging
 import time
-from Queue import Queue, Empty
 from threading import Thread, Event
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 
 logger = logging.getLogger( __name__ )
 

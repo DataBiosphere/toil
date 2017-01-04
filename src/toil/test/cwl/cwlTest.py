@@ -16,7 +16,10 @@ import json
 import os
 import subprocess
 import re
-import StringIO
+
+# Python 3 compatibility imports
+from six.moves import StringIO
+from six import u as unicode
 
 from toil.test import ToilTest, needs_cwl
 
@@ -26,7 +29,7 @@ class CWLTest(ToilTest):
     def _tester(self, cwlfile, jobfile, outDir, expect):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
-        st = StringIO.StringIO()
+        st = StringIO()
         cwltoil.main(['--outdir', outDir,
                             os.path.join(rootDir, cwlfile),
                             os.path.join(rootDir, jobfile)],

@@ -34,8 +34,11 @@ from contextlib import contextmanager
 from fcntl import flock, LOCK_EX, LOCK_UN
 from functools import partial
 from hashlib import sha1
-from Queue import Queue, Empty
 from threading import Thread, Semaphore, Event
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
+from six.moves import xrange
 
 from bd2k.util.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively
@@ -855,7 +858,7 @@ class CachingFileStore(FileStore):
             # will be renamed into the cache for this node.
             personalCacheDir = ''.join([os.path.dirname(self.localCacheDir), '/.ctmp-',
                                         str(uuid.uuid4())])
-            os.mkdir(personalCacheDir, 0755)
+            os.mkdir(personalCacheDir, 0o755)
             self._createCacheLockFile(personalCacheDir)
             try:
                 os.rename(personalCacheDir, self.localCacheDir)
@@ -1382,7 +1385,7 @@ class CachingFileStore(FileStore):
             with open(self.harbingerFileName + '.tmp', 'w') as harbingerFile:
                 harbingerFile.write(str(os.getpid()))
             # Make this File read only to prevent overwrites
-            os.chmod(self.harbingerFileName + '.tmp', 0444)
+            os.chmod(self.harbingerFileName + '.tmp', 0o444)
             os.rename(self.harbingerFileName + '.tmp', self.harbingerFileName)
 
         def waitOnDownload(self, lockFileHandle):

@@ -22,6 +22,9 @@ import types
 import errno
 from ssl import SSLError
 
+# Python 3 compatibility imports
+from six import iteritems
+
 from bd2k.util.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
@@ -145,7 +148,7 @@ class SDBHelper(object):
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in attributes.iteritems() if cls._isValidChunkName(k)]
+        chunks = [(int(k), v) for k, v in iteritems(attributes) if cls._isValidChunkName(k)]
         chunks.sort()
         numChunks = len(chunks)
         if numChunks:
