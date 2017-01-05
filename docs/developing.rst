@@ -397,7 +397,7 @@ the following example::
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
         options.logLevel = "INFO"
         Job.Runner.startToil(j1, options)
-    
+
 Running this workflow results in three log messages from the jobs: ``i is 1``
 from ``j1``, ``i is 2`` from ``j2`` and ``i is 3`` from ``j3``.
 
@@ -597,6 +597,37 @@ Example::
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
 .. _service-dev-ref:
+
+Developing pipelines with toil-lib
+----------------------------------
+
+`toil-lib`_ provides many functions and job functions that are useful in
+developing pipelines in Toil. Installation instructions for toil-lib are
+available `here`_.
+
+.. _toil-lib: https://github.com/BD2KGenomics/toil-lib
+
+.. _here: https://github.com/BD2KGenomics/toil-lib/blob/master/docs/installation.rst
+
+toil-lib packages and functions can be imported to a Toil pipeline like any
+Python package. Jobs from toil-lib can then be added to workflows statically or
+dynamically. For example::
+
+    from toil.job import Job
+    from toil_lib.urls import download_url
+
+    def file_length(job, filename):
+        contents = open(filename).read()
+        job.fileStore.logToMaster("File length is: %s" % len(contents))
+        
+    download = Job.wrapJobFn(download_url, "https://some.url", work_dir="/data/", name="sample.txt")
+    download.addChildJobFn(file_length, "/data/sample.txt")
+
+    if __name__=="__main__":
+        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        options.logLevel = "INFO"
+        Job.Runner.startToil(download, options)
+
 
 Services
 --------
