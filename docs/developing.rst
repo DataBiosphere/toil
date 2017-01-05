@@ -598,6 +598,59 @@ Example::
 
 .. _service-dev-ref:
 
+
+Using Docker containers in Toil
+-------------------------------
+
+Docker containers are commonly used with Toil to maintain the portability of
+workflows. In order to use Docker containers with Toil, Docker must be installed
+on all workers of  cluster in order to run a workflow involving Docker containers.
+Instructions for installing Docker can be found on the `Docker`_ website.
+
+.. _Docker: https://docs.docker.com/engine/getstarted/step_one/
+
+When using Toil-based autoscaling, Docker will be automatically set up on the cluster,
+so no additional installation steps are necessary. Further information on using
+autoscaling can be found `here`_.
+
+.. _here: https://github.com/BD2KGenomics/toil/blob/master/docs/running.rst
+
+`cgl-docker-lib`_ contains Toil-compatible Dockerized tools that are commonly
+used in bioinformatics analysis, as well as documentation on how to develop
+your own Toil-compatible Docker containers.
+
+.. _cgl-docker-lib: https://github.com/BD2KGenomics/cgl-docker-lib/blob/master/README.md
+
+In order to use docker containers in a Toil workflow, the container can be built locally or
+downloaded in real time from an online docker repository like Quay_. If the container is local,
+it must be built on each node of the cluster.
+
+.. _Quay: quay.io
+
+When invoking docker containers from within a Toil workflow, it is recommended that you use
+``docker_call``, a toil job function provided in ``toil.lib.docker``. ``docker_call``
+provides a layer of abstraction over using the ``subprocess`` module to call Docker directly,
+and simplifies and streamlines the development process by providing container cleanup on job failure.
+
+In order to use ``docker_call``, your installation of Docker must be set up to run
+without ``sudo``. Instructions for setting this up can be found here_.
+
+.. _here: https://docs.docker.com/engine/installation/linux/ubuntulinux/#/create-a-docker-group
+
+``docker_call`` takes the full name of the dockerized tool, such as ``quay.io/ucsc_cgl/samtools``,
+parameters to be passed to the tool (``parameters``), environment variables to be set inside the
+container (``env``), and parameters to be passed to docker (``docker_parameters``). In addition,
+docker_call has several input variables specifying how the container should be run, including
+whether it should be run detached, if directories should be mounted to it, and what should happen
+to the container upon job completion. Docker's output can be returned by docker call or directed
+into a file. An example of a basic ``docker_call`` is below:
+
+    docker_call(job=job,
+                tool='quay.io/ucsc_cgl/bwa',
+                work_dir=job.fileStore.getLocalTempDir(),
+                parameters=['index', '/data/reference.fa'])
+
+
 Services
 --------
 
