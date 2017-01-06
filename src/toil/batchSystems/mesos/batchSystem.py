@@ -437,7 +437,7 @@ class MesosBatchSystem(BatchSystemSupport,
             preemptable = False
             for attribute in offer.attributes:
                 if attribute.name == 'preemptable':
-                    preemptable = bool(attribute.scalar.value)
+                    preemptable = strict_bool(attribute.text.value)
             if preemptable:
                 try:
                     self.nonPreemptibleNodes.remove(offer.slave_id.value)
