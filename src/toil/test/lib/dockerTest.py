@@ -5,7 +5,7 @@ import time
 import uuid
 from threading import Thread
 
-from utils import mkdir_p
+from bd2k.util.files import mkdir_p
 
 from toil.job import Job
 from toil.leader import FailedJobsException
