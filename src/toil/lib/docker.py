@@ -16,7 +16,7 @@ def dockerCall(job,
                outfile=None,
                defer=None):
     """
-    Wrapper call to Docker. See docstring for docker()
+    Wrapper call to Docker. See docstring for _docker()
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
@@ -46,7 +46,8 @@ def dockerCheckOutput(job,
                       dockerParameters=None,
                       defer=None):
     """
-    Wrapper call to Docker. See docstring for docker()
+    Wrapper call to Docker. See docstring for _docker()
+    Returns the stdout from the Docker invocation (via subprocess.check_output)
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
@@ -81,6 +82,8 @@ def _docker(job,
     """
     Calls Docker for a particular tool with the specified parameters. Assumes `docker` is on the PATH.
 
+    Uses Toil's defer functionality to ensure containers are shutdown even in case of job or pipeline failure
+
     Example of using docker_call in a Toil pipeline to index a FASTA file with SAMtools:
         def toil_job(job):
             work_dir = job.fileStore.getLocalTempDir()
@@ -102,8 +105,7 @@ def _docker(job,
            docker_call.STOP (1) will attempt to stop the container with `docker stop` (useful for
            debugging).
            docker_call.RM (2) will stop the container and then forcefully remove it from the system
-           using `docker rm -f`.
-           The default value is None and that shadows docker_call.FORGO, unless --rm is being passed in.
+           using `docker rm -f`. This is the default behavior if defer is set to None.
     """
     if parameters is None:
         parameters = []
