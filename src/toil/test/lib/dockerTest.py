@@ -1,12 +1,11 @@
 import logging
-import os
 import signal
 import time
 import uuid
 from threading import Thread
 
+import os
 from bd2k.util.files import mkdir_p
-
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.docker import dockerCall, _containerIsRunning, _dockerKill, _docker
@@ -30,14 +29,15 @@ class DockerTest(ToilTest):
     """
     def setUp(self):
         self.tempDir = self._createTempDir(purpose='tempDir')
-        
+
     def testDockerClean(self):
         """
         Run the test container that creates a file in the work dir, and sleeps for 5 minutes.  Ensure
         that the calling job gets SIGKILLed after a minute, leaving behind the spooky/ghost/zombie
         container. Ensure that the container is killed on batch system shutdown (through the defer
         mechanism).
-        This inherently also tests dockerCall
+        This inherently also tests _docker
+        :returns: None
         """
         # We need to test the behaviour of `defer` with `rm` and `detached`. We do not look at the case
         # where `rm` and `detached` are both True.  This is the truth table for the different
@@ -65,7 +65,7 @@ class DockerTest(ToilTest):
                     # Not using base64 logic here since it might create a name starting with a `-`.
                     container_name = uuid.uuid4().hex
                     print rm, detached, defer
-                    A = Job.wrapJobFn(self._testDockerCleanFn, data_dir, detached, rm, defer,
+                    A = Job.wrapJobFn(_testDockerCleanFn, data_dir, detached, rm, defer,
                                       container_name)
                     try:
                         Job.Runner.startToil(A, options)
@@ -94,35 +94,36 @@ class DockerTest(ToilTest):
                         _dockerKill(container_name, _docker.RM)
                         os.remove(test_file)
 
-    def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
-        """
-        Test function for test docker_clean.  Runs a container with given flags and then dies leaving
-        behind a zombie container
-        :param toil.job.Job job: job
-        :param workDir: See `work_dir=` in :func:`dockerCall`
-        :param bool rm: See `rm=` in :func:`dockerCall`
-        :param bool detached: See `detached=` in :func:`dockerCall`
-        :param int defer: See `defer=` in :func:`dockerCall`
-        :param str containerName: See `container_name=` in :func:`dockerCall`
-        :return:
-        """
-        dockerParameters = ['--log-driver=none', '-v', os.path.abspath(workDir) + ':/data',
-                            '--name', containerName]
-        if detached:
-            dockerParameters.append('-d')
-        if rm:
-            dockerParameters.append('--rm')
 
-        def killSelf():
-            test_file = os.path.join(workDir, 'test.txt')
-            # This will kill the worker once we are sure the docker container started
-            while not os.path.exists(test_file):
-                _log.debug('Waiting on the file created by spooky_container.')
-                time.sleep(1)
-            # By the time we reach here, we are sure the container is running.
-            os.kill(os.getpid(), signal.SIGKILL)  # signal.SIGINT)
-        t = Thread(target=killSelf)
-        # Make it a daemon thread so that thread failure doesn't hang tests.
-        t.daemon = True
-        t.start()
-        dockerCall(job, tool='quay.io/ucsc_cgl/spooky_test', workDir=workDir, defer=defer)
+def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
+    """
+    Test function for test docker_clean.  Runs a container with given flags and then dies leaving
+    behind a zombie container
+    :param toil.job.Job job: job
+    :param workDir: See `work_dir=` in :func:`dockerCall`
+    :param bool rm: See `rm=` in :func:`dockerCall`
+    :param bool detached: See `detached=` in :func:`dockerCall`
+    :param int defer: See `defer=` in :func:`dockerCall`
+    :param str containerName: See `container_name=` in :func:`dockerCall`
+    :return:
+    """
+    dockerParameters = ['--log-driver=none', '-v', os.path.abspath(workDir) + ':/data',
+                        '--name', containerName]
+    if detached:
+        dockerParameters.append('-d')
+    if rm:
+        dockerParameters.append('--rm')
+
+    def killSelf():
+        test_file = os.path.join(workDir, 'test.txt')
+        # This will kill the worker once we are sure the docker container started
+        while not os.path.exists(test_file):
+            _log.debug('Waiting on the file created by spooky_container.')
+            time.sleep(1)
+        # By the time we reach here, we are sure the container is running.
+        os.kill(os.getpid(), signal.SIGKILL)  # signal.SIGINT)
+    t = Thread(target=killSelf)
+    # Make it a daemon thread so that thread failure doesn't hang tests.
+    t.daemon = True
+    t.start()
+    dockerCall(job, tool='quay.io/ucsc_cgl/spooky_test', workDir=workDir, defer=defer, dockerParameters=dockerParameters)

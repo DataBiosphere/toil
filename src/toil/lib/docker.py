@@ -1,8 +1,8 @@
 import base64
 import logging
-import os
 import subprocess
 
+import os
 from bd2k.util.exceptions import require
 
 _logger = logging.getLogger(__name__)
@@ -126,10 +126,13 @@ def _docker(job,
 
     # Get container name which is needed for _dockerKill
     try:
-        if any('--name=' in x for x in baseDockerCall):
-            containerName = [x.split('=')[1] for x in baseDockerCall if '--name=' in x][0]
+        if any('--name' in x for x in baseDockerCall):
+            if any('--name=' in x for x in baseDockerCall):
+                containerName = [x.split('=')[1] for x in baseDockerCall if '--name' in x][0]
+            else:
+                containerName = baseDockerCall[baseDockerCall.index('--name') + 1]
         else:
-            containerName = baseDockerCall[baseDockerCall.index('--name') + 1]
+            containerName = _getContainerName(job)
     except ValueError:
         containerName = _getContainerName(job)
         baseDockerCall.extend(['--name', containerName])
@@ -141,14 +144,15 @@ def _docker(job,
         defer = _docker.RM
     if '--rm' in baseDockerCall and defer is not _docker.RM:
         _logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
+        defer = _docker.RM
     job.defer(_dockerKill, containerName, action=defer)
     # Defer the permission fixing function which will run after this job concludes.
     # We call this explicitly later on in this function, but we defer it as well to handle unexpected job failure.
-    job.defer(_fixPermissions, baseDockerCall, tool, workDir)
+    job.defer(_fixPermissions, tool, workDir)
 
     # Make subprocess call
     call = baseDockerCall + [tool] + parameters
-    job.fileStore.logToMaster("Calling docker with " + repr(call))
+    _logger.info("Calling docker with " + repr(call))
 
     if outfile:
         subprocess.check_call(call, stdout=outfile)
@@ -167,7 +171,6 @@ _docker.RM = 2
 def _dockerKill(containerName, action):
     """
     Kills the specified container.
-
     :param str containerName: The name of the container created by docker_call
     :param int action: What action should be taken on the container?  See `defer=` in
            :func:`docker_call`
@@ -177,20 +180,21 @@ def _dockerKill(containerName, action):
         # This means that the container doesn't exist.  We will see this if the container was run
         # with --rm and has already exited before this call.
         _logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
-                    'do.', containerName)
+                  'do.', containerName)
     else:
         if action in (None, _docker.FORGO):
             _logger.info('The container with name %s continues to exist as we were asked to forgo a '
-                         'post-job action on it.', containerName)
+                      'post-job action on it.', containerName)
+            return
         else:
             _logger.info('The container with name %s exists. Running user-specified defer functions.',
                          containerName)
-            if running and (action == _docker.STOP or action == _docker.RM):
+            if running and action >= _docker.STOP:
                 _logger.info('Stopping container "%s".', containerName)
                 subprocess.check_call(['docker', 'stop', containerName])
             else:
                 _logger.info('The container "%s" was not found to be running.', containerName)
-            if action == _docker.RM:
+            if action >= _docker.RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
                 running = _containerIsRunning(containerName)
@@ -199,13 +203,13 @@ def _dockerKill(containerName, action):
                     try:
                         subprocess.check_call(['docker', 'rm', '-f', containerName])
                     except subprocess.CalledProcessError:
-                        _logger.exception("'docker rm' failed: " + str(containerName))
+                        _logger.exception("'docker rm' failed.")
                 else:
-                    _logger.warn('The container "%s" was not found on the system.  Nothing to remove.',
+                    _logger.info('The container "%s" was not found on the system.  Nothing to remove.',
                                  containerName)
 
 
-def _fixPermissions(baseDockerCall, tool, workDir):
+def _fixPermissions(tool, workDir):
     """
     Fix permission of a mounted Docker directory by reusing the tool to change ownership.
     Docker natively runs as a root inside the container, and files written to the
@@ -215,9 +219,8 @@ def _fixPermissions(baseDockerCall, tool, workDir):
     :param str tool: Name of tool
     :param str workDir: Path of work directory to recursively chown
     """
-    baseDockerCall.append('--entrypoint=chown')
-    # We don't need the cleanup container to persist.
-    baseDockerCall.append('--rm')
+    baseDockerCall = ['docker', 'run', '--log-driver=none',
+                      '-v', os.path.abspath(workDir) + ':/data', '--rm', '--entrypoint=chown']
     stat = os.stat(workDir)
     command = baseDockerCall + [tool] + ['-R', '{}:{}'.format(stat.st_uid, stat.st_gid), '/data']
     subprocess.check_call(command)
@@ -226,13 +229,12 @@ def _fixPermissions(baseDockerCall, tool, workDir):
 def _getContainerName(job):
     return '--'.join([str(job),
                       job.fileStore.jobID,
-                      base64.b64encode(os.urandom(9), '-_')])
+                      base64.b64encode(os.urandom(9), '-_')]).replace("'", '').replace('_', '')
 
 
 def _containerIsRunning(container_name):
     """
     Checks whether the container is running or not.
-
     :param container_name: Name of the container being checked.
     :returns: True if running, False if not running, None if the container doesn't exist.
     :rtype: bool
@@ -243,7 +245,7 @@ def _containerIsRunning(container_name):
     except subprocess.CalledProcessError:
         # This will be raised if the container didn't exist.
         _logger.debug("'docker inspect' failed. Assuming container %s doesn't exist.", container_name,
-                      exc_info=True)
+                   exc_info=True)
         return None
     if output == 'true':
         return True
