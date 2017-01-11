@@ -183,13 +183,13 @@ class Worker(Thread):
         sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
 
         if self.boss.environment:
-            comma = ''
-            ex = '--export='
+            argList = []
+            
             for k, v in self.boss.environment.iteritems():
                 quoted_value = quote(os.environ[k] if v is None else v)
-                ex = ex + ('{}{}={}'.format(comma, k, quoted_value))
-                comma = ','
-            sbatch_line.append(ex)
+                argList.append('{}={}'.format(k, quoted_value))
+                
+            sbatch_line.append('--export=' + ','.join(argList))
 
         if mem is not None:
             # memory passed in is in bytes, but slurm expects megabytes
@@ -280,9 +280,15 @@ class Worker(Thread):
         for line in process.stdout:
             values = line.strip().split()
 
+            # If job information is not available an error is issued:
+            # slurm_load_jobs error: Invalid job id specified
+            # There is job information, so exit.
             if len(values)>0 and values[0] == 'slurm_load_jobs':
                 return None
-
+            
+            # Output is in the form of many key=value pairs, multiple pairs on each line
+            # and multiple lines in the output. Each pair is pulled out of each line and
+            # added to a dictionary
             for v in values:
                 bits = v.split('=')
                 job[bits[0]] = bits[1]
