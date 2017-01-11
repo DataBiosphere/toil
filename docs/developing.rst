@@ -596,30 +596,24 @@ Example::
 
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
-.. _service-dev-ref:
-
 
 Using Docker containers in Toil
 -------------------------------
 
 Docker containers are commonly used with Toil to maintain the portability of
-workflows. In order to use Docker containers with Toil, Docker must be installed
-on all workers of  cluster in order to run a workflow involving Docker containers.
+workflows. The combination of Toil and Docker allows for pipelines to be fully portable
+between any platform that has both Toil and Docker installed. Docker eliminates the need for
+the user to do any other tool installation or environment setup.
+
+In order to use Docker containers with Toil, Docker must be installed
+on all workers of the cluster in order to run a workflow involving Docker containers.
 Instructions for installing Docker can be found on the `Docker`_ website.
 
 .. _Docker: https://docs.docker.com/engine/getstarted/step_one/
 
 When using Toil-based autoscaling, Docker will be automatically set up on the cluster,
 so no additional installation steps are necessary. Further information on using
-autoscaling can be found `here`_.
-
-.. _here: https://github.com/BD2KGenomics/toil/blob/master/docs/running.rst
-
-`cgl-docker-lib`_ contains Toil-compatible Dockerized tools that are commonly
-used in bioinformatics analysis, as well as documentation on how to develop
-your own Toil-compatible Docker containers.
-
-.. _cgl-docker-lib: https://github.com/BD2KGenomics/cgl-docker-lib/blob/master/README.md
+autoscaling can be found in the `Toil autoscaling documentation <Autoscaling>`.
 
 In order to use docker containers in a Toil workflow, the container can be built locally or
 downloaded in real time from an online docker repository like Quay_. If the container is local,
@@ -627,29 +621,56 @@ it must be built on each node of the cluster.
 
 .. _Quay: quay.io
 
-When invoking docker containers from within a Toil workflow, it is recommended that you use
-``docker_call``, a toil job function provided in ``toil.lib.docker``. ``docker_call``
+When invoking docker containers from within a Toil workflow, it is strongly recommended that you use
+:func:`dockerCall`, a toil job function provided in ``toil.lib.docker``. ``dockerCall``
 provides a layer of abstraction over using the ``subprocess`` module to call Docker directly,
 and simplifies and streamlines the development process by providing container cleanup on job failure.
 
-In order to use ``docker_call``, your installation of Docker must be set up to run
+In order to use ``dockerCall``, your installation of Docker must be set up to run
 without ``sudo``. Instructions for setting this up can be found here_.
 
 .. _here: https://docs.docker.com/engine/installation/linux/ubuntulinux/#/create-a-docker-group
 
-``docker_call`` takes the full name of the dockerized tool, such as ``quay.io/ucsc_cgl/samtools``,
-parameters to be passed to the tool (``parameters``), environment variables to be set inside the
-container (``env``), and parameters to be passed to docker (``docker_parameters``). In addition,
-docker_call has several input variables specifying how the container should be run, including
-whether it should be run detached, if directories should be mounted to it, and what should happen
-to the container upon job completion. Docker's output can be returned by docker call or directed
-into a file. An example of a basic ``docker_call`` is below:
+An example of a basic ``dockerCall`` is below:
 
-    docker_call(job=job,
+    dockerCall(job=job,
                 tool='quay.io/ucsc_cgl/bwa',
                 work_dir=job.fileStore.getLocalTempDir(),
                 parameters=['index', '/data/reference.fa'])
 
+``dockerCall`` can also be added to workflows like any other job function:
+
+     from toil.job import Job
+ 
+     align = Job.wrapJobFn(dockerCall,
+                           tool='quay.io/ucsc_cgl/bwa',
+                           work_dir=job.fileStore.getLocalTempDir(),
+                           parameters=['index', '/data/reference.fa']))
+
+     if __name__=="__main__":
+         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+         options.logLevel = "INFO"
+         Job.Runner.startToil(align, options)
+
+`cgl-docker-lib`_ contains ``dockerCall``-compatible Dockerized tools that are commonly
+used in bioinformatics analysis. 
+
+.. _cgl-docker-lib: https://github.com/BD2KGenomics/cgl-docker-lib/blob/master/README.md
+
+The documentation provides guidelines for developing your own Docker containers that can
+be used with Toil and ``dockerCall``. In order for a container to be compatible with
+``dockerCall``, it must have an ``ENTRYPOINT`` set to a wrapper script, as described
+in cgl-docker-lib containerization standards, such that the container can be run directly
+with Docker as:
+
+    $ docker run <docker parameters> <tool name> <tool parameters>
+
+For example:
+
+    $ docker run -d quay.io/ucsc-cgl/bwa -s -o /data/aligned /data/ref.fa'
+
+
+.. _service-dev-ref:
 
 Services
 --------
