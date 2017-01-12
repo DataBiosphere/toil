@@ -194,10 +194,7 @@ def _dockerKill(containerName, action):
                 running = _containerIsRunning(containerName)
                 if running is not None:
                     _logger.info('Removing container "%s".', containerName)
-                    try:
-                        subprocess.check_call(['docker', 'rm', '-f', containerName])
-                    except subprocess.CalledProcessError:
-                        _logger.exception("'docker rm' failed.")
+                    subprocess.check_call(['docker', 'rm', '-f', containerName])
                 else:
                     _logger.info('The container "%s" was not found on the system.  Nothing to remove.',
                                  containerName)
