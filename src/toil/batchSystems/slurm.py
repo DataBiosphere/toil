@@ -282,7 +282,7 @@ class Worker(Thread):
 
             # If job information is not available an error is issued:
             # slurm_load_jobs error: Invalid job id specified
-            # There is job information, so exit.
+            # There is no job information, so exit.
             if len(values)>0 and values[0] == 'slurm_load_jobs':
                 return None
             
