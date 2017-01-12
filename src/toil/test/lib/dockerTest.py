@@ -8,7 +8,7 @@ import os
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import dockerCall, _containerIsRunning, _dockerKill, _docker
+from toil.lib.docker import dockerCall, _containerIsRunning, _dockerKill, STOP, FORGO, RM
 from toil.test import ToilTest
 
 _log = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class DockerTest(ToilTest):
             for detached in (True, False):
                 if detached and rm:
                     continue
-                for defer in (_docker.FORGO, _docker.STOP, _docker.RM, None):
+                for defer in (FORGO, STOP, RM, None):
                     # Not using base64 logic here since it might create a name starting with a `-`.
                     container_name = uuid.uuid4().hex
                     print rm, detached, defer
@@ -77,11 +77,11 @@ class DockerTest(ToilTest):
                         file_stats = os.stat(test_file)
                         assert file_stats.st_gid != 0
                         assert file_stats.st_uid != 0
-                        if (rm and defer != _docker.FORGO) or defer == _docker.RM:
+                        if (rm and defer != FORGO) or defer == RM:
                             # These containers should not exist
                             assert _containerIsRunning(container_name) is None, \
                                 'Container was not removed.'
-                        elif defer == _docker.STOP:
+                        elif defer == STOP:
                             # These containers should exist but be non-running
                             assert _containerIsRunning(container_name) == False, \
                                 'Container was not stopped.'
@@ -91,7 +91,7 @@ class DockerTest(ToilTest):
                                 'Container was not running.'
                     finally:
                         # Prepare for the next test.
-                        _dockerKill(container_name, _docker.RM)
+                        _dockerKill(container_name, RM)
                         os.remove(test_file)
 
 
