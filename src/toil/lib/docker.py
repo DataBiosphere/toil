@@ -243,4 +243,4 @@ def _containerIsRunning(container_name):
     elif output == 'false':
         return False
     else:
-        raise AssertionError("Got unexpected value for State.Running (%s)" % output)
+        raise RuntimeError("Got unexpected value for State.Running (%s)" % output)
