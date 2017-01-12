@@ -16,7 +16,10 @@ import json
 import os
 import subprocess
 import re
-import StringIO
+
+# Python 3 compatibility imports
+from six.moves import StringIO
+from six import u as unicode
 
 from toil.test import ToilTest, needs_cwl
 
@@ -26,7 +29,7 @@ class CWLTest(ToilTest):
     def _tester(self, cwlfile, jobfile, outDir, expect):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
-        st = StringIO.StringIO()
+        st = StringIO()
         cwltoil.main(['--outdir', outDir,
                             os.path.join(rootDir, cwlfile),
                             os.path.join(rootDir, jobfile)],
@@ -88,7 +91,7 @@ class CWLTest(ToilTest):
             subprocess.call(["git", "fetch"], cwd=cwlSpec)
         else:
             subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
-        subprocess.check_call(["git", "checkout", "1d5714dc434ffd6ac45ec64f1535475fa163be09"], cwd=cwlSpec)
+        subprocess.check_call(["git", "checkout", "87d982f7793fe08d4f4af5555d551c272eaa809c"], cwd=cwlSpec)
         subprocess.check_call(["git", "clean", "-f", "-x", "."], cwd=cwlSpec)
         try:
             subprocess.check_output(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,

@@ -33,6 +33,8 @@ import signal
 import time
 import unittest
 
+# Python 3 compatibility imports
+from six.moves import xrange
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.

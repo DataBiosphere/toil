@@ -4,6 +4,8 @@ import pkg_resources
 import os
 import sys
 
+# Python 3 compatibility imports
+from six import iteritems, iterkeys
 
 def main():
     modules = loadModules()
@@ -34,8 +36,8 @@ def main():
 def loadModules():
     # noinspection PyUnresolvedReferences
     from toil.utils import toilKill, toilStats, toilStatus, toilClean, toilLaunchCluster, toilDestroyCluster, toilSSHCluster, toilRsyncCluster
-    commandMapping = {name[4:].lower(): module for name, module in locals().iteritems()}
-    commandMapping = {name[:-7]+'-'+name[-7:] if name.endswith('cluster') else name: module for name, module in commandMapping.iteritems()}
+    commandMapping = {name[4:].lower(): module for name, module in iteritems(locals())}
+    commandMapping = {name[:-7]+'-'+name[-7:] if name.endswith('cluster') else name: module for name, module in iteritems(commandMapping)}
     return commandMapping
 
 def printHelp(modules):
@@ -46,5 +48,5 @@ def printHelp(modules):
              "where COMMAND is one of the following:\n\n{descriptions}\n\n")
     print(usage.format(
         name=os.path.basename(sys.argv[0]),
-        commands='|'.join(modules.iterkeys()),
-        descriptions='\n'.join("%s - %s" % (n, m.__doc__.strip()) for n, m in modules.iteritems())))
+        commands='|'.join(iterkeys(modules)),
+        descriptions='\n'.join("%s - %s" % (n, m.__doc__.strip()) for n, m in iteritems(modules))))

@@ -22,7 +22,11 @@ import time
 import math
 from threading import Thread
 from threading import Lock, Condition
-from Queue import Queue, Empty
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
+from six.moves import xrange
+from six import iteritems
 
 import toil
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
@@ -120,33 +124,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.workerThreads.append(worker)
             worker.start()
 
-    def _getDebugCmd(self, jobCommand):
-        """Calculate useful debugging command line, handling CWL runs.
-
-        Tries to print out underlying CWL base command being run if possible,
-        otherwise defaulting to the toil jobCommand.
-        """
-        debug_cmd = jobCommand
-        cmd_args = jobCommand.split()
-        if len(cmd_args) == 3 and cmd_args[0] == "_toil_worker":
-            _, job_store_locator, job_store_id = cmd_args
-            if job_store_locator.startswith("file:") or os.path.exists(job_store_locator):
-                import cPickle
-                import marshal as pickler
-                job_store_locator = job_store_locator.replace("file:", "")
-                job_cmd_file = os.path.join(job_store_locator, "tmp", job_store_id, "job")
-                with open(job_cmd_file) as in_handle:
-                    job = pickler.load(in_handle)
-                if job.get("command"):
-                    command_parts = job["command"].split()
-                    input_pickle_file = os.path.join(job_store_locator, "tmp", command_parts[1])
-                    with open(input_pickle_file) as in_handle:
-                        input = cPickle.load(in_handle)
-                    if (hasattr(input, "cwltool") and hasattr(input.cwltool, "tool")
-                            and "baseCommand" in input.cwltool.tool):
-                        debug_cmd = " ".join(input.cwltool.tool["baseCommand"])
-        return debug_cmd
-
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
 
@@ -168,7 +145,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                   jobCores)
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
-                                log.debug("Executing command: '%s'.", self._getDebugCmd(jobCommand))
                                 startTime = time.time() #Time job is started
                                 with self.popenLock:
                                     popen = subprocess.Popen(jobCommand,
@@ -255,7 +231,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getRunningBatchJobIDs(self):
         now = time.time()
-        return {jobID: now - info.time for jobID, info in self.runningJobs.iteritems()}
+        return {jobID: now - info.time for jobID, info in iteritems(self.runningJobs)}
 
     def shutdown(self):
         """

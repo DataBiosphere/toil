@@ -212,7 +212,7 @@ class ResourceTest(ToilTest):
         shebang = '#! %s\n' % sys.executable
         with tempFileContaining(shebang + scriptBody) as scriptPath:
             self.assertFalse(scriptPath.endswith(('.py', '.pyc')))
-            os.chmod(scriptPath, 0755)
+            os.chmod(scriptPath, 0o755)
             jobStorePath = scriptPath + '.jobStore'
             process = Popen([scriptPath, jobStorePath], stderr=PIPE)
             stdout, stderr = process.communicate()

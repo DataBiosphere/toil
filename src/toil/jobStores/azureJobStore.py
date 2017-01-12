@@ -15,18 +15,20 @@
 from __future__ import absolute_import
 
 import bz2
-import cPickle
-import httplib
 import inspect
 import logging
 import os
 import re
 import socket
 import uuid
-from ConfigParser import RawConfigParser, NoOptionError
 from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+from six.moves.http_client import HTTPException
+from six.moves.configparser import RawConfigParser, NoOptionError
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy
@@ -795,7 +797,7 @@ def defaultRetryPredicate(exception):
     True
     >>> defaultRetryPredicate(socket.gaierror())
     True
-    >>> defaultRetryPredicate(httplib.HTTPException())
+    >>> defaultRetryPredicate(HTTPException())
     True
     >>> defaultRetryPredicate(requests.ConnectionError())
     True
@@ -812,7 +814,7 @@ def defaultRetryPredicate(exception):
     """
     return (isinstance(exception, (socket.error,
                                    socket.gaierror,
-                                   httplib.HTTPException,
+                                   HTTPException,
                                    requests.ConnectionError))
             or isinstance(exception, AzureException) and
             any(message in str(exception).lower() for message in (

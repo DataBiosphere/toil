@@ -34,7 +34,8 @@ class JobGraph(JobNode):
                  errorJobStoreID=None,
                  logJobStoreFileID=None,
                  checkpoint=None,
-                 checkpointFilesToDelete=None):
+                 checkpointFilesToDelete=None,
+                 chainedJobs=None):
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
         super(JobGraph, self).__init__(command=command,
@@ -89,6 +90,10 @@ class JobGraph(JobNode):
         
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = checkpointFilesToDelete
+
+        # Names of jobs that were run as part of this job's invocation, starting with
+        # this job
+        self.chainedJobs = chainedJobs
 
     def setupJobAfterFailure(self, config):
         """

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import os
 import sys
 import copy
@@ -24,9 +24,12 @@ import traceback
 import time
 import socket
 import logging
-import cPickle
 import shutil
 from threading import Thread
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
@@ -36,7 +39,6 @@ import signal
 logger = logging.getLogger( __name__ )
 
 
-logFileByteReportLimit = 50000
 
 
 def nextOpenDescriptor():
@@ -90,6 +92,9 @@ def main():
     
     jobStoreLocator = sys.argv[1]
     jobStoreID = sys.argv[2]
+    # we really want a list of job names but the ID will suffice if the job graph can't
+    # be loaded. If we can discover the name, we will replace this initial entry
+    listOfJobs = [jobStoreID]
     
     ##########################################
     #Load the jobStore/config file
@@ -101,6 +106,8 @@ def main():
     ##########################################
     #Create the worker killer, if requested
     ##########################################
+
+    logFileByteReportLimit = config.maxLogFileSize
 
     if config.badWorker > 0 and random.random() < config.badWorker:
         def badWorker():
@@ -145,7 +152,7 @@ def main():
         
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
-    os.chmod(localWorkerTempDir, 0755)
+    os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################
     #Setup the logging
@@ -186,13 +193,6 @@ def main():
     #Close the descriptor we used to open the file
     os.close(logFh)
 
-    for handler in list(logger.handlers): #Remove old handlers
-        logger.removeHandler(handler)
-    
-    #Add the new handler. The sys.stderr stream has been redirected by swapping
-    #the file descriptor out from under it.
-    logger.addHandler(logging.StreamHandler(sys.stderr))
-
     debugging = logging.getLogger().isEnabledFor(logging.DEBUG)
     ##########################################
     #Worker log file trapped from here on in
@@ -207,7 +207,7 @@ def main():
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        print "---TOIL WORKER OUTPUT LOG---"
+        print("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         #Log the number of open file descriptors so we can tell if we're leaking
@@ -215,13 +215,14 @@ def main():
         logger.debug("Next available file descriptor: {}".format(
             nextOpenDescriptor()))
 
-        logProcessContext(config, logger)
+        logProcessContext(config)
 
         ##########################################
         #Load the jobGraph
         ##########################################
         
         jobGraph = jobStore.load(jobStoreID)
+        listOfJobs[0] = str(jobGraph)
         logger.debug("Parsed jobGraph")
         
         ##########################################
@@ -389,6 +390,9 @@ def main():
             # Load the successor jobGraph
             successorJobGraph = jobStore.load(successorJobNode.jobStoreID)
 
+            # add the successor to the list of jobs run
+            listOfJobs.append(str(successorJobGraph))
+
             # Somewhat ugly, but check if job is a checkpoint job and quit if
             # so
             if successorJobGraph.command.startswith( "_toil " ):
@@ -422,10 +426,14 @@ def main():
             assert successorJobGraph.predecessorNumber == 1
             assert successorJobGraph.command is not None
             assert successorJobGraph.jobStoreID == successorJobNode.jobStoreID
-            
+
             #Transplant the command and stack to the current jobGraph
             jobGraph.command = successorJobGraph.command
             jobGraph.stack += successorJobGraph.stack
+            # include some attributes for better identification of chained jobs in
+            # logging output
+            jobGraph.unitName = successorJobGraph.unitName
+            jobGraph.jobName = successorJobGraph.jobName
             assert jobGraph.memory >= successorJobGraph.memory
             assert jobGraph.cores >= successorJobGraph.cores
             
@@ -435,7 +443,7 @@ def main():
 
             #Update blockFn
             blockFn = fileStore._blockFn
-            
+
             #Add successorJobGraph to those to be deleted
             fileStore.jobsToDelete.add(successorJobGraph.jobStoreID)
             
@@ -496,39 +504,47 @@ def main():
     #Flush at the OS level
     os.fsync(1)
     os.fsync(2)
-    
+
     #Close redirected stdout and replace with the original standard output.
     os.dup2(origStdOut, 1)
-    
+
     #Close redirected stderr and replace with the original standard error.
     os.dup2(origStdErr, 2)
-    
+
     #sys.stdout and sys.stderr don't need to be modified at all. We don't need
     #to call redirectLoggerStreamHandlers since they still log to sys.stderr
-    
+
     #Close our extra handles to the original standard output and standard error
     #streams, so we don't leak file handles.
     os.close(origStdOut)
     os.close(origStdErr)
-    
+
     #Now our file handles are in exactly the state they were in before.
-    
+
     #Copy back the log file to the global dir, if needed
     if workerFailed:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
+        jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "r") as f:
-                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
-                    f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
+                    if logFileByteReportLimit > 0:
+                        f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                    elif logFileByteReportLimit < 0:
+                        f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
                 w.write(f.read())
         jobStore.update(jobGraph)
 
     elif debugging:  # write log messages
         with open(tempWorkerLogPath, 'r') as logFile:
-            if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit:
-                logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+            if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
+                if logFileByteReportLimit > 0:
+                    logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                elif logFileByteReportLimit < 0:
+                    logFile.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
             logMessages = logFile.read().splitlines()
-        statsDict.logs = [Expando(jobStoreID=jobStoreID, text=logMessage) for logMessage in logMessages]
+        statsDict.logs.names = listOfJobs
+        statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not workerFailed:  # We have stats/logging to report back
         jobStore.writeStatsAndLogging(json.dumps(statsDict))

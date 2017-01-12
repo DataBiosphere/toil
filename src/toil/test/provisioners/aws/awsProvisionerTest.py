@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import pipes
 import subprocess
 
@@ -32,6 +33,11 @@ class AWSProvisionerTest(ToilTest):
     def sshUtil(self, command):
         baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
         callCommand = baseCommand + command
+        subprocess.check_call(callCommand)
+
+    def rsyncUtil(self, src, dest):
+        baseCommand = ['toil', 'rsync-cluster', '-p=aws', self.clusterName]
+        callCommand = baseCommand + [src, dest]
         subprocess.check_call(callCommand)
 
     def destroyClusterUtil(self):
@@ -55,9 +61,16 @@ class AWSProvisionerTest(ToilTest):
 
     def setUp(self):
         super(AWSProvisionerTest, self).setUp()
+        self.sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
+        with open(self.sseKeyFile, 'w') as f:
+            f.write('01234567890123456789012345678901')
         self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
+        try:
+            os.unlink(self.sseKeyFile)
+        except:
+            pass
         self.destroyClusterUtil()
 
     def getMatchingRoles(self, clusterName):
@@ -89,24 +102,30 @@ class AWSProvisionerTest(ToilTest):
         install_command = ['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts]
         self.sshUtil(install_command)
 
+        self.rsyncUtil(self.sseKeyFile, ':/home/keyFile')
+
         toilOptions = ['--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
                        '--mesosMaster=%s:5050' % leader.private_ip_address,
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/home/']
+                       '--clusterStats=/home/',
+                       '--logDebug',
+                       '--provisioner=aws',
+                       '--sseKey=/home/keyFile']
 
-        toilOptions.extend(['--provisioner=aws',
-                            '--nodeType=' + self.instanceType,
-                            '--maxNodes=%s' % self.numWorkers,
-                            '--logDebug'])
         if spotInstances:
             toilOptions.extend([
                 '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),
                 # The RNASeq pipeline does not specify a preemptability requirement so we
                 # need to specify a default, otherwise jobs would never get scheduled.
                 '--defaultPreemptable',
-                '--maxPreemptableNodes=%s' % self.numWorkers])
+                '--maxPreemptableNodes=%s' % self.numWorkers,
+                # default is 10 otherwise
+                '--maxNodes=0'])
+        else:
+            toilOptions.extend(['--nodeType=' + self.instanceType,
+                                '--maxNodes=%s' % self.numWorkers])
 
         toilOptions = ' '.join(toilOptions)
 

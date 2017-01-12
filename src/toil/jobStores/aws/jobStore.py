@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 
-from StringIO import StringIO
 from contextlib import contextmanager, closing
 import logging
 from multiprocessing import cpu_count
@@ -22,11 +21,13 @@ from multiprocessing import cpu_count
 import os
 import re
 import uuid
-import cPickle
 import base64
 import hashlib
 import itertools
-import repr as reprlib
+
+# Python 3 compatibility imports
+from six.moves import xrange, cPickle, StringIO, reprlib
+from six import iteritems
 
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
@@ -1134,7 +1135,7 @@ class AWSJobStore(AbstractJobStore):
                     srcKey.version_id = self.version
                     with attempt:
                         headers = {k.replace('amz-', 'amz-copy-source-', 1): v
-                                   for k, v in self._s3EncryptionHeaders().iteritems()}
+                                   for k, v in iteritems(self._s3EncryptionHeaders())}
                         self._copyKey(srcKey=srcKey,
                                       dstBucketName=dstKey.bucket.name,
                                       dstKeyName=dstKey.name,

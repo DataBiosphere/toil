@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
 import os
 import textwrap
 
@@ -26,8 +27,10 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'libssl-dev',
                          'wget',
                          'curl',
+                         'openssh-server',
                          'mesos=1.0.0-2.0.89.ubuntu1404',
-                         'rsync'])
+                         'rsync',
+                         'screen'])
 
 
 def heredoc(s):
@@ -52,7 +55,7 @@ motd = heredoc('''
 # Prepare motd to be echoed in the Dockerfile using a RUN statement that uses bash's print
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
-print heredoc('''
+print(heredoc('''
     FROM ubuntu:14.04
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
@@ -61,6 +64,13 @@ print heredoc('''
         && apt-get -y update \
         && apt-get -y install {dependencies} \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    RUN mkdir /root/.ssh && \
+        chmod 700 /root/.ssh
+
+    ADD waitForKey.sh /usr/bin/waitForKey.sh
+
+    RUN chmod 777 /usr/bin/waitForKey.sh
 
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==8.1.2
@@ -76,7 +86,7 @@ print heredoc('''
     # Install statically linked version of docker client
     RUN wget -O /usr/bin/docker https://get.docker.com/builds/Linux/x86_64/docker-1.10.3 \
         && chmod +x /usr/bin/docker
-    
+
     # Fix for Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
 
@@ -85,6 +95,9 @@ print heredoc('''
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
+
+    # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
+    ENV TERM linux
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
@@ -101,4 +114,4 @@ print heredoc('''
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
-''')
+'''))

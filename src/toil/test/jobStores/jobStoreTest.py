@@ -14,24 +14,26 @@
 
 from __future__ import absolute_import
 
-import SocketServer
 import hashlib
 import logging
 import threading
-import SimpleHTTPServer
 import os
 import shutil
 import tempfile
 import time
-import urllib2
-import urlparse
 import uuid
 from stubserver import FTPStubServer
-from Queue import Queue
 from abc import abstractmethod, ABCMeta
 from itertools import chain, islice, count
 from threading import Thread
 from unittest import skip
+
+# Python 3 compatibility imports
+from six.moves.queue import Queue
+from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer
+from six import iteritems
+import six.moves.urllib.parse as urlparse
+from six.moves.urllib.request import urlopen, Request
 
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
@@ -404,7 +406,7 @@ class AbstractJobStoreTest:
 
         @classmethod
         def cleanUpExternalStores(cls):
-            for test, store in cls.externalStoreCache.iteritems():
+            for test, store in iteritems(cls.externalStoreCache):
                 logger.info('Cleaning up external store for %s.', test)
                 test._cleanUpExternalStore(store)
 
@@ -645,7 +647,7 @@ class AbstractJobStoreTest:
                 self.assertTrue(os.path.exists(path))
             else:
                 try:
-                    urllib2.urlopen(urllib2.Request(url))
+                    urlopen(Request(url))
                 except:
                     self.fail()
 
