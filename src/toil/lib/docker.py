@@ -33,7 +33,7 @@ def dockerCall(job,
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
-    :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
+    :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
     :param list[str] parameters: Command line arguments to be passed to the tool.
     :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
@@ -63,7 +63,7 @@ def dockerCheckOutput(job,
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
-    :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
+    :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
     :param list[str] parameters: Command line arguments to be passed to the tool.
     :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
