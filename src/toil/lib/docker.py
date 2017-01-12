@@ -1,3 +1,17 @@
+"""
+    Module for calling Docker. Assumes `docker` is on the PATH.
+
+    Contains two user-facing functions: dockerCall and dockerCheckOutput
+
+    Uses Toil's defer functionality to ensure containers are shutdown even in case of job or pipeline failure
+
+    Example of using dockerCall in a Toil pipeline to index a FASTA file with SAMtools:
+        def toil_job(job):
+            work_dir = job.fileStore.getLocalTempDir()
+            path = job.fileStore.readGlobalFile(ref_id, os.path.join(work_dir, 'ref.fasta')
+            parameters = ['faidx', path]
+            dockerCall(job, tool='quay.io/ucgc_cgl/samtools:latest', work_dir=work_dir, parameters=parameters)
+"""
 import base64
 import logging
 import subprocess
@@ -16,7 +30,6 @@ def dockerCall(job,
                outfile=None,
                defer=None):
     """
-    Wrapper call to Docker. See docstring for _docker()
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
     :param toil.Job.job job: The Job instance for the calling function.
@@ -46,7 +59,6 @@ def dockerCheckOutput(job,
                       dockerParameters=None,
                       defer=None):
     """
-    Wrapper call to Docker. See docstring for _docker()
     Returns the stdout from the Docker invocation (via subprocess.check_output)
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
 
@@ -80,17 +92,6 @@ def _docker(job,
             checkOutput=False,
             defer=None):
     """
-    Calls Docker for a particular tool with the specified parameters. Assumes `docker` is on the PATH.
-
-    Uses Toil's defer functionality to ensure containers are shutdown even in case of job or pipeline failure
-
-    Example of using docker_call in a Toil pipeline to index a FASTA file with SAMtools:
-        def toil_job(job):
-            work_dir = job.fileStore.getLocalTempDir()
-            path = job.fileStore.readGlobalFile(ref_id, os.path.join(work_dir, 'ref.fasta')
-            parameters = ['faidx', path]
-            docker_call(job, tool='quay.io/ucgc_cgl/samtools', work_dir=work_dir, parameters=parameters)
-
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
     :param list[str] parameters: Command line arguments to be passed to the tool.
