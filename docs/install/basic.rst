@@ -17,6 +17,8 @@ then Toil can be easily installed using pip_:
 
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
+.. _extras:
+
 Extras
 ------
 

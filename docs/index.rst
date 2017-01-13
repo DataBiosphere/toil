@@ -62,8 +62,15 @@ API and Architecture
    architecture
    batchSystem
    jobStore
-   contributors/install
-   contributors/guidelines
+
+Contributor's Guide
+~~~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 2
+
+   contributing/source
+   contributing/pull-requests
 
 Indices and tables
 ~~~~~~~~~~~~~~~~~~
