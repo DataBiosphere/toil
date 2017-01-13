@@ -41,7 +41,7 @@ from six.moves.queue import Empty, Queue
 from six.moves import xrange
 
 from bd2k.util.humanize import bytes2human
-from toil.common import cacheDirName, getDirSizeRecursively
+from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
 
@@ -475,6 +475,12 @@ class CachingFileStore(FileStore):
         # where the jobs don't exist.
         with self._CacheState.open(self) as cacheInfo:
             self.findAndHandleDeadJobs(cacheInfo)
+            # While we have a lock on the cache file, run a naive check to see if jobs on this node
+            # have greatly gone over their requested limits.
+            if cacheInfo.sigmaJob < 0:
+                logger.warning('Detecting that one or more jobs on this node have used more '
+                               'resources than requested.  Turn on debug logs to see more'
+                               'information on cache usage.')
         # Get the requirements for the job and clean the cache if necessary. cleanCache will
         # ensure that the requirements for this job are stored in the state file.
         jobReqs = job.disk
@@ -901,8 +907,7 @@ class CachingFileStore(FileStore):
         # node.
         self.setNlinkThreshold()
         # Get the free space on the device
-        diskStats = os.statvfs(tempCacheDir)
-        freeSpace = diskStats.f_frsize * diskStats.f_bavail
+        freeSpace, _ = getFileSystemSize(tempCacheDir)
         # Create the cache lock file.
         open(os.path.join(tempCacheDir, os.path.basename(self.cacheLockFile)), 'w').close()
         # Setup the cache state file
@@ -1124,24 +1129,28 @@ class CachingFileStore(FileStore):
             # Sort in descending order of mtime so the first items to be popped from the list
             # are the least recently created.
             deletableCacheFiles = sorted(deletableCacheFiles, key=lambda x: (-x[1], -x[2]))
-            logger.debug('CACHE: Need %s bytes for new job. Have %s' %
-                         (newJobReqs, cacheInfo.cached + cacheInfo.sigmaJob - newJobReqs))
+            logger.debug('CACHE: Need %s bytes for new job. Detecting an estimated %s (out of a '
+                         'total %s) bytes available for running the new job. The size of the cache '
+                         'is %s bytes.', newJobReqs,
+                         (cacheInfo.total - (cacheInfo.cached + cacheInfo.sigmaJob - newJobReqs)),
+                         cacheInfo.total, cacheInfo.cached)
             logger.debug('CACHE: Evicting files to make room for the new job.')
 
             # Now do the actual file removal
+            totalEvicted = 0
             while not cacheInfo.isBalanced() and len(deletableCacheFiles) > 0:
                 cachedFile, fileCreateTime, cachedFileSize = deletableCacheFiles.pop()
                 os.remove(cachedFile)
                 cacheInfo.cached -= cachedFileSize if self.nlinkThreshold != 2 else 0
+                totalEvicted += cachedFileSize
                 assert cacheInfo.cached >= 0
-                # self.logToMaster('CACHE: Evicted  file with ID \'%s\' (%s bytes)' %
-                #                  (self.decodedFileID(cachedFile), cachedFileSize))
                 logger.debug('CACHE: Evicted  file with ID \'%s\' (%s bytes)' %
                              (self.decodedFileID(cachedFile), cachedFileSize))
+            logger.debug('CACHE: Evicted a total of %s bytes. Available space is now %s bytes.',
+                         totalEvicted,
+                         (cacheInfo.total - (cacheInfo.cached + cacheInfo.sigmaJob - newJobReqs)))
             if not cacheInfo.isBalanced():
                 raise CacheUnbalancedError()
-            logger.debug('CACHE: After Evictions, ended up with %s.' %
-                         (cacheInfo.cached + cacheInfo.sigmaJob))
 
     def removeSingleCachedFile(self, fileStoreID):
         """
@@ -1592,6 +1601,10 @@ class NonCachingFileStore(FileStore):
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         self.findAndHandleDeadJobs(self.workFlowDir)
         self.jobStateFile = self._createJobStateFile()
+        freeSpace, diskSize = getFileSystemSize(self.localTempDir)
+        if freeSpace <= 0.1 * diskSize:
+            logger.warning('Starting job %s with less than 10%% of disk space remaining.',
+                           self.jobName)
         try:
             os.chdir(self.localTempDir)
             yield
@@ -1859,7 +1872,10 @@ class CacheUnbalancedError(CacheError):
     """
     Raised if file store can't free enough space for caching
     """
-    message = 'Unable unable to free enough space for caching'
+    message = 'Unable unable to free enough space for caching.  This error frequently arises due ' \
+              'to jobs using more disk than they have requested.  Turn on debug logging to see ' \
+              'more information leading up to this error through cache usage logs.'
+
     def __init__(self):
         super(CacheUnbalancedError, self).__init__(self.message)
 

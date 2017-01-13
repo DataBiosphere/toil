@@ -1092,3 +1092,18 @@ def getDirSizeRecursively(dirPath):
                 folderSize += fileStats.st_blocks * unixBlockSize
         totalSize += folderSize
     return totalSize
+
+
+def getFileSystemSize(dirPath):
+    """
+    Return the free space, and total size of the file system hosting `dirPath`.
+
+    :param str dirPath: A valid path to a directory.
+    :return: free space and total size of file system
+    :rtype: tuple
+    """
+    assert os.path.exists(dirPath)
+    diskStats = os.statvfs(dirPath)
+    freeSpace = diskStats.f_frsize * diskStats.f_bavail
+    diskSize = diskStats.f_frsize * diskStats.f_blocks
+    return freeSpace, diskSize
