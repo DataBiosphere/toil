@@ -80,7 +80,7 @@ Here's what each extra provides:
    ``easy_install -a <path_to_egg>``. Note that on Ubuntu Trusty you may need
    to upgrade ``protobuf`` via ``pip install --upgrade protobuf`` **before**
    running the above ``easy_install`` command.
-   
+
    If you intend to install Toil with the ``mesos`` extra into a virtualenv, be
    sure to create that virtualenv with
 
@@ -317,6 +317,11 @@ which contains Troubleshooting sections.
       cgcloud ssh toil-leader
 
 At this point, any Toil script can be run on the distributed AWS cluster following instructions in :ref:`runningAWS`.
+
+Finally, if you wish to tear down the cluster and remove all its data
+permanently, cgcloud allows you to do so without logging into the AWS web interface::
+
+      cgcloud terminate-cluster toil
 
 .. _installationAzure:
 
