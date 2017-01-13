@@ -80,33 +80,80 @@ def main():
         print('The root job of the job store is absent, the workflow completed successfully.',
               file=sys.stderr)
         sys.exit(0)
-    
-    toilState = ToilState(jobStore, rootJob )
 
-    # The first element of the toilState.updatedJobs tuple is the jobGraph we want to inspect
-    totalJobs = set(toilState.successorCounts.keys()) | \
-                {jobTuple[0] for jobTuple in toilState.updatedJobs}
+    def traverseGraph(jobGraph):
+        foundJobStoreIDs = set()
+        totalJobs = []
+        def inner(jobGraph):
+            if jobGraph.jobStoreID in foundJobStoreIDs:
+                return
+            foundJobStoreIDs.add(jobGraph.jobStoreID)
+            totalJobs.append(jobGraph)
+            # Traverse jobs in stack
+            for jobs in jobGraph.stack:
+                for successorJobStoreID in map(lambda x: x.jobStoreID, jobs):
+                    if (successorJobStoreID not in foundJobStoreIDs and jobStore.exists(successorJobStoreID)):
+                        inner(jobStore.load(successorJobStoreID))
 
-    failedJobs = [ job for job in totalJobs if job.remainingRetryCount == 0 ]
+            # Traverse service jobs
+            for jobs in jobGraph.services:
+                for serviceJobStoreID in map(lambda x: x.jobStoreID, jobs):
+                    if jobStore.exists(serviceJobStoreID):
+                        assert serviceJobStoreID not in foundJobStoreIDs
+                        foundJobStoreIDs.add(serviceJobStoreID)
+                        totalJobs.append(jobStore.load(serviceJobStoreID))
+        inner(jobGraph)
+        return totalJobs
 
-    print('There are %i active jobs, %i parent jobs with children, and %i totally failed jobs '
-          'currently in %s.' % (len(toilState.updatedJobs), len(toilState.successorCounts),
-                                len(failedJobs), config.jobStore), file=sys.stderr)
-    
+    logger.info('Traversing the job graph. This may take a couple minutes.')
+    totalJobs = traverseGraph(rootJob)
+
+    failedJobs = []
+    hasChildren = []
+    hasServices = []
+    services = []
+    currentlyRunnning = []
+
+    for job in totalJobs:
+        if job.logJobStoreFileID is not None:
+            failedJobs.append(job)
+        if job.stack[-1]:
+            hasChildren.append(job)
+        elif job.remainingRetryCount != 0 and job.logJobStoreFileID != 0 and job.command:
+            # The job has no children, hasn't failed, and has a command to run. This indicates that the job is
+            # likely currently running, or at least could be run.
+            currentlyRunnning.append(job)
+        if job.services:
+            hasServices.append(job)
+        if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
+            # these attributes are only set in service jobs
+            services.append(job)
+
+    logger.info('There are %i unfinished jobs, %i parent jobs with children, %i jobs with services, %i services, '
+                'and %i totally failed jobs currently in %s.' %
+                (len(totalJobs), len(hasChildren), len(hasServices), len(services), len(failedJobs), config.jobStore))
+
+    if currentlyRunnning:
+        logger.info('These %i jobs are currently active: %s',
+                    len(currentlyRunnning), ' \n'.join(map(str, currentlyRunnning)))
+
     if options.verbose: #Verbose currently means outputting the files that have failed.
-        for job in failedJobs:
-            if job.logJobStoreFileID is not None:
-                with job.getLogFileHandle(jobStore) as logFileHandle:
-                    logStream(logFileHandle, job.jobStoreID, logger.warn)
-            else:
-                print('Log file for job %s is absent.' % job.jobStoreID, file=sys.stderr)
-        if len(failedJobs) == 0:
+        if failedJobs:
+            msg = "Outputting logs for the %i failed jobs" % (len(failedJobs))
+            msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
+            for jobNode in failedJobs:
+                job = jobStore.load(jobNode.jobStoreID)
+                msg += "\n=========> Failed job %s \n" % jobNode
+                with job.getLogFileHandle(jobStore) as fH:
+                    msg += fH.read()
+                msg += "<=========\n"
+            print(msg)
+        else:
             print('There are no failed jobs to report.', file=sys.stderr)
-    
-    if (len(toilState.updatedJobs) + len(toilState.successorCounts)) != 0 and \
-        options.failIfNotComplete:
-        sys.exit(1)
-    
+
+    if totalJobs and options.failIfNotComplete:
+        exit(1) # when the workflow is complete, all jobs will have been removed from job store
+
 def _test():
     import doctest      
     return doctest.testmod()
