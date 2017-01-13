@@ -137,6 +137,9 @@ class LSFBatchSystem(BatchSystemSupport):
     def supportsHotDeployment(cls):
         return False
 
+    def shutdown(self):
+        pass
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.lsfResultsFile = self._getResultsFileName(config.jobStore)
