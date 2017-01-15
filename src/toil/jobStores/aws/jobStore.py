@@ -305,15 +305,43 @@ class AWSJobStore(AbstractJobStore):
                             assert False
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
+    
+    def _awsJobFromItem(self, jobStoreID, item):
+        if self.fileExists(jobStoreID):
+            #This is an overlarge job, download the actual attributes
+            #from the file store
+            log.debug("Loading overlarge job from S3.")
+            with self.readFileStream(jobStoreID) as fh:
+                binary = fh.read()
+        else:
+            binary,_ = AWSJob.attributesToBinary(item)
+            assert binary is not None
+        job = cPickle.loads(binary)
+        return job
 
-    def create(self, jobNode):
+    def _awsJobToItem(self, job, forceOverlarge=False):
+        binary = cPickle.dumps(job)
+        if len(binary) > AWSJob.maxBinarySize() or forceOverlarge:
+            #Store as an overlarge job in S3
+            overlargeJobFile = self.FileInfo(job.jobStoreID, job.jobStoreID, encrypted=False)
+            with overlargeJobFile.uploadStream() as writable:
+                writable.write(binary)
+            overlargeJobFile.save()
+            item = SDBHelper.binaryToAttributes('')
+        else:
+            item = AWSJob.binaryToAttributes(binary)
+        return item
+
+    def create(self, jobNode, forceOverlarge=False):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
         job = AWSJob.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+
+        item = self._awsJobToItem(job, forceOverlarge=forceOverlarge)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(*job.toItem())
+                assert self.jobsDomain.put_attributes(job.jobStoreID, item)
         return job
 
     def exists(self, jobStoreID):
@@ -328,12 +356,12 @@ class AWSJobStore(AbstractJobStore):
         result = None
         for attempt in retry_sdb():
             with attempt:
-                result = list(self.jobsDomain.select(
+                result = self.jobsDomain.select(
                     consistent_read=True,
-                    query="select * from `%s`" % self.jobsDomain.name))
+                    query="select * from `%s`" % self.jobsDomain.name)
         assert result is not None
         for jobItem in result:
-            yield AWSJob.fromItem(jobItem)
+            yield self._awsJobFromItem(jobItem.name, dict(jobItem))
 
     def load(self, jobStoreID):
         item = None
@@ -342,7 +370,7 @@ class AWSJobStore(AbstractJobStore):
                 item = self.jobsDomain.get_attributes(jobStoreID, consistent_read=True)
         if not item:
             raise NoSuchJobException(jobStoreID)
-        job = AWSJob.fromItem(item)
+        job = self._awsJobFromItem(jobStoreID, item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
         log.debug("Loaded job %s", jobStoreID)
@@ -350,15 +378,25 @@ class AWSJobStore(AbstractJobStore):
 
     def update(self, job):
         log.debug("Updating job %s", job.jobStoreID)
+        item = self._awsJobToItem(job)        
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(*job.toItem())
+                assert self.jobsDomain.put_attributes(job.jobStoreID, item)
 
     itemsPerBatchDelete = 25
 
     def delete(self, jobStoreID):
         # remove job and replace with jobStoreId.
         log.debug("Deleting job %s", jobStoreID)
+
+        #If the job is overlarge, delete its file from the filestore
+        item = None
+        for attempt in retry_sdb():
+            with attempt:
+                item = self.jobsDomain.get_attributes(jobStoreID, consistent_read=True)
+        if self.fileExists(jobStoreID):
+            log.debug("Deleting job from filestore")
+            self.deleteFile(jobStoreID)
         for attempt in retry_sdb():
             with attempt:
                 self.jobsDomain.delete_attributes(item_name=jobStoreID)
