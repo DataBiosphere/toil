@@ -1,22 +1,24 @@
 Toil architecture
 *****************
 
-The following diagram layouts out the software architecture of Toil. 
+The following diagram layouts out the software architecture of Toil.
 
 .. figure:: toil_architecture.jpg
     :width: 350px
     :align: center
     :height: 350px
-    :alt: alternate text
+    :alt: Toil's architecture is composed of the leader, the job store, the worker
+          processes, the batch system, the node provisioner, and the stats and
+          logging monitor.
     :figclass: align-center
 
-    Figure 1: The basic components of the toil architecture. Note the node provisioning 
+    Figure 1: The basic components of the toil architecture. Note the node provisioning
     is coming soon.
 
-These components are described below: 
+These components are described below:
     * the leader:
-        The leader is responsible for deciding which jobs should be run. To do this 
-        it traverses the job graph. Currently this is a single threaded process, 
+        The leader is responsible for deciding which jobs should be run. To do this
+        it traverses the job graph. Currently this is a single threaded process,
         but we make aggressive steps to prevent it becoming a bottleneck
         (see `Read-only Leader`_ described below).
     * the job-store:
@@ -25,28 +27,28 @@ These components are described below:
         in the job store, and atomic updates to this state are used to ensure the workflow
         can always be resumed upon failure. The job-store can also store all user
         files, allowing them to be shared between jobs. The job-store is defined by the abstract
-        class :class:`toil.jobStores.AbstractJobStore`. Multiple implementations of this
+        class :class:`toil.jobStores.abstractJobStore.AbstractJobStore`. Multiple implementations of this
         class allow Toil to support different back-end file stores, e.g.: S3, network file systems,
         Azure file store, etc.
     * workers:
-        The workers are temporary processes responsible for running jobs, 
+        The workers are temporary processes responsible for running jobs,
         one at a time per worker. Each worker process is invoked with a job argument
         that it is responsible for running. The worker monitors this job and reports
-        back success or failure to the leader by editing the job's state in the file-store. 
+        back success or failure to the leader by editing the job's state in the file-store.
         If the job defines successor jobs the worker may choose to immediately run them
         (see `Job Chaining`_ below).
-    * the batch-system: 
-        Responsible for scheduling the jobs given to it by the leader, creating a 
+    * the batch-system:
+        Responsible for scheduling the jobs given to it by the leader, creating a
         worker command for each job. The batch-system is defined by the abstract class
-        class :class:`toil.batchSystems.AbstractBatchSystem`. Toil uses multiple existing
+        :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`. Toil uses multiple existing
         batch systems to schedule jobs, including Apache Mesos, GridEngine and a multi-process
         single node implementation that allows workflows to be run without any of these frameworks.
         Toil can therefore fairly easily be made to run a workflow using an existing cluster.
     * the node provisioner:
         Creates worker nodes in which the batch system schedules workers. This is currently
-        being developed. It is defined by the abstract class :class:`toil.provisioners.AbstractProvisioner`.
-    * the statistics and logging monitor: 
-        Monitors logging and statistics produced by the workers and reports them. Uses the 
+        being developed. It is defined by the abstract class :class:`toil.provisioners.abstractProvisioner.AbstractProvisioner`.
+    * the statistics and logging monitor:
+        Monitors logging and statistics produced by the workers and reports them. Uses the
         job-store to gather this information.
 
 Optimizations
@@ -60,35 +62,35 @@ Read-only leader
 
 The leader process is currently implemented as a single thread. Most of the leader's
 tasks revolve around processing the state of jobs, each stored as a file within the job-store.
-To minimise the load on this thread, each worker does as much work as possible 
-to manage the state of the job it is running. As a result, with a couple of minor exceptions, 
-the leader process never needs to write or update the state of a job within the job-store. 
-For example, when a job is complete and has no further successors the responsible 
-worker deletes the job from the job-store, marking it complete. The leader then 
+To minimise the load on this thread, each worker does as much work as possible
+to manage the state of the job it is running. As a result, with a couple of minor exceptions,
+the leader process never needs to write or update the state of a job within the job-store.
+For example, when a job is complete and has no further successors the responsible
+worker deletes the job from the job-store, marking it complete. The leader then
 only has to check for the existence of the file when it receives a signal from the batch-system
 to know that the job is complete. This off-loading of state management is orthogonal to
-future parallelization of the leader. 
+future parallelization of the leader.
 
 Job chaining
 ~~~~~~~~~~~~
 
-The scheduling of successor jobs is partially managed by the worker, reducing the 
-number of individual jobs the leader needs to process. Currently this is very 
+The scheduling of successor jobs is partially managed by the worker, reducing the
+number of individual jobs the leader needs to process. Currently this is very
 simple: if the there is a single next successor job to run and it's resources fit within the
-resources of the current job and closely match the resources of the current job then  
+resources of the current job and closely match the resources of the current job then
 the job is run immediately on the worker without returning to the leader. Further extensions
 of this strategy are possible, but for many workflows which define a series of serial successors
 (e.g. map sequencing reads, post-process mapped reads, etc.) this pattern is very effective
-at reducing leader workload. 
+at reducing leader workload.
 
 Preemptable node support
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Critical to running at large-scale is dealing with intermittent node failures. Toil is
-therefore designed to always be resumable providing the job-store does not become corrupt. 
-This robustness allows Toil to run on preemptible nodes, which are only available when others are not 
-willing to pay more to use them. Designing workflows that divide into many short individual jobs 
-that can use preemptable nodes allows for workflows to be efficiently scheduled and executed.  
+therefore designed to always be resumable providing the job-store does not become corrupt.
+This robustness allows Toil to run on preemptible nodes, which are only available when others are not
+willing to pay more to use them. Designing workflows that divide into many short individual jobs
+that can use preemptable nodes allows for workflows to be efficiently scheduled and executed.
 
 Caching
 ~~~~~~~
@@ -97,8 +99,8 @@ Running bioinformatic pipelines often require the passing of large datasets betw
 caches the results from jobs such that child jobs running on the same node can directly use the same
 file objects, thereby eliminating the need for an intermediary transfer to the job store. Caching
 also reduces the burden on the local disks, because multiple jobs can share a single file.
-The resulting drop in I/O allows pipelines to run faster, and, by the sharing of files, 
-allows users to run more jobs in parallel by reducing overall disk requirements.  
+The resulting drop in I/O allows pipelines to run faster, and, by the sharing of files,
+allows users to run more jobs in parallel by reducing overall disk requirements.
 
 To demonstrate the efficiency of caching, we ran an experimental internal pipeline on 3 samples from
 the TCGA Lung Squamous Carcinoma (LUSC) dataset. The pipeline takes the tumor and normal exome
@@ -122,7 +124,7 @@ disk-based storage systems as compared to the SSD systems we tested this on.
     :width: 700px
     :align: center
     :height: 1000px
-    :alt: alternate text
+    :alt: Graph outlining the efficiency gain from caching.
     :figclass: align-center
 
     Figure 2: Efficiency gain from caching. The lower half of each plot describes the disk used by

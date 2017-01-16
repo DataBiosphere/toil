@@ -1,4 +1,4 @@
-#
+# -*- coding: utf-8 -*-
 # Toil documentation build configuration file, created by
 # sphinx-quickstart on Tue Aug 25 12:37:16 2015.
 #
@@ -59,6 +59,12 @@ extensions = [
     'sphinxcontrib.fulltoc',
 ]
 
+# Make these link definitions available everywhere so we don't need to keep
+# repeating ourselves.
+rst_epilog = """
+.. _Common Workflow Language: http://www.commonwl.org/
+.. _CGCloud: https://github.com/BD2KGenomics/cgcloud
+"""
 
 def skip(app, what, name, obj, skip, options):
     return name != '__init__' and (skip
@@ -86,7 +92,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Toil'
-copyright = u'2015, 2016, UCSC Computational Genomics Lab'
+copyright = u'2015 – %i UCSC Computational Genomics Lab' % datetime.now().year
 author = u'UCSC Computational Genomics Lab'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -211,7 +217,7 @@ html_theme = 'alabaster'
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-#html_show_sourcelink = True
+html_show_sourcelink = False
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 #html_show_sphinx = True
