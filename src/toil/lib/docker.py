@@ -31,6 +31,7 @@ def dockerCall(job,
                defer=None):
     """
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
+    This function blocks until the subprocess call to Docker returns
 
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
@@ -59,6 +60,7 @@ def dockerCheckOutput(job,
     """
     Returns the stdout from the Docker invocation (via subprocess.check_output)
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
+    This function blocks until the subprocess call to Docker returns
 
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
