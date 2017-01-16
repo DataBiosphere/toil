@@ -20,16 +20,13 @@ import importlib
 import inspect
 import logging
 import os
-import sys
 import time
-import uuid
-import dill
-
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
+import dill
 from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
