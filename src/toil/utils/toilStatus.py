@@ -117,7 +117,7 @@ def main():
     for job in totalJobs:
         if job.logJobStoreFileID is not None:
             failedJobs.append(job)
-        if job.stack[-1]:
+        if job.stack:
             hasChildren.append(job)
         elif job.remainingRetryCount != 0 and job.logJobStoreFileID != 0 and job.command:
             # The job has no children, hasn't failed, and has a command to run. This indicates that the job is
