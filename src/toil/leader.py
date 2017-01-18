@@ -431,7 +431,7 @@ class Leader:
                                       else logger.info)
                         cur_logger('Job ended successfully: %s', updatedJob)
                     else:
-                        logger.warn('Job failed with exit value %1: %s',
+                        logger.warn('Job failed with exit value %i: %s',
                                     result, updatedJob)
                     self.processFinishedJob(jobID, result, wallTime=wallTime)
 
