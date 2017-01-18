@@ -18,6 +18,8 @@ from operator import attrgetter
 import datetime
 from cgcloud.lib.util import std_dev, mean
 
+from toil.test import runningOnEC2
+
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
@@ -50,7 +52,7 @@ def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
             zone = boto.config.get('Boto', 'ec2_region_name')
             if zone is not None:
                 zone += 'a'  # derive an availability zone in the region
-        if not zone:
+        if not zone and runningOnEC2():
             try:
                 zone = get_instance_metadata()['placement']['availability-zone']
             except KeyError:
