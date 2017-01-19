@@ -85,8 +85,10 @@ class UtilsTest(ToilTest):
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         try:
-            system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro', '--keyPairName=jenkins@jenkins-master',
-                    clusterName, '--provisioner=aws'])
+            # --provisioner flag should default to aws, so we're not explicitly
+            # specifying that here
+            system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro',
+                    '--keyPairName=jenkins@jenkins-master', clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:

@@ -5,12 +5,12 @@ import logging
 
 from toil.provisioners.aws import getCurrentAWSZone
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 def addBasicProvisionerOptions(parser):
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
+    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=False, default="aws",
                         help="The provisioner for cluster auto-scaling. Only aws is currently "
                              "supported")
     currentZone = getCurrentAWSZone()
