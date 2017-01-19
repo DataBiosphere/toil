@@ -16,6 +16,7 @@ from __future__ import absolute_import
 
 import logging
 import time
+
 from threading import Thread, Event
 
 # Python 3 compatibility imports

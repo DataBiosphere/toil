@@ -244,7 +244,6 @@ class JobNode(JobLikeObject):
                    unitName=job.unitName,
                    predecessorNumber=predecessorNumber)
 
-
 class Job(JobLikeObject):
     """
     Class represents a unit of work in toil.

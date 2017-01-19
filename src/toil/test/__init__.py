@@ -326,10 +326,20 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     test_item = _mark_test('gridengine', test_item)
-    if next(which('qsub'), None):
+    if next(which('qhost'), None):
         return test_item
     else:
         return unittest.skip("Install GridEngine to include this test.")(test_item)
+
+def needs_torque(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
+    """
+    test_item = _mark_test('torque', test_item)
+    if next(which('pbsnodes'), None):
+        return test_item
+    else:
+        return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
 
 def needs_mesos(test_item):
