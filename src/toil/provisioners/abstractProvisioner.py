@@ -194,6 +194,9 @@ class AbstractProvisioner(object):
             nodesToTerminate.sort(key=lambda (instance, nodeInfo): (
                 nodeInfo.workers if nodeInfo else 1,
                 self._remainingBillingInterval(instance)))
+            if not force:
+                # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
+                nodesToTerminate = [nodeTuple for nodeTuple in nodesToTerminate if self._remainingBillingInterval(nodeTuple[0]) <= 0.15]
             nodesToTerminate = nodesToTerminate[:numNodes]
             if log.isEnabledFor(logging.DEBUG):
                 for instance, nodeInfo in nodesToTerminate:
