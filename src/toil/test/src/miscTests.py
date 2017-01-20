@@ -24,7 +24,6 @@ import tempfile
 # Python 3 compatibility imports
 from six.moves import xrange
 
-
 class MiscTests(ToilTest):
     """
     This class contains miscellaneous tests that don't have enough content to be their own test

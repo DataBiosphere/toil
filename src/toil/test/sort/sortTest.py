@@ -38,6 +38,7 @@ from toil.test import (ToilTest,
                        needs_azure,
                        needs_parasol,
                        needs_gridengine,
+                       needs_torque,
                        needs_google,
                        experimental)
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
@@ -145,8 +146,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
                         if totalTrys > 32: #p(fail after this many restarts) = 0.5**32
-                            self.fail() #Exceeded a reasonable number of restarts    
-                        totalTrys += 1    
+                            self.fail() #Exceeded a reasonable number of restarts
+                        totalTrys += 1
 
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
@@ -231,9 +232,14 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                        lines=10000, N=10000)
 
     @needs_gridengine
-    @unittest.skip('Gridengine does not support shared caching')
+    @unittest.skip('GridEngine does not support shared caching')
     def testFileGridEngine(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='gridengine')
+
+    @needs_torque
+    @unittest.skip('PBS/Torque does not support shared caching')
+    def testFileTorqueEngine(self):
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='torque')
 
     @needs_parasol
     @unittest.skip("skipping until parasol support is less flaky (see github issue #449")

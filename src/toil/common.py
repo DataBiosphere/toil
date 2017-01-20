@@ -795,8 +795,8 @@ class Toil(object):
             batchSystemClass = SingleMachineBatchSystem
 
         elif config.batchSystem == 'gridengine' or config.batchSystem == 'gridEngine':
-            from toil.batchSystems.gridengine import GridengineBatchSystem
-            batchSystemClass = GridengineBatchSystem
+            from toil.batchSystems.gridengine import GridEngineBatchSystem
+            batchSystemClass = GridEngineBatchSystem
 
         elif config.batchSystem == 'lsf' or config.batchSystem == 'LSF':
             from toil.batchSystems.lsf import LSFBatchSystem
@@ -811,6 +811,10 @@ class Toil(object):
         elif config.batchSystem == 'slurm' or config.batchSystem == 'Slurm':
             from toil.batchSystems.slurm import SlurmBatchSystem
             batchSystemClass = SlurmBatchSystem
+
+        elif config.batchSystem == 'torque' or config.batchSystem == 'Torque':
+            from toil.batchSystems.torque import TorqueBatchSystem
+            batchSystemClass = TorqueBatchSystem
 
         else:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
