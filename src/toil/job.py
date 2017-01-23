@@ -252,7 +252,7 @@ class Job(JobLikeObject):
                  checkpoint=False):
         """
         This method must be called by any overriding constructor.
-        
+
         :param memory: the maximum number of bytes of memory the job will require to run.
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, expressed in bytes.
@@ -486,7 +486,7 @@ class Job(JobLikeObject):
         Convenience function for constructor of :class:`toil.job.EncapsulatedJob`.
 
         :return: an encapsulated version of this job.
-        :rtype: toil.job.EncapsulatedJob.
+        :rtype: toil.job.EncapsulatedJob
         """
         return EncapsulatedJob(self)
 
@@ -761,7 +761,7 @@ class Job(JobLikeObject):
         def start(self, job):
             """
             Start the service.
-            
+
             :param toil.job.Job job: The underlying job that is being run. Can be used to register
             deferred functions, or to access the fileStore for creating temporary files.
 
@@ -774,7 +774,7 @@ class Job(JobLikeObject):
         def stop(self, job):
             """
             Stops the service. Function can block until complete.
-            
+
             :param toil.job.Job job: The underlying job that is being run. Can be used to register
             deferred functions, or to access the fileStore for creating temporary files.
             """
@@ -1105,7 +1105,7 @@ class Job(JobLikeObject):
             serviceJob.service._childServices = None
             assert serviceJob._services == []
             #service = serviceJob.service
-            
+
             # Pickle the job
             serviceJob.pickledService = cPickle.dumps(serviceJob.service)
             serviceJob.service = None
@@ -1373,7 +1373,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     :class:`job.Job` class provides.
 
     To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
-    instance (see :func:`toil.job.Job.Run`), it is made a variable of the wrapping job \
+    instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
     called fileStore.
     """
     def run(self, fileStore):
@@ -1523,7 +1523,7 @@ class ServiceJob(Job):
         self.jobGraph = None
 
     def run(self, fileStore):
-        
+
         # we need access to the filestore from underneath the service job
         self.fileStore = fileStore
 
