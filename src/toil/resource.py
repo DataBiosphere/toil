@@ -368,10 +368,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         filePath[-1], extension = os.path.splitext(filePath[-1])
         require(extension in ('.py', '.pyc'),
                 'The name of a user script/module must end in .py or .pyc.')
+        log.debug("Module name is %s", name)
         if name == '__main__':
+            log.debug("Discovering real name of module")
             # User script/module was invoked as the main program
             if module.__package__:
                 # Invoked as a module via python -m foo.bar
+                log.debug("Script was invoked as a module")
                 name = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
@@ -390,6 +393,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 dirPathTail = filePath.pop()
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
+        log.debug("Module dir is %s", dirPath)
         assert os.path.isdir(dirPath)
         fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
