@@ -54,7 +54,6 @@ class AWSProvisionerTest(ToilTest):
         self.instanceType = 'm3.large'
         self.keyName = 'jenkins@jenkins-master'
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
-        self.toilScripts = '2.1.0a1.dev654'#'2.1.0a1.dev455'
         self.numWorkers = 2
         self.numSamples = 2
         self.spotBid = '0.15'
@@ -98,13 +97,13 @@ class AWSProvisionerTest(ToilTest):
         yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
         self.sshUtil(yaml_command)
 
-        # install toil scripts
-        install_command = ['/home/venv/bin/pip', 'install', 'toil-scripts==%s' % self.toilScripts]
-        self.sshUtil(install_command)
+        # rsync sort.py
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
 
         self.rsyncUtil(self.sseKeyFile, ':/home/keyFile')
 
-        toilOptions = ['--batchSystem=mesos',
+        toilOptions = [self.jobStore,
+                       '--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
                        '--mesosMaster=%s:5050' % leader.private_ip_address,
                        '--clean=always',
@@ -127,19 +126,11 @@ class AWSProvisionerTest(ToilTest):
             toilOptions.extend(['--nodeType=' + self.instanceType,
                                 '--maxNodes=%s' % self.numWorkers])
 
-        toilOptions = ' '.join(toilOptions)
-
         # TOIL_AWS_NODE_DEBUG prevents the provisioner from killing nodes that
         # fail a status check. This allows for easier debugging of
         # https://github.com/BD2KGenomics/toil/issues/1141
-        runCommand = ['bash', '-c',
-                      'PATH=/home/venv/bin/:$PATH '
-                      'TOIL_AWS_NODE_DEBUG=True '
-                      'TOIL_SCRIPTS_TEST_NUM_SAMPLES='+str(self.numSamples)+
-                      ' TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions) +
-                      ' TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore +
-                      ' /home/venv/bin/python -m unittest -v' +
-                      ' toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest.test_manifest']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/keyFile']
+        runCommand.extend(toilOptions)
 
         self.sshUtil(runCommand)
         assert len(self.getMatchingRoles(self.clusterName)) == 1

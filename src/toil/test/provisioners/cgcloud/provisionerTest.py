@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 
 
 @integrative
+@unittest.skip()
 class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     __metaclass__ = ABCMeta
     """
