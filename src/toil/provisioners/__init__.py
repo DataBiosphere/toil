@@ -60,9 +60,6 @@ class Cluster(object):
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
-        elif provisioner == 'cgcloud':
-            from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
-            self.provisioner = CGCloudProvisioner
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 

@@ -35,7 +35,6 @@ log = logging.getLogger(__name__)
 
 
 @integrative
-@unittest.skip()
 class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     __metaclass__ = ABCMeta
     """
@@ -168,7 +167,7 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
                            '--clean=always',
                            '--retryCount=2']
             if autoScaled:
-                toilOptions.extend(['--provisioner=cgcloud',
+                toilOptions.extend(['--provisioner=aws',
                                     '--nodeType=' + self.instanceType,
                                     '--maxNodes=%s' % self.numWorkers,
                                     '--logDebug'])
@@ -235,63 +234,6 @@ class AbstractCGCloudProvisionerTest(ToilTest, CgcloudTestCase):
     @classmethod
     def _leader(cls, *args, **kwargs):
         cls._ssh('toil-leader', *args, **kwargs)
-
-
-class CGCloudRNASeqTest(AbstractCGCloudProvisionerTest):
-    """
-    Test the CGCloud autoscaler.
-    """
-    # A pip-installable release of toil-scripts or a URL pointing to a source distribution.
-    # Typically you would specify a GitHub archive URL of a specific branch, tag or commit. The
-    # first path component of each tarball entry will be stripped.
-    #
-    if True:
-        toilScripts = '2.1.0a1.dev455'
-    else:
-        toilScripts = 'https://api.github.com/repos/BD2KGenomics/toil-scripts/tarball/master'
-
-    def __init__(self, name):
-        super(CGCloudRNASeqTest, self).__init__(name)
-        # The number of samples to run the test workflow on
-        #
-        self.numSamples = 2
-
-    def _getScript(self):
-        toilScripts = urlparse.urlparse(self.toilScripts)
-        if toilScripts.netloc:
-            self._leader('mkdir toil-scripts'
-                         '; curl -L ' + toilScripts.geturl() +
-                         '| tar -C toil-scripts -xvz --strip-components=1')
-            self._leader('PATH=~/venv/bin:$PATH make -C toil-scripts develop')
-        else:
-            version = toilScripts.path
-            self._leader('~/venv/bin/pip', 'install', 'toil-scripts==' + version)
-
-    def _runScript(self, toilOptions):
-        toilOptions = ' '.join(toilOptions)
-        self._leader('PATH=~/venv/bin:$PATH',
-                     # TOIL_AWS_NODE_DEBUG prevents the provisioner from killing nodes that fail a
-                     # status check. This allows for easier debugging of
-                     # https://github.com/BD2KGenomics/toil/issues/1141
-                     'TOIL_AWS_NODE_DEBUG=True',
-                     'TOIL_SCRIPTS_TEST_NUM_SAMPLES=%i' % self.numSamples,
-                     'TOIL_SCRIPTS_TEST_TOIL_OPTIONS=' + pipes.quote(toilOptions),
-                     'TOIL_SCRIPTS_TEST_JOBSTORE=' + self.jobStore,
-                     'python', '-m', 'unittest', '-v',
-                     'toil_scripts.rnaseq_cgl.test.test_rnaseq_cgl.RNASeqCGLTest'
-                     '.test_manifest')
-
-    @integrative
-    def testStaticCluster(self):
-        self._test(autoScaled=False)
-
-    @integrative
-    def testAutoScaledCluster(self):
-        self._test(autoScaled=True)
-
-    @integrative
-    def testAutoScaledSpotCluster(self):
-        self._test(autoScaled=True, spotBid=self.safeSpotBid)
 
 
 class CGCloudRestartTest(AbstractCGCloudProvisionerTest):

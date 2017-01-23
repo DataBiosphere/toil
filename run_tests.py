@@ -32,7 +32,6 @@ test_suites = {
         'CachingFileStoreTestWithGoogleJobStore',
         None],
     'integration-test': [
-        'CGCloudRNASeqTest',
         'CGCloudRestartTest',
         'PremptableDeficitCompensationTest',
         'UtilsTest and testAWSProvisionerUtils',
