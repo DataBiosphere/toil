@@ -57,8 +57,13 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx',
     'sphinxcontrib.fulltoc',
 ]
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/2', None),
+}
 
 # Make these link definitions available everywhere so we don't need to keep
 # repeating ourselves.
