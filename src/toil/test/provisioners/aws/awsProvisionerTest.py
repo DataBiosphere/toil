@@ -231,7 +231,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             pass
         else:
             self.fail('Command succeeded when we expected failure')
-        with timeLimit(300):
+        with timeLimit(600):
             command = ['/home/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
             command.extend(toilOptions)
             self.sshUtil(command)
