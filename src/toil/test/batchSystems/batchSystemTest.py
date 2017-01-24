@@ -221,20 +221,20 @@ class hidden:
         def _waitForJobsToIssue(self, numJobs):
             issuedIDs = []
             for it in range(20):
-                time.sleep(0.1)
                 issuedIDs = self.batchSystem.getIssuedBatchJobIDs()
                 if len(issuedIDs) == numJobs:
                     break
+                time.sleep(1)
             return issuedIDs
 
         def _waitForJobsToStart(self, numJobs):
             runningIDs = []
             # prevent an endless loop, give it 20 tries
             for it in range(20):
-                time.sleep(0.1)
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
                 if len(runningIDs) == numJobs:
                     break
+                time.sleep(1)
             return runningIDs
 
     class AbstractBatchSystemJobTest(ToilTest):
