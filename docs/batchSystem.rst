@@ -1,5 +1,7 @@
 .. _batchsysteminterface:
 
+.. highlight:: bash
+
 The batch system interface
 ==========================
 

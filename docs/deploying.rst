@@ -1,11 +1,11 @@
+.. highlight:: console
+
 Deploying a workflow
 ====================
 
 If a Toil workflow is run on a single machine (that is, single machine mode),
 there is nothing special you need to do. You change into the directory
-containing your user script and invoke it like any Python script:
-
-.. code-block:: console
+containing your user script and invoke it like any Python script::
 
    $ cd my_project
    $ ls
@@ -15,7 +15,7 @@ containing your user script and invoke it like any Python script:
 This assumes that your script has the executable permission bit set and
 contains a *shebang*, i.e. a line of the form
 
-::
+.. code-block:: python
 
    #!/usr/bin/env python
 
@@ -52,9 +52,7 @@ Hot-deploying Toil
 
 Toil can be easily deployed to a remote host, given that both Python and Toil
 are present. The first order of business after copying your workflow to each
-host is to create and activate a virtualenv:
-
-.. code-block:: console
+host is to create and activate a virtualenv::
 
    $ virtualenv --system-site-packages venv
    $ . venv/bin/activate
@@ -63,9 +61,7 @@ Note that the virtualenv was created with the ``--system-site-packages`` option,
 which ensures that globally-installed packages are accessible inside the virtualenv.
 This is necessary as Toil and its dependencies must be installed globally.
 
-From here, you can install your project and its dependencies:
-
-.. code-block:: console
+From here, you can install your project and its dependencies::
 
    $ tree
    .
@@ -83,9 +79,7 @@ From here, you can install your project and its dependencies:
    $ cp -R workflow util venv/lib/python2.7/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
-streamlines the installation process:
-
-.. code-block:: console
+streamlines the installation process::
 
    $ tree
    .
@@ -102,9 +96,7 @@ streamlines the installation process:
    3 directories, 6 files
    $ pip install .
 
-Or, if your project has been published to PyPI:
-
-.. code-block:: console
+Or, if your project has been published to PyPI::
 
    $ pip install my-project
 
@@ -112,10 +104,7 @@ In each case, we have created a virtualenv with the ``--system-site-packages``
 flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
 from PyPI along with the two packages that our project consists of. (Again, both
 Python and Toil are assumed to be present on the leader and all worker nodes.)
-We can now
-run our workflow:
-
-.. code-block:: console
+We can now run our workflow::
 
    $ python -m workflow.main --batchSystem=mesos …
 
@@ -144,9 +133,7 @@ run our workflow:
 Hot-deployment with sibling modules
 -----------------------------------
 
-This scenario applies if the user script imports modules that are its siblings:
-
-.. code-block:: console
+This scenario applies if the user script imports modules that are its siblings::
 
    $ cd my_project
    $ ls
@@ -179,9 +166,7 @@ of modules belonging to the workflow and copy all of them to each worker. Note
 that while using the ``-m`` option is optional in the scenarios above, it is
 mandatory in this one.
 
-The following shell session illustrates this:
-
-.. code-block:: console
+The following shell session illustrates this::
 
    $ cd my_project
    $ tree
@@ -216,9 +201,7 @@ module name like ``workflow.main``. Without that added convenience we'd have to
 run the workflow as ``PYTHONPATH="$PWD" python -m workflow.main``. This also
 means that Toil can detect the root directory of the user module's package
 hierarchy even if it isn't the current working directory. In other words we
-could do this:
-
-.. code-block:: console
+could do this::
 
    $ cd my_project
    $ export PYTHONPATH="$PWD"

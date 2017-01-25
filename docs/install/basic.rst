@@ -1,5 +1,7 @@
 .. _installation:
 
+.. highlight:: console
+
 Installation
 ============
 
@@ -9,9 +11,7 @@ Basic installation
 ------------------
 
 At this time, Toil supports only Python 2.7.x. If that requirement is satisfied
-then Toil can be easily installed using pip_:
-
-.. code-block:: console
+then Toil can be easily installed using pip_::
 
     $ pip install toil
 
@@ -25,7 +25,7 @@ Extras
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, run
 
-.. code-block:: console
+::
 
     $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
@@ -55,10 +55,9 @@ Here's what each extra provides:
 |                | .. important::                                             |
 |                |    If you want to install Toil with the ``mesos`` extra    |
 |                |    in a virtualenv, be sure to create that virtualenv with |
+|                |    the ``--system-site-packages`` flag::                   |
 |                |                                                            |
-|                |    .. code-block:: console                                 |
-|                |                                                            |
-|                |        $ virtualenv --system-site-packages                 |
+|                |       $ virtualenv --system-site-packages                  |
 |                |                                                            |
 |                |    Otherwise, you'll see something like this:              |
 |                |                                                            |
@@ -81,30 +80,22 @@ Here's what each extra provides:
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Only needed for the ``mesos`` and ``encryption`` extras. On Ubuntu:
+   Only needed for the ``mesos`` and ``encryption`` extras. On Ubuntu::
 
-   .. code-block:: console
+      $ sudo apt-get install build-essential python-dev
 
-     $ sudo apt-get install build-essential python-dev
+   On macOS::
 
-   On macOS:
-
-   .. code-block:: console
-
-     $ xcode-select --install
+      $ xcode-select --install
 
 .. _libffi-dev:
 .. topic:: libffi headers and library
 
-   Only needed for the ``encryption`` extra. On Ubuntu:
-
-   .. code-block:: console
+   Only needed for the ``encryption`` extra. On Ubuntu::
 
       $ sudo apt-get install libffi-dev
 
-   On macOS:
-
-   .. code-block:: console
+   On macOS::
 
       $ brew install libffi
 

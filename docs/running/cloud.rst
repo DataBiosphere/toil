@@ -1,3 +1,5 @@
+.. highlight:: console
+
 Running in the cloud
 ====================
 
@@ -36,9 +38,8 @@ environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
 ``TOIL_APPLIANCE_SELF`` (see :func:`toil.applianceSelf` and
 :ref:`appliance_dev` for details)::
 
-    toil launch-cluster -p aws CLUSTER-NAME-HERE \
-         --nodeType=t2.micro \
-         --keyPairName=your-AWS-key-pair-name
+   $ toil launch-cluster -p aws CLUSTER-NAME-HERE --nodeType=t2.micro \
+       --keyPairName=your-AWS-key-pair-name
 
 to launch a t2.micro leader instance -- adjust this instance type accordingly
 to do real work. See `here <https://aws.amazon.com/ec2/instance-types/>`_ for a
@@ -94,14 +95,14 @@ system on the leader.
 
 Copy ``HelloWorld.py`` to the leader node, and run::
 
-   python HelloWorld.py \
+   $ python HelloWorld.py \
           --batchSystem=mesos \
           --mesosMaster=mesos-master:5050 \
           aws:us-west-2:my-aws-jobstore
 
 Alternatively, to run a CWL workflow::
 
-   cwltoil --batchSystem=mesos  \
+   $ cwltoil --batchSystem=mesos  \
            --mesosMaster=mesos-master:5050 \
            --jobStore=aws:us-west-2:my-aws-jobstore \
            example.cwl \
@@ -165,10 +166,12 @@ To do this permanently:
 1. On the leader node, run ``nano ~/.toilAzureCredentials``.
 
 2. In the editor that opens, navigate with the arrow keys, and give the file
-   the following contents::
+   the following contents
 
-        [AzureStorageCredentials]
-        <accountname>=<accountkey>
+   .. code-block:: ini
+
+      [AzureStorageCredentials]
+      <accountname>=<accountkey>
 
    Be sure to replace ``<accountname>`` with the name that you used for your
    Azure storage account, and ``<accountkey>`` with the key you obtained above.
@@ -189,14 +192,14 @@ the ``HelloWorld.py`` script by doing the following:
 
 2. Run the command::
 
-      python HelloWorld.py \
+      $ python HelloWorld.py \
              --batchSystem=mesos \
              --mesosMaster=10.0.0.5:5050 \
              azure:<accountname>:hello-world-001
 
    To run a CWL workflow::
 
-      cwltoil --batchSystem=mesos \
+      $ cwltoil --batchSystem=mesos \
               --mesosMaster=10.0.0.5:5050 \
               --jobStore=azure:<accountname>:hello-world-001 \
               example.cwl \
@@ -228,9 +231,7 @@ Running on Open Stack
 After setting up Toil on :ref:`installationOpenStack`, Toil scripts can be run
 by designating a job store location as shown in :ref:`quickstart`.
 Be sure to specify a temporary directory that Toil can use to run jobs in with
-the ``--workDir`` argument:
-
-.. code-block:: console
+the ``--workDir`` argument::
 
     $ python HelloWorld.py --workDir=/tmp file:jobStore
 
@@ -267,9 +268,7 @@ the *Settings* page, navigate to the *Interoperability* tab and click *Enable
 interoperability access*. On this page you can now click *Create a new key* to
 generate an access key and a matching secret. Insert these into their
 respective places in the ``.boto`` file and you will be able to use a Google
-job store when invoking a Toil script, as in the following example
-
-.. code-block:: console
+job store when invoking a Toil script, as in the following example::
 
     $ python HelloWorld.py google:projectID:jobStore
 

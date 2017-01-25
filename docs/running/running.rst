@@ -1,3 +1,5 @@
+.. highlight:: console
+
 .. _running:
 
 Running Toil workflows
@@ -10,29 +12,27 @@ Quickstart: A simple workflow
 
 Starting with Python, a Toil workflow can be run with just three steps.
 
-1. Install Toil (see :ref:`installation-ref`):
+1. Install Toil (see :ref:`installation-ref`)::
 
-   .. code-block:: console
+      $ pip install toil
 
-       $ pip install toil
+2. Copy and paste the following code block into ``HelloWorld.py``:
 
-2. Copy and paste the following code block into ``HelloWorld.py``::
+   .. code-block:: python
 
-        from toil.job import Job
+      from toil.job import Job
 
-        def helloWorld(message, memory="2G", cores=2, disk="3G"):
-            return "Hello, world!, here's a message: %s" % message
+      def helloWorld(message, memory="2G", cores=2, disk="3G"):
+          return "Hello, world!, here's a message: %s" % message
 
-        j = Job.wrapFn(helloWorld, "You did it!")
+      j = Job.wrapFn(helloWorld, "You did it!")
 
-        if __name__=="__main__":
-            parser = Job.Runner.getDefaultArgumentParser()
-            options = parser.parse_args()
-            print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
+      if __name__=="__main__":
+          parser = Job.Runner.getDefaultArgumentParser()
+          options = parser.parse_args()
+          print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
 
-3. Specify a job store and run the workflow like so:
-
-   .. code-block:: console
+3. Specify a job store and run the workflow like so::
 
        $ python HelloWorld.py file:my-job-store
 
@@ -71,9 +71,7 @@ support for the stable v1.0 specification, only lacking the following features:
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
 
-To run in local batch mode, provide the CWL file and the input object file:
-
-.. code-block:: console
+To run in local batch mode, provide the CWL file and the input object file::
 
     $ cwltoil example.cwl example-job.yml
 
@@ -271,15 +269,11 @@ pipeline that performs merge-sort on a temporary file.
         if __name__ == '__main__':
             main()
 
-2. Run with default settings:
-
-   .. code-block:: console
+2. Run with default settings::
 
       $ python toil-sort-example.py file:jobStore.
 
-3. Run with custom options:
-
-   .. code-block:: console
+3. Run with custom options::
 
       $ python toil-sort-example.py file:jobStore --num-lines=5000 --line-length=10 --workDir=/tmp/
 
@@ -376,9 +370,7 @@ Logging
 By default, Toil logs a lot of information related to the current environment
 in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
-messages to the screen:
-
-.. code-block:: console
+messages to the screen::
 
    $ python toil-sort-examply.py file:jobStore --logLevel=critical
 
@@ -402,9 +394,7 @@ example (the first line of ``down()``):
        ...
        assert 1 == 2, "Test error!"
 
-When we run the pipeline, Toil will show a detailed failure log with a traceback:
-
-.. code-block:: console
+When we run the pipeline, Toil will show a detailed failure log with a traceback::
 
    $ python toil-sort-example.py file:jobStore
    ...
@@ -426,15 +416,11 @@ When we run the pipeline, Toil will show a detailed failure log with a traceback
 If we try and run the pipeline again, Toil will give us an error message saying
 that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that it can be restarted from its last
-successful job. We can restart the pipeline by running:
-
-.. code-block:: console
+successful job. We can restart the pipeline by running::
 
    $ python toil-sort-example.py file:jobStore --restart
 
-We can also change the number of times Toil will attempt to retry a failed job:
-
-.. code-block:: console
+We can also change the number of times Toil will attempt to retry a failed job::
 
    $ python toil-sort-example.py --retryCount 2 --restart
 
@@ -445,7 +431,7 @@ may experience a sporadic interruption, or some other non-deterministic failure.
 To successfully restart our pipeline, we can edit our script to comment out
 line 30, or remove it, and then run
 
-.. code-block:: console
+::
 
    $ python toil-sort-example.py --restart
 
@@ -457,16 +443,12 @@ Collecting statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
 A Toil pipeline can be run with the ``--stats`` flag to allows collection of
-statistics:
-
-.. code-block:: console
+statistics::
 
    $ python toil-sort-example.py --stats
 
 Once the pipeline finishes, the job store will be left behind, allowing us to
-get information on the total runtime and stats pertaining to each job function:
-
-.. code-block:: console
+get information on the total runtime and stats pertaining to each job function::
 
    $ toil stats file:jobStore
    ...
@@ -476,6 +458,6 @@ get information on the total runtime and stats pertaining to each job function:
 
 Once we're done, we can clean up the job store by running
 
-.. code-block:: console
+::
 
    $ toil clean file:jobStore
