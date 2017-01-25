@@ -82,6 +82,7 @@ Azure
 
 .. image:: https://azuredeploy.net/deploybutton.png
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
+   :alt: Microsoft Azure deploy button
 
 Toil comes with a `cluster template`_ to facilitate easy deployment of clusters
 running Toil on Microsoft Azure. The template allows these clusters to be

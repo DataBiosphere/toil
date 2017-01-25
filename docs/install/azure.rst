@@ -5,6 +5,7 @@ Using Azure with Toil
 
 .. image:: https://azuredeploy.net/deploybutton.png
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
+   :alt: Microsoft Azure deploy button
 
 Toil comes with a `cluster template`_ to facilitate easy deployment of clusters
 running Toil on Microsoft Azure. The template allows these clusters to be
@@ -22,6 +23,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
 3. You should be presented with a screen resembling the following:
 
     .. image:: azurescreenshot1.png
+       :alt: Screenshot of the Azure deployment wizard.
 
    Fill out the form on the far right (marked *1* in the image) with the
    following information, then click OK (marked *2* in the image).
