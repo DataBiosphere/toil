@@ -47,37 +47,106 @@ cannot be hot-deployed. Lastly we'll deal with the issue of declaring
 as a setuptools distribution.
 
 
-Hot-deployment without dependencies
------------------------------------
+Hot-deploying Toil
+------------------
 
-If your script has no additional dependencies, i.e. imports only modules that
-are shipped with Python or Toil, only your script needs to be hot-deployed.
-Both Python and Toil are assumed to be present on all workers. Toil takes your
-script, stores it in the job store and just before the jobs in your script are
-about to be run on a worker machine, your script will be saved to a temporary
-directory on the worker and loaded into the Python interpreter from there.
-
-In this scenario, the script is invoked as follows:
+Toil can be easily deployed to a remote host, given that both Python and Toil
+are present. The first order of business after copying your workflow to each
+host is to create and activate a virtualenv:
 
 .. code-block:: console
 
-   $ cd my_project
-   $ ls
-   userScript.py
-   $ ./userScript.py --batchSystem=mesos …
+   $ virtualenv --system-site-packages venv
+   $ . venv/bin/activate
+
+Note that the virtualenv was created with the ``--system-site-packages`` option,
+which ensures that globally-installed packages are accessible inside the virtualenv.
+This is necessary as Toil and its dependencies must be installed globally.
+
+From here, you can install your project and its dependencies:
+
+.. code-block:: console
+
+   $ tree
+   .
+   ├── util
+   │   ├── __init__.py
+   │   └── sort
+   │       ├── __init__.py
+   │       └── quick.py
+   └── workflow
+       ├── __init__.py
+       └── main.py
+
+   3 directories, 5 files
+   $ pip install fairydust
+   $ cp -R workflow util venv/lib/python2.7/site-packages
+
+Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
+streamlines the installation process:
+
+.. code-block:: console
+
+   $ tree
+   .
+   ├── util
+   │   ├── __init__.py
+   │   └── sort
+   │       ├── __init__.py
+   │       └── quick.py
+   ├── workflow
+   │   ├── __init__.py
+   │   └── main.py
+   └── setup.py
+
+   3 directories, 6 files
+   $ pip install .
+
+Or, if your project has been published to PyPI:
+
+.. code-block:: console
+
+   $ pip install my-project
+
+In each case, we have created a virtualenv with the ``--system-site-packages``
+flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
+from PyPI along with the two packages that our project consists of. (Again, both
+Python and Toil are assumed to be present on the leader and all worker nodes.)
+We can now
+run our workflow:
+
+.. code-block:: console
+
+   $ python -m workflow.main --batchSystem=mesos …
+
+.. important::
+
+   If workflow's external dependencies contain native code (i.e. are not pure
+   Python) then they must be manually installed on each worker.
+
+.. note::
+
+   Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
+   this process as, instead of copying the source files, they create ``.egg-link``
+   files that Toil can't hot-deploy. Similarly, ``python setup.py install``
+   doesn't work either as it installs the project as a Python ``.egg`` which is
+   also not currently supported by Toil (though it `could be`_ in the future).
+
+   It should also be noted that while using the
+   ``--single-version-externally-managed`` flag with ``setup.py`` will
+   prevent the installation of your package as an ``.egg``, it will also disable
+   the automatic installation of your project's dependencies.
 
 
-This is very similar to the single-machine scenario but note that we selected a
-distributed batch system, ``mesos`` in this case. And just like in single-machine
-mode, we can also use ``-m`` to invoke the workflow::
-
-   $ python -m userScript --batchSystem=mesos …
-
+.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
+.. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
 Hot-deployment with sibling modules
 -----------------------------------
 
-This scenario applies if the user script imports modules that are its siblings::
+This scenario applies if the user script imports modules that are its siblings:
+
+.. code-block:: console
 
    $ cd my_project
    $ ls
@@ -110,7 +179,9 @@ of modules belonging to the workflow and copy all of them to each worker. Note
 that while using the ``-m`` option is optional in the scenarios above, it is
 mandatory in this one.
 
-The following shell session illustrates this::
+The following shell session illustrates this:
+
+.. code-block:: console
 
    $ cd my_project
    $ tree
@@ -145,7 +216,9 @@ module name like ``workflow.main``. Without that added convenience we'd have to
 run the workflow as ``PYTHONPATH="$PWD" python -m workflow.main``. This also
 means that Toil can detect the root directory of the user module's package
 hierarchy even if it isn't the current working directory. In other words we
-could do this::
+could do this:
+
+.. code-block:: console
 
    $ cd my_project
    $ export PYTHONPATH="$PWD"
@@ -154,75 +227,6 @@ could do this::
 
 Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
-
-Hot-deploying a virtualenv
---------------------------
-
-So far we've looked at running an isolated user script, a user script in
-conjunction with sibling modules and a user module that is part of an entire
-package tree. But what if our workflow requires external dependencies that can
-be downloaded from PyPI and installed via pip or easy_install? Toil supports
-this common scenario, too. The solution is to install the user module and its
-dependencies into a virtualenv::
-
-   $ cd my_project
-   $ tree
-   .
-   ├── util
-   │   ├── __init__.py
-   │   └── sort
-   │       ├── __init__.py
-   │       └── quick.py
-   └── workflow
-       ├── __init__.py
-       └── main.py
-
-   3 directories, 5 files
-   $ virtualenv --system-site-packages .env
-   $ . .env/bin/activate
-   $ pip install fairydust
-   $ cp -R workflow util .env/lib/python2.7/site-packages
-   $ python -m workflow.main --batchSystem=mesos …
-
-Here we created a virtualenv in the ``.env`` subdirectory of our project, we
-installed the ``fairydust`` distribution from PyPI and finally we installed the
-two packages that our project consists of.
-
-The main caveat to this solution is that the workflow's external dependencies
-may not contain native code, i.e. they must be pure Python. If you have
-dependencies that rely on native code, you must manually install them on each
-worker.
-
-The ``--system-site-packages`` option to ``virtualenv`` makes globally
-installed packages visible inside the virtualenv. It is essential because, as
-we'll see later, Toil and its dependencies must be installed globally and would
-be inaccessible without that option.
-
-If you create a ``setup.py`` for your project (see `setuptools`_), the ``cp``
-step can be replaced with ``pip install .``. Your ``setup.py`` should declare
-the ``fairydust`` dependency, also making redundant the manual installation of
-that package in the steps above. Note that it is not possible to use ``python
-setup.py develop`` or ``pip install -e .`` instead of ``pip install .`` because
-the former two do not copy the source files but create an ``.egg-link`` file
-instead, which Toil is not able to hot-deploy. Similarly, ``python setup.py
-install`` does not work either because it installs the project as a Python Egg
-(a ``.egg`` file), which is not supported by Toil although that may `change`_
-in the future. You might be tempted to prevent the installation of the ``.egg``
-by passing ``--single-version-externally-managed`` to ``setup.py install`` but
-that would also disable the automatic installation of your project's
-dependencies.
-
-.. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
-.. _change: https://github.com/BD2KGenomics/toil/issues/1367
-
-If you publish your project to PyPI, others will be able to install it on their
-leader using pip, provided they 1) already installed Toil on the leader and
-workers nodes and 2) use a virtualenv created with ``--system-site-packages``::
-
-   $ virtualenv --system-site-packages my-project
-   $ . my-project/bin/activate
-   $ pip install my-project
-   $ python -m workflow.main --batchSystem=mesos …
 
 Relying on shared filesystems
 -----------------------------
@@ -235,35 +239,19 @@ shared file system and you won't even need to install Toil on every worker. Be
 sure to add both your project directory and the Toil clone to ``PYTHONPATH``. Toil
 replicates ``PYTHONPATH`` from the leader to every worker.
 
+.. admonition:: Using a shared filesystem
+
+   Toil currently only supports a ``tempdir`` set to a local, non-shared directory.
+
 .. _deploying_toil:
 
 Deploying Toil
 --------------
 
-We've looked at various ways of installing your workflow on the leader such
-that Toil can replicate it to the workers and load the job definitions there.
-But what about Toil itself? Unless you are running your workflow in single
-machine mode (the default) or on a cluster where every node mounts a shared
-file system at the same path, Toil somehow needs to be made available on each
-worker. Unfortunately, hot-deployment only works for the user script/module and
-its dependencies, not for Toil itself. Generally speaking, you or your admin
-will need to manually :ref:`install <installation>` Toil on every cluster node
-you intend to run Toil jobs on.
-
-The Toil team is eagerly working to ameliorate this. Toil 3.5.0 will contain
-the Toil Appliance, a Docker image that contains Mesos and Toil. You can use
-this image to run the Toil Appliance locally without the need to install
-anything. Only Docker is required. Inside the appliance you can then run a
-workflow in single machine mode. From the appliance, you will also be able to
-provision clusters of VMs in the cloud. Initially this will support Amazon EC2
-only, but Google Cloud and Microsoft Azure will soon follow.
-
-For the current stable release (3.3.x), you can use `CGCloud`_ to provision a
-cluster of Amazon EC2 instances with Toil and Mesos on them. The ``contrib``
-directory of the Toil contains Adam Novak's Azure resource template with which
-you can deploy a Toil cluster in Azure. With CGCloud you would typically
-provision a static cluster of either spot or on-demand instances, or a mix.
-This is explained in more detail in section :ref:`installation`.
+Toil comes with the Toil Appliance, a Docker image with Mesos and Toil baked in.
+It's easily deployed, only needs Docker, and allows for workflows to be run in
+single-machine mode and for clusters of VMs to be provisioned. For more
+information, see the :ref:`cloudInstallation` section.
 
 .. _depending_on_toil:
 

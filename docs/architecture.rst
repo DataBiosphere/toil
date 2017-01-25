@@ -4,16 +4,13 @@ Toil architecture
 The following diagram layouts out the software architecture of Toil.
 
 .. figure:: toil_architecture.jpg
-    :width: 350px
     :align: center
-    :height: 350px
     :alt: Toil's architecture is composed of the leader, the job store, the worker
           processes, the batch system, the node provisioner, and the stats and
           logging monitor.
     :figclass: align-center
 
-    Figure 1: The basic components of the toil architecture. Note the node provisioning
-    is coming soon.
+    Figure 1: The basic components of Toil's architecture.
 
 These components are described below:
     * the leader:
@@ -22,14 +19,15 @@ These components are described below:
         but we make aggressive steps to prevent it becoming a bottleneck
         (see `Read-only Leader`_ described below).
     * the job-store:
-        Handles all files shared between the components. Files in the job-store are the means
-        by which the state of the workflow is maintained. Each job is backed by a file
-        in the job store, and atomic updates to this state are used to ensure the workflow
-        can always be resumed upon failure. The job-store can also store all user
-        files, allowing them to be shared between jobs. The job-store is defined by the abstract
-        class :class:`toil.jobStores.abstractJobStore.AbstractJobStore`. Multiple implementations of this
-        class allow Toil to support different back-end file stores, e.g.: S3, network file systems,
-        Azure file store, etc.
+        Handles all files shared between the components. Files in the job-store
+        are the means by which the state of the workflow is maintained. Each job
+        is backed by a file in the job store, and atomic updates to this state
+        are used to ensure the workflow can always be resumed upon failure. The
+        job-store can also store all user files, allowing them to be shared
+        between jobs. The job-store is defined by the
+        :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` class.
+        Multiple implementations of this class allow Toil to support different
+        back-end file stores, e.g.: S3, network file systems, Azure file store, etc.
     * workers:
         The workers are temporary processes responsible for running jobs,
         one at a time per worker. Each worker process is invoked with a job argument
@@ -38,15 +36,18 @@ These components are described below:
         If the job defines successor jobs the worker may choose to immediately run them
         (see `Job Chaining`_ below).
     * the batch-system:
-        Responsible for scheduling the jobs given to it by the leader, creating a
-        worker command for each job. The batch-system is defined by the abstract class
-        :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`. Toil uses multiple existing
-        batch systems to schedule jobs, including Apache Mesos, GridEngine and a multi-process
-        single node implementation that allows workflows to be run without any of these frameworks.
-        Toil can therefore fairly easily be made to run a workflow using an existing cluster.
+        Responsible for scheduling the jobs given to it by the leader, creating
+        a worker command for each job. The batch-system is defined by the
+        :class:`~toil.batchSystems.abstractBatchSystem.AbstractBatchSystem` class.
+        Toil uses multiple existing batch systems to schedule jobs, including
+        Apache Mesos, GridEngine and a multi-process single node implementation
+        that allows workflows to be run without any of these frameworks. Toil
+        can therefore fairly easily be made to run a workflow using an existing
+        cluster.
     * the node provisioner:
-        Creates worker nodes in which the batch system schedules workers. This is currently
-        being developed. It is defined by the abstract class :class:`toil.provisioners.abstractProvisioner.AbstractProvisioner`.
+        Creates worker nodes in which the batch system schedules workers.
+        It is defined by the :class:`~toil.provisioners.abstractProvisioner.AbstractProvisioner`
+        class.
     * the statistics and logging monitor:
         Monitors logging and statistics produced by the workers and reports them. Uses the
         job-store to gather this information.

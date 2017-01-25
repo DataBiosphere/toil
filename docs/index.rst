@@ -14,10 +14,10 @@ pipelines. You can:
 * Execute workflows efficiently with caching and resource requirement specifications, and
 * Easily link databases and services
 
-Toil is, admittedly, not quite as good as sliced bread, but it's as close to it
-as you're gonna get. Click `here`_ to learn more about Toil and what it can do,
-or jump in and skip to :ref:`Installation`. (You can also join us on `GitHub`_
-or `Gitter`_.)
+Toil is just as good if not better than sliced bread, unless you are hungry, in
+which case we recommend seeking another solution.
+Click `here`_ to learn more about Toil and what it can do, or jump in and skip
+to :ref:`Installation`. (You can also join us on `GitHub`_ or `Gitter`_.)
 
 .. _GridEngine: http://gridscheduler.sourceforge.net/
 .. _Parasol: http://genecats.soe.ucsc.edu/eng/parasol.html

@@ -1,3 +1,5 @@
+.. _cloudInstallation:
+
 Cloud installation
 ==================
 

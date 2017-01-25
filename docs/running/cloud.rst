@@ -23,9 +23,9 @@ Autoscaling
 -----------
 
 The fastest way to get started with Toil in a cloud environment is by using
-Toil's autoscaling capabilities to handle node provisioning. Autoscaling is
-currently only supported on the AWS cloud platform with Toil's own Docker-based
-provisioner or with CGCloud.
+Toil's autoscaling capabilities to handle node provisioning. You can do this by
+using Toil's Docker-based provisioner, which operates using the Amazon Web
+Services cloud platform.
 
 The AWS provisioner is included in Toil alongside the ``[aws]`` extra and
 allows us to spin up a cluster without any external dependencies using the Toil
@@ -44,9 +44,6 @@ to launch a t2.micro leader instance -- adjust this instance type accordingly
 to do real work. See `here <https://aws.amazon.com/ec2/instance-types/>`_ for a
 full selection of EC2 instance types. For more information on cluster
 management using Toil's AWS provisioner, see :ref:`clusterRef`.
-
-To use CGCloud-based autoscaling, see :ref:`installationAWS` for CGCloud
-installation and more information on starting our leader instance.
 
 Once we have our leader instance launched, the steps for both provisioners
 converge. As with all distributed AWS workflows, we start our Toil run using an
@@ -73,9 +70,12 @@ the workflow will hang. Use the ``--preemptableCompensation`` flag to handle
 cases where preemptable nodes may not be available but are required for your
 workflow.
 
-.. admonition:: Using a shared filesystem
+.. admonition:: Using mesos with Toil on AWS
 
-   Toil currently only supports a ``tempdir`` set to a local, non-shared directory.
+   The mesos master and agent processes bind to the private IP addresses of their
+   EC2 instance, so be sure to use the master's private IP when specifying
+   `--mesosMaster`. Using the public IP will prevent the nodes from properly
+   discovering each other.
 
 .. _runningAWS:
 
@@ -110,13 +110,6 @@ Alternatively, to run a CWL workflow::
 When running a CWL workflow on AWS, input files can be provided either on the
 local file system or in S3 buckets using ``s3://`` URL references. Final output
 files will be copied to the local file system of the leader node.
-
-.. admonition:: Using mesos with Toil on AWS
-
-   The mesos master and agent processes bind to the private IP addresses of their
-   EC2 instance, so be sure to use the master's private IP when specifying
-   `--mesosMaster`. Useing the public IP will prevent the nodes from properly
-   discovering each other.
 
 .. _runningAzure:
 
