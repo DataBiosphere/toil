@@ -14,7 +14,6 @@
 import json
 import logging
 import os
-import threading
 from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
@@ -201,22 +200,22 @@ class AbstractProvisioner(object):
                     log.debug("Instance %s is about to be terminated. Its node info is %r. It "
                               "would be billed again in %s minutes.", instance.id, nodeInfo,
                               60 * self._remainingBillingInterval(instance))
-            instanceIds = [instance.id for instance, nodeInfo in nodesToTerminate]
+            instances = [instance for instance, nodeInfo in nodesToTerminate]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
             instances = sorted(instances, key=self._remainingBillingInterval)
-            instanceIds = [instance.id for instance in islice(instances, numNodes)]
-        log.info('Terminating %i instance(s).', len(instanceIds))
-        if instanceIds:
-            self._logAndTerminate(instanceIds)
-        return len(instanceIds)
+            instances = [instance for instance in islice(instances, numNodes)]
+        log.info('Terminating %i instance(s).', len(instances))
+        if instances:
+            self._logAndTerminate(instances)
+        return len(instances)
 
     @abstractmethod
     def _addNodes(self, instances, numNodes, preemptable):
         raise NotImplementedError
 
     @abstractmethod
-    def _logAndTerminate(self, instanceIDs):
+    def _logAndTerminate(self, instances):
         raise NotImplementedError
 
     @abstractmethod

@@ -28,7 +28,7 @@ from bd2k.util import memoize
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
-                             create_spot_instances, wait_instances_running)
+                             create_spot_instances, wait_instances_running, wait_transition)
 from itertools import count
 
 from toil import applianceSelf
@@ -403,6 +403,8 @@ class AWSProvisioner(AbstractProvisioner):
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
         cls._terminateIDs(instanceIDs, ctx)
+        for instance in instances:
+            wait_transition(instance, {'running', 'shutting-down'}, 'terminated')
 
     @classmethod
     def _terminateIDs(cls, instanceIDs, ctx):
@@ -410,8 +412,8 @@ class AWSProvisioner(AbstractProvisioner):
         ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
-    def _logAndTerminate(self, instanceIDs):
-        self._terminateIDs(instanceIDs, self.ctx)
+    def _logAndTerminate(self, instances):
+        self._terminateInstances(instances, self.ctx)
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):

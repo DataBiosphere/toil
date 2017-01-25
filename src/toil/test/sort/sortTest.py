@@ -30,8 +30,7 @@ from toil.common import Toil
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
-from toil.test.sort.sort import setup, sortMemory
+from toil.test.sort.sort import setup, sortMemory, merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_mesos,

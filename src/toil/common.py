@@ -359,7 +359,7 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud', 'aws'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
@@ -704,10 +704,6 @@ class Toil(object):
     def _setProvisioner(self):
         if self.config.provisioner is None:
             self._provisioner = None
-        elif self.config.provisioner == 'cgcloud':
-            logger.info('Using cgcloud provisioner.')
-            from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
-            self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
         elif self.config.provisioner == 'aws':
             logger.info('Using AWS provisioner.')
             from bd2k.util.ec2.credentials import enable_metadata_credential_caching
