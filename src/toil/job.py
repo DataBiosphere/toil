@@ -263,7 +263,7 @@ class Job(JobLikeObject):
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type preemptable: boolean
+        :type preemptable: bool
         :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
@@ -326,7 +326,7 @@ class Job(JobLikeObject):
 
         :param toil.job.Job childJob:
         :return: True if childJob is a child of the job, else False.
-        :rtype: Boolean
+        :rtype: bool
         """
         return childJob in self._children
 
@@ -653,7 +653,7 @@ class Job(JobLikeObject):
         """
         Register a deferred function, i.e. a callable that will be invoked after the current
         attempt at running this job concludes. A job attempt is said to conclude when the job
-        function (or the :meth:`Job.run` method for class-based jobs) returns, raises an
+        function (or the :meth:`toil.job.Job.run` method for class-based jobs) returns, raises an
         exception or after the process running it terminates abnormally. A deferred function will
         be called on the node that attempted to run the job, even if a subsequent attempt is made
         on another node. A deferred function should be idempotent because it may be called

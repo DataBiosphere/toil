@@ -174,11 +174,11 @@ class FileStore(object):
         Takes a file (as a path) and uploads it to the job store.
 
         :param string localFileName: The path to the local file to upload.
-        :param Boolean cleanup: if True then the copy of the global file will be deleted once the
+        :param bool cleanup: if True then the copy of the global file will be deleted once the
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
         :return: an ID that can be used to retrieve the file.
-        :rtype: FileID
+        :rtype: toil.fileStore.FileID
         """
         raise NotImplementedError()
 
@@ -187,7 +187,7 @@ class FileStore(object):
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
-        :param Boolean cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
+        :param bool cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
                   2) the ID of the resulting file in the job store.
@@ -203,11 +203,11 @@ class FileStore(object):
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.
 
-        :param FileID fileStoreID: job store id for the file
+        :param toil.fileStore.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
-        :param boolean cache: Described in :func:`~filestore.Filestore.readGlobalFile`
-        :param boolean mutable: Described in :func:`~filestore.Filestore.readGlobalFile`
+        :param bool cache: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
+        :param bool mutable: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
         :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
         :rtype: str
         """
@@ -598,11 +598,11 @@ class CachingFileStore(FileStore):
         The cache parameter will be used only if the file isn't already in the cache, and
         provided user path (if specified) is in the scope of local temp dir.
 
-        :param boolean cache: If True, a copy of the file will be saved into a cache that can be
+        :param bool cache: If True, a copy of the file will be saved into a cache that can be
                used by other workers. caching supports multiple concurrent workers requesting the
                same file by allowing only one to download the file while the others wait for it to
                complete.
-        :param boolean mutable: If True, the file path returned points to a file that is
+        :param bool mutable: If True, the file path returned points to a file that is
                modifiable by the user. Using False is recommended as it saves disk by making
                multiple workers share a file via hard links. The default is False unless backwards
                compatibility was requested.
@@ -970,7 +970,7 @@ class CachingFileStore(FileStore):
         :param str localFilePath: Path to the Source file
         :param jobStoreFileID: jobStoreID for the file
         :param str callingFunc: Who called this function, 'write' or 'read'
-        :param boolean mutable: See modifiable in readGlobalFile
+        :param bool mutable: See modifiable in readGlobalFile
         """
         assert callingFunc in ('read', 'write')
         # Set up the modifiable variable if it wasn't provided by the user in the function call.
