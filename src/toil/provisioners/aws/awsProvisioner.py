@@ -96,7 +96,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
-        leader = cls._getLeader(clusterName)
+        leader = cls._getLeader(clusterName, zone=zone)
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
@@ -189,8 +189,8 @@ class AWSProvisioner(AbstractProvisioner):
         return stdout
 
     @classmethod
-    def rsyncLeader(cls, clusterName, args):
-        leader = cls._getLeader(clusterName)
+    def rsyncLeader(cls, clusterName, args, zone=None):
+        leader = cls._getLeader(clusterName, zone=zone)
         cls._rsyncNode(leader.ip_address, args)
 
     @classmethod
@@ -364,7 +364,7 @@ class AWSProvisioner(AbstractProvisioner):
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        return cls._getLeader(clusterName=clusterName, wait=True)
+        return cls._getLeader(clusterName=clusterName, wait=True, zone=zone)
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):

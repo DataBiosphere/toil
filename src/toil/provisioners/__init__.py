@@ -55,8 +55,9 @@ def awsFilterImpairedNodes(nodes, ec2):
 
 
 class Cluster(object):
-    def __init__(self, clusterName, provisioner):
+    def __init__(self, clusterName, provisioner, zone=None):
         self.clusterName = clusterName
+        self.zone = zone
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
@@ -64,10 +65,10 @@ class Cluster(object):
             assert False, "Invalid provisioner '%s'" % provisioner
 
     def sshCluster(self, args):
-        self.provisioner.sshLeader(self.clusterName, args)
+        self.provisioner.sshLeader(self.clusterName, args, self.zone)
 
     def rsyncCluster(self, args):
-        self.provisioner.rsyncLeader(self.clusterName, args)
+        self.provisioner.rsyncLeader(self.clusterName, args, self.zone)
 
     def destroyCluster(self):
-        self.provisioner.destroyCluster(self.clusterName)
+        self.provisioner.destroyCluster(self.clusterName, self.zone)

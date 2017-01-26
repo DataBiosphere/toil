@@ -36,5 +36,5 @@ def main():
                         " -p aws test-cluster :example.py .`")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)
+    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName, zone=config.zone)
     cluster.rsyncCluster(args=config.args)

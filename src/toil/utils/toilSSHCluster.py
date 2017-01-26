@@ -29,5 +29,6 @@ def main():
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName)
+    cluster = Cluster(provisioner=config.provisioner,
+                      clusterName=config.clusterName, zone=config.zone)
     cluster.sshCluster(args=config.args)
