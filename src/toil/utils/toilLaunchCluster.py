@@ -50,4 +50,4 @@ def main():
         assert False
 
     provisioner.launchCluster(instanceType=config.nodeType, clusterName=config.clusterName,
-                              keyName=config.keyPairName, spotBid=spotBid)
+                              keyName=config.keyPairName, spotBid=spotBid, zone=config.zone)
