@@ -25,7 +25,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import at module level unless you want the imported value to be included in the output
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
-baseVersion = '3.5.0a1'
+baseVersion = '3.6.0a1'
 
 cgcloudVersion = '1.6.0a1.dev393'
 
@@ -118,7 +118,7 @@ def dirty():
 
 
 def expand_(name=None):
-    variables = {k: v for k, v in globals().iteritems()
+    variables = {k: v for k, v in globals().items()
                  if not k.startswith('_') and not k.endswith('_')}
 
     def resolve(k):
@@ -128,7 +128,7 @@ def expand_(name=None):
         return v
 
     if name is None:
-        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.iteritems())
+        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.items())
     else:
         return resolve(name)
 

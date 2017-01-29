@@ -42,6 +42,8 @@ class ResourceRequirement( namedtuple('_ResourceRequirement', (
 ToilJob = namedtuple('ToilJob', (
     # A job ID specific to this batch system implementation
     'jobID',
+    # What string to display in the mesos UI
+    'name',
     # A ResourceRequirement tuple describing the resources needed by this job
     'resources',
     # The command to be run on the worker node

@@ -42,6 +42,7 @@ from toil.test import (ToilTest,
                        needs_parasol,
                        needs_gridengine,
                        needs_slurm,
+                       needs_torque,
                        tempFileContaining)
 
 log = logging.getLogger(__name__)
@@ -123,9 +124,9 @@ class hidden:
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='1', requirements=defaultRequirements)
             jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='2', requirements=defaultRequirements)
             job1 = self.batchSystem.issueBatchJob(jobNode1)
             job2 = self.batchSystem.issueBatchJob(jobNode2)
 
@@ -144,7 +145,7 @@ class hidden:
             # updated jobs queue.
             self.assertFalse(os.path.exists(testPath))
             jobNode3 = JobNode(command="touch %s" % testPath, jobName='test3', unitName=None,
-                               jobStoreID=None, requirements=defaultRequirements)
+                               jobStoreID='3', requirements=defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
             jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
@@ -179,7 +180,7 @@ class hidden:
                 # First, ensure that the test fails if the variable is *not* set
                 command = sys.executable + ' ' + script_path
                 jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
-                                   jobStoreID=None, requirements=defaultRequirements)
+                                   jobStoreID='4', requirements=defaultRequirements)
                 job4 = self.batchSystem.issueBatchJob(jobNode4)
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 42)
@@ -187,7 +188,7 @@ class hidden:
                 # Now set the variable and ensure that it is present
                 self.batchSystem.setEnv('FOO', 'bar')
                 jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
-                                   jobStoreID=None, requirements=defaultRequirements)
+                                   jobStoreID='5', requirements=defaultRequirements)
                 job5 = self.batchSystem.issueBatchJob(jobNode5)
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 0)
@@ -219,15 +220,21 @@ class hidden:
 
         def _waitForJobsToIssue(self, numJobs):
             issuedIDs = []
-            while not len(issuedIDs) == numJobs:
+            for it in range(20):
                 issuedIDs = self.batchSystem.getIssuedBatchJobIDs()
+                if len(issuedIDs) == numJobs:
+                    break
+                time.sleep(1)
             return issuedIDs
 
         def _waitForJobsToStart(self, numJobs):
             runningIDs = []
-            while not len(runningIDs) == numJobs:
-                time.sleep(0.1)
+            # prevent an endless loop, give it 20 tries
+            for it in range(20):
                 runningIDs = self.batchSystem.getRunningBatchJobIDs().keys()
+                if len(runningIDs) == numJobs:
+                    break
+                time.sleep(1)
             return runningIDs
 
     class AbstractBatchSystemJobTest(ToilTest):
@@ -543,14 +550,14 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
                            requirements=dict(memory=1 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
-                           jobStoreID=None)
+                           jobStoreID='1')
         job1 = self.batchSystem.issueBatchJob(jobNode1)
         self.assertIsNotNone(job1)
         jobNode2 = JobNode(command="sleep 1000",
                            requirements=dict(memory=2 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
-                           jobStoreID=None)
+                           jobStoreID='2')
         job2 = self.batchSystem.issueBatchJob(jobNode2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
@@ -593,13 +600,13 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
 
     def createBatchSystem(self):
-        from toil.batchSystems.gridengine import GridengineBatchSystem
-        return GridengineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
+        from toil.batchSystems.gridengine import GridEngineBatchSystem
+        return GridEngineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
 
     def tearDown(self):
         super(GridEngineBatchSystemTest, self).tearDown()
-        # Cleanup Gridengine output log file from qsub
+        # Cleanup GridEngine output log file from qsub
         from glob import glob
         for f in glob('toil_job*.o*'):
             os.unlink(f)
@@ -622,6 +629,29 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('slurm-*.out'):
             os.unlink(f)
 
+@needs_torque
+class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
+    """
+    Tests against the Torque batch system
+    """
+
+    def _createDummyConfig(self):
+        config = super(TorqueBatchSystemTest, self)._createDummyConfig()
+        # can't use _getTestJobStorePath since that method removes the directory
+        config.jobStore = self._createTempDir('jobStore')
+        return config
+
+    def createBatchSystem(self):
+        from toil.batchSystems.torque import TorqueBatchSystem
+        return TorqueBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
+                                     maxDisk=1e9)
+
+    def tearDown(self):
+        super(TorqueBatchSystemTest, self).tearDown()
+        # Cleanup 'toil_job-%j.out' produced by sbatch
+        from glob import glob
+        for f in glob('toil_job_*.[oe]*'):
+            os.unlink(f)
 
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """

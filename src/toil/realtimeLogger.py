@@ -22,9 +22,11 @@ import os.path
 import json
 import logging
 import logging.handlers
-import SocketServer
 import socket
 import threading
+
+# Python 3 compatibility imports
+from six.moves import socketserver as SocketServer
 
 import toil.lib.bioio
 

@@ -259,7 +259,7 @@ class ClusterScaler(object):
         self.stop = True
         for scaler in self.preemptableScaler, self.scaler:
             if scaler is not None:
-                self.scaler.join()
+                scaler.join()
 
     def addCompletedJob(self, job, wallTime):
         """

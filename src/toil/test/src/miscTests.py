@@ -21,6 +21,8 @@ import os
 import random
 import tempfile
 
+# Python 3 compatibility imports
+from six.moves import xrange
 
 class MiscTests(ToilTest):
     """

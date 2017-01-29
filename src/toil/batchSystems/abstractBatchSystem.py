@@ -17,13 +17,21 @@ from __future__ import absolute_import
 
 import os
 import shutil
+import logging
+import time
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
+from Queue import Queue, Empty
 
 from bd2k.util.objects import abstractclassmethod
 
 from toil.common import Toil, cacheDirName
 from toil.fileStore import shutdownFileStore
+
+logger = logging.getLogger(__name__)
+
+# TODO: should this be an attribute?  Used in the worker and the batch system
+sleepSeconds = 1
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -33,7 +41,6 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'workflowID',
     # The value of the cleanWorkDir flag
     'cleanWorkDir'))
-
 
 class AbstractBatchSystem(object):
     """
@@ -355,7 +362,6 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         :rtype: dict[str,NodeInfo]
         """
         raise NotImplementedError()
-
 
 class InsufficientSystemResources(Exception):
     """

@@ -21,9 +21,11 @@ from __future__ import absolute_import
 import logging
 import subprocess
 import time
-from Queue import Queue, Empty
 from threading import Thread
 from datetime import date
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
@@ -134,6 +136,9 @@ class LSFBatchSystem(BatchSystemSupport):
     @classmethod
     def supportsHotDeployment(cls):
         return False
+
+    def shutdown(self):
+        pass
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)

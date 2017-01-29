@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import
 
-import cPickle
 import logging
 import os
 import re
@@ -23,6 +22,10 @@ import tempfile
 import time
 from argparse import ArgumentParser
 from threading import Thread
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+from six import iteritems
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
@@ -43,7 +46,7 @@ unixBlockSize = 512
 
 class Config(object):
     """
-    Class to represent configuration operations for a toil workflow run. 
+    Class to represent configuration operations for a toil workflow run.
     """
     def __init__(self):
         # Core options
@@ -107,7 +110,9 @@ class Config(object):
 
         #Misc
         self.disableCaching = False
-        self.maxLogFileSize=50120
+        self.maxLogFileSize = 64000
+        self.writeLogs = None
+        self.writeLogsGzip = None
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -227,6 +232,9 @@ class Config(object):
         #Misc
         setOption("disableCaching")
         setOption("maxLogFileSize", h2b, iC(1))
+        setOption("writeLogs")
+        setOption("writeLogsGzip")
+
         def checkSse(sseKey):
             with open(sseKey) as f:
                 assert(len(f.readline().rstrip()) == 32)
@@ -321,7 +329,7 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['cgcloud', 'aws'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
@@ -460,9 +468,22 @@ def _addOptions(addGroupFn, config):
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
-                      help=("The maximum size of a job log file to keep (in bytes), log files larger "
-                            "than this will be truncated to the last X bytes. Default is 50 "
-                            "kilobytes, default=%s" % config.maxLogFileSize))
+                help=("The maximum size of a job log file to keep (in bytes), log files "
+                      "larger than this will be truncated to the last X bytes. Setting "
+                      "this option to zero will prevent any truncation. Setting this "
+                      "option to a negative value will truncate from the beginning."
+                      "Default=%s" % bytes2human(config.maxLogFileSize)))
+    addOptionFn("--writeLogs", dest="writeLogs", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="Write worker logs received by the leader into their own files at the "
+                     "specified path. The current working directory will be used if a path is "
+                     "not specified explicitly. Note: By default "
+                     "only the logs of failed jobs are returned to leader. Set log level to "
+                     "'debug' to get logs back from successful jobs, and adjust 'maxLogFileSize' "
+                     "to control the truncation limit for worker logs.")
+    addOptionFn("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store',
+                default=None, const=os.getcwd(),
+                help="Identical to --writeLogs except the logs files are gzipped on the leader.")
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 
@@ -653,10 +674,6 @@ class Toil(object):
     def _setProvisioner(self):
         if self.config.provisioner is None:
             self._provisioner = None
-        elif self.config.provisioner == 'cgcloud':
-            logger.info('Using cgcloud provisioner.')
-            from toil.provisioners.cgcloud.provisioner import CGCloudProvisioner
-            self._provisioner = CGCloudProvisioner(self.config, self._batchSystem)
         elif self.config.provisioner == 'aws':
             logger.info('Using AWS provisioner.')
             from bd2k.util.ec2.credentials import enable_metadata_credential_caching
@@ -836,7 +853,7 @@ class Toil(object):
         Sets the environment variables required by the job store and those passed on command line.
         """
         for envDict in (self._jobStore.getEnv(), self.config.environment):
-            for k, v in envDict.iteritems():
+            for k, v in iteritems(envDict):
                 self._batchSystem.setEnv(k, v)
 
     def _serialiseEnv(self):
@@ -898,7 +915,7 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job for the workflow.
         :rtype: Any
         """
-        logProcessContext(self.config, logger)
+        logProcessContext(self.config)
 
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
@@ -1035,3 +1052,18 @@ def getDirSizeRecursively(dirPath):
                 folderSize += fileStats.st_blocks * unixBlockSize
         totalSize += folderSize
     return totalSize
+
+
+def getFileSystemSize(dirPath):
+    """
+    Return the free space, and total size of the file system hosting `dirPath`.
+
+    :param str dirPath: A valid path to a directory.
+    :return: free space and total size of file system
+    :rtype: tuple
+    """
+    assert os.path.exists(dirPath)
+    diskStats = os.statvfs(dirPath)
+    freeSpace = diskStats.f_frsize * diskStats.f_bavail
+    diskSize = diskStats.f_frsize * diskStats.f_blocks
+    return freeSpace, diskSize

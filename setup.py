@@ -31,7 +31,8 @@ def runSetup():
         url="https://github.com/BD2KGenomics/toil",
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
-            'dill==0.2.5'],
+            'dill==0.2.5',
+            'six>=1.10.0'],
         extras_require={
             'mesos': [
                 'psutil==3.0.1'],
@@ -47,7 +48,7 @@ def runSetup():
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20160714182449']},
+                'cwltool==1.0.20161221171240']},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for

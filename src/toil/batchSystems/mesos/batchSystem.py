@@ -21,12 +21,16 @@ import pickle
 import pwd
 import socket
 import time
-from Queue import Queue, Empty
 from collections import defaultdict
 from operator import attrgetter
 from struct import unpack
 
 import itertools
+
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
+from six import iteritems
+
 import mesos.interface
 import mesos.native
 from bd2k.util import strict_bool
@@ -146,6 +150,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
+                      name=str(jobNode),
                       resources=ResourceRequirement(**jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
@@ -432,7 +437,7 @@ class MesosBatchSystem(BatchSystemSupport,
             preemptable = False
             for attribute in offer.attributes:
                 if attribute.name == 'preemptable':
-                    preemptable = bool(attribute.scalar.value)
+                    preemptable = strict_bool(attribute.text.value)
             if preemptable:
                 try:
                     self.nonPreemptibleNodes.remove(offer.slave_id.value)
@@ -449,7 +454,7 @@ class MesosBatchSystem(BatchSystemSupport,
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
         # FIXME: what bout
-        task.name = str(job)
+        task.name = job.name
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
 
@@ -533,10 +538,11 @@ class MesosBatchSystem(BatchSystemSupport,
         nodeAddress = message.pop('address')
         executor = self._registerNode(nodeAddress, slaveId.value)
         # Handle optional message fields
-        for k, v in message.iteritems():
+        for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
                 executor.nodeInfo = NodeInfo(**v)
+                self.executors[nodeAddress] = executor
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
 
@@ -554,7 +560,7 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def getNodes(self, preemptable=None):
         return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors.iteritems()
+                for nodeAddress, executor in iteritems(self.executors)
                 if time.time() - executor.lastSeen < 600
                 and (preemptable is None
                      or preemptable == (executor.slaveId not in self.nonPreemptibleNodes))}

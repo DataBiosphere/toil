@@ -3,17 +3,19 @@ from __future__ import absolute_import
 from toil import version
 import logging
 
-from toil.provisioners.aws import getCurrentAWSZone
-
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 def addBasicProvisionerOptions(parser):
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=True,
+    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws'], required=False, default="aws",
                         help="The provisioner for cluster auto-scaling. Only aws is currently "
                              "supported")
-    currentZone = getCurrentAWSZone()
+    try:
+        from toil.provisioners.aws import getCurrentAWSZone
+        currentZone = getCurrentAWSZone()
+    except ImportError:
+        currentZone = None
     zoneString = currentZone if currentZone else 'No zone could be determined'
     parser.add_argument('-z', '--zone', dest='zone', required=False, default=currentZone,
                         help="The AWS availability zone of the master. This parameter can also be "

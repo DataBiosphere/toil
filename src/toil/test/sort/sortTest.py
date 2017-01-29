@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 import unittest
 import os
 import random
 from uuid import uuid4
 import logging
 import subprocess
+
+# Python 3 compatibility imports
+from six.moves import xrange
+
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
@@ -26,14 +30,14 @@ from toil.common import Toil
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.test.sort.lib import merge, sort, copySubRangeOfFile, getMidPoint
-from toil.test.sort.sort import setup, sortMemory
+from toil.test.sort.sort import setup, sortMemory, merge, sort, copySubRangeOfFile, getMidPoint
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_mesos,
                        needs_azure,
                        needs_parasol,
                        needs_gridengine,
+                       needs_torque,
                        needs_google,
                        experimental)
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
@@ -141,8 +145,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
                         if totalTrys > 32: #p(fail after this many restarts) = 0.5**32
-                            self.fail() #Exceeded a reasonable number of restarts    
-                        totalTrys += 1    
+                            self.fail() #Exceeded a reasonable number of restarts
+                        totalTrys += 1
 
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
@@ -227,9 +231,14 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                        lines=10000, N=10000)
 
     @needs_gridengine
-    @unittest.skip('Gridengine does not support shared caching')
+    @unittest.skip('GridEngine does not support shared caching')
     def testFileGridEngine(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='gridengine')
+
+    @needs_torque
+    @unittest.skip('PBS/Torque does not support shared caching')
+    def testFileTorqueEngine(self):
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='torque')
 
     @needs_parasol
     @unittest.skip("skipping until parasol support is less flaky (see github issue #449")
@@ -297,7 +306,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             l = open(tempFile, 'r').read()
             fileSize = os.path.getsize(tempFile)
             midPoint = getMidPoint(tempFile, 0, fileSize)
-            print "the mid point is %i of a file of %i bytes" % (midPoint, fileSize)
+            print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))
             assert midPoint < fileSize
             assert l[midPoint] == '\n'
             assert midPoint >= 0

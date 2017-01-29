@@ -14,10 +14,13 @@
 
 from __future__ import absolute_import
 
+import gzip
 import json
 import logging
+import os
 import time
 from threading import Thread, Event
+
 from bd2k.util.expando import Expando
 from toil.lib.bioio import getTotalCpuTime
 
@@ -28,19 +31,61 @@ class StatsAndLogging( object ):
     Class manages a thread that aggregates statistics and logging information on a toil run.
     """
 
-    def __init__(self, jobStore):
+    def __init__(self, jobStore, config):
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
-                              args=(jobStore, self._stop))
-    
+                              args=(jobStore, self._stop, config))
+
     def start(self):
         """
         Start the stats and logging thread.
         """
         self._worker.start()
 
-    @staticmethod
-    def statsAndLoggingAggregator(jobStore, stop):
+    @classmethod
+    def writeLogFiles(cls, jobNames, jobLogList, config):
+        def createName(logPath, jobName, logExtension):
+            logName = jobName.replace('-', '--')
+            logName = logName.replace('/', '-')
+            logName = logName.replace(' ', '_')
+            logName = logName.replace("'", '')
+            logName = logName.replace('"', '')
+            counter = 0
+            while True:
+                suffix = str(counter).zfill(3) + logExtension
+                fullName = os.path.join(logPath, logName + suffix)
+                if not os.path.exists(fullName):
+                    return fullName
+                counter += 1
+
+        mainFileName = jobNames[0]
+        extension = '.log'
+
+        assert not (config.writeLogs and config.writeLogsGzip), \
+            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+
+        if config.writeLogs:
+            path = config.writeLogs
+            writeFn = open
+        elif config.writeLogsGzip:
+            path = config.writeLogsGzip
+            writeFn = gzip.open
+            extension += '.gz'
+        else:
+            # we don't have anywhere to write the logs, return now
+            return
+
+        fullName = createName(path, mainFileName, extension)
+        with writeFn(fullName, 'w') as f:
+            f.writelines(l + '\n' for l in jobLogList)
+        for alternateName in jobNames[1:]:
+            # There are chained jobs in this output - indicate this with a symlink
+            # of the job's name to this file
+            name = createName(path, alternateName, extension)
+            os.symlink(os.path.relpath(fullName, path), name)
+
+    @classmethod
+    def statsAndLoggingAggregator(cls, jobStore, stop, config):
         """
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
@@ -71,21 +116,10 @@ class StatsAndLogging( object ):
                     logger.debug('Received Toil worker log. Disable debug level '
                                  'logging to hide this output\n%s', logFormat.join(jobLogs))
                 # we may have multiple jobs per worker
-                # logs[0] is guaranteed to exist in this branch
-                currentJobStoreID = logs[0].jobStoreID
-                jobLogs = []
-                for log in logs:
-                    jobStoreID = log.jobStoreID
-                    if jobStoreID == currentJobStoreID:
-                        # aggregate all the job's logs into 1 list
-                        jobLogs.append(log.text)
-                    else:
-                        # we have reached the next job, output the aggregated logs and continue
-                        logWithFormatting(currentJobStoreID, jobLogs)
-                        jobLogs = []
-                        currentJobStoreID = jobStoreID
-                # output the last job's logs
-                logWithFormatting(currentJobStoreID, jobLogs)
+                jobNames = logs.names
+                messages = logs.messages
+                logWithFormatting(jobNames[0], messages)
+                cls.writeLogFiles(jobNames, messages, config=config)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit

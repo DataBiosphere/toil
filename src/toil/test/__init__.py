@@ -31,7 +31,10 @@ from inspect import getsource
 from subprocess import PIPE, Popen, CalledProcessError, check_output
 from textwrap import dedent
 from unittest.util import strclass
-from urllib2 import urlopen
+
+# Python 3 compatibility imports
+from six import iteritems, itervalues
+from six.moves.urllib.request import urlopen
 
 from bd2k.util import less_strict_bool, memoize
 from bd2k.util.files import mkdir_p
@@ -323,10 +326,20 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     test_item = _mark_test('gridengine', test_item)
-    if next(which('qsub'), None):
+    if next(which('qhost'), None):
         return test_item
     else:
         return unittest.skip("Install GridEngine to include this test.")(test_item)
+
+def needs_torque(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
+    """
+    test_item = _mark_test('torque', test_item)
+    if next(which('pbsnodes'), None):
+        return test_item
+    else:
+        return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
 
 def needs_mesos(test_item):
@@ -573,7 +586,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
 
         :return: the popped key, value tuple
         """
-        k, v = next(iter(kwargs.iteritems()))
+        k, v = next(iter(iteritems(kwargs)))
         d.pop(k)
         return k, v
 
@@ -717,7 +730,7 @@ class ApplianceTestSupport(ToilTest):
             """
             :param ApplianceTestSupport outer:
             """
-            assert all(' ' not in v for v in mounts.itervalues()), 'No spaces allowed in mounts'
+            assert all(' ' not in v for v in itervalues(mounts)), 'No spaces allowed in mounts'
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
@@ -734,7 +747,7 @@ class ApplianceTestSupport(ToilTest):
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
-                                   ['--volume=%s:%s' % mount for mount in self.mounts.iteritems()],
+                                   ['--volume=%s:%s' % mount for mount in iteritems(self.mounts)],
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
@@ -781,7 +794,7 @@ class ApplianceTestSupport(ToilTest):
             """
             # Delete all files within each mounted directory, but not the directory itself.
             cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
-                                                           for k, v in self.mounts.iteritems()
+                                                           for k, v in iteritems(self.mounts)
                                                            if os.path.isdir(k))
             self.outer._run('docker', 'run',
                             '--rm',

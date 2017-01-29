@@ -18,6 +18,8 @@ from operator import attrgetter
 import datetime
 from cgcloud.lib.util import std_dev, mean
 
+from toil.test import runningOnEC2
+
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
@@ -50,7 +52,7 @@ def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
             zone = boto.config.get('Boto', 'ec2_region_name')
             if zone is not None:
                 zone += 'a'  # derive an availability zone in the region
-        if not zone:
+        if not zone and runningOnEC2():
             try:
                 zone = get_instance_metadata()['placement']['availability-zone']
             except KeyError:
@@ -194,7 +196,7 @@ iamFullPolicy = dict(Version="2012-10-17", Statement=[
 
 logDir = '--log_dir=/var/lib/mesos'
 leaderArgs = logDir + ' --registry=in_memory --cluster={name}'
-workerArgs = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
+workerArgs = '{keyPath} --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
 
 awsUserData = """#cloud-config
 
@@ -280,7 +282,10 @@ coreos:
             -v /var/lib/mesos:/var/lib/mesos \
             -v /var/lib/docker:/var/lib/docker \
             -v /var/lib/toil:/var/lib/toil \
-            --name={role} \
+            --name=toil_{role} \
             {image} \
             {args}
+
+ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
 """

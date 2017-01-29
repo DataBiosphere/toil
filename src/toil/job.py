@@ -14,7 +14,6 @@
 
 from __future__ import absolute_import, print_function
 
-import cPickle
 import collections
 import importlib
 import inspect
@@ -29,6 +28,10 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
+
+# Python 3 compatibility imports
+from six.moves import cPickle
+from six import iteritems, string_types
 
 from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
@@ -240,7 +243,6 @@ class JobNode(JobLikeObject):
                    jobName=job.jobName,
                    unitName=job.unitName,
                    predecessorNumber=predecessorNumber)
-
 
 class Job(JobLikeObject):
     """
@@ -894,7 +896,7 @@ class Job(JobLikeObject):
         """
         Sets the values for promises using the return values from this job's run() function.
         """
-        for path, promiseFileStoreIDs in self._rvs.iteritems():
+        for path, promiseFileStoreIDs in iteritems(self._rvs):
             if not path:
                 # Note that its possible for returnValues to be a promise, not an actual return
                 # value. This is the case if the job returns a promise from another job. In
@@ -1327,7 +1329,7 @@ class FunctionWrappingJob(Job):
                     # ... and finally fall back to a default value.
                     value = default
             # Optionally, convert strings with metric or binary prefixes.
-            if dehumanize and isinstance(value, basestring):
+            if dehumanize and isinstance(value, string_types):
                 value = human2bytes(value)
             return value
 
