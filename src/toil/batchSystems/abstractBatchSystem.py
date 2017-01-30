@@ -103,7 +103,7 @@ class AbstractBatchSystem(object):
 
         :param int disk: int giving the number of bytes of disk space the job needs to run
 
-        :param booleam preemptable: True if the job can be run on a preemptable node
+        :param bool preemptable: True if the job can be run on a preemptable node
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int

@@ -762,11 +762,12 @@ class Job(JobLikeObject):
             """
             Start the service.
 
-            :param toil.job.Job job: The underlying job that is being run. Can be used to register
-            deferred functions, or to access the fileStore for creating temporary files.
+            :param toil.job.Job job: The underlying job that is being run. Can be used to
+                                     register deferred functions, or to access the fileStore
+                                     for creating temporary files.
 
-            :returns: An object describing how to access the service. The object must be pickleable \
-            and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
+            :returns: An object describing how to access the service. The object must be pickleable
+                      and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
             """
             pass
 
@@ -776,7 +777,8 @@ class Job(JobLikeObject):
             Stops the service. Function can block until complete.
 
             :param toil.job.Job job: The underlying job that is being run. Can be used to register
-            deferred functions, or to access the fileStore for creating temporary files.
+                                     deferred functions, or to access the fileStore for creating temporary
+                                     files.
             """
             pass
 
@@ -784,7 +786,7 @@ class Job(JobLikeObject):
             """
             Checks the service is still running.
 
-            :raise RuntimeError: If the service failed, this will cause the service job to be labeled failed.
+            :raise exceptions.RuntimeError: If the service failed, this will cause the service job to be labeled failed.
             :returns: True if the service is still running, else False. If False then the service job will be terminated,
                 and considered a success. Important point: if the service job exits due to a failure, it should raise a
                 RuntimeError, not return False!

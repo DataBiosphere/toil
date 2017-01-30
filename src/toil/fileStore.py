@@ -135,8 +135,8 @@ class FileStore(object):
         the job.
 
         :return: The absolute path to a new local temporary directory. This directory will exist
-        for the duration of the job only, and is guaranteed to be deleted once the job terminates,
-        removing all files it contains recursively.
+                 for the duration of the job only, and is guaranteed to be deleted once the job
+                 terminates, removing all files it contains recursively.
         :rtype: str
         """
         return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
@@ -145,8 +145,8 @@ class FileStore(object):
         """
         Get a new local temporary file that will persist for the duration of the job.
 
-        :return: The absolute path to a local temporary file. This file will exist for the duration
-        of the job only, and is guaranteed to be deleted once the job terminates.
+        :return: The absolute path to a local temporary file. This file will exist for the
+                 duration of the job only, and is guaranteed to be deleted once the job terminates.
         :rtype: str
         """
         handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
