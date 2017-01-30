@@ -9,10 +9,10 @@ Cloud installation
 
 Amazon Web Services
 -------------------
-Toil is built with an Amazon Web Services provisioner which can be used with
-CGCloud_ to provision instances and clusters in AWS. For more information on
-the AWS provisioner, see the :ref:`Autoscaling` section.
-
+Toil includes a native AWS provisioner that can be used to start autoscaling
+clusters. For more information on this provisioner, see the :ref:`Autoscaling`
+section. To provision static, non-autoscaling clusters we recommend using
+CGCloud_.
 
 CGCloud Quickstart
 ~~~~~~~~~~~~~~~~~~
