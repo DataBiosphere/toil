@@ -16,8 +16,9 @@ pipelines. You can:
 
 Toil is, admittedly, not quite as good as sliced bread, but it's about as close
 to it as you're gonna get.
-See our `paper`_ to learn more about Toil and what it can do, or jump in and skip
-to :ref:`Installation`. (You can also join us on `GitHub`_ or `Gitter`_.)
+See our `paper`_ to learn more about Toil and what it can do, or jump in and
+skip to the :ref:`installation-ref` section. (You can also join us on `GitHub`_ or
+`Gitter`_.)
 
 .. _GridEngine: http://gridscheduler.sourceforge.net/
 .. _Parasol: http://genecats.soe.ucsc.edu/eng/parasol.html

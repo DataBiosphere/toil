@@ -1,11 +1,9 @@
-.. _installation:
-
 .. highlight:: console
+
+.. _installation-ref:
 
 Installation
 ============
-
-.. _installation-ref:
 
 Basic installation
 ------------------

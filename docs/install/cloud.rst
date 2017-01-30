@@ -1,6 +1,6 @@
-.. _cloudInstallation:
-
 .. highlight:: console
+
+.. _cloudInstallation:
 
 Cloud installation
 ==================
