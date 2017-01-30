@@ -4,19 +4,19 @@ Toil
 Toil is an open-source pure-Python workflow engine that lets people write better
 pipelines. You can:
 
-* Write your workflows in `Common Workflow Language`_ (CWL),
+* Write your workflows in `Common Workflow Language`_ (CWL)
 * Run workflows on your laptop or on huge commercial clouds such as
   `Amazon Web Services`_ (including the `spot market`_), `Microsoft Azure`_,
-  `OpenStack`_, and `Google Compute Engine`_,
+  `OpenStack`_, and `Google Compute Engine`_
 * Take advantage of high-performance computing environments with batch systems
-  like `GridEngine`_, `Apache Mesos`_, and `Parasol`_,
-* Run workflows concurrently at scale using hundreds of nodes and thousands of cores,
-* Execute workflows efficiently with caching and resource requirement specifications, and
+  like `GridEngine`_, `Apache Mesos`_, and `Parasol`_
+* Run workflows concurrently at scale using hundreds of nodes and thousands of cores
+* Execute workflows efficiently with caching and resource requirement specifications
 * Easily link databases and services
 
-Toil is just as good if not better than sliced bread, unless you are hungry, in
-which case we recommend seeking another solution.
-Click `here`_ to learn more about Toil and what it can do, or jump in and skip
+Toil is, admittedly, not quite as good as sliced bread, but it's about as close
+to it as you're gonna get.
+See our `paper`_ to learn more about Toil and what it can do, or jump in and skip
 to :ref:`Installation`. (You can also join us on `GitHub`_ or `Gitter`_.)
 
 .. _GridEngine: http://gridscheduler.sourceforge.net/
@@ -29,7 +29,7 @@ to :ref:`Installation`. (You can also join us on `GitHub`_ or `Gitter`_.)
 .. _OpenStack: https://www.openstack.org/
 .. _GitHub: https://github.com/BD2KGenomics/toil
 .. _Gitter: https://gitter.im/bd2k-genomics-toil/Lobby
-.. _here: https://bd2kgenomics.github.io/toil/
+.. _paper: http://biorxiv.org/content/early/2016/07/07/062497
 
 Getting Started
 ~~~~~~~~~~~~~~~
