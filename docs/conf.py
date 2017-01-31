@@ -1,4 +1,4 @@
-#
+# -*- coding: utf-8 -*-
 # Toil documentation build configuration file, created by
 # sphinx-quickstart on Tue Aug 25 12:37:16 2015.
 #
@@ -15,6 +15,7 @@ import sys
 import os
 import inspect
 import re
+from datetime import datetime
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -56,9 +57,20 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
+    'sphinx.ext.intersphinx',
     'sphinxcontrib.fulltoc',
 ]
 
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/2', None),
+}
+
+# Make these link definitions available everywhere so we don't need to keep
+# repeating ourselves.
+rst_epilog = """
+.. _Common Workflow Language: http://www.commonwl.org/
+.. _CGCloud: https://github.com/BD2KGenomics/cgcloud
+"""
 
 def skip(app, what, name, obj, skip, options):
     return name != '__init__' and (skip
@@ -86,7 +98,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Toil'
-copyright = u'2015, 2016, UCSC Computational Genomics Lab'
+copyright = u'2015 – %i UCSC Computational Genomics Lab' % datetime.now().year
 author = u'UCSC Computational Genomics Lab'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -169,17 +181,17 @@ html_theme = 'alabaster'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-#html_logo = None
+html_logo = "_static/logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-#html_favicon = None
+html_favicon = "_static/shortcut.png"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-#html_static_path = ['_static']
+html_static_path = ['_static']
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -211,7 +223,7 @@ html_theme = 'alabaster'
 #html_split_index = False
 
 # If true, links to the reST sources are added to the pages.
-#html_show_sourcelink = True
+html_show_sourcelink = False
 
 # If true, "Created using Sphinx" is shown in the HTML footer. Default is True.
 #html_show_sphinx = True

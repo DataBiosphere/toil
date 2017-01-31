@@ -55,7 +55,7 @@ class AbstractBatchSystem(object):
     def supportsHotDeployment(cls):
         """
         Whether this batch system supports hot deployment of the user script itself. If it does,
-        the :meth:`setUserScript` can be invoked to set the resource object representing the user
+        the :meth:`.setUserScript` can be invoked to set the resource object representing the user
         script.
 
         Note to implementors: If your implementation returns True here, it should also override
@@ -103,7 +103,7 @@ class AbstractBatchSystem(object):
 
         :param int disk: int giving the number of bytes of disk space the job needs to run
 
-        :param booleam preemptable: True if the job can be run on a preemptable node
+        :param bool preemptable: True if the job can be run on a preemptable node
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int
