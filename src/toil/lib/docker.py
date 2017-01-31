@@ -15,7 +15,7 @@
 import base64
 import logging
 import subprocess
-
+import pipes
 import os
 from bd2k.util.exceptions import require
 
@@ -36,6 +36,7 @@ def dockerCall(job,
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
     :param list[str] parameters: Command line arguments to be passed to the tool.
+           If list of lists: list[list[str]], then treat as successive commands chained with pipe.
     :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
@@ -65,6 +66,7 @@ def dockerCheckOutput(job,
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
     :param list[str] parameters: Command line arguments to be passed to the tool.
+           If list of lists: list[list[str]], then treat as successive commands chained with pipe.
     :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
@@ -93,6 +95,7 @@ def _docker(job,
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools).
     :param list[str] parameters: Command line arguments to be passed to the tool.
+           If list of lists: list[list[str]], then treat as successive commands chained with pipe.
     :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
@@ -148,7 +151,15 @@ def _docker(job,
     job.defer(_fixPermissions, tool, workDir)
 
     # Make subprocess call
-    call = baseDockerCall + [tool] + parameters
+
+    # If parameters is list of lists, treat each list as separate command and chain with pipes
+    if len(parameters) > 0 and type(parameters[0]) is list:
+        # When piping, all arguments now get merged into a single string to bash -c.
+        # We try to support spaces in paths by wrapping them all in quotes first.
+        chain_params = [' '.join(p) for p in [map(pipes.quote, q) for q in parameters]]
+        call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c', ' | '.join(chain_params)]
+    else:
+        call = baseDockerCall + [tool] + parameters
     _logger.info("Calling docker with " + repr(call))
 
     if outfile:
