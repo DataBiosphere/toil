@@ -60,6 +60,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.leaderIP = self.instanceMetaData['local-ipv4']
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
         self.masterPublicKey = self.setSSH()
+        self.tags = self.ctx.ec2.get_all_tags()
 
     def setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
@@ -233,7 +234,7 @@ class AWSProvisioner(AbstractProvisioner):
         leader = instances[0]  # assume leader was launched first
         if wait:
             logger.info("Waiting for toil_leader to enter 'running' state...")
-            cls._tagWhenRunning(ctx.ec2, [leader], clusterName)
+            wait_instances_running(ctx.ec2, [leader])
             logger.info('... toil_leader is running')
             cls._waitForNode(leader, 'toil_leader')
         return leader
@@ -243,6 +244,13 @@ class AWSProvisioner(AbstractProvisioner):
         wait_instances_running(ec2, instances)
         for instance in instances:
             instance.add_tag("Name", tag)
+
+    @classmethod
+    def _addTags(cls, instances, tags):
+        for instance in instances:
+            for tag in tags:
+                key, value = tag
+                instance.add_tag(key, value)
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -335,7 +343,7 @@ class AWSProvisioner(AbstractProvisioner):
                 s.close()
 
     @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, zone=None):
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags={}, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
@@ -364,7 +372,12 @@ class AWSProvisioner(AbstractProvisioner):
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        return cls._getLeader(clusterName=clusterName, wait=True, zone=zone)
+        leader = cls._getLeader(clusterName=clusterName, wait=True, zone=zone)
+
+        defaultTags = {'Name': clusterName, 'Owner': keyName}
+        defaultTags.update(userTags)
+        cls._addTags([leader], defaultTags)
+        return leader
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
@@ -507,7 +520,8 @@ class AWSProvisioner(AbstractProvisioner):
                                      )
             # flatten the list 
             instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
-        self._tagWhenRunning(self.ctx.ec2, instancesLaunched, self.clusterName)
+        wait_instances_running(self.ctx.ec2, instancesLaunched)
+        AWSProvisioner._addTags(instancesLaunched, self.tags)
         self._propagateKey(instancesLaunched)
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)

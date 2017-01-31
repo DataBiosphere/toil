@@ -21,6 +21,14 @@ from toil.utils import addBasicProvisionerOptions
 logger = logging.getLogger( __name__ )
 
 
+def createTagsDict(tagList):
+    tagsDict = dict()
+    for tag in tagList:
+        key, value = tag.split('=')
+        tagsDict[key] = value
+    return tagsDict
+
+
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
@@ -31,8 +39,21 @@ def main():
                              "bid for a spot instance, for example 'c3.8xlarge:0.42'.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
                         help="The name of the AWS key pair to include on the instance")
+    parser.add_argument("-T, --tag", dest='tags', action='append',
+                        help="Tags are added to the AWS cluster for this node and all of its"
+                             "children. Tags are of the form:"
+                             "  --T key1=value1 --tag key2=value2"
+                             "Multiple tags are allowed and each tag needs its own flag. By"
+                             "default the cluster is tagged with"
+                             "  {"
+                             "      \"Name\": clusterName,"
+                             "      \"Owner\": IAM username"
+                             "  }"
+                             "but these can be overridden.")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
+    tagsDict = createTagsDict(config.tags)
+
     spotBid = None
     if config.provisioner == 'aws':
         logger.info('Using aws provisioner.')
@@ -50,4 +71,4 @@ def main():
         assert False
 
     provisioner.launchCluster(instanceType=config.nodeType, clusterName=config.clusterName,
-                              keyName=config.keyPairName, spotBid=spotBid, zone=config.zone)
+                              keyName=config.keyPairName, spotBid=spotBid, tags=tagsDict, zone=config.zone)
