@@ -275,6 +275,8 @@ coreos:
 
         [Service]
         Restart=on-failure
+        RestartSec=2
+        ExecPre=-/usr/bin/docker rm toil_{role}
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
