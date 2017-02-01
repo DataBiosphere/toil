@@ -954,7 +954,7 @@ class hidden:
             with open(fileName, 'wb') as f:
                 f.write(os.urandom(1024 * 30000)) # 30 Mb
             outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
-            job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), outputFile)
+            job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
             assert filecmp.cmp(fileName, outputFile)
 
         def testFileStoreExportFile(self):
