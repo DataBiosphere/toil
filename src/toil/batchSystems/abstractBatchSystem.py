@@ -331,7 +331,7 @@ class NodeInfo(object):
     """
     def __init__(self, coresUsed, memoryUsed, coresTotal, memoryTotal,
                  requestedCores, requestedMemory, workers):
-        self.coresUse = coresUsed
+        self.coresUsed = coresUsed
         self.totalCores = coresTotal
         self.memoryUsed = memoryUsed
         self.memoryTotal = memoryTotal
