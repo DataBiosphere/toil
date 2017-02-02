@@ -22,6 +22,7 @@ import time
 import sys
 
 # Python 3 compatibility imports
+from six import iteritems
 from six.moves import xrange
 
 from bd2k.util import memoize
@@ -242,7 +243,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _addTags(cls, instances, tags):
         for instance in instances:
-            for key, value in tags.iteritems():
+            for key, value in iteritems(tags):
                 instance.add_tag(key, value)
 
     @classmethod
