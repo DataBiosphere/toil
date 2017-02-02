@@ -100,7 +100,7 @@ class UtilsTest(ToilTest):
             tags.update(userTags)
 
             # launch preemptable master with same name
-            system([self.toilMain, 'launch-cluster', '-T', 'key1=value1', '-T', 'key2=value2', '--tag', 'key3=value3',
+            system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--nodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
