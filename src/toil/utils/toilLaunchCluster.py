@@ -52,7 +52,7 @@ def main():
                              "but these can be overridden.")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
-    tagsDict = createTagsDict(config.tags)
+    tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
     spotBid = None
     if config.provisioner == 'aws':
