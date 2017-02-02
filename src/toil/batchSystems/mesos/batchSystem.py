@@ -29,7 +29,7 @@ import itertools
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six import iteritems
+from six import iteritems, itervalues
 
 import mesos.interface
 import mesos.native
@@ -547,8 +547,8 @@ class MesosBatchSystem(BatchSystemSupport,
         for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                requestedCores = sum([taskData.cores for taskData in self.runningJobMap.itervalues()])
-                requestedMemory = sum([taskData.memory for taskData in self.runningJobMap.itervalues()])
+                requestedCores = sum([taskData.cores for taskData in itervalues(self.runningJobMap)])
+                requestedMemory = sum([taskData.memory for taskData in itervalues(self.runningJobMap)])
                 executor.nodeInfo = NodeInfo(requestedCores=requestedCores, requestedMemory=requestedMemory, **v)
                 self.executors[nodeAddress] = executor
             else:
