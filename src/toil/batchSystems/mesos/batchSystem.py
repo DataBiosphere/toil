@@ -106,7 +106,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.runningJobMap = {}
 
         # Mesos has no easy way of getting a task's resources so we track them here
-        self.taskIDResourceMap = {}
+        self.taskResources = {}
 
         # Queue of jobs whose status has been updated, according to Mesos
         self.updatedJobsQueue = Queue()
@@ -162,7 +162,7 @@ class MesosBatchSystem(BatchSystemSupport,
         jobType = job.resources
         log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
         self.jobQueues[jobType].append(job)
-        self.taskIDResourceMap[jobID] = job
+        self.taskResources[jobID] = job.resources
         log.debug("... queued")
         return jobID
 
@@ -346,12 +346,12 @@ class MesosBatchSystem(BatchSystemSupport,
                     jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
-        job = self.taskIDResourceMap['']
+        resources = self.taskResources[task.task_id]
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
                                                                slaveID=offer.slave_id,
                                                                executorID=task.executor.executor_id,
-                                                               cores=job.resources.cores,
-                                                               memory=task.resources.mem.scalar.value)
+                                                               cores=resources.cores,
+                                                               memory=resources.memory)
         self._deleteByJobID(int(task.task_id.value))
 
     def resourceOffers(self, driver, offers):
@@ -547,8 +547,9 @@ class MesosBatchSystem(BatchSystemSupport,
         for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                # do summation here of total requested running resources
-                executor.nodeInfo = NodeInfo(requestedCores=, requestedMemory=,**v)
+                requestedCores = sum([taskData.cores for taskData in self.runningJobMap.itervalues()])
+                requestedMemory = sum([taskData.memory for taskData in self.runningJobMap.itervalues()])
+                executor.nodeInfo = NodeInfo(requestedCores=requestedCores, requestedMemory=requestedMemory, **v)
                 self.executors[nodeAddress] = executor
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
