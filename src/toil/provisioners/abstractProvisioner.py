@@ -102,8 +102,11 @@ class AbstractProvisioner(object):
             # namedtuples don't retain attribute names when dumped to JSON.
             # convert them to dicts instead to improve stats output. Also add
             # time.
-            return dict(memory=nodeInfo.memory,
-                        cores=nodeInfo.cores,
+            return dict(memory=nodeInfo.memoryUsage,
+                        cores=nodeInfo.coresUsage,
+                        memoryTotal=nodeInfo.memoryTotal,
+                        coresTotal=nodeInfo.coresTotal,
+                        theoreticalCores=nodeInfo,
                         workers=nodeInfo.workers,
                         time=time.time()
                         )

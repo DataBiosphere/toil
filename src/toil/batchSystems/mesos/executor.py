@@ -110,8 +110,10 @@ class MesosExecutor(mesos.interface.Executor):
                 message = Expando(address=self.address)
                 psutil.cpu_percent()
             else:
-                message.nodeInfo = dict(cores=float(psutil.cpu_percent()) * .01,
-                                        memory=float(psutil.virtual_memory().percent) * .01,
+                message.nodeInfo = dict(coresUsed=float(psutil.cpu_percent()) * .01,
+                                        memoryUsed=float(psutil.virtual_memory().percent) * .01,
+                                        coresTotal=psutil.cpu_count(),
+                                        memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
             driver.sendFrameworkMessage(repr(message))
             # Prevent workers launched together from repeatedly hitting the leader at the same time

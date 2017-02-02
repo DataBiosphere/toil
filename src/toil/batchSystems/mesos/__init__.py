@@ -20,7 +20,11 @@ TaskData = namedtuple('TaskData', (
     # Mesos' ID of the slave where task is being run
     'slaveID',
     # Mesos' ID of the executor running the task
-    'executorID'))
+    'executorID',
+    # Memory requirement of the task
+    'memory',
+    # CPU requirement of the task
+    'cores'))
 
 
 class ResourceRequirement( namedtuple('_ResourceRequirement', (

@@ -105,6 +105,9 @@ class MesosBatchSystem(BatchSystemSupport,
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}
 
+        # Mesos has no easy way of getting a task's resources so we track them here
+        self.taskIDResourceMap = {}
+
         # Queue of jobs whose status has been updated, according to Mesos
         self.updatedJobsQueue = Queue()
 
@@ -159,6 +162,7 @@ class MesosBatchSystem(BatchSystemSupport,
         jobType = job.resources
         log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
         self.jobQueues[jobType].append(job)
+        self.taskIDResourceMap[jobID] = job
         log.debug("... queued")
         return jobID
 
@@ -342,9 +346,12 @@ class MesosBatchSystem(BatchSystemSupport,
                     jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
+        job = self.taskIDResourceMap['']
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
                                                                slaveID=offer.slave_id,
-                                                               executorID=task.executor.executor_id)
+                                                               executorID=task.executor.executor_id,
+                                                               cores=job.resources.cores,
+                                                               memory=task.resources.mem.scalar.value)
         self._deleteByJobID(int(task.task_id.value))
 
     def resourceOffers(self, driver, offers):
@@ -453,7 +460,6 @@ class MesosBatchSystem(BatchSystemSupport,
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
-        # FIXME: what bout
         task.name = job.name
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
@@ -541,7 +547,8 @@ class MesosBatchSystem(BatchSystemSupport,
         for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                executor.nodeInfo = NodeInfo(**v)
+                # do summation here of total requested running resources
+                executor.nodeInfo = NodeInfo(requestedCores=, requestedMemory=,**v)
                 self.executors[nodeAddress] = executor
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
