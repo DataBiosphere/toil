@@ -60,7 +60,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.leaderIP = self.instanceMetaData['local-ipv4']
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
         self.masterPublicKey = self.setSSH()
-        self.tags = self.ctx.ec2.get_all_tags()
+        self.tags = self._getLeader(self.clusterName).tags
 
     def setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
@@ -238,12 +238,6 @@ class AWSProvisioner(AbstractProvisioner):
             logger.info('... toil_leader is running')
             cls._waitForNode(leader, 'toil_leader')
         return leader
-
-    @classmethod
-    def _tagWhenRunning(cls, ec2, instances, tag):
-        wait_instances_running(ec2, instances)
-        for instance in instances:
-            instance.add_tag("Name", tag)
 
     @classmethod
     def _addTags(cls, instances, tags):
