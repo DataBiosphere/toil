@@ -248,8 +248,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _addTags(cls, instances, tags):
         for instance in instances:
-            for tag in tags:
-                key, value = tag
+            for key, value in tags.iteritems():
                 instance.add_tag(key, value)
 
     @classmethod
