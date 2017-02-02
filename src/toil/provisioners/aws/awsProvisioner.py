@@ -343,7 +343,9 @@ class AWSProvisioner(AbstractProvisioner):
                 s.close()
 
     @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags={}, zone=None):
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None):
+        if userTags is None:
+            userTags = {}
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
