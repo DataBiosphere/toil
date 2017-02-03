@@ -275,7 +275,6 @@ class JobTest(ToilTest):
 
         self.runNewCheckpointIsLeafVertexTest(createWorkflow)
 
-    @unittest.skip("Enable this test when issue #1466 has been fixed.")
     def testNewCheckpointIsLeafVertexRootCase(self):
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
