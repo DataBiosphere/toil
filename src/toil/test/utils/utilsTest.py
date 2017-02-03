@@ -84,6 +84,7 @@ class UtilsTest(ToilTest):
     @integrative
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
+        keyName = 'jenkins@jenkins-master'
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
@@ -93,10 +94,20 @@ class UtilsTest(ToilTest):
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            
+            userTags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3'}
+            tags = {'Name': clusterName, 'Owner': keyName}
+            tags.update(userTags)
+
             # launch preemptable master with same name
-            system([self.toilMain, 'launch-cluster', '--nodeType=m3.medium:0.2', '--keyPairName=jenkins@jenkins-master',
-                    clusterName, '--provisioner=aws', '--logLevel=DEBUG'])
+            system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
+                    '--nodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--provisioner=aws', '--logLevel=DEBUG'])
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
+
+            # test leader tags
+            leaderTags = AWSProvisioner._getLeader(clusterName).tags
+            self.assertEqual(tags, leaderTags)
 
             testStrings = ["'foo'",
                            '"foo"',

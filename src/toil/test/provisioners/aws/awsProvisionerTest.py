@@ -51,7 +51,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--nodeType=%s' % self.instanceType, self.clusterName]
         subprocess.check_call(callCommand)
 
-    def __init__(self, methodName='AWSprovisioner'):
+    def cleanJobStoreUtil(self):
+        callCommand = ['toil', 'clean', self.jobStore]
+        subprocess.check_call(callCommand)
+
+    def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.instanceType = 'm3.large'
         self.keyName = 'jenkins@jenkins-master'
@@ -62,11 +66,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def setUp(self):
         super(AbstractAWSAutoscaleTest, self).setUp()
-        self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
         self.destroyClusterUtil()
+        self.cleanJobStoreUtil()
 
     def getMatchingRoles(self, clusterName):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -156,7 +160,11 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
-        self.clusterName = 'aws-provisioner-test-' + str(uuid4())
+        self.clusterName = 'provisioner-test-' + str(uuid4())
+
+    def setUp(self):
+        super(AWSAutoscaleTest, self).setUp()
+        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -196,6 +204,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         super(AWSRestartTest, self).setUp()
         self.instanceType = 't2.micro'
         self.scriptName = "/home/restartScript.py"
+        self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
         def restartScript():
@@ -250,6 +259,7 @@ class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def setUp(self):
         super(PremptableDeficitCompensationTest, self).setUp()
         self.instanceType = 'm3.large' # instance needs to be available on the spot market
+        self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
         self._test(spotInstances=True, fulfillableBid=False)
