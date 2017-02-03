@@ -646,7 +646,7 @@ class Job(JobLikeObject):
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in filter(lambda x : x.checkpoint, jobs):
             if y not in roots: # The roots are the prexisting jobs
-                if len(y._children) != 0 and len(y._followOns) != 0 and len(y._services) != 0:
+                if not (len(y._children) == 0 and len(y._followOns) == 0 and len(y._services) == 0):
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
     def defer(self, function, *args, **kwargs):
