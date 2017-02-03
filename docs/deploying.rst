@@ -278,22 +278,3 @@ properly resolving overlapping dependencies and detecting conflicts.
 
 .. _appliance_dev:
 
-Developing with the Toil Appliance
-----------------------------------
-
-To develop on features reliant on the Toil Appliance (i.e. autoscaling), you
-should consider setting up a personal registry on `Quay`_ or `Docker Hub`_. Because
-the Toil Appliance images are tagged with the Git commit they are based on and
-because only commits on our master branch trigger an appliance build on Quay,
-as soon as a developer makes a commit or dirties the working copy they will no
-longer be able to rely on Toil to automatically detect the proper Toil Appliance
-image. Instead, developers wishing to test any appliance changes in autoscaling
-should build and push their own appliance image to a personal Docker registry.
-See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
-configure Toil to pull the Toil Appliance image from your personal repo instead
-of the our official Quay account.
-
-.. _Quay: https://quay.io/
-
-.. _Docker Hub: https://hub.docker.com/
-
