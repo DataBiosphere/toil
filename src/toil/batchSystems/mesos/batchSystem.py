@@ -346,12 +346,14 @@ class MesosBatchSystem(BatchSystemSupport,
                     jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
-        resources = self.taskResources[int(task.task_id.value)]
+        resourceKey = int(task.task_id.value)
+        resources = self.taskResources[resourceKey]
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
                                                                slaveID=offer.slave_id,
                                                                executorID=task.executor.executor_id,
                                                                cores=resources.cores,
                                                                memory=resources.memory)
+        del self.taskResources[resourceKey]
         self._deleteByJobID(int(task.task_id.value))
 
     def resourceOffers(self, driver, offers):
