@@ -349,8 +349,8 @@ class MesosBatchSystem(BatchSystemSupport,
         resourceKey = int(task.task_id.value)
         resources = self.taskResources[resourceKey]
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
-                                                               slaveID=offer.slave_id,
-                                                               executorID=task.executor.executor_id,
+                                                               slaveID=offer.slave_id.value,
+                                                               executorID=task.executor.executor_id.value,
                                                                cores=resources.cores,
                                                                memory=resources.memory)
         del self.taskResources[resourceKey]
@@ -549,8 +549,10 @@ class MesosBatchSystem(BatchSystemSupport,
         for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                requestedCores = sum([taskData.cores for taskData in itervalues(self.runningJobMap)])
-                requestedMemory = sum([taskData.memory for taskData in itervalues(self.runningJobMap)])
+                resources = [taskData for taskData in itervalues(self.runningJobMap)
+                             if taskData.executorID == executorId.value]
+                requestedCores = sum(taskData.cores for taskData in resources)
+                requestedMemory = sum(taskData.memory for taskData in resources)
                 executor.nodeInfo = NodeInfo(requestedCores=requestedCores, requestedMemory=requestedMemory, **v)
                 self.executors[nodeAddress] = executor
             else:
