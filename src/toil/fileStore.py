@@ -248,7 +248,7 @@ class FileStore(object):
         return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID, dstUrl):
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+        raise NotImplementedError()
 
     # A utility method for accessing filenames
     def _resolveAbsoluteLocalPath(self, filePath):
@@ -720,6 +720,13 @@ class CachingFileStore(FileStore):
                         self._JobState.updateJobSpecificFiles(self, fileStoreID, localFilePath,
                                                               0.0, False)
         return localFilePath
+
+    def exportFile(self, jobStoreFileID, dstUrl):
+        while jobStoreFileID in self._pendingFileWrites:
+            # The file is still being writting to the job store - wait for this process to finish prior to
+            # exporting it
+            time.sleep(1)
+        self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def readGlobalFileStream(self, fileStoreID):
         if fileStoreID in self.filesToDelete:
@@ -1656,6 +1663,9 @@ class NonCachingFileStore(FileStore):
     def readGlobalFileStream(self, fileStoreID):
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
+
+    def exportFile(self, jobStoreFileID, dstUrl):
+        self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def deleteLocalFile(self, fileStoreID):
         try:
