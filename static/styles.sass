@@ -1,0 +1,154 @@
+@import '../purecss-sass/vendor/assets/stylesheets/purecss/base'
+@import '../purecss-sass/vendor/assets/stylesheets/purecss/buttons'
+@import '../purecss-sass/vendor/assets/stylesheets/purecss/grids'
+@import '../purecss-sass/vendor/assets/stylesheets/purecss/grids-responsive'
+@import '../purecss-sass/vendor/assets/stylesheets/purecss/menus'
+
+// clrs.cc because im just a programmer
+$blue: #0074D9
+$black: #111111
+$gray: #AAAAAA
+$silver: #DDDDDD
+
+$primaryColor: $blue
+
+*
+    -webkit-box-sizing: border-box
+    -moz-box-sizing: border-box
+    box-sizing: border-box
+    -webkit-font-smoothing: antialiased
+
+html, button, input, select, textarea, .pure-g [class *= "pure-u"]
+    font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif
+
+body
+    line-height: 1.7em
+    color: #7f8c8d
+    font-size: 1em
+    background: $primaryColor
+    background: $primaryColor linear-gradient(to bottom, $primaryColor 0%, #ffffff 64%)
+
+a:visited
+    color: $gray
+
+a:hover, a:active, a:focus
+    color: $silver
+
+h1, h2, h3, h4, h5, h6, label
+    color: $black
+
+h2
+    font-weight: 400
+    text-transform: uppercase
+    letter-spacing: 0.1em
+    margin: 1em 0 1em
+    text-align: center
+
+h3
+    color: $primaryColor
+
+    i
+        margin-right: 7px
+
+.row
+    @extend .pure-g
+
+.box
+    @extend .l-box, .pure-u-1, .pure-u-md-1-3
+
+.l-box
+    padding: 1em
+
+.half-box
+    @extend .pure-u-1, .pure-u-md-1-2
+    text-align: center
+
+.pure-button
+    background-color: #1f8dd6
+    color: white
+    padding: 0.5em 2em
+    border-radius: 5px
+
+a.pure-button-primary
+    background: white
+    color: #1f8dd6
+    border-radius: 5px
+    font-size: 120%
+
+
+nav
+    @extend .pure-menu, .pure-menu-horizontal
+    padding: 0.5em
+    text-align: left
+
+    ul
+        @extend .pure-menu-list
+        float: right
+
+    li
+        @extend .pure-menu-item
+
+    &>a
+        @extend .pure-menu-heading
+        text-transform: none !important
+        color: white
+        font-weight: 400
+        font-size: 120%
+        font-weight: bold
+
+    a
+        @extend .pure-menu-link
+        color: hsla(208, 100%, 85%, 1.0)
+
+        &:hover, &:focus
+            background-color: unset !important
+            border: none
+            color: white !important
+
+        &:visited
+            color: hsla(208, 100%, 85%, 1.0)
+
+header
+    @extend section
+    overflow: hidden
+    padding: 1em 1em 3em !important
+    margin: auto
+    clear: both
+
+    h1
+        font-size: 3em
+        font-weight: bold
+        color: white
+        line-height: 1em
+        margin-bottom: 0
+
+    p
+        color: white
+        opacity: 0.8
+
+main
+    background: white
+
+section
+    padding: 1em 0
+    max-width: 768px
+    margin: 0 auto
+
+.ribbon
+    background: #2d3e50
+    color: $gray
+
+    h2
+        color: white
+
+footer
+    text-align: left
+    border-bottom: solid 15px $primaryColor
+
+    img
+        text-align: center
+        max-height: 75px
+
+@media (max-width: 768px)
+    .hide-small
+        display: none !important
