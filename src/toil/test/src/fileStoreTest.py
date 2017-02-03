@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
+
+import filecmp
 from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
 from uuid import uuid4
@@ -945,6 +947,21 @@ class hidden:
             # Sleep so there's no race conditions where a job ends before another can get a hold of
             # the file
             time.sleep(3)
+
+        @staticmethod
+        def _writeExportGlobalFile(job):
+            fileName = os.path.join(job.fileStore.getLocalTempDir(), 'testfile')
+            with open(fileName, 'wb') as f:
+                f.write(os.urandom(1024 * 30000)) # 30 Mb
+            outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
+            job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
+            assert filecmp.cmp(fileName, outputFile)
+
+        def testFileStoreExportFile(self):
+            # Tests that files written to job store can be immediately exported
+            # motivated by https://github.com/BD2KGenomics/toil/issues/1469
+            root = Job.wrapJobFn(self._writeExportGlobalFile)
+            Job.Runner.startToil(root, self.options)
 
         # Testing for the return of file sizes to the sigma job pool.
         def testReturnFileSizes(self):
