@@ -1787,9 +1787,16 @@ class NonCachingFileStore(FileStore):
 
     @staticmethod
     def _readJobState(jobStateFileName):
-        with open(jobStateFileName) as fH:
-            state = dill.load(fH)
-        return state
+        try:
+            with open(jobStateFileName) as fH:
+                state = dill.load(fH)
+            return state
+        except IOError as e:
+            if e.errno == 2:
+                # job finished & deleted its jobState file since the jobState files were discovered
+                pass
+            else:
+                raise
 
     def _registerDeferredFunction(self, deferredFunction):
         with open(self.jobStateFile) as fH:
