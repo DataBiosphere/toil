@@ -516,12 +516,14 @@ class Leader:
         """
         Add a job to the queue of jobs
         """
-        if jobNode.preemptable:
-            self.preemptableJobsIssued += 1
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
                                     self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
+        if jobNode.preemptable:
+            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # so increment this value after the job is added to the issuedJob dict
+            self.preemptableJobsIssued += 1
         cur_logger = (logger.debug if jobNode.jobName.startswith(self.debugJobNames)
                       else logger.info)
         cur_logger("Issued job %s with job batch system ID: "
@@ -596,11 +598,13 @@ class Leader:
         Removes a job from the system.
         """
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
-        jobNode = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID)
+        jobNode = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         if jobNode.preemptable:
+            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # so decrement this value before removing the job from the issuedJob map
             assert self.preemptableJobsIssued > 0
             self.preemptableJobsIssued -= 1
-
+        del self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         # If service job
         if jobNode.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Decrement the number of services
