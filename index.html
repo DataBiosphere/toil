@@ -1,0 +1,134 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A scalable, efficient, cross-platform pipeline management system written entirely in Python and designed around the principles of functional programming.">
+    <title>Toil</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
+<body>
+    <nav>
+        <a href="https://cgl.genomics.ucsc.edu/">UCSC Computational Genomics Lab</a>
+        <ul>
+            <li><a href="https://toil.readthedocs.io/">Documentation</a></li>
+            <li><a href="https://github.com/BD2KGenomics/toil">GitHub</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <h1>Toil</h1>
+        <p>A scalable, efficient, cross-platform pipeline management system written entirely in Python and designed around the principles of functional programming.</p>
+        <p>
+            <a href="http://toil.readthedocs.io/en/latest/running/running.html" class="pure-button pure-button-primary">Get Started</a>
+        </p>
+    </header>
+
+    <main>
+        <section>
+            <h2>Get Started</h2>
+            <div class="row">
+                <div class="box">
+                    <h3><i class="fa fa-download"></i> Download</h3>
+                    <p>Installing Toil is as easy as: <br><code>$ pip install toil</code><br> For more info, see the <a href="http://toil.readthedocs.io/en/latest/install/basic.html">installation instructions</a> and <a href="https://github.com/BD2KGenomics/toil/releases/latest">release notes</a>.</a></p>
+                </div>
+
+                <div class="box">
+                    <h3><i class="fa fa-book"></i> Documentation</h3>
+                    <p>Installation instructions, a quickstart guide, and full <a href="https://toil.readthedocs.io/">documentation</a> on the latest stable release can be found at Read the Docs.</p>
+                </div>
+
+                <div class="box">
+                    <h3><i class="fa fa-life-ring"></i> Support</h3>
+                    <p>If the <a href="https://toil.readthedocs.io/">documentation</a> doesn't answer your question, feel free to reach out on <a href="https://gitter.im/bd2k-genomics-toil/Lobby">Gitter</a> or open an <a href="https://github.com/BD2KGenomics/toil/issues">issue on GitHub</a>.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Features</h2>
+
+            <div class="row">
+                <div class="box">
+                    <h3><i class="fa fa-code"></i> Pythonic</h3>
+                    <p>Easily mastered, the Python user API for defining and running workflows is built on one core class. Also, everything is open source under the Apache License.</a></p>
+                </div>
+
+                <div class="box">
+                    <h3><i class="fa fa-university"></i> Robust</h3>
+                    <p>Toil workflows support arbitrary worker and leader failure, with strong check-pointing that always allows resumption.</p>
+                </div>
+
+                <div class="box">
+                    <h3><i class="fa fa-rocket"></i> Efficient</h3>
+                    <p>Caching, fine grained, per task, resource requirement specifications, and support for the AWS spot market mean workflows can be executed with little waste.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="ribbon row">
+        <section>
+            <div class="hide-small is-center pure-u-1 pure-u-md-1-3 box">
+                <!-- By Jakub Ukrop (The Noun Project) [CC0], via Wikimedia Commons. Attribution not legally required. -->
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Noun_project_1841.svg/2000px-Noun_project_1841.svg.png" alt="" style="width: 100%; filter: invert(100%); text-align: center;">
+            </div>
+            <div class="pure-u-1 pure-u-md-2-3 box">
+                <h2>Cloud. Scalable.</h2>
+
+                <p>To demonstrate Toil, we processed over 20,000 RNA-seq samples to create a consistent meta-analysis of five datasets free of computational batch effects that we make freely available. Nearly all the samples were analysed in under four days using a commercial cloud cluster of 32,000 preemptable cores. <a href="http://biorxiv.org/content/early/2016/07/07/062497">Read our paper.</a></p>
+            </div>
+            </section>
+        </div>
+
+        <section>
+            <div class="row">
+                <div class="box">
+                    <h3><i class="fa fa-cloud"></i> Built for the cloud</h3>
+                    <p>Develop and test on your laptop, then deploy on Microsoft Azure, Amazon Web Services (including the spot market), Google Compute Engine, OpenStack, or on an individual machine.</p>
+                </div>
+                <div class="box">
+                    <h3><i class="fa fa-line-chart"></i> Strongly scalable</h3>
+                    <p>Build a workflow on your laptop, then scale to the cloud and run it concurrently on hundreds of nodes and thousands of cores with ease. We've tested it with <a href="http://biorxiv.org/content/early/2016/07/07/062497">32,000 preemptable cores</a> so far, but Toil can handle more.</p>
+                </div>
+                <div class="box">
+                    <h3><i class="fa fa-database"></i> Service integration</h3>
+                    <p>Toil plays nice with databases and services, such as Apache Spark. Service clusters can be created quickly and easily integrated with a Toil workflow, with precisely defined start and end times that fits with the flow of other jobs in the workflow. <a href="https://toil.readthedocs.io/en/latest/install/cloud.html">Read more.</a></p>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="box">
+                    <h3>Common Workflow Language</h3>
+                    <p>Common Workflow Language is an emerging standard for writing portable workflows. Toil has nearly full support for the stable v1.0 CWL specification. <a href="https://toil.readthedocs.io/en/latest/running/running.html#running-cwl-workflows">Read more.</a></p>
+                </div>
+                <div class="box">
+                    <h3>Declarative and dynamic workflows</h3>
+                    <p>Workflows can be declared statically, but new jobs can be added dynamically during execution within any existing job, allowing arbitrarily complex workflow graphs with millions of jobs within them.</p>
+                </div>
+                <div class="box">
+                    <h3>Complete file and stream management</h3>
+                    <p>Temporary and persistent file management that abstracts the details of the underlying file system, providing a uniform interface regardless of environment. Supports both atomic file transfer and streaming interfaces, and user data encryption.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <section>
+            <div class="row">
+                <div class="half-box">
+                    <img src="/static/gi-logo.png" alt="UCSC Genomics Institute logo">
+                </div>
+                <div class="half-box">
+                    <p>
+                        Organic, free-range, grass-fed Python. <a href="https://github.com/BD2KGenomics/toil/">GitHub.</a><br>
+                        © 2017 UCSC Computational Genomics Lab
+                    </p>
+                </div>
+            </div>
+        </section>
+    </footer>
+</body>
+</html>
