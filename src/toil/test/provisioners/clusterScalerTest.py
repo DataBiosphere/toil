@@ -289,8 +289,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         # AbstractScalableBatchSystem functionality
 
         def getNodes(self):
-            return {address: NodeInfo(cores=0,
-                                      memory=0,
+            return {address: NodeInfo(coresTotal=0, coresUsed=0,
+                                      memoryTotal=0, memoryUsed=0,
                                       workers=1 if w.busyEvent.is_set() else 0)
                     for address, w in enumerate(self.workers)}
 

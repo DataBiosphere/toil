@@ -29,7 +29,7 @@ import itertools
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six import iteritems
+from six import iteritems, itervalues
 
 import mesos.interface
 import mesos.native
@@ -105,6 +105,9 @@ class MesosBatchSystem(BatchSystemSupport,
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}
 
+        # Mesos has no easy way of getting a task's resources so we track them here
+        self.taskResources = {}
+
         # Queue of jobs whose status has been updated, according to Mesos
         self.updatedJobsQueue = Queue()
 
@@ -159,6 +162,7 @@ class MesosBatchSystem(BatchSystemSupport,
         jobType = job.resources
         log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
         self.jobQueues[jobType].append(job)
+        self.taskResources[jobID] = job.resources
         log.debug("... queued")
         return jobID
 
@@ -342,9 +346,14 @@ class MesosBatchSystem(BatchSystemSupport,
                     jobType.remove(job)
 
     def _updateStateToRunning(self, offer, task):
+        resourceKey = int(task.task_id.value)
+        resources = self.taskResources[resourceKey]
         self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
-                                                               slaveID=offer.slave_id,
-                                                               executorID=task.executor.executor_id)
+                                                               slaveID=offer.slave_id.value,
+                                                               executorID=task.executor.executor_id.value,
+                                                               cores=resources.cores,
+                                                               memory=resources.memory)
+        del self.taskResources[resourceKey]
         self._deleteByJobID(int(task.task_id.value))
 
     def resourceOffers(self, driver, offers):
@@ -453,7 +462,6 @@ class MesosBatchSystem(BatchSystemSupport,
         task = mesos_pb2.TaskInfo()
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
-        # FIXME: what bout
         task.name = job.name
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
@@ -541,7 +549,11 @@ class MesosBatchSystem(BatchSystemSupport,
         for k, v in iteritems(message):
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                executor.nodeInfo = NodeInfo(**v)
+                resources = [taskData for taskData in itervalues(self.runningJobMap)
+                             if taskData.executorID == executorId.value]
+                requestedCores = sum(taskData.cores for taskData in resources)
+                requestedMemory = sum(taskData.memory for taskData in resources)
+                executor.nodeInfo = NodeInfo(requestedCores=requestedCores, requestedMemory=requestedMemory, **v)
                 self.executors[nodeAddress] = executor
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)

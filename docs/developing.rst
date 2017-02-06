@@ -613,8 +613,8 @@ workers of the cluster. Instructions for installing Docker can be found on the
 
 When using CGCloud or Toil-based autoscaling, Docker will be automatically set up
 on the cluster's worker nodes, so no additional installation steps are necessary.
-Further information on using Toil-based autoscaling can be found in the `Toil
-autoscaling documentation <Autoscaling>`.
+Further information on using Toil-based autoscaling can be found in the :ref:`Autoscaling`
+documentation.
 
 In order to use docker containers in a Toil workflow, the container can be built
 locally or downloaded in real time from an online docker repository like Quay_. If

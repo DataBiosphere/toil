@@ -411,15 +411,16 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
+        logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
+        logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
             wait_transition(instance, {'running', 'shutting-down'}, 'terminated')
+        logger.info('Instance(s) terminated.')
 
     @classmethod
     def _terminateIDs(cls, instanceIDs, ctx):
-        logger.info('Terminating instance(s): %s', instanceIDs)
         ctx.ec2.terminate_instances(instance_ids=instanceIDs)
-        logger.info('Instance(s) terminated.')
 
     def _logAndTerminate(self, instances):
         self._terminateInstances(instances, self.ctx)

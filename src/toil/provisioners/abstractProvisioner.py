@@ -99,13 +99,15 @@ class AbstractProvisioner(object):
 
     def _gatherStats(self, preemptable):
         def toDict(nodeInfo):
-            # namedtuples don't retain attribute names when dumped to JSON.
-            # convert them to dicts instead to improve stats output. Also add
-            # time.
-            return dict(memory=nodeInfo.memory,
-                        cores=nodeInfo.cores,
+            # convert NodeInfo object to dict to improve JSON output
+            return dict(memory=nodeInfo.memoryUsage,
+                        cores=nodeInfo.coresUsage,
+                        memoryTotal=nodeInfo.memoryTotal,
+                        coresTotal=nodeInfo.coresTotal,
+                        requestedCores=nodeInfo.requestedCores,
+                        requestedMemory=nodeInfo.requestedMemory,
                         workers=nodeInfo.workers,
-                        time=time.time()
+                        time=time.time()  # add time stamp
                         )
         if self.scaleable:
             stats = {}

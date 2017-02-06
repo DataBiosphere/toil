@@ -318,7 +318,7 @@ class BatchSystemSupport(AbstractBatchSystem):
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir)
 
-class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
+class NodeInfo(object):
     """
     The cores attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
     busy), reflecting the CPU load of the node.
@@ -329,6 +329,15 @@ class NodeInfo(namedtuple("_NodeInfo", "cores memory workers")):
     The workers attribute is an integer reflecting the number of workers currently active workers
     on the node.
     """
+    def __init__(self, coresUsed, memoryUsed, coresTotal, memoryTotal,
+                 requestedCores, requestedMemory, workers):
+        self.coresUsed = coresUsed
+        self.totalCores = coresTotal
+        self.memoryUsed = memoryUsed
+        self.memoryTotal = memoryTotal
+        self.requestedCores = requestedCores
+        self.requestedMemory = requestedMemory
+        self.workers = workers
 
 
 class AbstractScalableBatchSystem(AbstractBatchSystem):
