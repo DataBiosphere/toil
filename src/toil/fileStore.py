@@ -1783,20 +1783,20 @@ class NonCachingFileStore(FileStore):
                 if filename == '.jobState':
                     jobStateFiles.append(os.path.join(root, filename))
         for filename in jobStateFiles:
-            yield NonCachingFileStore._readJobState(filename)
+            try:
+                yield NonCachingFileStore._readJobState(filename)
+            except IOError as e:
+                if e.errno == 2:
+                    # job finished & deleted its jobState file since the jobState files were discovered
+                    continue
+                else:
+                    raise
 
     @staticmethod
     def _readJobState(jobStateFileName):
-        try:
-            with open(jobStateFileName) as fH:
-                state = dill.load(fH)
-            return state
-        except IOError as e:
-            if e.errno == 2:
-                # job finished & deleted its jobState file since the jobState files were discovered
-                pass
-            else:
-                raise
+        with open(jobStateFileName) as fH:
+            state = dill.load(fH)
+        return state
 
     def _registerDeferredFunction(self, deferredFunction):
         with open(self.jobStateFile) as fH:
