@@ -78,6 +78,7 @@ def cleanup(job, temp_output_id, output_file):
     """
     tempFile = job.fileStore.readGlobalFile(temp_output_id)
     shutil.copy(tempFile, output_file)
+    os.chmod(output_file, 0o644)
     job.fileStore.logToMaster("Finished copying sorted file to output: %s" % output_file)
 
 
