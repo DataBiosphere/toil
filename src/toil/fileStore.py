@@ -1783,7 +1783,14 @@ class NonCachingFileStore(FileStore):
                 if filename == '.jobState':
                     jobStateFiles.append(os.path.join(root, filename))
         for filename in jobStateFiles:
-            yield NonCachingFileStore._readJobState(filename)
+            try:
+                yield NonCachingFileStore._readJobState(filename)
+            except IOError as e:
+                if e.errno == 2:
+                    # job finished & deleted its jobState file since the jobState files were discovered
+                    continue
+                else:
+                    raise
 
     @staticmethod
     def _readJobState(jobStateFileName):
