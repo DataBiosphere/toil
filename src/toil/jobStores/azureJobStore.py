@@ -26,6 +26,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 # Python 3 compatibility imports
+from requests import Timeout
 from six.moves import cPickle
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
@@ -364,10 +365,15 @@ class AzureJobStore(AbstractJobStore):
         with self._uploadStream(jobStoreFileID, self.files, checkForModification=True) as fd:
             yield fd
 
+    @staticmethod
+    def _azureTimeOut(e):
+        return isinstance(e, Timeout)
+
     def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        self.files.put_blob(blob_name=jobStoreFileID, blob='',
-                            x_ms_blob_type='BlockBlob')
+        with retry(timeout=45, predicate=self._azureTimeOut):
+            self.files.put_blob(blob_name=jobStoreFileID, blob='',
+                                x_ms_blob_type='BlockBlob')
         self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
