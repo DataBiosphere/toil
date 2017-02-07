@@ -320,11 +320,16 @@ class BatchSystemSupport(AbstractBatchSystem):
 
 class NodeInfo(object):
     """
-    The cores attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
+    The coresUsed attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
     busy), reflecting the CPU load of the node.
 
-    The memory attribute is a floating point value between 0 (no memory used) and 1 (all memory
+    The memoryUsed attribute is a floating point value between 0 (no memory used) and 1 (all memory
     used), reflecting the memory pressure on the node.
+
+    The coresTotal and memoryTotal attributes are the node's resources, not just the used resources
+
+    The requestedCores and requestedMemory attributes are all the resources that Toil Jobs have reserved on the
+    node, regardless of whether the resources are actually being used by the Jobs.
 
     The workers attribute is an integer reflecting the number of workers currently active workers
     on the node.
@@ -332,11 +337,14 @@ class NodeInfo(object):
     def __init__(self, coresUsed, memoryUsed, coresTotal, memoryTotal,
                  requestedCores, requestedMemory, workers):
         self.coresUsed = coresUsed
-        self.totalCores = coresTotal
         self.memoryUsed = memoryUsed
+
+        self.coresTotal = coresTotal
         self.memoryTotal = memoryTotal
+
         self.requestedCores = requestedCores
         self.requestedMemory = requestedMemory
+
         self.workers = workers
 
 

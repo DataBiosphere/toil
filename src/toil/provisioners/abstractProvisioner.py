@@ -100,8 +100,8 @@ class AbstractProvisioner(object):
     def _gatherStats(self, preemptable):
         def toDict(nodeInfo):
             # convert NodeInfo object to dict to improve JSON output
-            return dict(memory=nodeInfo.memoryUsage,
-                        cores=nodeInfo.coresUsage,
+            return dict(memory=nodeInfo.memoryUsed,
+                        cores=nodeInfo.coresUsed,
                         memoryTotal=nodeInfo.memoryTotal,
                         coresTotal=nodeInfo.coresTotal,
                         requestedCores=nodeInfo.requestedCores,
