@@ -186,12 +186,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
-    @experimental
     @needs_azure
     def testAzureSingle(self):
         self._toilSort(jobStoreLocator=self._azureJobStore(), batchSystem='singleMachine')
 
-    @experimental
     @needs_azure
     @needs_mesos
     def testAzureMesos(self):
