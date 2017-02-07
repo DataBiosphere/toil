@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import, print_function
 import unittest
+import logging
 import os
 import random
 
@@ -25,11 +26,17 @@ from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest
 
+logger = logging.getLogger(__name__)
 
 class JobTest(ToilTest):
     """
     Tests testing the job class
     """
+
+    @classmethod
+    def setUpClass(cls):
+        super(JobTest, cls).setUpClass()
+        logging.basicConfig(level=logging.DEBUG)
 
     def testStatic(self):
         """
@@ -305,22 +312,22 @@ class JobTest(ToilTest):
 
         """
 
-        print('Test checkpoint job that is a leaf vertex')
+        logger.info('Test checkpoint job that is a leaf vertex')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      expectedException=None)
 
-        print('Test checkpoint job that is not a leaf vertex due to the presence of a service')
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a service')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobService=TrivialService("LeafTestService"),
                                      expectedException=JobGraphDeadlockException)
 
-        print('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobChild=Job.wrapJobFn(
                                          simpleJobFn, "LeafTestChild"),
                                      expectedException=JobGraphDeadlockException)
 
-        print('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobFollowOn=Job.wrapJobFn(
                                          simpleJobFn,
@@ -358,7 +365,7 @@ class JobTest(ToilTest):
                 Job.Runner.startToil(workflowRootJob, options)
                 self.fail("The expected exception was not thrown")
             except expectedException as ex:
-                print("The expected exception was thrown: ", repr(ex))
+                logger.info("The expected exception was thrown: %s", repr(ex))
 
     def testEvaluatingRandomDAG(self):
         """
