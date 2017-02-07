@@ -175,7 +175,9 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         os.unlink(sseKeyFile)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/keyFile']
+        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
+        # hacky, but it works.
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin']
         runCommand.extend(toilOptions)
         runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)
