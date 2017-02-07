@@ -8,7 +8,7 @@ import os
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import dockerCall, _containerIsRunning, _dockerKill, STOP, FORGO, RM
+from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
 from toil.test import ToilTest
 
 _log = logging.getLogger(__name__)
@@ -94,6 +94,20 @@ class DockerTest(ToilTest):
                         _dockerKill(container_name, RM)
                         os.remove(test_file)
 
+    def testDockerPipeChain(self):
+        """
+        Test for piping API for dockerCall().  Using this API (activated when list of
+        argument lists is given as parameters), commands a piped together into a chain
+        ex:  parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ] should execute:
+        printf 'x\n y\n' | wc -l
+        """
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        A = Job.wrapJobFn(_testDockerPipeChainFn)
+        rv = Job.Runner.startToil(A, options)
+        assert rv.strip() == '2'
 
 def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
     """
@@ -127,3 +141,10 @@ def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, contain
     t.daemon = True
     t.start()
     dockerCall(job, tool='quay.io/ucsc_cgl/spooky_test', workDir=workDir, defer=defer, dockerParameters=dockerParameters)
+
+def _testDockerPipeChainFn(job):
+    """
+    Return the result of simple pipe chain.  Should be 2
+    """
+    parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
+    return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
