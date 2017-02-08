@@ -28,11 +28,13 @@ body
     background: $primaryColor
     background: $primaryColor linear-gradient(to bottom, $primaryColor 0%, #ffffff 64%)
 
-a:visited
-    color: $gray
 
-a:hover, a:active, a:focus
-    color: $silver
+p
+    a:visited, a:link
+        color: $gray
+
+    a:hover, a:active, a:focus
+        color: $silver
 
 h1, h2, h3, h4, h5, h6, label
     color: $black
@@ -65,13 +67,13 @@ h3
 
 .pure-button
     background-color: #1f8dd6
-    color: white
+    color: white !important
     padding: 0.5em 2em
     border-radius: 5px
 
 a.pure-button-primary
     background: white
-    color: #1f8dd6
+    color: $primaryColor !important
     border-radius: 5px
     font-size: 120%
 
