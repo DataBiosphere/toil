@@ -16,10 +16,13 @@ pipelines. You can:
 
 Toil is, admittedly, not quite as good as sliced bread, but it's about as close
 to it as you're gonna get.
-See our `paper`_ to learn more about Toil and what it can do, or jump in and
-skip to the :ref:`installation-ref` section. (You can also join us on `GitHub`_ or
-`Gitter`_.)
 
+Check out our `website`_ for a more-comprehensive list of Toil's features, read
+our `paper`_ to learn more about what Toil can do in the real world, or jump in
+and start with the :ref:`installation-ref` section. (Feel free to also join us
+on `GitHub`_ and `Gitter`_.)
+
+.. _website: http://toil.ucsc-cgl.org/
 .. _GridEngine: http://gridscheduler.sourceforge.net/
 .. _Parasol: http://genecats.soe.ucsc.edu/eng/parasol.html
 .. _Apache Mesos: http://mesos.apache.org/
