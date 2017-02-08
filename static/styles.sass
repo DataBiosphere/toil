@@ -3,6 +3,7 @@
 @import '../purecss-sass/vendor/assets/stylesheets/purecss/grids'
 @import '../purecss-sass/vendor/assets/stylesheets/purecss/grids-responsive'
 @import '../purecss-sass/vendor/assets/stylesheets/purecss/menus'
+// Style derived from https://purecss.io/layouts/marketing/
 
 // clrs.cc because im just a programmer
 $blue: #0074D9
@@ -26,7 +27,7 @@ body
     color: #7f8c8d
     font-size: 1em
     background: $primaryColor
-    background: $primaryColor linear-gradient(to bottom, $primaryColor 0%, #ffffff 64%)
+    background: $primaryColor linear-gradient(to bottom, $primaryColor 0%, #ffffff 40%)
 
 
 p
@@ -67,7 +68,6 @@ h3
 
 .pure-button
     background-color: #1f8dd6
-    color: white !important
     padding: 0.5em 2em
     border-radius: 5px
 
@@ -152,5 +152,9 @@ footer
         max-height: 75px
 
 @media (max-width: 768px)
+    nav > a, nav > ul
+        width: 100%
+        text-align: center
+
     .hide-small
         display: none !important
