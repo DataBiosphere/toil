@@ -365,15 +365,12 @@ class AzureJobStore(AbstractJobStore):
         with self._uploadStream(jobStoreFileID, self.files, checkForModification=True) as fd:
             yield fd
 
-    @staticmethod
-    def _azureTimeOut(e):
-        return isinstance(e, Timeout)
-
     def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        with retry(timeout=45, predicate=self._azureTimeOut):
-            self.files.put_blob(blob_name=jobStoreFileID, blob='',
-                                x_ms_blob_type='BlockBlob')
+        for attempt in retry_azure(timeout=45):
+            with attempt:
+                self.files.put_blob(blob_name=jobStoreFileID, blob='',
+                                    x_ms_blob_type='BlockBlob')
         self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
