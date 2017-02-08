@@ -646,7 +646,7 @@ class Job(JobLikeObject):
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in filter(lambda x : x.checkpoint, jobs):
             if y not in roots: # The roots are the prexisting jobs
-                if len(y._children) != 0 and len(y._followOns) != 0 and len(y._services) != 0:
+                if not Job._isLeafVertex(y):
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
     def defer(self, function, *args, **kwargs):
@@ -824,6 +824,12 @@ class Job(JobLikeObject):
         if predecessorJob in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
         self._directPredecessors.add(predecessorJob)
+
+    @staticmethod
+    def _isLeafVertex(job):
+        return len(job._children) == 0 \
+               and len(job._followOns) == 0 \
+               and len(job._services) == 0
 
     @classmethod
     def _loadUserModule(cls, userModule):
@@ -1180,6 +1186,13 @@ class Job(JobLikeObject):
 
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
         """
+
+        # Check if the workflow root is a checkpoint but not a leaf vertex.
+        # All other job vertices in the graph are checked by checkNewCheckpointsAreLeafVertices
+        if self.checkpoint and not Job._isLeafVertex(self):
+            raise JobGraphDeadlockException(
+                'New checkpoint job %s is not a leaf in the job graph' % self)
+
         # Create first jobGraph
         jobGraph = self._createEmptyJobGraphForJob(jobStore=jobStore, predecessorNumber=0)
         # Write the graph of jobs to disk
