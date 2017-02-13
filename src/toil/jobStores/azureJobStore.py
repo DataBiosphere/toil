@@ -783,7 +783,7 @@ class AzureJob(JobGraph):
         """
         assert chunkSize <= maxAzureTablePropertySize
         item = {}
-        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self))
+        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self, protocol=cPickle.HIGHEST_PROTOCOL))
         jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
                      for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):

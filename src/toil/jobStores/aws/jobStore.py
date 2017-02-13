@@ -1353,7 +1353,7 @@ class AWSJob(JobGraph, SDBHelper):
         :rtype: (str,dict)
         :return: a str for the item's name and a dictionary for the item's attributes
         """
-        return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self))
+        return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self, protocol=cPickle.HIGHEST_PROTOCOL))
 
 
 class BucketLocationConflictException(Exception):
