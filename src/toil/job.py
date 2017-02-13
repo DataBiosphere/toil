@@ -1115,7 +1115,7 @@ class Job(JobLikeObject):
             #service = serviceJob.service
 
             # Pickle the job
-            serviceJob.pickledService = cPickle.dumps(serviceJob.service)
+            serviceJob.pickledService = cPickle.dumps(serviceJob.service, protocol=cPickle.HIGHEST_PROTOCOL)
             serviceJob.service = None
 
             # Serialise the service job and job wrapper

@@ -246,9 +246,14 @@ check_docker_registry:
 	$(default_docker_registry) and ensure that you have permissions to push \
 	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
+check_cpickle:
+	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
+	# https://github.com/BD2KGenomics/toil/issues/1503
+	! grep -R 'cPickle.dump' *.py | grep --invert-match HIGHEST_PROTOCOL
 
 .PHONY: help \
 		prepare \
+		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
 		test \

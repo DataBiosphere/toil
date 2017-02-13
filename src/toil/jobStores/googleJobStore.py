@@ -118,7 +118,7 @@ class GoogleJobStore(AbstractJobStore):
                        command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
                        logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
                        **jobNode._requirements)
-        self._writeString(jobStoreID, cPickle.dumps(job))
+        self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
         return job
 
     def exists(self, jobStoreID):
@@ -148,7 +148,7 @@ class GoogleJobStore(AbstractJobStore):
         return cPickle.loads(jobString)
 
     def update(self, job):
-        self._writeString(job.jobStoreID, cPickle.dumps(job), update=True)
+        self._writeString(job.jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL), update=True)
 
     def delete(self, jobStoreID):
         # jobs will always be encrypted when avaliable
