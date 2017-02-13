@@ -118,6 +118,7 @@ class AWSProvisioner(AbstractProvisioner):
         # that ownerID corresponds to coreOS
         coreOSAMI = [ami for ami in ctx.ec2.get_all_images(owners=['679593333241']) if
                      descriptionMatches(ami)]
+        logger.debug('Found the following matching AMIs: %s', coreOSAMI)
         assert len(coreOSAMI) == 1
         return coreOSAMI.pop().id
 
