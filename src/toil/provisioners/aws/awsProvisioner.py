@@ -111,7 +111,7 @@ class AWSProvisioner(AbstractProvisioner):
     @memoize
     def _discoverAMI(cls, ctx):
         def descriptionMatches(ami):
-            return ami.description is not None and 'stable 1068.9.0' in ami.description
+            return ami.description is not None and 'stable 1235.4.0' in ami.description
         coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
@@ -281,7 +281,7 @@ class AWSProvisioner(AbstractProvisioner):
         while True:
             output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
             time.sleep(5)
-            if 'docker daemon' in output:
+            if 'dockerd' in output:
                 # docker daemon has started
                 break
             else:
