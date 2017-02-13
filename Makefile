@@ -249,7 +249,7 @@ check_docker_registry:
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
-	! grep -R 'cPickle.dump' * | grep --invert-match HIGHEST_PROTOCOL
+	! grep -R 'cPickle.dump' *.py | grep --invert-match HIGHEST_PROTOCOL
 
 .PHONY: help \
 		prepare \
