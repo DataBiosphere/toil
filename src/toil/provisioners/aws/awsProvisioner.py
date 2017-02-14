@@ -526,7 +526,7 @@ class AWSProvisioner(AbstractProvisioner):
                 if not preemptable:
                     logger.info('Launching %s non-preemptable nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
-                                              spec=kwargs, num_instances=1)
+                                              spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
                     kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType.name, self.ctx)
