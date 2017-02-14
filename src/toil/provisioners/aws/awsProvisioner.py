@@ -63,6 +63,19 @@ class AWSProvisioner(AbstractProvisioner):
         self.masterPublicKey = self.setSSH()
         self.tags = self._getLeader(self.clusterName).tags
 
+    @staticmethod
+    def retryPredicate(e):
+        return AWSProvisioner.throttlePredicate(e)
+
+    @staticmethod
+    def throttlePredicate(e):
+        # boto/AWS gives multiple messages for the same error...
+        if e.status == 503 and 'Request limit exceeded' in e.body:
+            return True
+        elif e.status == 400 and 'Rate exceeded' in e.body:
+            return True
+        return False
+
     def setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
             subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
@@ -244,7 +257,9 @@ class AWSProvisioner(AbstractProvisioner):
     def _addTags(cls, instances, tags):
         for instance in instances:
             for key, value in iteritems(tags):
-                instance.add_tag(key, value)
+                for attempt in retry(predicate=throttlePredicate):
+                    with attempt:
+                        instance.add_tag(key, value)
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -420,7 +435,11 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _terminateIDs(cls, instanceIDs, ctx):
-        ctx.ec2.terminate_instances(instance_ids=instanceIDs)
+        logger.info('Terminating instance(s): %s', instanceIDs)
+        for attempt in retry(predicate=throttlePredicate):
+            with attempt:
+                ctx.ec2.terminate_instances(instance_ids=instanceIDs)
+        logger.info('Instance(s) terminated.')
 
     def _logAndTerminate(self, instances):
         self._terminateInstances(instances, self.ctx)
@@ -499,27 +518,35 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        if not preemptable:
-            logger.info('Launching %s non-preemptable nodes', numNodes)
-            instancesLaunched = create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
-                                      spec=kwargs, num_instances=1)
-        else:
-            logger.info('Launching %s preemptable nodes', numNodes)
-            kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType.name, self.ctx)
-            # force generator to evaluate
-            instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                                           price=self.spotBid,
-                                                           image_id=self._discoverAMI(self.ctx),
-                                                           tags={'clusterName': self.clusterName},
-                                                           spec=kwargs,
-                                                           num_instances=numNodes,
-                                                           tentative=True)
-                                     )
-            # flatten the list 
-            instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
+        for attempt in retry(predicate=throttlePredicate):
+            with attempt:
+                # after we start launching instances we want to insure the full setup is done
+                # the biggest obstacle is AWS request throttling, so we retry on these errors at
+                # every request in this method
+                if not preemptable:
+                    logger.info('Launching %s non-preemptable nodes', numNodes)
+                    instancesLaunched = create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
+                                              spec=kwargs, num_instances=1)
+                else:
+                    logger.info('Launching %s preemptable nodes', numNodes)
+                    kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType.name, self.ctx)
+                    # force generator to evaluate
+                    instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
+                                                                   price=self.spotBid,
+                                                                   image_id=self._discoverAMI(self.ctx),
+                                                                   tags={'clusterName': self.clusterName},
+                                                                   spec=kwargs,
+                                                                   num_instances=numNodes,
+                                                                   tentative=True)
+                                             )
+                    # flatten the list
+                    instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
+
+        # request throttling retry happens internally to these two methods to insure proper granularity
         wait_instances_running(self.ctx.ec2, instancesLaunched)
         AWSProvisioner._addTags(instancesLaunched, self.tags)
         self._propagateKey(instancesLaunched)
+
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
@@ -527,9 +554,11 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.config.sseKey:
             return
         for node in instances:
-            # since we're going to be rsyncing into the appliance we need the appliance to be running first
-            ipAddress = self._waitForNode(node, 'toil_worker')
-            self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+            for attempt in retry(predicate=throttlePredicate):
+                with attempt:
+                    # since we're going to be rsyncing into the appliance we need the appliance to be running first
+                    ipAddress = self._waitForNode(node, 'toil_worker')
+                    self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType):
@@ -547,9 +576,10 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def __getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
         pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                               'instance-state-name': 'pending'})
+                                                       'instance-state-name': 'pending'})
+
         runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                               'instance-state-name': 'running'})
+                                                       'instance-state-name': 'running'})
         instances = set(pendingInstances)
         if not preemptable and not both:
             return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]

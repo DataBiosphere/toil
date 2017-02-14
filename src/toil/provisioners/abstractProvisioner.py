@@ -22,6 +22,7 @@ from itertools import islice
 
 import time
 
+from bd2k.util.retry import retry, never
 from bd2k.util.threading import ExceptionalThread
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
@@ -58,6 +59,16 @@ class AbstractProvisioner(object):
         self.statsThreads = []
         self.statsPath = config.clusterStats
         self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
+
+    @staticmethod
+    def retryPredicate(e):
+        """
+        Return true if the exception e should be retried by the cluster scaler
+
+        :param e: exception raised during execution of setNodeCount
+        :return: boolean indicating whether the exception e should be retried
+        """
+        return never(e)
 
     def shutDown(self, preemptable):
         if not self.stop:
@@ -154,22 +165,24 @@ class AbstractProvisioner(object):
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
         """
-        workerInstances = self._getWorkersInCluster(preemptable)
-        numCurrentNodes = len(workerInstances)
-        delta = numNodes - numCurrentNodes
-        if delta > 0:
-            log.info('Adding %i %s nodes to get to desired cluster size of %i.', delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-            numNodes = numCurrentNodes + self._addNodes(workerInstances,
-                                                        numNodes=delta,
-                                                        preemptable=preemptable)
-        elif delta < 0:
-            log.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-            numNodes = numCurrentNodes - self._removeNodes(workerInstances,
-                                                           numNodes=-delta,
-                                                           preemptable=preemptable,
-                                                           force=force)
-        else:
-            log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
+        for attempt in retry(predicate=self.retryPredicate):
+            with attempt:
+                workerInstances = self._getWorkersInCluster(preemptable)
+                numCurrentNodes = len(workerInstances)
+                delta = numNodes - numCurrentNodes
+                if delta > 0:
+                    log.info('Adding %i %s nodes to get to desired cluster size of %i.', delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
+                    numNodes = numCurrentNodes + self._addNodes(workerInstances,
+                                                                numNodes=delta,
+                                                                preemptable=preemptable)
+                elif delta < 0:
+                    log.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
+                    numNodes = numCurrentNodes - self._removeNodes(workerInstances,
+                                                                   numNodes=-delta,
+                                                                   preemptable=preemptable,
+                                                                   force=force)
+                else:
+                    log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
     def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
