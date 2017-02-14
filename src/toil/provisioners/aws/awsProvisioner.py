@@ -257,7 +257,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _addTags(cls, instances, tags):
         for instance in instances:
             for key, value in iteritems(tags):
-                for attempt in retry(predicate=throttlePredicate):
+                for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
                     with attempt:
                         instance.add_tag(key, value)
 
@@ -436,7 +436,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _terminateIDs(cls, instanceIDs, ctx):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        for attempt in retry(predicate=throttlePredicate):
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
             with attempt:
                 ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
@@ -518,7 +518,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=throttlePredicate):
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
             with attempt:
                 # after we start launching instances we want to insure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -554,7 +554,7 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.config.sseKey:
             return
         for node in instances:
-            for attempt in retry(predicate=throttlePredicate):
+            for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
                 with attempt:
                     # since we're going to be rsyncing into the appliance we need the appliance to be running first
                     ipAddress = self._waitForNode(node, 'toil_worker')
