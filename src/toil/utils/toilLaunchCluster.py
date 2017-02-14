@@ -49,6 +49,9 @@ def main():
                              "      \"Name\": clusterName,"
                              "      \"Owner\": IAM username"
                              " }. ")
+    parser.add_argument("--vpcSubnet",
+                        help="VPC subnet ID to launch cluster in. Uses default subnet if not specified."
+                        "This subnet needs to have auto assign IPs turned on.")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
@@ -70,4 +73,5 @@ def main():
         assert False
 
     provisioner.launchCluster(instanceType=config.nodeType, clusterName=config.clusterName,
-                              keyName=config.keyPairName, spotBid=spotBid, userTags=tagsDict, zone=config.zone)
+                              keyName=config.keyPairName, spotBid=spotBid, userTags=tagsDict, zone=config.zone,
+                              vpcSubnet=config.vpcSubnet)
