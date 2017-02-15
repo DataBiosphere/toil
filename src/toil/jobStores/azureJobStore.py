@@ -366,8 +366,10 @@ class AzureJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        self.files.put_blob(blob_name=jobStoreFileID, blob='',
-                            x_ms_blob_type='BlockBlob')
+        for attempt in retry_azure(timeout=45):
+            with attempt:
+                self.files.put_blob(blob_name=jobStoreFileID, blob='',
+                                    x_ms_blob_type='BlockBlob')
         self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
@@ -409,22 +411,24 @@ class AzureJobStore(AbstractJobStore):
     def readStatsAndLogging(self, callback, readAll=False):
         suffix = '_old'
         numStatsFiles = 0
-        for entity in self.statsFileIDs.query_entities():
-            jobStoreFileID = entity.RowKey
-            hasBeenRead = len(jobStoreFileID) > self.jobIDLength
-            if not hasBeenRead:
-                with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
-                    callback(fd)
-                # Mark this entity as read by appending the suffix
-                self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID + suffix})
-                self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
-                numStatsFiles += 1
-            elif readAll:
-                # Strip the suffix to get the original ID
-                jobStoreFileID = jobStoreFileID[:-len(suffix)]
-                with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
-                    callback(fd)
-                numStatsFiles += 1
+        for attempt in retry_azure():
+            with attempt:
+                for entity in self.statsFileIDs.query_entities():
+                    jobStoreFileID = entity.RowKey
+                    hasBeenRead = len(jobStoreFileID) > self.jobIDLength
+                    if not hasBeenRead:
+                        with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
+                            callback(fd)
+                        # Mark this entity as read by appending the suffix
+                        self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID + suffix})
+                        self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
+                        numStatsFiles += 1
+                    elif readAll:
+                        # Strip the suffix to get the original ID
+                        jobStoreFileID = jobStoreFileID[:-len(suffix)]
+                        with self._downloadStream(jobStoreFileID, self.statsFiles) as fd:
+                            callback(fd)
+                        numStatsFiles += 1
         return numStatsFiles
 
     _azureTimeFormat = "%Y-%m-%dT%H:%M:%SZ"
@@ -815,7 +819,8 @@ def defaultRetryPredicate(exception):
     return (isinstance(exception, (socket.error,
                                    socket.gaierror,
                                    HTTPException,
-                                   requests.ConnectionError))
+                                   requests.ConnectionError,
+                                   requests.Timeout))
             or isinstance(exception, AzureException) and
             any(message in str(exception).lower() for message in (
                 "could not be completed within the specified time",

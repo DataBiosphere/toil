@@ -1041,7 +1041,6 @@ class InvalidAWSJobStoreTest(ToilTest):
                           'us-west-2:a_b')
 
 
-@experimental
 @needs_azure
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = 'toiltest'
@@ -1116,7 +1115,6 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         blobService.delete_container(containerName)
 
 
-@experimental
 @needs_azure
 class InvalidAzureJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
@@ -1142,7 +1140,6 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
     pass
 
 
-@experimental
 @needs_azure
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):

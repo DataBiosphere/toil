@@ -1288,13 +1288,11 @@ class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
 
 
 @needs_azure
-@experimental
 class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'azure'
 
 
 @needs_azure
-@experimental
 class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'azure'
 
