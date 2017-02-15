@@ -87,7 +87,7 @@ class Config(object):
         self.maxPreemptableNodes = 0
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
-        self.scaleInterval = 10
+        self.scaleInterval = 30
         self.preemptableCompensation = 0.0
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
