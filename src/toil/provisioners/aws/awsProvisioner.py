@@ -526,7 +526,7 @@ class AWSProvisioner(AbstractProvisioner):
                 if not preemptable:
                     logger.info('Launching %s non-preemptable nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(self.ctx.ec2, image_id=self._discoverAMI(self.ctx),
-                                              spec=kwargs, num_instances=numNodes)
+                                                                  spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
                     kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType.name, self.ctx)
@@ -542,8 +542,11 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                wait_instances_running(self.ctx.ec2, instancesLaunched)
+
         # request throttling retry happens internally to these two methods to insure proper granularity
-        wait_instances_running(self.ctx.ec2, instancesLaunched)
         AWSProvisioner._addTags(instancesLaunched, self.tags)
         self._propagateKey(instancesLaunched)
 
