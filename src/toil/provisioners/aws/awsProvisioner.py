@@ -26,6 +26,7 @@ from six import iteritems
 from six.moves import xrange
 
 from bd2k.util import memoize
+import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
@@ -48,7 +49,7 @@ class AWSProvisioner(AbstractProvisioner):
     def __init__(self, config, batchSystem):
         super(AWSProvisioner, self).__init__(config, batchSystem)
         self.instanceMetaData = get_instance_metadata()
-        self.clusterName = self.instanceMetaData['security-groups']
+        self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
         self.ctx = self._buildContext(clusterName=self.clusterName)
         self.spotBid = None
         assert config.preemptableNodeType or config.nodeType
@@ -62,6 +63,18 @@ class AWSProvisioner(AbstractProvisioner):
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
         self.masterPublicKey = self.setSSH()
         self.tags = self._getLeader(self.clusterName).tags
+
+    def _getClusterNameFromTags(self, md):
+        """Retrieve cluster name from current instance tags
+        """
+        instance = self._getClusterInstance(md)
+        return str(instance.tags["Name"])
+
+    def _getClusterInstance(self, md):
+        zone = getCurrentAWSZone()
+        region = Context.availability_zone_re.match(zone).group(1)
+        conn = boto.ec2.connect_to_region(region)
+        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     @staticmethod
     def retryPredicate(e):
@@ -115,7 +128,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        cls._sshAppliance(leader.ip_address, *command, **kwargs)
+        cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
 
     def _remainingBillingInterval(self, instance):
         return awsRemainingBillingInterval(instance)
@@ -207,7 +220,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def rsyncLeader(cls, clusterName, args, zone=None):
         leader = cls._getLeader(clusterName, zone=zone)
-        cls._rsyncNode(leader.ip_address, args)
+        cls._rsyncNode(leader.public_dns_name, args)
 
     @classmethod
     def _rsyncNode(cls, ip, args, applianceName='toil_leader'):
@@ -266,7 +279,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _waitForNode(cls, instance, role):
         # returns the node's IP
         cls._waitForIP(instance)
-        instanceIP = instance.ip_address
+        instanceIP = instance.public_dns_name
         cls._waitForSSHPort(instanceIP)
         cls._waitForSSHKeys(instanceIP)
         # wait here so docker commands can be used reliably afterwards
@@ -353,13 +366,14 @@ class AWSProvisioner(AbstractProvisioner):
                 s.close()
 
     @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None):
+    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None,
+                      vpcSubnet=None):
         if userTags is None:
             userTags = {}
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
-        cls._createSecurityGroup(ctx, clusterName)
+        sgs = cls._createSecurityGroup(ctx, clusterName, vpcSubnet)
         bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
         leaderData = dict(role='leader',
                           image=applianceSelf(),
@@ -367,10 +381,12 @@ class AWSProvisioner(AbstractProvisioner):
                           sshKey='AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
-        kwargs = {'key_name': keyName, 'security_groups': [clusterName],
+        kwargs = {'key_name': keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': instanceType,
                   'user_data': userData, 'block_device_map': bdm,
                   'instance_profile_arn': profileARN}
+        if vpcSubnet:
+            kwargs["subnet_id"] = vpcSubnet
         if not spotBid:
             logger.info('Launching non-preemptable leader')
             create_ondemand_instances(ctx.ec2, image_id=cls._discoverAMI(ctx),
@@ -402,21 +418,28 @@ class AWSProvisioner(AbstractProvisioner):
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
         instancesToTerminate = awsFilterImpairedNodes(instances, ctx.ec2)
+        vpcId = None
         if instancesToTerminate:
+            vpcId = instancesToTerminate[0].vpc_id
             cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
             cls._terminateInstances(instances=instancesToTerminate, ctx=ctx)
         if len(instances) == len(instancesToTerminate):
             logger.info('Deleting security group...')
+            removed = False
             for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    try:
-                        ctx.ec2.delete_security_group(name=clusterName)
-                    except BotoServerError as e:
-                        if e.error_code == 'InvalidGroup.NotFound':
-                            pass
-                        else:
-                            raise
-            logger.info('... Succesfully deleted security group')
+                    for sg in ctx.ec2.get_all_security_groups():
+                        if sg.name == clusterName and vpcId and sg.vpc_id == vpcId:
+                            try:
+                                ctx.ec2.delete_security_group(group_id=sg.id)
+                                removed = True
+                            except BotoServerError as e:
+                                if e.error_code == 'InvalidGroup.NotFound':
+                                    pass
+                                else:
+                                    raise
+            if removed:
+                logger.info('... Succesfully deleted security group')
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated
@@ -510,12 +533,14 @@ class AWSProvisioner(AbstractProvisioner):
                           sshKey=self.masterPublicKey,
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
         userData = awsUserData.format(**workerData)
+        sgs = [sg for sg in self.ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         kwargs = {'key_name': self.keyName,
-                  'security_groups': [self.clusterName],
+                  'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': self.instanceType.name,
                   'user_data': userData,
                   'block_device_map': bdm,
                   'instance_profile_arn': arn}
+        kwargs["subnet_id"] = self._getClusterInstance(self.instanceMetaData).subnet_id
 
         instancesLaunched = []
 
@@ -615,14 +640,19 @@ class AWSProvisioner(AbstractProvisioner):
         return [request for request in requests if request.id in idsToCancel]
 
     @classmethod
-    def _createSecurityGroup(cls, ctx, name):
+    def _createSecurityGroup(cls, ctx, name, vpcSubnet=None):
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
             return retry
-
+        vpcId = None
+        if vpcSubnet:
+            conn = boto.connect_vpc(region=ctx.ec2.region)
+            subnets = conn.get_all_subnets(subnet_ids=[vpcSubnet])
+            if len(subnets) > 0:
+                vpcId = subnets[0].vpc_id
         # security group create/get. ssh + all ports open within the group
         try:
-            web = ctx.ec2.create_security_group(name, 'Toil appliance security group')
+            web = ctx.ec2.create_security_group(name, 'Toil appliance security group', vpc_id=vpcId)
         except EC2ResponseError as e:
             if e.status == 400 and 'already exists' in e.body:
                 pass  # group exists- nothing to do
@@ -637,6 +667,11 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     # the following authorizes all port access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
+        out = []
+        for sg in ctx.ec2.get_all_security_groups():
+            if sg.name == name and vpcId is None or sg.vpc_id == vpcId:
+                out.append(sg)
+        return out
 
     @classmethod
     def _getProfileARN(cls, ctx):
