@@ -271,9 +271,10 @@ class CWLJob(Job):
         os.mkdir(outdir)
         os.mkdir(tmpdir)
 
-        # Copy input files out of the global file store.
+        # Copy input files out of the global file store, ensure path/location synchronized
         index = {}
         adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index))
+        cwltool.pathmapper.adjustFileObjs(cwljob, pathToLoc)
 
         # Run the tool
         opts = copy.deepcopy(self.executor_options)
@@ -734,6 +735,7 @@ def main(args=None, stdout=sys.stdout):
         try:
             adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={},
                                                                export=True, rename_collision=True))
+            cwltool.pathmapper.adjustFileObjs(outobj, pathToLoc)
         except cwltool.process.UnsupportedRequirement as e:
             logging.error(e)
             return 33
