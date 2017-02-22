@@ -1145,6 +1145,7 @@ class AWSJobStore(AbstractJobStore):
 
         def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
             headers = headers or {}
+            assert srcKey.size is not None 
             if srcKey.size > self.outer.partSize:
                 return copyKeyMultipart(srcKey=srcKey,
                                         dstBucketName=dstBucketName,
