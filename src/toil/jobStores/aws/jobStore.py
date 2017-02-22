@@ -1131,7 +1131,7 @@ class AWSJobStore(AbstractJobStore):
             elif self.version:
                 for attempt in retry_s3():
                     srcKey = self.outer.filesBucket.get_key(self.fileID,
-                                                            validate=False)
+                                                            validate=True)
                     srcKey.version_id = self.version
                     with attempt:
                         headers = {k.replace('amz-', 'amz-copy-source-', 1): v
