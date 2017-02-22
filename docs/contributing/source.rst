@@ -138,27 +138,28 @@ run on a local machine.
 To spin up a local cluster, start by using the following Docker run command to launch
 a Toil leader container::
 
-    docker run --entrypoint=mesos-master --net=host -d --name=leader quay.io/ucsc_cgl/toil:3.6.0 --registry=in_memory --ip=127.0.0.1 --port=5050 --allocation_interval=500ms
+    docker run --entrypoint=mesos-master --net=host -d --name=leader --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --registry=in_memory --ip=127.0.0.1 --port=5050 --allocation_interval=500ms
 
 A couple notes on this command: the ``-d`` flag tells Docker to run in daemon mode so
 the container will run in the background. To verify that the container is running you
 can run ``docker ps`` to see all containers. If you want to run your own container
 rather than the official UCSC container you can simply replace the
-``quay.io/ucsc_cgl/toil:3.6.0`` parameter with your own container name. Also
-note that there are no data volumes being mounted into the container. If you
-want your own files in the container, add the ``-v`` argument. For example::
+``quay.io/ucsc_cgl/toil:3.6.0`` parameter with your own container name.
 
-    docker run -v ~/yourDirectory:/directory/inContainer/ ...
+Also note that we are not mounting the job store directory itself, but rather the location
+where the job store will written. Due to complications with running Docker on MacOS, I
+recommend only mounting directories within your home directory. The next command will
+launch the Toil worker container with similar parameters::
 
-The next command will launch the Toil worker container with similar parameters::
-
-    docker run --entrypoint=mesos-slave --net=host -d --name=worker quay.io/ucsc_cgl/toil:3.6.0 --work_dir=/var/lib/mesos --master=127.0.0.1:5050 --ip=127.0.0.1 —-attributes=preemptable:False --resources=cpus:2
+    docker run --entrypoint=mesos-slave --net=host -d --name=worker --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --work_dir=/var/lib/mesos --master=127.0.0.1:5050 --ip=127.0.0.1 —-attributes=preemptable:False --resources=cpus:2
 
 Note here that we are specifying 2 CPUs and a non-preemptable worker. We can
 easily change either or both of these in a logical way. To change the number
 of cores we can change the 2 to whatever number you like, and to
 change the worker to be preemptable we change ``preemptable:False`` to
-``preemptable:True``. Now that your cluster is running, you can run::
+``preemptable:True``. Also note that the same volume is mounted into the
+worker. This is needed since both the leader and worker write and read
+from the job store. Now that your cluster is running, you can run::
 
     docker exec -it leader bash
 
