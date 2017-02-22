@@ -1130,8 +1130,10 @@ class AWSJobStore(AbstractJobStore):
                         dstKey.set_contents_from_string(self.content)
             elif self.version:
                 for attempt in retry_s3():
+                    # only attempt to validate unencrypted data
+                    validate = False if self.outer.sseKeyPath else True
                     srcKey = self.outer.filesBucket.get_key(self.fileID,
-                                                            validate=True)
+                                                            validate=validate)
                     srcKey.version_id = self.version
                     with attempt:
                         headers = {k.replace('amz-', 'amz-copy-source-', 1): v
@@ -1144,9 +1146,15 @@ class AWSJobStore(AbstractJobStore):
                 assert False
 
         def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
-            headers = headers or {}
-            assert srcKey.size is not None 
-            if srcKey.size > self.outer.partSize:
+            if not headers:
+                # unencrypted key size must be visible
+                assert srcKey.size is not None
+                headers = {}
+            if headers or srcKey.size > self.outer.partSize:
+                # if the file is encrypted (indicated by the presence of headers)
+                # we will always use multipart uploading since we don't know how large the
+                # file is and there is only a very slight overhead associated with an
+                # unnecessary multipart copy
                 return copyKeyMultipart(srcKey=srcKey,
                                         dstBucketName=dstBucketName,
                                         dstKeyName=dstKeyName,
