@@ -165,6 +165,7 @@ class AzureJobStore(AbstractJobStore):
         super(AzureJobStore, self).resume()
 
     def destroy(self):
+        self._bind()
         for name in 'jobItems', 'jobFileIDs', 'files', 'statsFiles', 'statsFileIDs':
             resource = getattr(self, name)
             if resource is not None:
