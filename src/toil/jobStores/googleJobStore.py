@@ -10,6 +10,7 @@ import time
 
 # Python 3 compatibility imports
 from six.moves import cPickle, StringIO
+import six.moves.urllib.parse as urlparse
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
@@ -247,6 +248,13 @@ class GoogleJobStore(AbstractJobStore):
         projectID = url.host
         bucketAndKey = url.path
         return projectID, 'gs://'+bucketAndKey
+
+    @classmethod
+    def getSize(cls, url):
+        url = urlparse.urlparse(url)
+        projectID, uri = GoogleJobStore._getResources(url)
+        uri = boto.storage_uri(uri, GOOGLE_STORAGE)
+        return uri.get_key().size
 
     @classmethod
     def _readFromUrl(cls, url, writable):

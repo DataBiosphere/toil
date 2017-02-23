@@ -28,6 +28,7 @@ import itertools
 # Python 3 compatibility imports
 from six.moves import xrange, cPickle, StringIO, reprlib
 from six import iteritems
+import six.moves.urllib.parse as urlparse
 
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
@@ -425,6 +426,15 @@ class AWSJobStore(AbstractJobStore):
                 dstKey.bucket.connection.close()
         else:
             super(AWSJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+
+    @classmethod
+    def getSize(cls, url):
+        url = urlparse.urlparse(url)
+        key = cls._getKeyForUrl(url, existing=True)
+        try:
+            return key.size
+        finally:
+            key.bucket.connection.close()
 
     @classmethod
     def _readFromUrl(cls, url, writable):

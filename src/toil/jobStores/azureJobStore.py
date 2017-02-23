@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from six.moves import cPickle
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
+import six.moves.urllib.parse as urlparse
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage import SharedAccessPolicy, AccessPolicy
@@ -268,6 +269,13 @@ class AzureJobStore(AbstractJobStore):
         def service(self):
             return BlobService(account_name=self.account,
                                account_key=_fetchAzureAccountKey(self.account))
+
+    @classmethod
+    def getSize(cls, url):
+        url = urlparse.urlparse(url)
+        blob = cls._parseWasbUrl(url)
+        blobProps = blob.container.get_blob_properties()
+        return int(blobProps['Content-Length'])
 
     @classmethod
     def _readFromUrl(cls, url, writable):

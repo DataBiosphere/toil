@@ -344,6 +344,13 @@ class AbstractJobStore(object):
             otherCls._writeToUrl(readable, url)
 
     @abstractclassmethod
+    def getSize(cls, url):
+        """
+        returns the size of the file at the given URL
+        """
+        raise NotImplementedError
+
+    @abstractclassmethod
     def _readFromUrl(cls, url, writable):
         """
         Reads the contents of the object at the specified location and writes it to the given

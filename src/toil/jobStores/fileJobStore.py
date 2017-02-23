@@ -26,6 +26,7 @@ import errno
 
 # Python 3 compatibility imports
 from six.moves import xrange
+import six.moves.urllib.parse as urlparse
 
 from bd2k.util.exceptions import require
 
@@ -183,6 +184,11 @@ class FileJobStore(AbstractJobStore):
             shutil.copyfile(self._getAbsPath(jobStoreFileID), self._extractPathFromUrl(url))
         else:
             super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+
+    @classmethod
+    def getSize(cls, url):
+        url = urlparse.urlparse(url)
+        return os.stat(cls._extractPathFromUrl(url)).st_size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
