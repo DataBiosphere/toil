@@ -28,6 +28,7 @@ import six.moves.urllib.parse as urlparse
 
 from bd2k.util.retry import retry_http
 
+from toil.fileStore import FileID
 from toil.job import JobException
 from bd2k.util import memoize
 from bd2k.util.objects import abstractclassmethod
@@ -272,7 +273,7 @@ class AbstractJobStore(object):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return The jobStoreFileId of the imported file or None if sharedFileName was given
-        :rtype: str|None
+        :rtype: FileID|None
         """
         # Note that the helper method _importFile is used to read from the source and write to
         # destination (which is the current job store in this case). To implement any
@@ -286,23 +287,23 @@ class AbstractJobStore(object):
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
-        asks the other job store class for a stream and writes that stream as eiher a regular or
+        asks the other job store class for a stream and writes that stream as either a regular or
         a shared file.
 
-        :param AbstractJobStore  otherCls: The concrete subclass of AbstractJobStore that supports
-               reading from the given URL.
+        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+               reading from the given URL and getting the file size from the URL.
 
         :param urlparse.ParseResult url: The location of the file to import.
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return The jobStoreFileId of imported file or None if sharedFileName was given
-        :rtype: str|None
+        :rtype: FileID|None
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
                 otherCls._readFromUrl(url, writable)
-                return jobStoreFileID
+                return FileID(uuid4(), otherCls.getSize(url))
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
