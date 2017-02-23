@@ -16,6 +16,9 @@ import json
 import os
 import subprocess
 import re
+import shutil
+import urllib
+import zipfile
 
 # Python 3 compatibility imports
 from six.moves import StringIO
@@ -87,14 +90,16 @@ class CWLTest(ToilTest):
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        if os.path.exists(cwlSpec):
-            subprocess.call(["git", "fetch"], cwd=cwlSpec)
-        else:
-            subprocess.check_call(["git", "clone", "https://github.com/common-workflow-language/common-workflow-language.git", cwlSpec])
-        subprocess.check_call(["git", "checkout", "87d982f7793fe08d4f4af5555d551c272eaa809c"], cwd=cwlSpec)
-        subprocess.check_call(["git", "clean", "-f", "-x", "."], cwd=cwlSpec)
+        testhash = "7063fc0ae69221d5de13bec6a4e68d5b947e9b96"
+        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
+        if not os.path.exists(cwlSpec):
+            urllib.urlretrieve(url, "spec.zip")
+            with zipfile.ZipFile('spec.zip', "r") as z:
+                z.extractall()
+            shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
+            os.remove("spec.zip")
         try:
-            subprocess.check_output(["./run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,
+            subprocess.check_output(["bash", "run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,
                                     stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
