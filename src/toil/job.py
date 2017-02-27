@@ -1228,6 +1228,7 @@ class Job(JobLikeObject):
     ####################################################
 
     def _run(self, jobGraph, fileStore):
+        self.fileStore = fileStore
         return self.run(fileStore)
 
     @contextmanager

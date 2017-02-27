@@ -1591,6 +1591,7 @@ class NonCachingFileStore(FileStore):
         self.jobStore = jobStore
         self.jobGraph = jobGraph
         self.jobName = str(self.jobGraph)
+        self.jobID = sha1(self.jobName).hexdigest()
         self.localTempDir = os.path.abspath(localTempDir)
         self.inputBlockFn = inputBlockFn
         self.jobsToDelete = set()
