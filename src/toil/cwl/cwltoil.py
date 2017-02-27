@@ -649,7 +649,7 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
-    useStrict = not args.not_strict
+    useStrict = not options.not_strict
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
                                         resolver=cwltool.resolver.tool_resolver, strict=useStrict)
