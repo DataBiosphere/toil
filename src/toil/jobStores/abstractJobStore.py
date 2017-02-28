@@ -968,6 +968,14 @@ class JobStoreSupport(AbstractJobStore):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
+    def getSize(cls, url):
+        for attempt in retry_http():
+            with attempt:
+                with closing(urlopen(url.geturl())) as readable:
+                    # just read the header for content length
+                    return readable.info().get('content-length')
+
+    @classmethod
     def _readFromUrl(cls, url, writable):
         for attempt in retry_http():
             with attempt:
