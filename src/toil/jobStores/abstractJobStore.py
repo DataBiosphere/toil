@@ -303,7 +303,7 @@ class AbstractJobStore(object):
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
                 otherCls._readFromUrl(url, writable)
-                return FileID(uuid4(), otherCls.getSize(url))
+                return FileID(jobStoreFileID, otherCls.getSize(url))
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
