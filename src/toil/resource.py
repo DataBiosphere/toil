@@ -396,7 +396,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         log.debug("Module dir is %s", dirPath)
         require(os.path.isdir(dirPath),
                 'Bad directory path %s for module %s. Note that hot-deployment does not support \
-                .egg-link files yet.', dirPath, name)
+                .egg-link files yet, or scripts located in the root directory.', dirPath, name)
         fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
