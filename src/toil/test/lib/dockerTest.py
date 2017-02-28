@@ -30,7 +30,7 @@ class DockerTest(ToilTest):
     def setUp(self):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
-    def testDockerClean(self):
+    def testDockerClean(self, caching=True):
         """
         Run the test container that creates a file in the work dir, and sleeps for 5 minutes.  Ensure
         that the calling job gets SIGKILLed after a minute, leaving behind the spooky/ghost/zombie
@@ -57,6 +57,8 @@ class DockerTest(ToilTest):
         options.logLevel = 'INFO'
         options.workDir = work_dir
         options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
         for rm in (True, False):
             for detached in (True, False):
                 if detached and rm:
@@ -64,7 +66,6 @@ class DockerTest(ToilTest):
                 for defer in (FORGO, STOP, RM, None):
                     # Not using base64 logic here since it might create a name starting with a `-`.
                     container_name = uuid.uuid4().hex
-                    print rm, detached, defer
                     A = Job.wrapJobFn(_testDockerCleanFn, data_dir, detached, rm, defer,
                                       container_name)
                     try:
@@ -94,7 +95,7 @@ class DockerTest(ToilTest):
                         _dockerKill(container_name, RM)
                         os.remove(test_file)
 
-    def testDockerPipeChain(self):
+    def testDockerPipeChain(self, caching=True):
         """
         Test for piping API for dockerCall().  Using this API (activated when list of
         argument lists is given as parameters), commands a piped together into a chain
@@ -105,9 +106,17 @@ class DockerTest(ToilTest):
         options.logLevel = 'INFO'
         options.workDir = self.tempDir
         options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         assert rv.strip() == '2'
+
+    def testNonCachingDockerChain(self):
+        self.testDockerPipeChain(caching=False)
+
+    def testNonCachingDockerClean(self):
+        self.testDockerClean(caching=False)
 
 def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
     """
