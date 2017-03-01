@@ -394,7 +394,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
         log.debug("Module dir is %s", dirPath)
-        assert os.path.isdir(dirPath)
+        require(os.path.isdir(dirPath),
+                'Bad directory path %s for module %s. Note that hot-deployment does not support \
+                .egg-link files yet, or scripts located in the root directory.', dirPath, name)
         fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
