@@ -619,6 +619,7 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--conformance-test", action="store_true")
+    parser.add_argument("--not-strict", action="store_true")
     parser.add_argument("--no-container", action="store_true")
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
@@ -648,9 +649,10 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
+    useStrict = not options.not_strict
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
-                                        resolver=cwltool.resolver.tool_resolver)
+                                        resolver=cwltool.resolver.tool_resolver, strict=useStrict)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
         return 33
