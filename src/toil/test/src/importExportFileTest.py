@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 
 import uuid
+import os
 
 from toil.common import Toil
 from toil.job import Job
@@ -36,6 +37,9 @@ class ImportExportFileTest(ToilTest):
                 with open(srcFile, 'w') as f:
                     f.write('Hello')
                 inputFileID = toil.importFile('file://' + srcFile)
+                # Make sure that importFile returns the fileID wrapper
+                self.assertIsInstance(inputFileID, toil.fileStore.FileID)
+                self.assertEqual(os.stat(srcFile).st_size, inputFileID.size)
 
                 # Write a boolean that determines whether the job fails.
                 with toil._jobStore.writeFileStream() as (f, failFileID):
