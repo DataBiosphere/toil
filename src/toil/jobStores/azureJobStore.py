@@ -272,8 +272,8 @@ class AzureJobStore(AbstractJobStore):
     @classmethod
     def getSize(cls, url):
         blob = cls._parseWasbUrl(url)
-        blobProps = blob.container.get_blob_properties()
-        return int(blobProps['Content-Length'])
+        blobProps = blob.service.get_blob_properties(blob.container, blob.name)
+        return int(blobProps['content-length'])
 
     @classmethod
     def _readFromUrl(cls, url, writable):
