@@ -20,6 +20,7 @@ import re
 import sys
 import tempfile
 import time
+import subprocess
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -109,6 +110,10 @@ class Config(object):
         self.retryCount = 0
         self.maxJobDuration = sys.maxint
         self.rescueJobsFrequency = 3600
+
+        # Node ID
+        self.nodeIDCommand = None
+        self.nodeIDFile = None
 
         #Misc
         self.disableCaching = False
@@ -244,6 +249,17 @@ class Config(object):
         setOption("retryCount", int, iC(0))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
+
+        # Node ID
+        setOption("nodeIDCommand")
+        setOption("nodeIDFile")
+        require(self.nodeIDCommand is None or self.nodeIDFile is None,
+                "cannot have --nodeIDFile and --nodeIDCommand command set simultaneously")
+        if self.nodeIDFile is not None:
+            self.nodeIDFile = os.path.abspath(self.nodeIDFile)
+            if not os.path.exists(self.nodeIDFile):
+                raise RuntimeError("The path provided to --nodeIDFile (%s) does not exist."
+                                   % self.nodeIDFile)
 
         #Misc
         setOption("disableCaching")
@@ -488,6 +504,25 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
                       help=("Period of time to wait (in seconds) between checking for "
                             "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. default=%s" % config.rescueJobsFrequency))
+
+    #
+    #Mutually exclusive nodeID options
+    #
+    addOptionFn = addGroupFn("Options for identifying nodes",
+                             "By default Toil assumes that nodes will have their own file system."
+                             "If this is not the case, then workers may attempt to kill processes "
+                             "that belong to other jobs. This can be circumvented by specifying a"
+                             "way for nodes to be uniquely identified. If either of these options"
+                             "are specified then nodes' temp directories will not overlap.")
+
+    addOptionFn("--nodeIDFile", dest="nodeIDFile", default=None,
+                help="Specify a file with content that uniquely identifies a node. An example"
+                     "would be: ~/.toilNodeID which contains a uuid.")
+
+    addOptionFn("--nodeIDCommand", dest="nodeIDCommand", default=None,
+                help="a command in the system path that can be run via subprocess.check_output to "
+                     "return a unique identifier for the node. Output is expected to be a small"
+                     "string like a uuid or MAC address, etc.")
 
     #
     #Misc options
@@ -1107,3 +1142,23 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
+
+def getNodeID(nodeIDFile, nodeIDCommand):
+    """
+    Gets the unique toil node ID for a machine.
+
+    Assumes that at least one of its inputs is None
+
+    :param config: the config file used to start toil
+    :return: a unique string
+    :rtype: str
+    """
+    if nodeIDCommand is not None:
+        return subprocess.check_output(nodeIDCommand)
+    elif nodeIDFile is not None:
+        with open(nodeIDFile) as f:
+            return f.read()
+    else:
+        return None
+

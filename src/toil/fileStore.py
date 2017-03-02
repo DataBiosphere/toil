@@ -41,7 +41,7 @@ from six.moves.queue import Empty, Queue
 from six.moves import xrange
 
 from bd2k.util.humanize import bytes2human
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
+from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize, getNodeID
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
 
@@ -112,6 +112,7 @@ class FileStore(object):
         self.loggingMessages = []
         self.filesToDelete = set()
         self.jobsToDelete = set()
+        self.nodeID = getNodeID(self.jobStore.config.nodeIDFile, self.jobStore.config.nodeIDCommand)
 
     @staticmethod
     def createFileStore(jobStore, jobGraph, localTempDir, inputBlockFn, caching):
@@ -1116,7 +1117,10 @@ class CachingFileStore(FileStore):
                 'jobSpecificFiles': defaultdict(partial(defaultdict,int)),
                 'filesToFSIDs': defaultdict(set),
                 'pid': os.getpid(),
-                'deferredFunctions': []}
+                'deferredFunctions': [],
+                'nodeID': self.nodeID,
+                'findID': (self.jobStore.config.nodeIDFile, self.jobStore.config.nodeIDCommand)
+            }
             # If the caching equation is balanced, do nothing.
             if cacheInfo.isBalanced():
                 return None
@@ -1275,17 +1279,19 @@ class CachingFileStore(FileStore):
         :param toil.fileStore.CachingFileStore._CacheState nodeInfo: The state of the node cache as
                a _CacheState object
         """
-        # A list of tuples of (hashed job id, pid or process running job)
-        registeredJobs = [(jid, state['pid']) for jid, state in nodeInfo.jobState.items()]
-        for jobID, jobPID in registeredJobs:
-            if not cls._pidExists(jobPID):
+        for jobID, state in nodeInfo.jobState.items():
+            # Because this is a classmethod, the easiest way to get the nodeID it to keep the info
+            # needed to generate it in the jobState and then generate the ID dynamically.
+            nodeID = getNodeID(**state['findID'])
+            # Only delete job if its PID is dead and if it's nodeID matches ours.
+            if not cls._pidExists(state['pid']) and state['nodeID'] == nodeID:
                 jobState = CachingFileStore._JobState(nodeInfo.jobState[jobID])
                 logger.warning('Detected that job (%s) prematurely terminated.  Fixing the state '
                                'of the cache.', jobState.jobName)
                 if not batchSystemShutdown:
                     logger.debug("Returning dead job's used disk to cache.")
                     # Delete the old work directory if it still exists, to remove unwanted nlinks.
-                    # Do this only during the life of the program and dont' do it during the
+                    # Do this only during the life of the program and don't do it during the
                     # batch system cleanup.  Leave that to the batch system cleanup code.
                     if os.path.exists(jobState.jobDir):
                         shutil.rmtree(jobState.jobDir)
@@ -1731,7 +1737,11 @@ class NonCachingFileStore(FileStore):
         """
         # A list of tuples of (job name, pid or process running job, registered defer functions)
         for jobState in cls._getAllJobStates(nodeInfo):
-            if not cls._pidExists(jobState['jobPID']):
+            # Because this is a classmethod, the easiest way to get the nodeID it to keep the info
+            # needed to generate it in the jobState and then generate the ID dynamically.
+            nodeID = getNodeID(**jobState['findID'])
+            # Only delete job if it PID doesn't exist and if it's nodeID matches ours.
+            if not cls._pidExists(jobState['jobPID']) and jobState['nodeID'] == nodeID:
                 # using same logic to prevent races as CachingFileStore._setupCache
                 myPID = str(os.getpid())
                 cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
@@ -1819,7 +1829,10 @@ class NonCachingFileStore(FileStore):
         jobState = {'jobPID': os.getpid(),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir,
-                    'deferredFunctions': []}
+                    'deferredFunctions': [],
+                    'nodeID': self.nodeID,
+                    'findID': (self.jobStore.config.nodeIDFile, self.jobStore.config.nodeIDCommand),
+                    }
         with open(jobStateFile + '.tmp', 'w') as fH:
             dill.dump(jobState, fH)
         os.rename(jobStateFile + '.tmp', jobStateFile)
