@@ -232,7 +232,6 @@ def _fixPermissions(tool, workDir):
 
 def _getContainerName(job):
     return '--'.join([str(job),
-                      job.fileStore.jobID,
                       base64.b64encode(os.urandom(9), '-_')]).replace("'", '').replace('_', '')
 
 
