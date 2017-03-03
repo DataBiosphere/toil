@@ -820,3 +820,39 @@ write::
 
 Note the call to :func:`toil.job.Job.encapsulate` creates the
 :class:`toil.job.Job.EncapsulatedJob`.
+
+Best practices for Dockerizing Toil workflows
+---------------------------------------------
+
+`Computational Genomics Lab`_'s `Dockstore`_ based production system provides workflow authors a
+way to run Dockerized versions of their pipeline in an automated, scalable fashion. To be compatible
+with this system of a workflow should meet the following requirements. In addition
+to the Docker container, a common workflow language `descriptor file`_ is needed. For inputs:
+
+* Only command line arguments should be used for configuring the workflow. If
+  the workflow relies on a configuration file, like `Toil-RNAseq`_ or `ProTECT`_, a
+  wrapper script inside the Docker container can be used to parse the CLI and
+  generate the necessary configuration file.
+* All inputs to the pipeline should be explicitly enumerated rather than implicit.
+  For example, don't rely on one FASTQ read's path to discover the location of its
+  pair. This is necessary since all inputs are mapped to their own isolated directories
+  when the Docker is called via Dockstore.
+* All inputs must be documented in the CWL descriptor file. Examples of this file can be seen in
+  both `Toil-RNAseq`_ and `ProTECT`_.
+
+For outputs:
+
+* All outputs should be written to a local path rather than S3.
+* Take care to package outputs in a local and user-friendly way. For example,
+  don't tar up all output if there are specific files that will care to see individually.
+* All output file names should be deterministic and predictable. For example,
+  don't prepend the name of an output file with PASS/FAIL depending on the outcome
+  of the pipeline.
+* All outputs must be documented in the CWL descriptor file. Examples of this file can be seen in
+  both `Toil-RNAseq`_ and `ProTECT`_.
+
+.. _descriptor file: https://dockstore.org/docs/getting-started-with-cwl
+.. _Computation Genomics Lab: https://cgl.genomics.ucsc.edu/
+.. _Dockstore: https://dockstore.org/docs
+.. _Toil-RNAseq: https://github.com/BD2KGenomics/toil-rnaseq
+.. _ProTECT: https://github.com/BD2KGenomics/protect
