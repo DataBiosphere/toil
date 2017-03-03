@@ -387,11 +387,10 @@ def reportPrettyData(root, worker, job, job_types, options):
     """
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += ("Default Cores: %s  Default Memory: %s\n"
-                "Max Cores: %s  Max Threads: %s\n" % (
+                "Max Cores: %s\n" % (
         reportNumber(get(root, "default_cores"), options),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
         reportNumber(get(root, "max_cores"), options),
-        reportNumber(get(root, "max_threads"), options),
         ))
     out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
         reportTime(get(root, "total_clock"), options),
@@ -460,7 +459,7 @@ def buildElement(element, items, itemName):
 
     itemWaits=[]
     for index in range(0,len(itemTimes)):
-        itemWaits.append(itemClocks[index]-itemTimes[index])
+        itemWaits.append(itemTimes[index] - itemClocks[index])
 
     itemWaits.sort()
     itemTimes.sort()
