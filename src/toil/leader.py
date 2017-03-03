@@ -141,7 +141,7 @@ class Leader:
         self.statsAndLogging = StatsAndLogging(self.jobStore, self.config)
 
         # Set used to monitor deadlocked jobs
-        self.potentialDeadlockedJobs = None
+        self.potentialDeadlockedJobs = set()
         self.potentialDeadlockTime = 0
 
         # internal jobs we should not expose at top level debugging
@@ -495,6 +495,7 @@ class Leader:
         if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
             serviceJobs = filter(lambda x : isinstance(x, ServiceJobNode), self.jobBatchSystemIDToIssuedJob.values())
             runningServiceJobs = set(filter(lambda x : self.serviceManager.isRunning(x), serviceJobs))
+            assert len(runningServiceJobs) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
             if len(runningServiceJobs) == totalRunningJobs:
@@ -506,11 +507,11 @@ class Leader:
                     raise DeadlockException("The system is service deadlocked - all %d running jobs are active services" % totalRunningJobs)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
-                self.potentialDeadlockedJobs = []
+                self.potentialDeadlockedJobs = set()
                 self.potentialDeadlockTime = 0
         else:
             # We have observed non-service jobs running, so reset the potential deadlock
-            self.potentialDeadlockedJobs = []
+            self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
 
 
