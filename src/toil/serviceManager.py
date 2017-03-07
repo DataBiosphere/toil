@@ -125,10 +125,17 @@ class ServiceManager( object ):
             
     def isActive(self, serviceJobNode):
         """
-        Returns true is the service job has not been told to terminate.
+        Returns true if the service job has not been told to terminate.
         :rtype: boolean
         """
         return self.jobStore.fileExists(serviceJobNode.terminateJobStoreID)
+
+    def isRunning(self, serviceJobNode):
+        """
+        Returns true if the service job has started and is active
+        :rtype: boolean
+        """
+        return (not self.jobStore.fileExists(serviceJobNode.startJobStoreID)) and self.isActive(serviceJobNode)
 
     def check(self):
         """
