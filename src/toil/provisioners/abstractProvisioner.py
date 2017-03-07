@@ -169,7 +169,7 @@ class AbstractProvisioner(object):
                of nodes. For example, when downsizing a cluster, a provisioner might leave nodes
                running if they have active jobs running on them.
 
-        :rtype: int :return: the number of nodes in the cluster after making the necessary
+        :rtype: int :return: the number of worker nodes in the cluster after making the necessary
                 adjustments. This value should be, but is not guaranteed to be, close or equal to
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
