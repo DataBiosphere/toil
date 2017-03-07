@@ -367,16 +367,15 @@ class AWSProvisioner(AbstractProvisioner):
             finally:
                 s.close()
 
-    @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None,
-                      vpcSubnet=None):
+    def launchCluster(self, instanceType, keyName, clusterName, workers=0,
+                      spotBid=None, userTags=None, zone=None, vpcSubnet=None):
         if userTags is None:
             userTags = {}
-        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        profileARN = cls._getProfileARN(ctx)
+        ctx = self._buildContext(clusterName=clusterName, zone=zone)
+        profileARN = self._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
-        sgs = cls._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
+        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType])
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
@@ -392,22 +391,27 @@ class AWSProvisioner(AbstractProvisioner):
             kwargs["subnet_id"] = vpcSubnet
         if not spotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=cls._discoverAMI(ctx),
+            create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
             list(create_spot_instances(ec2=ctx.ec2,
                                        price=spotBid,
-                                       image_id=cls._discoverAMI(ctx),
+                                       image_id=self._discoverAMI(ctx),
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        leader = cls._getLeader(clusterName=clusterName, wait=True, zone=zone)
+        leader = self._getLeader(clusterName=clusterName, wait=True, zone=zone)
 
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
-        cls._addTags([leader], defaultTags)
+        self._addTags([leader], defaultTags)
+
+        if workers:
+            workersCreated = self.setNodeCount(workers)
+            logger.info('Added %d workers with %d workers requested',workersCreated, workers)
+
         return leader
 
     @classmethod
