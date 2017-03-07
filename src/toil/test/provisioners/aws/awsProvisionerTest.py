@@ -17,6 +17,10 @@ import subprocess
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
+
+from boto.ec2.blockdevicemapping import BlockDeviceType
+from boto.exception import EC2ResponseError
+
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
 from uuid import uuid4
@@ -152,7 +156,22 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
+        volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
+        ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
+        self.leader.update()
+        try:
+            ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+        except EC2ResponseError as e:
+            if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
+                pass
+            else:
+                raise
+        else:
+            self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
+
         assert len(self.getMatchingRoles(self.clusterName)) == 0
 
 
