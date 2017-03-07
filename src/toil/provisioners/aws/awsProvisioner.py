@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 class AWSProvisioner(AbstractProvisioner):
 
-    def __init__(self, config, batchSystem):
+    def __init__(self, config=None, batchSystem=None):
         super(AWSProvisioner, self).__init__(config, batchSystem)
         self.instanceMetaData = get_instance_metadata()
         self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
@@ -528,8 +528,8 @@ class AWSProvisioner(AbstractProvisioner):
     def _addNodes(self, instances, numNodes, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
-        keyPath = '' if not self.config.sseKey else self.config.sseKey
-        entryPoint = 'mesos-slave' if not self.config.sseKey else "waitForKey.sh"
+        keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
+        entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
         workerData = dict(role='worker',
                           image=applianceSelf(),
                           entrypoint=entryPoint,
@@ -584,7 +584,7 @@ class AWSProvisioner(AbstractProvisioner):
         return len(instancesLaunched)
 
     def _propagateKey(self, instances):
-        if not self.config.sseKey:
+        if not self.config or not self.config.sseKey:
             return
         for node in instances:
             for attempt in retry(predicate=AWSProvisioner.throttlePredicate):

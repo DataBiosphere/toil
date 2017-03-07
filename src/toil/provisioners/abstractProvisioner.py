@@ -51,14 +51,23 @@ class AbstractProvisioner(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, config, batchSystem):
+
+    def __init__(self, config=None, batchSystem=None):
+        """
+        Initialize provisioner. If config and batchSystem are not specified, the
+        provisioner is being used to manage nodes without a workflow
+
+        :param config: Config from common.py
+        :param batchSystem: The batchSystem used during run
+        """
         self.config = config
         self.batchSystem = batchSystem
         self.stop = False
         self.stats = {}
         self.statsThreads = []
-        self.statsPath = config.clusterStats
-        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
+        self.statsPath = config.clusterStats if config else None
+        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
+
 
     @staticmethod
     def retryPredicate(e):
