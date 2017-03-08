@@ -10,14 +10,14 @@ pipelines. You can:
   `OpenStack`_, and `Google Compute Engine`_
 * Take advantage of high-performance computing environments with batch systems
   like `GridEngine`_, `Apache Mesos`_, and `Parasol`_
-* Run workflows concurrently at scale using hundreds of nodes and thousands of cores
+* Run workflows concurrently at scale using thousands of nodes, managed by Toil's :ref:`Autoscaling` capabilities
 * Execute workflows efficiently with caching and resource requirement specifications
 * Easily link databases and services
 
 Toil is, admittedly, not quite as good as sliced bread, but it's about as close
 to it as you're gonna get.
 
-Check out our `website`_ for a more-comprehensive list of Toil's features, read
+Check out our `website`_ for a more comprehensive list of Toil's features, read
 our `paper`_ to learn more about what Toil can do in the real world, or jump in
 and start with the :ref:`installation-ref` section. (Feel free to also join us
 on `GitHub`_ and `Gitter`_.)
@@ -42,8 +42,8 @@ Getting Started
    :maxdepth: 2
 
    install/basic
-   install/cloud
    running/running
+   install/cloud
    running/cloud
 
 User Guide
@@ -73,8 +73,7 @@ Contributor's Guide
 .. toctree::
    :maxdepth: 2
 
-   contributing/source
-   contributing/pull-requests
+   contributing/contributing
 
 Indices and tables
 ~~~~~~~~~~~~~~~~~~
