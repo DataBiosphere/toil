@@ -94,13 +94,13 @@ Copy ``HelloWorld.py`` to the leader node, and run::
 
    $ python HelloWorld.py \
           --batchSystem=mesos \
-          --mesosMaster=mesos-master:5050 \
+          --mesosMaster=master-private-ip:5050 \
           aws:us-west-2:my-aws-jobstore
 
 Alternatively, to run a CWL workflow::
 
    $ cwltoil --batchSystem=mesos  \
-           --mesosMaster=mesos-master:5050 \
+           --mesosMaster=master-private-ip:5050 \
            --jobStore=aws:us-west-2:my-aws-jobstore \
            example.cwl \
            example-job.yml
