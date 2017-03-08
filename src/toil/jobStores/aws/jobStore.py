@@ -702,9 +702,10 @@ class AWSJobStore(AbstractJobStore):
                     bucket.configure_versioning(True)
                 else:
                     # now test for versioning consistency
+                    # we should never see any of these errors since 'versioning' should always be true
                     bucket_versioning = self.__getBucketVersioning(bucket)
-                    if bucket_versioning == True and versioning == False:
-                        assert False, 'Cannot disable bucket versioning if it is already enabled'
+                    if bucket_versioning != versioning:
+                        assert False, 'Cannot modify versioning on existing bucket'
                     elif bucket_versioning is None:
                         assert False, 'Cannot use a bucket with versioning suspended'
                 if bucketExisted:
