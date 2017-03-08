@@ -697,11 +697,13 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     if self.__getBucketRegion(bucket) != self.region:
                         raise BucketLocationConflictException(self.__getBucketRegion(bucket))
-                if versioning:
+                if versioning and not bucketExisted:
+                    # only call this method on bucket creation
                     bucket.configure_versioning(True)
                 else:
+                    # now test for versioning consistency
                     bucket_versioning = self.__getBucketVersioning(bucket)
-                    if bucket_versioning is True:
+                    if bucket_versioning == True and versioning == False:
                         assert False, 'Cannot disable bucket versioning if it is already enabled'
                     elif bucket_versioning is None:
                         assert False, 'Cannot use a bucket with versioning suspended'
