@@ -173,7 +173,7 @@ There are several environment variables that affect the way Toil runs.
 |                        | this option is provided to override this,          |
 |                        | since the image can be built with arbitrary names. |
 +------------------------+----------------------------------------------------+
-| TOIL_AWS_ZONE          | The EC2 zone to provision nodes in (if using       |
+| TOIL_AWS_ZONE          | The EC2 zone to provision nodes in if using        |
 |                        | Toil's provisioner.                                |
 +------------------------+----------------------------------------------------+
 | TOIL_AWS_AMI           | ID of the AMI to use in node provisioning. If in   |

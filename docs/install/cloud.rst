@@ -33,12 +33,19 @@ overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TO
 Using the provisioner to launch a Toil leader instance is simple::
 
     $ toil launch-cluster CLUSTER-NAME-HERE --nodeType=t2.micro \
-       --keyPairName=your-AWS-key-pair-name
+       -z us-west-2 --keyPairName=your-AWS-key-pair-name
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will
 automatically tag your cluster with an ``Owner`` tag that corresponds to your
 keypair name to facilitate cost tracking.
+
+The ``-z`` parameter is important since it specifies which EC2 availability
+zone to launch the cluster in. Alternatively, you can specify this option
+via the ``TOIL_AWS_ZONE`` environment variable. This is generally preferable
+since it lets us avoid repeating the ``-z`` option for every subsequent
+cluster command. We will assume this environment variable is set for the
+rest of the tutorial.
 
 An important caveat to note here is that there is no currently parameter to
 specify the size of the instance's root volume, which is currently set to 50 Gb.
@@ -77,11 +84,11 @@ Simply running ``screen`` within ``script`` will get things working properly aga
 
 Finally, you can execute remote commands with the following syntax::
 
-    $ toil ssh-cluster remoteCommand CLUSTER-NAME-HERE
+    $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
 
 It is not advised that you run your Toil workflow using remote execution like this
-unless `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the process
-does not die if the SSH connection is interrupted.
+unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
+process does not die if the SSH connection is interrupted.
 
 CGCloud Quickstart
 ~~~~~~~~~~~~~~~~~~
