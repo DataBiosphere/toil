@@ -16,7 +16,7 @@ Simply type ``screen`` to open a new ``screen``
 session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run
 ``screen -r`` to reconnect to it. Commands running under ``screen`` will
 continue running even when you are disconnected, allowing you to unplug your
-laptop and take it home without ending your Toil jobs. See ref:`Toil_Provisioner`
+laptop and take it home without ending your Toil jobs. See :ref:`Toil_Provisioner`
 for complications that can occur when using screen within the Toil Appliance.
 
 .. _screen: https://www.gnu.org/software/screen/

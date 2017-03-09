@@ -38,9 +38,9 @@ The job store will never be deleted with ``--stats``, as it overrides ``--clean`
 Cluster Utilities
 -----------------
 There are several utilites used for starting and managing a Toil cluster using
-the AWS provisioner. They make up the :ref:Toil_Provisioner, and they use the
+the AWS provisioner. They make up the :ref:`Toil_Provisioner`, and they use the
 ``toil launch-cluster``, ``toil rsync-cluster``, ``toil ssh-cluster``, and
-``toil destroy-cluster`` entry points. For more information, see :ref:Toil_Provisioner
+``toil destroy-cluster`` entry points. For more information, see :ref:`Toil_Provisioner`
 
 .. note::
 
