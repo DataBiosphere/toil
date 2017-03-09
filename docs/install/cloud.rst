@@ -5,14 +5,90 @@
 Cloud installation
 ==================
 
+This section details how to properly set up Toil and its dependencies in various cloud environments.
+
 .. _installationAWS:
 
 Amazon Web Services
 -------------------
-Toil includes a native AWS provisioner that can be used to start autoscaling
-clusters. For more information on this provisioner, see the :ref:`Autoscaling`
-section. To provision static, non-autoscaling clusters we recommend using
+Toil includes a native AWS provisioner that can be used to start :ref:`Autoscaling`
+clusters. To provision static, non-autoscaling clusters we recommend using
 CGCloud_.
+
+.. _Toil_Provisioner:
+
+Toil Provisioner
+~~~~~~~~~~~~~~~~
+The native Toil provisioner is included in Toil alongside the ``[aws]`` extra and
+allows us to spin up a cluster without any external dependencies. It is built around the
+Toil Appliance, a Docker image that bundles Toil and all its requirements,
+e.g. Mesos. This makes deployment simple across platforms, and you can even
+simulate a cluster locally (see :ref:`appliance_dev` for details).
+
+When using the Toil provisioner, the appliance image will be automatically chosen
+based on the pip installed version of Toil on your system. That choice can be
+overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
+``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables.
+
+Using the provisioner to launch a Toil leader instance is simple::
+
+    $ toil launch-cluster CLUSTER-NAME-HERE --nodeType=t2.micro \
+       -z us-west-2 --keyPairName=your-AWS-key-pair-name
+
+The cluster name is used to uniquely identify your cluster and will be used to
+populate the instance's ``Name`` tag. In addition, the Toil provisioner will
+automatically tag your cluster with an ``Owner`` tag that corresponds to your
+keypair name to facilitate cost tracking.
+
+The ``-z`` parameter is important since it specifies which EC2 availability
+zone to launch the cluster in. Alternatively, you can specify this option
+via the ``TOIL_AWS_ZONE`` environment variable. This is generally preferable
+since it lets us avoid repeating the ``-z`` option for every subsequent
+cluster command. We will assume this environment variable is set for the
+rest of the tutorial.
+
+An important caveat to note here is that there is no currently parameter to
+specify the size of the instance's root volume, which is currently set to 50 Gb.
+This support will be added soon, but in the mean time instances with ephemeral SSD
+volumes should be used if > 50 Gb of disk will be needed by any job in the pipeline.
+See `here <https://aws.amazon.com/ec2/instance-types/>`_ for a full selection of
+EC2 instance types.
+
+Once the leader is running, the ``ssh-cluster`` and ``rsync-cluster`` utilities can be
+used to interact with the instance::
+
+    $ toil rsync-cluster CLUSTER-NAME-HERE \
+       ~/localFile :/remoteDestination
+
+The most frequent use case for the ``rsync-cluster`` utility is deploying your
+Toil script to the Toil leader. Note that the syntax is the same as traditional
+`rsync <https://linux.die.net/man/1/rsync>`_ with the exception of the hostname before
+the colon. This is not needed in ``toil rsync-cluster`` since the hostname is automatically
+determined by Toil.
+
+The last utility provided by the Toil Provisioner is ``ssh-cluster`` and it
+can be used as follows::
+
+    $ toil ssh-cluster CLUSTER-NAME-HERE
+
+This will give you a shell on the Toil leader, where you proceed to start off your
+:ref:Autoscaling run. This shell actually originates from within the Toil leader container,
+and as such has a couple restrictions involving the use of the ``screen`` and ``tmux`` commands.
+The shell doesn't know that it is a TTY, which prevents it from properly allocating
+a new screen session. This can be worked around via::
+
+    $ script
+    $ screen
+
+Simply running ``screen`` within ``script`` will get things working properly again.
+
+Finally, you can execute remote commands with the following syntax::
+
+    $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
+
+It is not advised that you run your Toil workflow using remote execution like this
+unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
+process does not die if the SSH connection is interrupted.
 
 CGCloud Quickstart
 ~~~~~~~~~~~~~~~~~~

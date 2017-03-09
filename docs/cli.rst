@@ -1,7 +1,7 @@
 .. _commandRef:
 
-Command line interface and arguments
-====================================
+Command Line Interface
+======================
 
 Toil provides many command line options when running a toil script (see :ref:`running`),
 or using Toil to run a CWL script. Many of these are described below.
@@ -38,8 +38,9 @@ The job store will never be deleted with ``--stats``, as it overrides ``--clean`
 Cluster Utilities
 -----------------
 There are several utilites used for starting and managing a Toil cluster using
-the AWS provisioner. They use the ``toil launch-cluster``, ``toil rsync-cluster``,
-``toil ssh-cluster``, and ``toil destroy-cluster`` entry points.
+the AWS provisioner. They make up the :ref:`Toil_Provisioner`, and they use the
+``toil launch-cluster``, ``toil rsync-cluster``, ``toil ssh-cluster``, and
+``toil destroy-cluster`` entry points. For more information, see :ref:`Toil_Provisioner`
 
 .. note::
 
