@@ -1282,7 +1282,7 @@ class CachingFileStore(FileStore):
         for jobID, state in nodeInfo.jobState.items():
             # Because this is a classmethod, the easiest way to get the nodeID it to keep the info
             # needed to generate it in the jobState and then generate the ID dynamically.
-            nodeID = getNodeID(**state['findID'])
+            nodeID = getNodeID(*state['findID'])
             # Only delete job if its PID is dead and if it's nodeID matches ours.
             if not cls._pidExists(state['pid']) and state['nodeID'] == nodeID:
                 jobState = CachingFileStore._JobState(nodeInfo.jobState[jobID])
@@ -1739,7 +1739,7 @@ class NonCachingFileStore(FileStore):
         for jobState in cls._getAllJobStates(nodeInfo):
             # Because this is a classmethod, the easiest way to get the nodeID it to keep the info
             # needed to generate it in the jobState and then generate the ID dynamically.
-            nodeID = getNodeID(**jobState['findID'])
+            nodeID = getNodeID(*jobState['findID'])
             # Only delete job if it PID doesn't exist and if it's nodeID matches ours.
             if not cls._pidExists(jobState['jobPID']) and jobState['nodeID'] == nodeID:
                 # using same logic to prevent races as CachingFileStore._setupCache

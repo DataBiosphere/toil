@@ -1150,12 +1150,17 @@ def getNodeID(nodeIDFile, nodeIDCommand):
 
     Assumes that at least one of its inputs is None
 
-    :param config: the config file used to start toil
-    :return: a unique string
+    :param str nodeIDFile: absolute path to a file with nodeID
+    :param str nodeIDCommand: a command to be run which returns the nodeID
+    :return: a unique strin
     :rtype: str
     """
     if nodeIDCommand is not None:
-        return subprocess.check_output(nodeIDCommand)
+        try:
+            output = subprocess.check_output(nodeIDCommand.split())
+        except subprocess.CalledProcessError as e:
+            logger.debug("NodeID command %s failed with output %s", e.cmd, e.output)
+            raise
     elif nodeIDFile is not None:
         with open(nodeIDFile) as f:
             return f.read()
