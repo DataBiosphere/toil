@@ -249,6 +249,12 @@ class GoogleJobStore(AbstractJobStore):
         return projectID, 'gs://'+bucketAndKey
 
     @classmethod
+    def getSize(cls, url):
+        projectID, uri = GoogleJobStore._getResources(url)
+        uri = boto.storage_uri(uri, GOOGLE_STORAGE)
+        return uri.get_key().size
+
+    @classmethod
     def _readFromUrl(cls, url, writable):
         # gs://projectid/bucket/key
         projectID, uri = GoogleJobStore._getResources(url)

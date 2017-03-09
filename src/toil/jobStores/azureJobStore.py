@@ -270,6 +270,12 @@ class AzureJobStore(AbstractJobStore):
                                account_key=_fetchAzureAccountKey(self.account))
 
     @classmethod
+    def getSize(cls, url):
+        blob = cls._parseWasbUrl(url)
+        blobProps = blob.service.get_blob_properties(blob.container, blob.name)
+        return int(blobProps['content-length'])
+
+    @classmethod
     def _readFromUrl(cls, url, writable):
         blob = cls._parseWasbUrl(url)
         blob.service.get_blob_to_file(container_name=blob.container,

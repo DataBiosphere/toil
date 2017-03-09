@@ -29,6 +29,7 @@ from six.moves import xrange
 
 from bd2k.util.exceptions import require
 
+from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -167,7 +168,7 @@ class FileJobStore(AbstractJobStore):
                 fd, absPath = self._getTempFile()
                 shutil.copyfile(self._extractPathFromUrl(url), absPath)
                 os.close(fd)
-                return self._getRelativePath(absPath)
+                return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 with self.writeSharedFileStream(sharedFileName) as writable:
@@ -183,6 +184,10 @@ class FileJobStore(AbstractJobStore):
             shutil.copyfile(self._getAbsPath(jobStoreFileID), self._extractPathFromUrl(url))
         else:
             super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+
+    @classmethod
+    def getSize(cls, url):
+        return os.stat(cls._extractPathFromUrl(url)).st_size
 
     @classmethod
     def _readFromUrl(cls, url, writable):

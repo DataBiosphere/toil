@@ -427,6 +427,14 @@ class AWSJobStore(AbstractJobStore):
             super(AWSJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
+    def getSize(cls, url):
+        key = cls._getKeyForUrl(url, existing=True)
+        try:
+            return key.size
+        finally:
+            key.bucket.connection.close()
+
+    @classmethod
     def _readFromUrl(cls, url, writable):
         srcKey = cls._getKeyForUrl(url, existing=True)
         try:
