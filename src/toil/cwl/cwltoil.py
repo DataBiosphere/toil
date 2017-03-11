@@ -712,7 +712,11 @@ def main(args=None, stdout=sys.stdout):
             outobj = toil.restart()
         else:
             basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-            builder = t._init_job(job, basedir=basedir, use_container=use_container)
+            # ensure docker containers run inside the base workdir
+            docker_kwargs = {"docker_outdir": os.path.join(basedir, "var", "spool", "cwl"),
+                             "docker_stagedir": os.path.join(basedir, "var", "lib", "cwl"),
+                             "docker_tmpdir": os.path.join(basedir, "tmp")}
+            builder = t._init_job(job, basedir=basedir, use_container=use_container, **docker_kwargs)
             (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
             try:
                 if isinstance(wf1, CWLWorkflow):
