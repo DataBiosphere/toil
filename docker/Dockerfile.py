@@ -84,7 +84,7 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN wget -O /usr/bin/docker https://get.docker.com/builds/Linux/x86_64/docker-1.10.3 \
+    RUN wget -O /usr/bin/docker https://get.docker.com/builds/Linux/x86_64/docker-1.12.3 \
         && chmod +x /usr/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
