@@ -307,38 +307,41 @@ class AWSJobStore(AbstractJobStore):
                                                        attributes=attributes)
     
     def _awsJobFromItem(self, jobStoreID, item):
-        if self.fileExists(jobStoreID):
+        if "overlarge" in item:
+            assert item["overlarge"] == "true"
+            assert self.fileExists(jobStoreID)
             #This is an overlarge job, download the actual attributes
             #from the file store
             log.debug("Loading overlarge job from S3.")
             with self.readFileStream(jobStoreID) as fh:
                 binary = fh.read()
         else:
-            binary,_ = AWSJob.attributesToBinary(item)
+            binary,_ = SDBHelper.attributesToBinary(item)
             assert binary is not None
         job = cPickle.loads(binary)
         return job
 
-    def _awsJobToItem(self, job, forceOverlarge=False):
-        binary = cPickle.dumps(job)
-        if len(binary) > AWSJob.maxBinarySize() or forceOverlarge:
+    def _awsJobToItem(self, job):
+        binary = cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL)
+        if len(binary) > SDBHelper.maxBinarySize():
             #Store as an overlarge job in S3
             overlargeJobFile = self.FileInfo(job.jobStoreID, job.jobStoreID, encrypted=False)
             with overlargeJobFile.uploadStream() as writable:
                 writable.write(binary)
             overlargeJobFile.save()
             item = SDBHelper.binaryToAttributes('')
+            item["overlarge"] = "true"
         else:
-            item = AWSJob.binaryToAttributes(binary)
+            item = SDBHelper.binaryToAttributes(binary)
         return item
 
-    def create(self, jobNode, forceOverlarge=False):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = AWSJob.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
 
-        item = self._awsJobToItem(job, forceOverlarge=forceOverlarge)
+        item = self._awsJobToItem(job)
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(job.jobStoreID, item)
@@ -349,7 +352,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 return bool(self.jobsDomain.get_attributes(
                     item_name=jobStoreID,
-                    attribute_name=[AWSJob.presenceIndicator()],
+                    attribute_name=[SDBHelper.presenceIndicator()],
                     consistent_read=True))
 
     def jobs(self):
@@ -1379,35 +1382,6 @@ class AWSJobStore(AbstractJobStore):
 aRepr = reprlib.Repr()
 aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
 custom_repr = aRepr.repr
-
-
-class AWSJob(JobGraph, SDBHelper):
-    """
-    A Job that can be converted to and from an SDB item.
-    """
-
-    @classmethod
-    def fromItem(cls, item):
-        """
-        :type item: Item
-        :rtype: AWSJob
-        """
-        binary, _ = cls.attributesToBinary(item)
-        assert binary is not None
-        return cPickle.loads(binary)
-
-    def toItem(self):
-        """
-        To to a peculiarity of Boto's SDB bindings, this method does not return an Item,
-        but a tuple. The returned tuple can be used with put_attributes like so
-
-        domain.put_attributes( *toItem(...) )
-
-        :rtype: (str,dict)
-        :return: a str for the item's name and a dictionary for the item's attributes
-        """
-        return self.jobStoreID, self.binaryToAttributes(cPickle.dumps(self, protocol=cPickle.HIGHEST_PROTOCOL))
-
 
 class BucketLocationConflictException(Exception):
     def __init__(self, bucketRegion):

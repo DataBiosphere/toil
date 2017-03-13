@@ -991,7 +991,11 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                                     requirements=masterRequirements,
                                     jobName='test-overlarge', unitName='onMaster',
                                     jobStoreID=None, predecessorNumber=0)
-        overlargeJobOnMaster = master.create(overlargeJobNodeOnMaster, forceOverlarge=True)
+
+        #Make the pickled size of the job larger than 256K
+        with open("/dev/urandom", "r") as random:
+            overlargeJobNodeOnMaster.jobName = random.read(512 * 1024)
+        overlargeJobOnMaster = master.create(overlargeJobNodeOnMaster)
         self.assertTrue(master.exists(overlargeJobOnMaster.jobStoreID))
         overlargeJobOnMasterDownloaded = master.load(overlargeJobOnMaster.jobStoreID)
         jobsOnMaster = [job for job in master.jobs()]
