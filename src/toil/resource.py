@@ -27,9 +27,11 @@ from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
+from urllib2 import HTTPError
 from zipfile import ZipFile, PyZipFile
 
 # Python 3 compatibility imports
+from bd2k.util.retry import retry
 from six.moves.urllib.request import urlopen
 
 from bd2k.util import strict_bool
@@ -233,8 +235,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
         :type dstFile: io.BytesIO|io.FileIO
         """
-        with closing(urlopen(self.url)) as content:
-            buf = content.read()
+        for attempt in retry(predicate=lambda e: isinstance(e, HTTPError) and e.code == 400):
+            with attempt:
+                with closing(urlopen(self.url)) as content:
+                    buf = content.read()
         contentHash = hashlib.md5(buf)
         assert contentHash.hexdigest() == self.contentHash
         dstFile.write(buf)
