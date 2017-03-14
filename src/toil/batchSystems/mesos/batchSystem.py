@@ -41,7 +41,7 @@ from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemSupport,
                                                    NodeInfo)
-from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData
+from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData, JobQueue
 
 log = logging.getLogger(__name__)
 
