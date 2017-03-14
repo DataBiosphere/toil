@@ -195,10 +195,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 time.sleep(1)
 
     def getIssuedBatchJobIDs(self):
-        jobIds = set()
-        for queue in self.jobQueues.values():
-            for job in queue:
-                jobIds.add(job.jobID)
+        jobIds = set(self.jobQueues.jobIDs())
         jobIds.update(self.runningJobMap.keys())
         return list(jobIds)
 

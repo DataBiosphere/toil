@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from collections import namedtuple
 from functools import total_ordering
+from bisect import bisect
 
 TaskData = namedtuple('TaskData', (
     # Time when the task was started
@@ -40,7 +41,7 @@ class JobQueue(object):
         # logn insertion
         if jobType not in self.queues:
             index = bisect(self.sortedTypes, jobType)
-            self.sortedTypes.index(index, jobType)
+            self.sortedTypes.insert(index, jobType)
             self.queues[jobType] = [job]
         else:
             self.queues[jobType].append(job)
@@ -50,7 +51,7 @@ class JobQueue(object):
 
     def jobIDs(self):
         # O(N)
-        return [ids for idList in self.queues.values() for ids in idList]
+        return [job.jobID for jobList in self.queues.values() for job in jobList]
 
     def nextJobOfType(self, jobType):
         # constant lookup, pop off first element
@@ -127,6 +128,9 @@ class ResourceRequirement(object):
            self.disk == other.disk):
             return True
         return False
+
+    def __hash__(self):
+        return hash((self.preemptable, self.cores, self.memory, self.disk))
 
 
 ToilJob = namedtuple('ToilJob', (

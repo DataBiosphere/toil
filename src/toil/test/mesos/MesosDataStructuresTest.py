@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import uuid
-from random import random
+import random
 
 from toil.test import ToilTest, needs_mesos
 
@@ -46,7 +46,7 @@ class DataStructuresTest(ToilTest):
 
         sortedTypes = jobQueue.sorted()
         # test this is properly sorted
-        assert len(sortedTypes) <= 10
+        assert len(sortedTypes) <= 20
         assert all(sortedTypes[i] <= sortedTypes[i + 1] for i in range(len(sortedTypes) - 1))
 
         preemptable = sortedTypes.pop(0).preemptable
