@@ -41,7 +41,7 @@ class DataStructuresTest(ToilTest):
         jobQueue = JobQueue()
 
         for jobNum in range(0, testJobs):
-            testJob = self._getJob(cores=random.choice(1, 10), preemptable=random.choice(True, False))
+            testJob = self._getJob(cores=random.choice(range(10)), preemptable=random.choice([True, False]))
             jobQueue.insertJob(testJob, testJob.resources)
 
         sortedTypes = jobQueue.sorted()
