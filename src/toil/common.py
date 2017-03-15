@@ -1152,7 +1152,7 @@ def getNodeID(nodeIDFile, nodeIDCommand):
 
     :param str nodeIDFile: absolute path to a file with nodeID
     :param str nodeIDCommand: a command to be run which returns the nodeID
-    :return: a unique strin
+    :return: a unique string
     :rtype: str
     """
     if nodeIDCommand is not None:
