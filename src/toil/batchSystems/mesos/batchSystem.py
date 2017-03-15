@@ -378,7 +378,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 # loop.
                 nextToLaunchIndex = 0
                 # Toil specifies disk and memory in bytes but Mesos uses MiB
-                while (len(self.jobQueues.jobsOfType(jobType)) > 0
+                while ( not self.jobQueues.typeEmpty(jobType)
                        # On a non-preemptable node we can run any job, on a preemptable node we
                        # can only run preemptable jobs:
                        and (not offerPreemptable or jobType.preemptable)

@@ -46,8 +46,8 @@ class DataStructuresTest(ToilTest):
 
         sortedTypes = jobQueue.sorted()
         # test this is properly sorted
-        assert len(sortedTypes) <= 20
-        assert all(sortedTypes[i] <= sortedTypes[i + 1] for i in range(len(sortedTypes) - 1))
+        self.assertGreaterEqual(20, len(sortedTypes))
+        self.assertTrue(all(sortedTypes[i] <= sortedTypes[i + 1] for i in range(len(sortedTypes) - 1)))
 
         preemptable = sortedTypes.pop(0).preemptable
         for jtype in sortedTypes:
@@ -60,24 +60,19 @@ class DataStructuresTest(ToilTest):
                 preemptable = jtype.preemptable
 
         # make sure proper number of jobs are in queue
-        assert len(jobQueue.jobIDs()) == testJobs
+        self.assertEqual(len(jobQueue.jobIDs()), testJobs)
 
-        testJob = self._getJob(cores=random.choice(1, 10))
+        testJob = self._getJob(cores=random.choice(range(10)))
         jobQueue.insertJob(testJob, testJob.resources)
         testJobs += 1
 
-        assert len(jobQueue.jobIDs()) == testJobs
-        assert testJobs >= len(jobQueue.jobsOfType(testJob.resources)) >= 1
+        self.assertEqual(len(jobQueue.jobIDs()), testJobs)
 
-        jobsRemoved = 0
-        while len(jobQueue.jobsOfType(testJob.resources)) > 1:
-            jobsRemoved += 1
-            jobQueue.nextJobOfType(testJob.resources)
+        tmpJob = None
+        while not jobQueue.typeEmpty(testJob.resources):
+            testJobs -= 1
+            tmpJob = jobQueue.nextJobOfType(testJob.resources)
 
-        testJobs -= jobsRemoved
-        assert testJobs == len(jobQueue.jobIDs())
-
-        # only most recently added job will be in this queue now - test to insure FIFO
-        testJob2 = jobQueue.nextJobOfType(testJob.resources)
-        assert testJob is testJob2
-
+        self.assertEqual(len(jobQueue.jobIDs()), testJobs)
+        # Ensure FIFO
+        self.assertIs(testJob, tmpJob)

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
+
+from Queue import Queue
 from collections import namedtuple
 from functools import total_ordering
 from bisect import bisect
@@ -42,25 +44,25 @@ class JobQueue(object):
         if jobType not in self.queues:
             index = bisect(self.sortedTypes, jobType)
             self.sortedTypes.insert(index, jobType)
-            self.queues[jobType] = [job]
-        else:
-            self.queues[jobType].append(job)
+            self.queues[jobType] = Queue()
+
+        self.queues[jobType].put(job)
 
     def sorted(self):
         return self.sortedTypes
 
     def jobIDs(self):
         # O(N)
-        return [job.jobID for jobList in self.queues.values() for job in jobList]
+        return [job.jobID for queue in self.queues.values() for job in list(queue.queue)]
 
     def nextJobOfType(self, jobType):
         # constant lookup, pop off first element
         # also remove from taskMap
-        job = self.queues[jobType].pop(0)
+        job = self.queues[jobType].get(block=False)
         return job
 
-    def jobsOfType(self, jobType):
-        return self.queues.get(jobType, [])
+    def typeEmpty(self, jobType):
+        return self.queues.get(jobType, Queue()).empty()
 
 
 @total_ordering
