@@ -122,7 +122,7 @@ class AbstractJobStoreTest:
         def test(self):
             """
             This is a front-to-back test of the "happy" path in a job store, i.e. covering things
-            that occur in the dat to day life of a job store. The purist might insist that this be
+            that occur in the day to day life of a job store. The purist might insist that this be
             split up into several cases and I agree wholeheartedly.
             """
             master = self.master
@@ -881,12 +881,41 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        return AWSJobStore(self.awsRegion()+ ':' + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         assert isinstance(self.master, AWSJobStore)  # type hinting
         self.master.filesBucket.delete()
+
+    def testSSES3(self):
+        from boto.exception import S3ResponseError
+        from boto.s3.connection import S3Connection
+        bucketName = "toil-sse-s3-test-%s--files" % str(uuid.uuid4())
+        s3 = S3Connection()
+        master = self.master
+        try:
+            _sseKey = self.config.sseKey  # If sseKey is set, SSE-C will be used
+            self.config.sseKey = None     # instead of SSE-S3. So we unset it temporarily.
+            bucket = s3.create_bucket(bucketName,
+                                      location=region_to_bucket_location(self.awsRegion()))
+            options = Job.Runner.getDefaultOptions('aws:us-east-1:%s' % bucketName)
+            options.logLevel = 'DEBUG'
+            with master.writeSharedFileStream('sseTestFile', isProtected=True) as f:
+                f.write(os.urandom(1024 * 5))
+            try:
+                # This operation should fail because AWS doesn't let us read
+                # SSE-S3 encrypted files this way. So all we can really do is
+                # test that AWS says that the file is encrypted with SSE-S3
+                # when it fails on this request.
+                master.getSharedPublicUrl('sseTestFile')
+            except S3ResponseError as e:
+                self.assertTrue("x-amz-server-side-encryption header" in e.message)
+            else:
+                self.fail("Should have failed")
+        finally:
+            self.config.sseKey = _sseKey
+            s3.delete_bucket(bucket=bucket)
 
     def testSDBDomainsDeletedOnFailedJobstoreBucketCreation(self):
         """

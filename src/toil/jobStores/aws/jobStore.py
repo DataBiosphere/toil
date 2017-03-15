@@ -32,15 +32,9 @@ from six import iteritems
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass
-from boto.sdb.domain import Domain
-from boto.s3.bucket import Bucket
-from boto.s3.connection import S3Connection
-from boto.sdb.connection import SDBConnection
-from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
-from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
 from concurrent.futures import ThreadPoolExecutor
 
@@ -211,6 +205,10 @@ class AWSJobStore(AbstractJobStore):
             super(AWSJobStore, self).initialize(config)
             # Only register after job store has been full initialized
             self._registered = True
+
+    @property
+    def sse(self):
+        return self.config.sse
 
     @property
     def sseKeyPath(self):
@@ -673,8 +671,8 @@ class AWSJobStore(AbstractJobStore):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
-            return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
+            return (isinstance(e, (S3CreateError, S3ResponseError)) and
+                    e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
 
         bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
@@ -849,7 +847,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def create(cls, ownerID):
-            return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
+            return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sse)
 
         @classmethod
         def presenceIndicator(cls):
@@ -877,7 +875,7 @@ class AWSJobStore(AbstractJobStore):
         def loadOrCreate(cls, jobStoreFileID, ownerID, encrypted):
             self = cls.load(jobStoreFileID)
             if encrypted is None:
-                encrypted = cls.outer.sseKeyPath is not None
+                encrypted = cls.outer.sse
             if self is None:
                 self = cls(jobStoreFileID, ownerID, encrypted=encrypted)
             else:
@@ -922,12 +920,9 @@ class AWSJobStore(AbstractJobStore):
                 version = strOrNone(item['version'])
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
-                if encrypted:
-                    sseKeyPath = cls.outer.sseKeyPath
-                    if sseKeyPath is None:
-                        raise AssertionError('Content is encrypted but no key was provided.')
-                    if content is not None:
-                        content = encryption.decrypt(content, sseKeyPath)
+                if encrypted and cls.outer.sseKeyPath and content is not None:
+                    content = encryption.decrypt(content, cls.outer.sseKeyPath)
+
                 self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
                            content=content, numContentChunks=numContentChunks)
                 return self
@@ -946,11 +941,8 @@ class AWSJobStore(AbstractJobStore):
                 attributes = {}
             else:
                 content = self.content
-                if self.encrypted:
-                    sseKeyPath = self.outer.sseKeyPath
-                    if sseKeyPath is None:
-                        raise AssertionError('Encryption requested but no key was provided.')
-                    content = encryption.encrypt(content, sseKeyPath)
+                if self.encrypted and self.outer.sseKeyPath:
+                    content = encryption.encrypt(content, self.outer.sseKeyPath)
                 attributes = self.binaryToAttributes(content)
                 numChunks = len(attributes)
             attributes.update(dict(ownerID=self.ownerID,
@@ -1141,7 +1133,7 @@ class AWSJobStore(AbstractJobStore):
                         dstKey.set_contents_from_string(self.content)
             elif self.version:
                 for attempt in retry_s3():
-                    encrypted = True if self.outer.sseKeyPath else False
+                    encrypted = True if self.outer.sse else False
                     if encrypted:
                         srcKey = self.outer.filesBucket.get_key(self.fileID, headers=self._s3EncryptionHeaders())
                     else:
@@ -1159,7 +1151,7 @@ class AWSJobStore(AbstractJobStore):
 
         def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
             headers = headers or {}
-            assert srcKey.size is not None 
+            assert srcKey.size is not None
             if srcKey.size > self.outer.partSize:
                 return copyKeyMultipart(srcKey=srcKey,
                                         dstBucketName=dstBucketName,
@@ -1234,9 +1226,7 @@ class AWSJobStore(AbstractJobStore):
         def _s3EncryptionHeaders(self):
             sseKeyPath = self.outer.sseKeyPath
             if self.encrypted:
-                if sseKeyPath is None:
-                    raise AssertionError('Content is encrypted but no key was provided.')
-                else:
+                if sseKeyPath:
                     with open(sseKeyPath) as f:
                         sseKey = f.read()
                     assert len(sseKey) == 32
@@ -1245,6 +1235,8 @@ class AWSJobStore(AbstractJobStore):
                     return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                             'x-amz-server-side-encryption-customer-key': encodedSseKey,
                             'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
+                else:
+                    return {'x-amz-server-side-encryption': 'AES256'}
             else:
                 return {}
 
