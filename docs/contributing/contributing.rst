@@ -168,6 +168,23 @@ from the job store. Now that your cluster is running, you can run::
 to get a shell in your leader 'node'. You can also replace the ``leader`` parameter
 with ``worker`` to get shell access in your worker.
 
+.. admonition:: Docker-in-Docker issues
+
+    If you want to run Docker inside this Docker cluster (Dockerized tools, perhaps),
+    you should also mount in the Docker socket via ``-v /var/run/docker.sock:/var/run/docker.sock``.
+    This will give the Docker client inside the Toil Appliance access to the Docker engine
+    on the host. Client/engine version mismatches have been known to cause issues, so we
+    recommend using Docker version 1.12.3 on the host to be compatible with the Docker
+    client installed in the Appliance. Finally, be careful where you write files inside
+    the Toil Appliance - 'child' Docker containers launched in the Appliance will actually
+    be siblings to the Appliance since the Docker engine is located on the host. This
+    means that the 'child' container can only mount in files from the Appliance if
+    the files are located in a directory that was originally mounted into the Appliance
+    from the host - that way the files are accessible to the sibling container. Note:
+    if Docker can't find the file/directory on the host it will silently fail and mount
+    in an empty directory.
+
+
 .. _Quay: https://quay.io/
 
 .. _Docker Hub: https://hub.docker.com/
