@@ -90,6 +90,11 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
+                if 'unknown job id' in line.lower():
+                    logger.debug('Batch system no longer remembers about job {}'.format(torqueJobID))
+                    # return assumed success; status files should reveal failure
+                    return 0
+            return None
 
         """
         Implementation-specific helper methods
@@ -106,7 +111,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # qsubline = ['qsub', '-V', '-j', 'oe', '-o', '/dev/null',
             #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
-            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
+            qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
             if self.boss.environment:
                 qsubline.append('-v')
@@ -116,10 +121,20 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             reqline = list()
             if mem is not None:
                 memStr = str(mem / 1024) + 'K'
-                reqline += ['-l mem=' + memStr]
+                reqline.append('mem=' + memStr)
 
             if cpu is not None and math.ceil(cpu) > 1:
-                qsubline.extend(['-l ncpus=' + str(int(math.ceil(cpu)))])
+                reqline.append('ncpus=' + str(int(math.ceil(cpu))))
+
+            # Other resource requirements can be passed through the environment (see man qsub)
+            reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
+            if reqlineEnv is not None:
+                logger.debug("Additional Torque resource requirements appended to qsub from TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+
+                reqline.append(reqlineEnv)
+            
+            if reqline:
+                qsubline += ['-l',','.join(reqline)]
 
             # "Native extensions" for TORQUE (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_TORQUE_ARGS')
@@ -138,7 +153,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             fh = open(tmpFile , 'w')
-            fh.write("$!/bin/bash\n\n")
+            fh.write("$!/bin/sh\n\n")
             fh.write("cd $PBS_O_WORKDIR\n\n")
             fh.write(command + "\n")
             fh.close
