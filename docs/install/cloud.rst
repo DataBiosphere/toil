@@ -33,7 +33,7 @@ overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TO
 Using the provisioner to launch a Toil leader instance is simple::
 
     $ toil launch-cluster CLUSTER-NAME-HERE --nodeType=t2.micro \
-       -z us-west-2 --keyPairName=your-AWS-key-pair-name
+       -z us-west-2a --keyPairName=your-AWS-key-pair-name
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will
@@ -45,7 +45,9 @@ zone to launch the cluster in. Alternatively, you can specify this option
 via the ``TOIL_AWS_ZONE`` environment variable. This is generally preferable
 since it lets us avoid repeating the ``-z`` option for every subsequent
 cluster command. We will assume this environment variable is set for the
-rest of the tutorial.
+rest of the tutorial. Note: the zone is different from an EC2 region. A
+region corresponds to a geographical area like ``us-west-2 (Oregon)``, and
+availability zones are partitions of this area like ``us-west-2a``.
 
 An important caveat to note here is that there is no currently parameter to
 specify the size of the instance's root volume, which is currently set to 50 Gb.
