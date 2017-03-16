@@ -295,10 +295,6 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         log.debug("Registered with framework ID %s", frameworkId.value)
 
-    def _sortJobsByResourceReq(self):
-        jobTypes = self.jobQueues.sorted()
-        return jobTypes
-
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
             log.debug("Declining offer %s.", offer.id.value)
@@ -349,7 +345,7 @@ class MesosBatchSystem(BatchSystemSupport,
         """
         self._trackOfferedNodes(offers)
 
-        jobTypes = self._sortJobsByResourceReq()
+        jobTypes = self.jobQueues.sorted()
 
         # TODO: We may want to assert that numIssued >= numRunning
         if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
@@ -371,7 +367,7 @@ class MesosBatchSystem(BatchSystemSupport,
             remainingMemory = offerMemory
             remainingDisk = offerDisk
 
-            for jobType in jobTypes: # TODO: this is sorted, short circuit if the smallest is too large?
+            for jobType in jobTypes:
                 runnableTasksOfType = []
                 # Because we are not removing from the list until outside of the while loop, we
                 # must decrement the number of jobs left to run ourselves to avoid an infinite
