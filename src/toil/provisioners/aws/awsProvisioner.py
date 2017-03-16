@@ -63,6 +63,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
         self.masterPublicKey = self.setSSH()
         self.tags = self._getLeader(self.clusterName).tags
+        self.workerRootVolSize = config.workerRootVolSize
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
