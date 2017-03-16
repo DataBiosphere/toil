@@ -18,6 +18,7 @@ from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 
+import time
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
 
@@ -162,13 +163,17 @@ class AbstractAWSAutoscaleTest(ToilTest):
         ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
-        try:
-            ctx.ec2.get_all_volumes(volume_ids=[volumeID])
-        except EC2ResponseError as e:
-            if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
-                pass
-            else:
-                raise
+        for attempt in range(6):
+            # https://github.com/BD2KGenomics/toil/issues/1567
+            # retry this for up to 1 minute until the volume disappears
+            try:
+                ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+                time.sleep(10)
+            except EC2ResponseError as e:
+                if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
+                    break
+                else:
+                    raise
         else:
             self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
 

@@ -69,6 +69,7 @@ class Config(object):
 
         #Batch system options
         self.batchSystem = "singleMachine"
+        self.disableHotDeployment = False
         self.scale = 1
         self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
@@ -199,6 +200,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
+        setOption("disableHotDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
@@ -338,6 +340,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=None,
                       help=("The type of batch system to run the job(s) with, currently can be one "
                             "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
+    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
+                help=("Should hot-deployment of the user script be deactivated? If True, the user "
+                      "script/package should be present at the same location on all workers. "
+                      "default=%s" % config.disableHotDeployment))
     addOptionFn("--scale", dest="scale", default=None,
                 help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
                       "Used in singleMachine batch system. default=%s" % config.scale))
@@ -839,7 +845,8 @@ class Toil(object):
                 logger.info('User script %s belongs to Toil. No need to hot-deploy it.', userScript)
                 userScript = None
             else:
-                if self._batchSystem.supportsHotDeployment():
+                if (self._batchSystem.supportsHotDeployment() and
+                        not self.config.disableHotDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
