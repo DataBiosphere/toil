@@ -149,7 +149,7 @@ rather than the official UCSC container you can simply replace the
 ``quay.io/ucsc_cgl/toil:3.6.0`` parameter with your own container name.
 
 Also note that we are not mounting the job store directory itself, but rather the location
-where the job store will written. Due to complications with running Docker on MacOS, I
+where the job store will be written. Due to complications with running Docker on MacOS, I
 recommend only mounting directories within your home directory. The next command will
 launch the Toil worker container with similar parameters::
 
