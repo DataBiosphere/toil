@@ -267,9 +267,11 @@ class CWLJob(Job):
         inpdir = os.path.join(fileStore.getLocalTempDir(), "inp")
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
         tmpdir = os.path.join(fileStore.getLocalTempDir(), "tmp")
+        stagedir = os.path.join(fileStore.getLocalTempDir(), "stage")
         os.mkdir(inpdir)
         os.mkdir(outdir)
         os.mkdir(tmpdir)
+        os.mkdir(stagedir)
 
         # Copy input files out of the global file store, ensure path/location synchronized
         index = {}
@@ -284,10 +286,15 @@ class CWLJob(Job):
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
                                                             tmpdir=tmpdir,
+                                                            stagedir=stagedir,
+                                                            docker_tmpdir=tmpdir,
+                                                            docker_outdir=outdir,
+                                                            docker_stagedir=stagedir,
                                                             tmpdir_prefix="tmp",
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
+
         cwltool.pathmapper.adjustDirObjs(output, locToPath)
         cwltool.pathmapper.adjustFileObjs(output, locToPath)
         cwltool.pathmapper.adjustFileObjs(output, functools.partial(computeFileChecksums,
@@ -712,11 +719,7 @@ def main(args=None, stdout=sys.stdout):
             outobj = toil.restart()
         else:
             basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-            # ensure docker containers run inside the base workdir
-            docker_kwargs = {"docker_outdir": os.path.join(basedir, "var", "spool", "cwl"),
-                             "docker_stagedir": os.path.join(basedir, "var", "lib", "cwl"),
-                             "docker_tmpdir": os.path.join(basedir, "tmp")}
-            builder = t._init_job(job, basedir=basedir, use_container=use_container, **docker_kwargs)
+            builder = t._init_job(job, basedir=basedir, use_container=use_container)
             (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
             try:
                 if isinstance(wf1, CWLWorkflow):
