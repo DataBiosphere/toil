@@ -284,10 +284,7 @@ coreos:
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v /var/lib/mesos:/var/lib/mesos \
-            -v /var/lib/docker:/var/lib/docker \
-            -v /var/lib/toil:/var/lib/toil \
+            -v /var/:/var/
             --name=toil_{role} \
             {image} \
             {args}
