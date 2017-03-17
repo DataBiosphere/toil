@@ -19,6 +19,7 @@ from toil.job import Job
 from toil.common import Toil
 from toil.version import baseVersion
 from toil.lib.bioio import setLoggingFromOptions
+from toil.lib import docker
 
 from argparse import ArgumentParser
 import cwltool.errors
@@ -301,6 +302,14 @@ class CWLJob(Job):
                                                                     cwltool.stdfsaccess.StdFsAccess(outdir)))
         # Copy output files into the global file store.
         adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
+
+        # fix permissions for docker runs avoiding root owned files
+        if opts.get("use_container"):
+            docker_req = self.cwltool.get_requirement("DockerRequirement")[0]
+            if docker_req:
+                docker_image = docker_req.get("dockerImageId", docker_req.get("dockerPull"))
+                if docker_image:
+                    docker._fixPermissions(docker_image, fileStore.getLocalTempDir())
 
         return output
 
