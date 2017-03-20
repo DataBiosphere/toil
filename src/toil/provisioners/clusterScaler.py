@@ -358,7 +358,7 @@ class ScalerThread(ExceptionalThread):
                     logger.warn("Historical avg. runtime (%s) is less than current avg. runtime (%s) and cluster"
                                 " is being well utilised (%s running jobs), increasing cluster requirement by: %s" % 
                                 (historicalAvgRuntime, currentAvgRuntime, numberOfRunningJobs, runtimeCorrection))
-                    estimatedNodes *= runtimeCorrection
+                    estimatedNodes = int(round(estimatedNodes * runtimeCorrection))
 
                 # If we're the non-preemptable scaler, we need to see if we have a deficit of
                 # preemptable nodes that we should compensate for.
