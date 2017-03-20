@@ -347,8 +347,8 @@ class ScalerThread(ExceptionalThread):
                 numberOfRunningJobs, currentAvgRuntime  = self.scaler.leader.getNumberAndAvgRuntimeOfCurrentlyRunningJobs()
                 
                 # Average runtime of recently completed jobs
-                historicalAvgRuntime = sum(map(lambda jS : jS.wallTime, recentJobShapes))
-            
+                historicalAvgRuntime = sum(map(lambda jS : jS.wallTime, recentJobShapes))/len(recentJobShapes)
+
                 # Ratio of avg. runtime of currently running and completed jobs
                 runtimeCorrection = float(currentAvgRuntime)/historicalAvgRuntime if currentAvgRuntime > historicalAvgRuntime and numberOfRunningJobs >= estimatedNodes else 1.0
                 
