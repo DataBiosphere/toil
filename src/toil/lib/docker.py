@@ -17,6 +17,7 @@ import logging
 import subprocess
 import pipes
 import os
+import sys
 from bd2k.util.exceptions import require
 
 _logger = logging.getLogger(__name__)
@@ -27,7 +28,9 @@ def dockerCall(job,
                parameters=None,
                workDir=None,
                dockerParameters=None,
+               infile=None,
                outfile=None,
+               stdinString=None,
                defer=None):
     """
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
@@ -41,7 +44,9 @@ def dockerCall(job,
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
              These defaults are removed if docker_parmaters is passed, so be sure to pass them if they are desired.
+    :param file infile: Pipe input from file handle into docker run
     :param file outfile: Pipe output of Docker call to file handle
+    :param str stdinString: String to pipe into docker run
     :param int defer: What action should be taken on the container upon job completion?
            FORGO (0) will leave the container untouched.
            STOP (1) will attempt to stop the container with `docker stop` (useful for debugging).
@@ -49,7 +54,7 @@ def dockerCall(job,
            using `docker rm -f`. This is the default behavior if defer is set to None.
     """
     _docker(job, tool=tool, parameters=parameters, workDir=workDir, dockerParameters=dockerParameters,
-            outfile=outfile, checkOutput=False, defer=defer)
+            infile=infile, outfile=outfile, stdinString=stdinString, checkOutput=False, checkResult=False, defer=defer)
 
 
 def dockerCheckOutput(job,
@@ -57,6 +62,8 @@ def dockerCheckOutput(job,
                       parameters=None,
                       workDir=None,
                       dockerParameters=None,
+                      infile=None,
+                      stdinString=None,
                       defer=None):
     """
     Returns the stdout from the Docker invocation (via subprocess.check_output)
@@ -71,6 +78,8 @@ def dockerCheckOutput(job,
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
              These defaults are removed if docker_parmaters is passed, so be sure to pass them if they are desired.
+    :param file infile: Pipe input from file handle into docker run
+    :param str stdinString: Pipe input string into docker run
     :param int defer: What action should be taken on the container upon job completion?
            FORGO (0) will leave the container untouched.
            STOP (1) will attempt to stop the container with `docker stop` (useful for debugging).
@@ -80,16 +89,51 @@ def dockerCheckOutput(job,
     :rtype: str
     """
     return _docker(job, tool=tool, parameters=parameters, workDir=workDir,
-                   dockerParameters=dockerParameters, checkOutput=True, defer=defer)
+                   dockerParameters=dockerParameters, checkOutput=True, checkResult=False, infile=infile, stdinString=stdinString, defer=defer)
 
+def dockerCheckResult(job,
+                      tool,
+                      parameters=None,
+                      workDir=None,
+                      dockerParameters=None,
+                      infile=None,
+                      stdinString=None,
+                      defer=None):
+    """
+    Returns the exit code from the Docker invocation.
+    This function blocks until the subprocess call to Docker returns
+
+    :param toil.Job.job job: The Job instance for the calling function.
+    :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
+    :param list[str] parameters: Command line arguments to be passed to the tool.
+           If list of lists: list[list[str]], then treat as successive commands chained with pipe.
+    :param str workDir: Directory to mount into the container via `-v`. Destination convention is /data
+    :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
+            `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
+             These defaults are removed if docker_parmaters is passed, so be sure to pass them if they are desired.
+    :param file infile: Pipe input from file handle into docker run
+    :param str stdinString: Pipe input string into docker run
+    :param int defer: What action should be taken on the container upon job completion?
+           FORGO (0) will leave the container untouched.
+           STOP (1) will attempt to stop the container with `docker stop` (useful for debugging).
+           RM (2) will stop the container and then forcefully remove it from the system
+           using `docker rm -f`. This is the default behavior if defer is set to None.
+    :returns: Return code of the docker run command
+    :rtype: int
+    """
+    return _docker(job, tool=tool, parameters=parameters, workDir=workDir,
+                   dockerParameters=dockerParameters, checkOutput=False, checkResult=True, infile=infile, stdinString=stdinString, defer=defer)
 
 def _docker(job,
             tool,
             parameters=None,
             workDir=None,
             dockerParameters=None,
+            infile=None,
             outfile=None,
+            stdinString=None,
             checkOutput=False,
+            checkResult=False,
             defer=None):
     """
     :param toil.Job.job job: The Job instance for the calling function.
@@ -100,8 +144,11 @@ def _docker(job,
     :param list[str] dockerParameters: Parameters to pass to Docker. Default parameters are `--rm`,
             `--log-driver none`, and the mountpoint `-v work_dir:/data` where /data is the destination convention.
              These defaults are removed if docker_parmaters is passed, so be sure to pass them if they are desired.
+    :param file infile: Pipe input from file handle into docker run
     :param file outfile: Pipe output of Docker call to file handle
+    :param str stdinString: String to pipe into docker run
     :param bool checkOutput: When True, this function returns docker's output.
+    :param bool checkResult: When True, this function returns the return code of the docker run command.
     :param int defer: What action should be taken on the container upon job completion?
            FORGO (0) will leave the container untouched.
            STOP (1) will attempt to stop the container with `docker stop` (useful for debugging).
@@ -120,6 +167,8 @@ def _docker(job,
     else:
         baseDockerCall += ['--rm', '--log-driver', 'none', '-v',
                            os.path.abspath(workDir) + ':/data']
+        if infile or stdinString:
+            baseDockerCall += ['--interactive']
 
     # Ensure the user has passed a valid value for defer
     require(defer in (None, FORGO, STOP, RM),
@@ -160,16 +209,20 @@ def _docker(job,
         call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c', ' | '.join(chain_params)]
     else:
         call = baseDockerCall + [tool] + parameters
-    _logger.info("Calling docker with " + repr(call))
+    _logger.info("Calling docker with: %s " % " ".join(call))
 
-    if outfile:
-        subprocess.check_call(call, stdout=outfile)
-    else:
-        if checkOutput:
-            return subprocess.check_output(call)
-        else:
-            subprocess.check_call(call)
+    if checkOutput:
+        outfile = subprocess.PIPE
+    if stdinString:
+        infile = subprocess.PIPE
 
+    proc = subprocess.Popen(" ".join(call), shell=True, stdin=infile, stdout=outfile, stderr=sys.stderr)
+
+    output, nothing = proc.communicate(stdinString)
+    if checkOutput:
+        return output
+    if checkResult:
+        return proc.returncode
 
 FORGO = 0
 STOP = 1

@@ -111,6 +111,48 @@ class DockerTest(ToilTest):
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         assert rv.strip() == '2'
+    def testDockerInputOutput(self):
+        """
+        Test for sending stdin to, and receiving stdout from docker containers using the
+        dockerCall and dockerCheckoutput functions.
+        """
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        A = Job.wrapJobFn(_testDockerInputOutputFn)
+        rv = Job.Runner.startToil(A, options)
+
+def _testDockerInputOutputFn(job):
+    """
+    Test function for passing standard input and output to and from containers with 
+    dockerCall and dockerCheckOutput.
+    :param toil.job.Job job:job
+    """
+    inputFile = job.fileStore.getLocalTempFile()
+    
+    with open("/dev/urandom") as randText:
+        with open(inputFile, 'w') as fh:
+            fh.write(randText.read(1024))
+    input = "".join(open(inputFile).read().split("\n"))
+    
+    #Send input to container's stdin through a file, get output
+    #from stdout
+    inputRead = open(inputFile, 'r')
+    output = "".join(dockerCheckOutput(job, tool="ubuntu", infile=inputRead,
+                                    parameters=["cat"]).split("\n"))
+    inputRead.close()
+    assert input == output
+
+
+    #Send input as string, write output to file
+    outputFile = job.fileStore.getLocalTempFile()
+    outputWrite = open(outputFile, 'w')
+    output = dockerCall(job, tool="ubuntu", stdinString=input, outfile=outputWrite, parameters=["cat"])
+    outputWrite.close()
+    output = "".join(open(outputFile).read().split("\n"))
+    assert input == output
+    
 
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(caching=False)
