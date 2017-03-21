@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
+                        help="Temporarily disable strict host key checking.")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to"
                         "`rsync`. Takes any arguments that rsync accepts. Specify the"
                         " remote with a colon. For example, to upload `example.py`,"
@@ -37,4 +39,4 @@ def main():
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName, zone=config.zone)
-    cluster.rsyncCluster(args=config.args)
+    cluster.rsyncCluster(args=config.args, strict=not config.insecure)

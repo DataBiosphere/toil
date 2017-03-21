@@ -146,7 +146,7 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
-    def rsyncLeader(cls, clusterName, args):
+    def rsyncLeader(cls, clusterName, args, **kwargs):
         """
         Rsyncs to the leader of the cluster with the specified name. The arguments are passed directly to
         Rsync.
@@ -154,6 +154,7 @@ class AbstractProvisioner(object):
         :param clusterName: name of the cluster to target
         :param args: list of string arguments to rsync. Identical to the normal arguments to rsync, but the
            host name of the remote host can be omitted. ex) ['/localfile', ':/remotedest']
+        :param strict: If False, strict host key checking is disabled. (Enabled by default.)
         """
         raise NotImplementedError
 
@@ -173,11 +174,12 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
-    def sshLeader(cls, clusterName, args):
+    def sshLeader(cls, clusterName, args, **kwargs):
         """
-        SSH into the leader instnace of the specified cluster with the specified arguments to SSH.
+        SSH into the leader instance of the specified cluster with the specified arguments to SSH.
         :param clusterName: name of the cluster to target
         :param args: list of string arguments to ssh.
+        :param strict: If False, strict host key checking is disabled. (Enabled by default.)
         """
         raise NotImplementedError
 

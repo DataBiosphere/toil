@@ -38,12 +38,12 @@ log = logging.getLogger(__name__)
 class AbstractAWSAutoscaleTest(ToilTest):
 
     def sshUtil(self, command):
-        baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + command
         subprocess.check_call(callCommand)
 
     def rsyncUtil(self, src, dest):
-        baseCommand = ['toil', 'rsync-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + [src, dest]
         subprocess.check_call(callCommand)
 
