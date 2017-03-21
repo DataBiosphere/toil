@@ -176,13 +176,13 @@ def _testDockerPipeChainFn(job):
 
 
 def _testDockerPermissions(job):
-    def find_owner(filename):
+    def ownerName(filename):
         return getpwuid(os.stat(filename).st_uid).pw_name
 
     testDir = job.fileStore.getLocalTempDir()
     dockerCall(job, tool='ubuntu', workDir=testDir, parameters=[['touch', '/data/test.txt']])
     outFile = os.path.join(testDir, 'test.txt')
     assert os.path.exists(outFile)
-    assert not "root" == find_owner(outFile)
+    assert not "root" == ownerName(outFile)
 
 
