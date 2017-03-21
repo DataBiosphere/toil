@@ -373,6 +373,8 @@ workflow, with jobs defined within a job or job function being created at
 run time.
 
 
+.. _promises:
+
 Promises
 --------
 
@@ -412,6 +414,19 @@ evaluated. A promise (:class:`toil.job.Promise`) is essentially a pointer to
 for the return value that is replaced by the actual return value once it has
 been evaluated. Therefore, when ``j2`` is run the promise becomes 2.
 
+Promises also support indexing of return values::
+
+    def parent(job):
+        indexable = Job.wrapJobFn(fn)
+        job.addChild(indexable)
+        job.addFollowOnFn(raiseWrap, indexable.rv(2))
+
+    def raiseWrap(arg):
+        raise RuntimeError(arg) # raises "2"
+
+    def fn(job):
+        return (0, 1, 2, 3)
+
 Promises can be quite useful. For example, we can combine dynamic job creation
 with promises to achieve a job creation process that mimics the functional
 patterns possible in many programming languages::
@@ -439,6 +454,74 @@ The return value ``l`` of the workflow is a list of all binary strings of
 length 10, computed recursively. Although a toy example, it demonstrates how
 closely Toil workflows can mimic typical programming patterns.
 
+
+Promised Requirements
+---------------------
+
+Promised requirements are a special case of :ref:`promises` that allow a job's
+return value to be used as another job's resource requirements.
+
+This is useful when, for example, a job's storage requirement is determined by a
+file staged to the job store by an earlier job::
+
+    from toil.job import Job, PromisedRequirement
+    from toil.common import Toil
+    import os
+
+    def parentJob(job):
+        downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
+        job.addChild(downloadJob)
+
+        analysis = Job.wrapJobFn(analysisJob, fileStoreID=downloadJob.rv(0),
+                                 disk=PromisedRequirement(downloadJob.rv(1)))
+        job.addFollowOn(analysis)
+
+    def stageFn(job, url, cores=1):
+        importedFile = job.fileStore.importFile(url)
+        return importedFile, importedFile.size
+
+    def analysisJob(job, fileStoreID, cores=2):
+        # now do some analysis on the file
+        pass
+
+    if __name__ == "__main__":
+        with Toil(Job.Runner.getDefaultOptions("./toilWorkflowRun")) as toil:
+            toil.start(Job.wrapJobFn(parentJob))
+
+
+Note that this also makes use of the ``size`` attribute of the :ref:`FileID` object.
+This promised requirements mechanism can also be used in combination with an aggregator for
+multiple jobs' output values::
+
+    def parentJob(job):
+        aggregator = []
+        for fileNum in range(0,10):
+            downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
+            job.addChild(downloadJob)
+            aggregator.append(downloadJob)
+
+        analysis = Job.wrapJobFn(analysisJob, fileStoreID=downloadJob.rv(0),
+                                 disk=PromisedRequirement(lambda xs: sum(xs), [j.rv(1) for j in aggregator]))
+        job.addFollowOn(analysis)
+
+
+.. admonition:: Limitations
+
+    Just like regular promises, the return value must be determined prior to
+    scheduling any job that depends on the return value. In our example above, notice
+    how the dependant jobs were follow ons to the parent while promising jobs are
+    children of the parent. This ordering ensures that all promises are
+    properly fulfilled.
+
+.. _FileID:
+
+
+FileID
+------
+
+This object is a small wrapper around Python's builtin string class. It is used to
+represent a file's ID in the file store, and has a ``size`` attribute that is the
+file's size in bytes. This object is returned by ``importFile`` and ``writeGlobalFile``.
 
 Managing files within a workflow
 --------------------------------
