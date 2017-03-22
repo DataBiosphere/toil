@@ -2,14 +2,13 @@ import logging
 import signal
 import time
 import uuid
-from pwd import getpwuid
 from threading import Thread
 
 import os
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
+from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM, ownerName
 from toil.test import ToilTest
 
 _log = logging.getLogger(__name__)
@@ -176,13 +175,10 @@ def _testDockerPipeChainFn(job):
 
 
 def _testDockerPermissions(job):
-    def ownerName(filename):
-        return getpwuid(os.stat(filename).st_uid).pw_name
-
     testDir = job.fileStore.getLocalTempDir()
     dockerCall(job, tool='ubuntu', workDir=testDir, parameters=[['touch', '/data/test.txt']])
     outFile = os.path.join(testDir, 'test.txt')
     assert os.path.exists(outFile)
-    assert not "root" == ownerName(outFile)
+    assert not ownerName(outFile) == "root"
 
 
