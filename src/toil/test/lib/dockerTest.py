@@ -5,10 +5,11 @@ import uuid
 from threading import Thread
 
 import os
+from pwd import getpwuid
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM, ownerName
+from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
 from toil.test import ToilTest
 
 _log = logging.getLogger(__name__)
@@ -182,3 +183,10 @@ def _testDockerPermissions(job):
     assert not ownerName(outFile) == "root"
 
 
+def ownerName(filename):
+    """
+    Determines a given file's owner
+    :param str filename: path to a file
+    :return: name of filename's owner
+    """
+    return getpwuid(os.stat(filename).st_uid).pw_name

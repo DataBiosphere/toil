@@ -14,6 +14,7 @@
 """
 import base64
 import logging
+import os
 import pipes
 import uuid
 
@@ -231,13 +232,8 @@ def _fixPermissions(tool, workDir):
     :param str tool: Name of tool
     :param str workDir: Path of work directory to recursively chown
     """
-    testFileName = str(uuid.uuid4())
-    with open(testFileName):
-        pass
-    owner = ownerName(testFileName)
-    os.unlink(testFileName)
-    if owner == "root":
-        # We are running as root, so this chown is redundant
+    if os.geteuid() == 0:
+        # we're running as root so this chown is redundant
         return
 
     baseDockerCall = ['docker', 'run', '--log-driver=none',

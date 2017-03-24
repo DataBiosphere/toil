@@ -13,22 +13,11 @@
 # limitations under the License.
 from __future__ import absolute_import
 
-import os
 import subprocess
-from pwd import getpwuid
 
 FORGO = 0
 STOP = 1
 RM = 2
-
-
-def ownerName(filename):
-    """
-    Determines a given file's owner
-    :param str filename: path to a file
-    :return: name of filename's owner
-    """
-    return getpwuid(os.stat(filename).st_uid).pw_name
 
 
 def dockerPredicate(e):
