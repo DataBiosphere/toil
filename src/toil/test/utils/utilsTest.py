@@ -136,6 +136,9 @@ class UtilsTest(ToilTest):
                 self.fail('The remote command failed silently where it should have '
                           'raised an error')
 
+            AWSProvisioner.sshLeader(clusterName=clusterName,
+                                     args=['python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'"])
+
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation
             fname = '!"#$%&\'()*+,-.;<=>:\ ?@[\\\\]^_`{|}~'

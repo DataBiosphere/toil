@@ -103,6 +103,10 @@ print(heredoc('''
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
     ENV TOIL_APPLIANCE_SELF {applianceSelf}
 
+    RUN mkdir /var/lib/toil
+
+    ENV TOIL_WORKDIR /var/lib/toil
+
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
     RUN pip install {sdistName}[aws,mesos,encryption,cwl]
