@@ -173,7 +173,7 @@ def _docker(job,
     else:
         callMethod = subprocess.check_call
 
-    for attempt in retry(predicate=_dockerPredicate):
+    for attempt in retry(predicate=dockerPredicate):
         with attempt:
             out = callMethod(call, **params)
 
@@ -203,7 +203,7 @@ def _dockerKill(containerName, action):
                          containerName)
             if running and action >= STOP:
                 _logger.info('Stopping container "%s".', containerName)
-                for attempt in retry(predicate=_dockerPredicate):
+                for attempt in retry(predicate=dockerPredicate):
                     with attempt:
                         subprocess.check_call(['docker', 'stop', containerName])
             else:
@@ -214,7 +214,7 @@ def _dockerKill(containerName, action):
                 running = _containerIsRunning(containerName)
                 if running is not None:
                     _logger.info('Removing container "%s".', containerName)
-                    for attempt in retry(predicate=_dockerPredicate):
+                    for attempt in retry(predicate=dockerPredicate):
                         with attempt:
                             subprocess.check_call(['docker', 'rm', '-f', containerName])
                 else:
@@ -244,7 +244,7 @@ def _fixPermissions(tool, workDir):
                       '-v', os.path.abspath(workDir) + ':/data', '--rm', '--entrypoint=chown']
     stat = os.stat(workDir)
     command = baseDockerCall + [tool] + ['-R', '{}:{}'.format(stat.st_uid, stat.st_gid), '/data']
-    for attempt in retry(predicate=_dockerPredicate):
+    for attempt in retry(predicate=dockerPredicate):
         with attempt:
             subprocess.check_call(command)
 
@@ -262,7 +262,7 @@ def _containerIsRunning(container_name):
     :rtype: bool
     """
     try:
-        for attempt in retry(predicate=_dockerPredicate):
+        for attempt in retry(predicate=dockerPredicate):
             with attempt:
                 output = subprocess.check_output(['docker', 'inspect', '--format', '{{.State.Running}}',
                                                   container_name]).strip()

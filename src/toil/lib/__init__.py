@@ -31,7 +31,7 @@ def ownerName(filename):
     return getpwuid(os.stat(filename).st_uid).pw_name
 
 
-def _dockerPredicate(e):
+def dockerPredicate(e):
     """
     Used to ensure Docker exceptions are retried if appropriate
 
