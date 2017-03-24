@@ -21,9 +21,6 @@ import pickle
 import pwd
 import socket
 import time
-from bisect import bisect
-from collections import defaultdict
-from operator import attrgetter
 from struct import unpack
 
 import itertools

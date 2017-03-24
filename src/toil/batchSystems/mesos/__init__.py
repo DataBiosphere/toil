@@ -17,6 +17,7 @@ from Queue import Queue
 from collections import namedtuple
 from functools import total_ordering
 from bisect import bisect
+from threading import Lock
 
 TaskData = namedtuple('TaskData', (
     # Time when the task was started
@@ -38,31 +39,35 @@ class JobQueue(object):
         self.queues = {}
         # list of jobTypes in decreasing resource expense
         self.sortedTypes = []
+        self.jobLock = Lock()
 
     def insertJob(self, job, jobType):
-        # logn insertion
-        if jobType not in self.queues:
-            index = bisect(self.sortedTypes, jobType)
-            self.sortedTypes.insert(index, jobType)
-            self.queues[jobType] = Queue()
-
-        self.queues[jobType].put(job)
+        with self.jobLock:
+            if jobType not in self.queues:
+                index = bisect(self.sortedTypes, jobType)
+                self.sortedTypes.insert(index, jobType)
+                self.queues[jobType] = Queue()
+            self.queues[jobType].put(job)
 
     def sorted(self):
-        return self.sortedTypes
+        return list(self.sortedTypes)
 
     def jobIDs(self):
-        # O(N)
         return [job.jobID for queue in self.queues.values() for job in list(queue.queue)]
 
     def nextJobOfType(self, jobType):
-        # constant lookup, pop off first element
-        # also remove from taskMap
-        job = self.queues[jobType].get(block=False)
-        return job
+        with self.jobLock:
+            job = self.queues[jobType].get(block=False)
+            if self.queues[jobType].empty():
+                del self.queues[jobType]
+                self.sortedTypes.remove(jobType)
+            return job
 
     def typeEmpty(self, jobType):
-        return self.queues.get(jobType, Queue()).empty()
+        # without a lock we could get a false negative from this method
+        # if it were called while nextJobOfType was executing
+        with self.jobLock:
+            return self.queues.get(jobType, Queue()).empty()
 
 
 @total_ordering
