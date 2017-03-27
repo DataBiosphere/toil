@@ -199,7 +199,7 @@ class AbstractJobStore(object):
         """
         Create a new job and set it as the root job in this job store
 
-        :rtype : toil.jobGraph.JobGraph
+        :rtype: toil.jobGraph.JobGraph
         """
         rootJob = self.create(*args, **kwargs)
         self.setRootJob(rootJob.jobStoreID)
@@ -272,7 +272,7 @@ class AbstractJobStore(object):
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
-        :return The jobStoreFileId of the imported file or None if sharedFileName was given
+        :return: The jobStoreFileId of the imported file or None if sharedFileName was given
         :rtype: FileID|None
         """
         # Note that the helper method _importFile is used to read from the source and write to

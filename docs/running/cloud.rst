@@ -1,5 +1,7 @@
 .. highlight:: console
 
+.. _Cloud_Running:
+
 Running in the cloud
 ====================
 
