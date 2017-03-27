@@ -112,9 +112,10 @@ class StatsAndLogging( object ):
                 pass
             else:
                 def logWithFormatting(jobStoreID, jobLogs):
-                    logFormat = '\n%s    ' % jobStoreID
                     logger.debug('Received Toil worker log. Disable debug level '
-                                 'logging to hide this output\n%s', logFormat.join(jobLogs))
+                                 'logging to hide this output')
+                    for line in jobLogs:
+                        logger.debug('%s    %s', jobStoreID, line)
                 # we may have multiple jobs per worker
                 jobNames = logs.names
                 messages = logs.messages
