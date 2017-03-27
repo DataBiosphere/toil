@@ -604,7 +604,13 @@ class AbstractJobStore(object):
 
         # Remove any crufty stats/logging files from the previous run
         logger.info("Discarding old statistics and logs...")
-        self.readStatsAndLogging(lambda x: None)
+        # We have to manually discard the stream to avoid getting
+        # stuck on a blocking write from the job store.
+        def discardStream(stream):
+            """Read the stream 4K at a time until EOF, discarding all input."""
+            while len(stream.read(4096)) != 0:
+                pass
+        self.readStatsAndLogging(discardStream)
 
         logger.info("Job store is clean")
         # TODO: reloading of the rootJob may be redundant here
