@@ -2,10 +2,10 @@ import logging
 import signal
 import time
 import uuid
-from pwd import getpwuid
 from threading import Thread
 
 import os
+from pwd import getpwuid
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
@@ -176,13 +176,17 @@ def _testDockerPipeChainFn(job):
 
 
 def _testDockerPermissions(job):
-    def ownerName(filename):
-        return getpwuid(os.stat(filename).st_uid).pw_name
-
     testDir = job.fileStore.getLocalTempDir()
     dockerCall(job, tool='ubuntu', workDir=testDir, parameters=[['touch', '/data/test.txt']])
     outFile = os.path.join(testDir, 'test.txt')
     assert os.path.exists(outFile)
-    assert not "root" == ownerName(outFile)
+    assert not ownerName(outFile) == "root"
 
 
+def ownerName(filename):
+    """
+    Determines a given file's owner
+    :param str filename: path to a file
+    :return: name of filename's owner
+    """
+    return getpwuid(os.stat(filename).st_uid).pw_name
