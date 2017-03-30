@@ -48,7 +48,7 @@ class StatsAndLogging( object ):
         if message is not None:
             method(message)
         for line in jobLogs:
-            method('%s    %s', jobStoreID, line)
+            method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
     def writeLogFiles(cls, jobNames, jobLogList, config):
