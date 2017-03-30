@@ -31,6 +31,7 @@ def runSetup():
         url="https://github.com/BD2KGenomics/toil",
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
+            'drmaa==0.7.7',
             'dill==0.2.5',
             'six>=1.10.0'],
         extras_require={
