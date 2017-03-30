@@ -622,11 +622,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def __getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
-        pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'pending'})
-
-        runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'running'})
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'pending'})
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'running'})
         instances = set(pendingInstances)
         if not preemptable and not both:
             return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
