@@ -140,7 +140,7 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
         command = jobNode.command.split()
         jobTemplate.remoteCommand = command[0]
         jobTemplate.args = command[1:]
-        
+
         logger.debug("Native specification for job %r is %r" % (jobID, jobTemplate.nativeSpecification))
         self.jobs[str(jobID)] = self.session.runJob(jobTemplate)
         logger.debug("Issued the job command: %s with job id: %s", jobNode.command, str(jobID))
@@ -184,10 +184,10 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
             return self.completedJobs.get_nowait()
         try:
             jid, exitCode, wallTime = self.getJobInfo(maxWait=maxWait)
-            del self.jobs[str(jid)]
-            return jid, exitCode, wallTime
         except drmaa.ExitTimeoutException:
             return None
+        del self.jobs[str(jid)]
+        return jid, exitCode, wallTime
 
     def shutdown(self):
         """
