@@ -25,95 +25,11 @@ from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.drmaa import AbstractDRMAABatchSystem
 
 logger = logging.getLogger(__name__)
 
-class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
-
-    class Worker(AbstractGridEngineBatchSystem.Worker):
-
-        """
-        Grid Engine-specific AbstractGridEngineWorker methods
-        """
-        def getRunningJobIDs(self):
-            times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
-            process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-
-            for currline in stdout.split('\n'):
-                items = currline.strip().split()
-                if items:
-                    if items[0] in currentjobs and items[4] == 'r':
-                        jobstart = " ".join(items[5:7])
-                        jobstart = time.mktime(time.strptime(jobstart, "%m/%d/%Y %H:%M:%S"))
-                        times[currentjobs[items[0]]] = time.time() - jobstart
-
-            return times
-
-        def killJob(self, jobID):
-            subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
-
-        def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareQsub(cpu, memory, jobID) + [command]
-
-        def submitJob(self, subLine):
-            process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            result = int(process.stdout.readline().strip().split('.')[0])
-            return result
-
-        def getJobExitCode(self, sgeJobID):
-            # the task is set as part of the job ID if using getBatchSystemID()
-            job, task = (sgeJobID, None)
-            if '.' in sgeJobID:
-                job, task = sgeJobID.split('.', 1)
-
-            args = ["qacct", "-j", str(job)]
-
-            if task is not None:
-                args.extend(["-t", str(task)])
-
-            logger.debug("Running %r", args)
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            for line in process.stdout:
-                if line.startswith("failed") and int(line.split()[1]) == 1:
-                    return 1
-                elif line.startswith("exit_status"):
-                    logger.debug('Exit Status: %r', line.split()[1])
-                    return int(line.split()[1])
-            return None
-
-        """
-        Implementation-specific helper methods
-        """
-        def prepareQsub(self, cpu, mem, jobID):
-            qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
-                        '-N', 'toil_job_' + str(jobID)]
-
-            if self.boss.environment:
-                qsubline.append('-v')
-                qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                         for k, v in self.boss.environment.iteritems()))
-
-            reqline = list()
-            if mem is not None:
-                memStr = str(mem / 1024) + 'K'
-                reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
-            if len(reqline) > 0:
-                qsubline.extend(['-hard', '-l', ','.join(reqline)])
-            sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
-            if sgeArgs:
-                sgeArgs = sgeArgs.split()
-                for arg in sgeArgs:
-                    if arg.startswith(("vf=", "hvmem=", "-pe")):
-                        raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
-                qsubline.extend(sgeArgs)
-            if cpu is not None and math.ceil(cpu) > 1:
-                peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
-                qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
-            return qsubline
-
+class GridEngineBatchSystem(AbstractDRMAABatchSystem):
     """
     The interface for SGE aka Sun GridEngine.
     """
@@ -150,3 +66,55 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         if maxCPU is 0 or maxMEM is 0:
             RuntimeError('qhost returned null NCPU or MEMTOT info')
         return maxCPU, maxMEM
+
+    def timeElapsed(self, jobIDs):
+        times = {}
+        currentjobs = {self.jobs[str(jid)]: jid for jid in jobIDs}
+        process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
+        for currline in stdout.split('\n'):
+            items = currline.strip().split()
+            if items:
+                if items[0] in currentjobs and items[4] == 'r':
+                    jobstart = " ".join(items[5:7])
+                    jobstart = time.mktime(time.strptime(jobstart, "%m/%d/%Y %H:%M:%S"))
+                    times[currentjobs[items[0]]] = time.time() - jobstart
+        return times
+
+    def nativeSpec(self, jobNode):
+        nativeArgs = {'-V': '', '-b': 'y', '-terse': ''}
+        userArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
+
+        memstr = str(jobNode.memory / 1024) + 'K'
+        if '%MEMORY%' in  userArgs:
+            userArgs = userArgs.replace('%MEMORY%', memstr)
+        else:
+            nativeArgs['-hard'] = ''
+            nativeArgs['-l'] = 'vf=' + memstr + ',h_vmem=' + memstr
+        if '%DISK%' in userArgs:
+            userArgs = userArgs.replace('%DISK%', str(jobNode.disk))
+        userArgs = userArgs.split()
+        i = 0
+        while i < len(userArgs):
+            if userArgs[i] == '-pe':
+                raise ValueError("Unexpected pe specification in" +
+                                 " TOIL_GRIDENGINE_ARGS: %s" % userArgs[i])
+            if not userArgs[i].startswith('-'):
+                raise ValueError("Unexpected bare argument in" +
+                                 " TOIL_GRIDENGINE_ARGS: %s" % userArgs[i])
+            if i < len(userArgs) - 1 and not userArgs[i+1].startswith('-'):
+                if userArgs[i] == '-l':
+                    nativeArgs['-l'] += ',' + userArgs[i+1]
+                else:
+                    nativeArgs[userArgs[i]] = userArgs[i+1]
+                i += 2
+            else:
+                nativeArgs[userArgs[i]] = ''
+                i += 1
+        if self.environment:
+            nativeArgs['-v'] = ','.join(k + '=' + v for k, v in iteritems(self.environment))
+        if jobNode.cores is not None and math.ceil(jobNode.cores) > 1:
+                peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
+                nativeArgs['-pe'] = peConfig + ' ' + str(int(math.ceil(jobNode.cores)))
+        return ' '.join([k if v == '' else k + ' ' + v for k, v in iteritems(nativeArgs)])
