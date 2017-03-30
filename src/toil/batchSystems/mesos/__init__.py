@@ -53,7 +53,8 @@ class JobQueue(object):
         return list(self.sortedTypes)
 
     def jobIDs(self):
-        return [job.jobID for queue in self.queues.values() for job in list(queue.queue)]
+        with self.jobLock:
+            return [job.jobID for queue in self.queues.values() for job in list(queue.queue)]
 
     def nextJobOfType(self, jobType):
         with self.jobLock:
