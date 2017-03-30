@@ -25,7 +25,7 @@ from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.drmaa import AbstractDRMAABatchSystem
+from toil.batchSystems.drmaaBatchSystem import AbstractDRMAABatchSystem
 
 logger = logging.getLogger(__name__)
 
