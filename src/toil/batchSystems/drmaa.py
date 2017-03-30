@@ -225,12 +225,12 @@ class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
         """
         Obtain information on the final state of a completed job.
         If no jobID is provided the batch system is queried for any completed job.
-        If no job has completed processing before maxWait seconds have passed an
-        drmaa.ExitTimeoutException will be raised.
 
         :param int jobID: Toil job ID or None.
         :param float maxWait: The maximum number of seconds to wait for a job to complete.
         The default is to wait indefinitely.
+
+        :raise ExitTimeoutException: if there are no completed jobs after maxWait seconds.
         """
         if jobID is None:
             jobID = self.session.JOB_IDS_SESSION_ANY
