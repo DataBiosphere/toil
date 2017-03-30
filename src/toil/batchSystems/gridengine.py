@@ -85,7 +85,6 @@ class GridEngineBatchSystem(AbstractDRMAABatchSystem):
     def nativeSpec(self, jobNode):
         nativeArgs = {'-V': '', '-b': 'y', '-terse': ''}
         userArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
-
         memstr = str(jobNode.memory / 1024) + 'K'
         if '%MEMORY%' in  userArgs:
             userArgs = userArgs.replace('%MEMORY%', memstr)
@@ -104,7 +103,7 @@ class GridEngineBatchSystem(AbstractDRMAABatchSystem):
                 raise ValueError("Unexpected bare argument in" +
                                  " TOIL_GRIDENGINE_ARGS: %s" % userArgs[i])
             if i < len(userArgs) - 1 and not userArgs[i+1].startswith('-'):
-                if userArgs[i] == '-l':
+                if userArgs[i] == '-l' and '-l' in nativeArgs:
                     nativeArgs['-l'] += ',' + userArgs[i+1]
                 else:
                     nativeArgs[userArgs[i]] = userArgs[i+1]
