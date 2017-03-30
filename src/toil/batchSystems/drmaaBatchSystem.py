@@ -235,6 +235,6 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
             jobID = self.session.JOB_IDS_SESSION_ANY
         else:
             jobID = self.jobs[str(jobID)]
-        status = self.session.wait(self.session.JOB_IDS_SESSION_ANY, maxWait)
+        status = self.session.wait(jobID, maxWait)
         jid = list(self.jobs.keys())[list(self.jobs.values()).index(status.jobId)]
         return jid, status.exitStatus, status.resourceUsage['ru_wallclock']
