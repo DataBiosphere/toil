@@ -98,9 +98,11 @@ class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
         raise NotImplementedError()
 
     @abstractmethod
-    def timeElapsed(self, jobID):
+    def timeElapsed(self, jobIDs):
         """
-        Returns the amount of time a job has been running, in seconds.
+        Returns the current wall clock time jobs in jobIDS have been running, in seconds.
+
+        :param jobIDs: A list of toil job IDs.
         """
         raise NotImplementedError()
 
@@ -172,8 +174,10 @@ class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
         return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
-        return {str(id): self.timeElapsed(id) for id in self.jobs.keys()
-                if self.session.jobStatus(self.jobs[str(id)]) == drmaa.JobState.RUNNING}
+        jids = [jid for jid in self.jobs.keys()
+                if self.session.jobStatus(self.jobs[jid]) == drmaa.JobState.RUNNING]
+        times = self.timeElapsed(jids)
+        return {i: t for i, t in zip(jids, times)}
 
     def getUpdatedBatchJob(self, maxWait):
         if not self.completedJobs.empty():
