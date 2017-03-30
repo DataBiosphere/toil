@@ -23,7 +23,7 @@ import time
 from six.moves.queue import Queue
 
 from bd2k.util.objects import abstractclassmethod
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ if not os.environ['DRMAA_LIBRARY_PATH']:
 os.environ['DRMAA_LIBRARY_PATH'] = path
 import drmaa
 
-class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
+class AbstractDRMAABatchSystem(BatchSystemSupport):
     @abstractmethod
     def nativeSpec(self, jobNode):
         """
