@@ -14,10 +14,14 @@
 """
 import base64
 import logging
-import subprocess
-import pipes
 import os
+import pipes
+import uuid
+
 from bd2k.util.exceptions import require
+from bd2k.util.retry import retry
+
+from toil.lib import *
 
 _logger = logging.getLogger(__name__)
 
@@ -162,18 +166,20 @@ def _docker(job,
         call = baseDockerCall + [tool] + parameters
     _logger.info("Calling docker with " + repr(call))
 
+    params = {}
     if outfile:
-        subprocess.check_call(call, stdout=outfile)
+        params['stdout'] = outfile
+    if checkOutput:
+        callMethod = subprocess.check_output
     else:
-        if checkOutput:
-            return subprocess.check_output(call)
-        else:
-            subprocess.check_call(call)
+        callMethod = subprocess.check_call
 
+    for attempt in retry(predicate=dockerPredicate):
+        with attempt:
+            out = callMethod(call, **params)
 
-FORGO = 0
-STOP = 1
-RM = 2
+    _fixPermissions(tool=tool, workDir=workDir)
+    return out
 
 
 def _dockerKill(containerName, action):
@@ -198,7 +204,9 @@ def _dockerKill(containerName, action):
                          containerName)
             if running and action >= STOP:
                 _logger.info('Stopping container "%s".', containerName)
-                subprocess.check_call(['docker', 'stop', containerName])
+                for attempt in retry(predicate=dockerPredicate):
+                    with attempt:
+                        subprocess.check_call(['docker', 'stop', containerName])
             else:
                 _logger.info('The container "%s" was not found to be running.', containerName)
             if action >= RM:
@@ -207,11 +215,12 @@ def _dockerKill(containerName, action):
                 running = _containerIsRunning(containerName)
                 if running is not None:
                     _logger.info('Removing container "%s".', containerName)
-                    subprocess.check_call(['docker', 'rm', '-f', containerName])
+                    for attempt in retry(predicate=dockerPredicate):
+                        with attempt:
+                            subprocess.check_call(['docker', 'rm', '-f', containerName])
                 else:
                     _logger.info('The container "%s" was not found on the system.  Nothing to remove.',
                                  containerName)
-
 
 def _fixPermissions(tool, workDir):
     """
@@ -223,11 +232,17 @@ def _fixPermissions(tool, workDir):
     :param str tool: Name of tool
     :param str workDir: Path of work directory to recursively chown
     """
+    if os.geteuid() == 0:
+        # we're running as root so this chown is redundant
+        return
+
     baseDockerCall = ['docker', 'run', '--log-driver=none',
                       '-v', os.path.abspath(workDir) + ':/data', '--rm', '--entrypoint=chown']
     stat = os.stat(workDir)
     command = baseDockerCall + [tool] + ['-R', '{}:{}'.format(stat.st_uid, stat.st_gid), '/data']
-    subprocess.check_call(command)
+    for attempt in retry(predicate=dockerPredicate):
+        with attempt:
+            subprocess.check_call(command)
 
 
 def _getContainerName(job):
@@ -243,8 +258,10 @@ def _containerIsRunning(container_name):
     :rtype: bool
     """
     try:
-        output = subprocess.check_output(['docker', 'inspect', '--format', '{{.State.Running}}',
-                                          container_name]).strip()
+        for attempt in retry(predicate=dockerPredicate):
+            with attempt:
+                output = subprocess.check_output(['docker', 'inspect', '--format', '{{.State.Running}}',
+                                                  container_name]).strip()
     except subprocess.CalledProcessError:
         # This will be raised if the container didn't exist.
         _logger.debug("'docker inspect' failed. Assuming container %s doesn't exist.", container_name,

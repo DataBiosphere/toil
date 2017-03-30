@@ -321,7 +321,7 @@ class MesosBatchSystem(BatchSystemSupport,
                 assert preemptable is None, "Attribute 'preemptable' occurs more than once."
                 preemptable = strict_bool(attribute.text.value)
         if preemptable is None:
-            log.warn('Slave not marked as either preemptable or not. Assuming non-preemptable.')
+            log.debug('Slave not marked as either preemptable or not. Assuming non-preemptable.')
             preemptable = False
         for resource in offer.resources:
             if resource.name == "cpus":

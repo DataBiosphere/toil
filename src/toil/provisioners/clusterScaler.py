@@ -347,8 +347,8 @@ class ScalerThread(ExceptionalThread):
                 numberOfRunningJobs, currentAvgRuntime  = self.scaler.leader.getNumberAndAvgRuntimeOfCurrentlyRunningJobs()
                 
                 # Average runtime of recently completed jobs
-                historicalAvgRuntime = sum(map(lambda jS : jS.wallTime, recentJobShapes))
-            
+                historicalAvgRuntime = sum(map(lambda jS : jS.wallTime, recentJobShapes))/len(recentJobShapes)
+
                 # Ratio of avg. runtime of currently running and completed jobs
                 runtimeCorrection = float(currentAvgRuntime)/historicalAvgRuntime if currentAvgRuntime > historicalAvgRuntime and numberOfRunningJobs >= estimatedNodes else 1.0
                 
@@ -358,7 +358,7 @@ class ScalerThread(ExceptionalThread):
                     logger.warn("Historical avg. runtime (%s) is less than current avg. runtime (%s) and cluster"
                                 " is being well utilised (%s running jobs), increasing cluster requirement by: %s" % 
                                 (historicalAvgRuntime, currentAvgRuntime, numberOfRunningJobs, runtimeCorrection))
-                    estimatedNodes *= runtimeCorrection
+                    estimatedNodes = int(round(estimatedNodes * runtimeCorrection))
 
                 # If we're the non-preemptable scaler, we need to see if we have a deficit of
                 # preemptable nodes that we should compensate for.
@@ -369,21 +369,24 @@ class ScalerThread(ExceptionalThread):
                     # nodes is the product of the deficit (the number of preemptable nodes we did
                     # _not_ allocate) and configuration preference.
                     compensationNodes = int(round(_preemptableNodeDeficit * compensation))
-                    logger.info('Adding %d preemptable nodes to compensate for a deficit of %d '
-                                'non-preemptable ones.', compensationNodes, _preemptableNodeDeficit)
+                    if compensationNodes > 0:
+                        logger.info('Adding %d preemptable nodes to compensate for a deficit of %d '
+                                    'non-preemptable ones.', compensationNodes, _preemptableNodeDeficit)
                     estimatedNodes += compensationNodes
 
-                fix_my_name = (0 if nodesToRunRecentJobs <= 0
+                jobsPerNode = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
-                logger.info('Estimating that cluster needs %s %s of shape %s, from current '
-                             'size of %s, given a queue size of %s, the number of jobs per node '
-                             'estimated to be %s, an alpha parameter of %s and a run-time length correction of %s.',
-                             estimatedNodes, self.nodeTypeString, self.nodeShape, 
-                             self.totalNodes, queueSize, fix_my_name,
-                             self.scaler.config.alphaPacking, runtimeCorrection)
+                if estimatedNodes > 0:
+                    logger.info('Estimating that cluster needs %s %s of shape %s, from current '
+                                'size of %s, given a queue size of %s, the number of jobs per node '
+                                'estimated to be %s, an alpha parameter of %s and a run-time length correction of %s.',
+                                estimatedNodes, self.nodeTypeString, self.nodeShape, 
+                                self.totalNodes, queueSize, jobsPerNode,
+                                self.scaler.config.alphaPacking, runtimeCorrection)
 
                 # Use inertia parameter to stop small fluctuations
-                if estimatedNodes <= self.totalNodes * self.scaler.config.betaInertia <= estimatedNodes:
+                delta = self.totalNodes * max(0.0, self.scaler.config.betaInertia - 1.0)
+                if self.totalNodes - delta <= estimatedNodes <= self.totalNodes + delta:
                     logger.debug('Difference in new (%s) and previous estimates in number of '
                                  '%s (%s) required is within beta (%s), making no change.',
                                  estimatedNodes, self.nodeTypeString, self.totalNodes, self.scaler.config.betaInertia)
@@ -391,8 +394,8 @@ class ScalerThread(ExceptionalThread):
 
                 # Bound number using the max and min node parameters
                 if estimatedNodes > self.maxNodes:
-                    logger.info('Limiting the estimated number of necessary %s (%s) to the '
-                                'configured maximum (%s).', self.nodeTypeString, estimatedNodes, self.maxNodes)
+                    logger.debug('Limiting the estimated number of necessary %s (%s) to the '
+                                 'configured maximum (%s).', self.nodeTypeString, estimatedNodes, self.maxNodes)
                     estimatedNodes = self.maxNodes
                 elif estimatedNodes < self.minNodes:
                     logger.info('Raising the estimated number of necessary %s (%s) to the '

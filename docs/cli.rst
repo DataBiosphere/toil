@@ -89,8 +89,12 @@ Running toil scripts has one required positional argument: the job store.  The d
 to where the user would like the job store to be created. To use the :ref:`quick start <quickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
-``python HelloWorld.py file:/scratch/my-job-store``.  Toil uses the colon as way to explicitly name what type of
-job store the user would like.  Different types of job store options can be looked up in :ref:`jobStoreInterface`.
+``python HelloWorld.py file:/scratch/my-job-store``. Toil uses the colon as way to explicitly name what type of
+job store the user would like. The other job store types are AWS (``aws:region-here:job-store-name``),
+Azure (``azure:account-name-here:job-store-name``), and the experimental Google
+job store (``google:projectID-here:job-store-name``). More information on these job store can be found
+at :ref:`Cloud_Running`. Different types of job store options can be
+looked up in :ref:`jobStoreInterface`.
 
 Miscellaneous
 -------------

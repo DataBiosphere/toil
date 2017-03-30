@@ -5,6 +5,7 @@ import uuid
 from threading import Thread
 
 import os
+from pwd import getpwuid
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
@@ -112,11 +113,25 @@ class DockerTest(ToilTest):
         rv = Job.Runner.startToil(A, options)
         assert rv.strip() == '2'
 
+    def testDockerPermissions(self, caching=True):
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
+        A = Job.wrapJobFn(_testDockerPermissions)
+        Job.Runner.startToil(A, options)
+
+    def testDockerPermissionsNonCaching(self):
+        self.testDockerPermissions(caching=False)
+
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(caching=False)
 
     def testNonCachingDockerClean(self):
         self.testDockerClean(caching=False)
+
 
 def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
     """
@@ -151,9 +166,27 @@ def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, contain
     t.start()
     dockerCall(job, tool='quay.io/ucsc_cgl/spooky_test', workDir=workDir, defer=defer, dockerParameters=dockerParameters)
 
+
 def _testDockerPipeChainFn(job):
     """
     Return the result of simple pipe chain.  Should be 2
     """
     parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
     return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
+
+
+def _testDockerPermissions(job):
+    testDir = job.fileStore.getLocalTempDir()
+    dockerCall(job, tool='ubuntu', workDir=testDir, parameters=[['touch', '/data/test.txt']])
+    outFile = os.path.join(testDir, 'test.txt')
+    assert os.path.exists(outFile)
+    assert not ownerName(outFile) == "root"
+
+
+def ownerName(filename):
+    """
+    Determines a given file's owner
+    :param str filename: path to a file
+    :return: name of filename's owner
+    """
+    return getpwuid(os.stat(filename).st_uid).pw_name
