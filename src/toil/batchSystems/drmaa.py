@@ -100,7 +100,7 @@ class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
     @abstractmethod
     def timeElapsed(self, jobIDs):
         """
-        Returns the current wall clock time jobs in jobIDS have been running, in seconds.
+        Returns a dictionary mapping toil job IDs to current wall clock times for running jobs.
 
         :param jobIDs: A list of toil job IDs.
         """
@@ -176,8 +176,7 @@ class AbstractDRMAABatchSystem(AbstractBatchSystemSupport):
     def getRunningBatchJobIDs(self):
         jids = [jid for jid in self.jobs.keys()
                 if self.session.jobStatus(self.jobs[jid]) == drmaa.JobState.RUNNING]
-        times = self.timeElapsed(jids)
-        return {i: t for i, t in zip(jids, times)}
+        return self.timeElapsed(jids)
 
     def getUpdatedBatchJob(self, maxWait):
         if not self.completedJobs.empty():
