@@ -74,7 +74,7 @@ def drmaaPath():
                        " variable DRMAA_LIBRARY_PATH")
 
 path = drmaaPath()
-if not os.environ['DRMAA_LIBRARY_PATH']:
+if 'DRMAA_LIBRARY_PATH' not in os.environ:
     logger.info("Found DRMAA libray. Consider setting DRMAA_LIBRARY_PATH=" + path)
 os.environ['DRMAA_LIBRARY_PATH'] = path
 import drmaa
