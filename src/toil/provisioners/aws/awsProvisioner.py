@@ -74,7 +74,9 @@ class AWSProvisioner(AbstractProvisioner):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     @staticmethod
     def retryPredicate(e):
