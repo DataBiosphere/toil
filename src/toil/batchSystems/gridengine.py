@@ -15,13 +15,11 @@
 from __future__ import absolute_import
 import logging
 import os
-from pipes import quote
 import subprocess
 import time
 import math
 
 # Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.batchSystems import MemoryString
