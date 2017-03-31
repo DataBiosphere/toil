@@ -38,7 +38,7 @@ class GridEngineBatchSystem(AbstractDRMAABatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        lines = filter(None, map(str.strip, subprocess.check_output(["qhost"]).split('\n')))
+        lines = list(filter(None, map(str.strip, subprocess.check_output(["qhost"]).split('\n'))))
         line = lines[0]
         items = line.strip().split()
         num_columns = len(items)
