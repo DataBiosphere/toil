@@ -452,16 +452,11 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
-        # get all volume ids now. After termination the block device mapping attr
-        # will not be populated
-        ebsIDs = [x.block_device_mapping["/dev/xvda"].volume_id for x in instances]
-
         logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
             wait_transition(instance, {'running', 'shutting-down'}, 'terminated')
-        cls._deleteRootEBS(ebsIDs, ctx)
         logger.info('Instance(s) terminated.')
 
     @classmethod
@@ -471,13 +466,6 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
-
-    @classmethod
-    def _deleteRootEBS(cls, ebsIDs, ctx):
-        for volumeID in ebsIDs:
-            for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
-                with attempt:
-                    ctx.ec2.delete_volume(volumeID)
 
     def _logAndTerminate(self, instances):
         self._terminateInstances(instances, self.ctx)
@@ -609,7 +597,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
-        root_vol = BlockDeviceType()
+        root_vol = BlockDeviceType(delete_on_termination=True)
         root_vol.size = 50
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
