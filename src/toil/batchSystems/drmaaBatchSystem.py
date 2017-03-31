@@ -187,7 +187,7 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
         except drmaa.ExitTimeoutException:
             return None
         del self.jobs[str(jid)]
-        return jid, exitCode, wallTime
+        return jid, exitCode, float(wallTime)
 
     def shutdown(self):
         """
