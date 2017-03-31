@@ -141,7 +141,8 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
         jobTemplate.remoteCommand = command[0]
         jobTemplate.args = command[1:]
 
-        logger.debug("Native specification for job %r is %r" % (jobID, jobTemplate.nativeSpecification))
+        logger.debug("Native specification for job %r is %r",
+                     jobID, jobTemplate.nativeSpecification)
         self.jobs[str(jobID)] = self.session.runJob(jobTemplate)
         logger.debug("Issued the job command: %s with job id: %s", jobNode.command, str(jobID))
         self.session.deleteJobTemplate(jobTemplate)
@@ -169,8 +170,8 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
                     del self.jobs[str(jid)]
             if jobIDs:
                 sleep = self.sleepSeconds()
-                logger.debug('Some kills (%s) still pending, sleeping %is', len(jobIDs),
-                             sleep)
+                logger.debug('Some kills (%s) still pending, sleeping %is',
+                             len(jobIDs), sleep)
                 time.sleep(sleep)
 
     def getIssuedBatchJobIDs(self):
@@ -220,8 +221,9 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
 
     def setEnv(self, name, value=None):
         if value and ',' in value:
-            raise ValueError(type(self).__name__ + " does not support commata in environment variable values")
-        return super(AbstractDRMAABatchSystem,self).setEnv(name, value)
+            raise ValueError(type(self).__name__ +
+                             " does not support commata in environment variable values")
+        return super(AbstractDRMAABatchSystem, self).setEnv(name, value)
 
     def getJobInfo(self, jobID=None, maxWait=drmaa.Session.TIMEOUT_WAIT_FOREVER):
         """
