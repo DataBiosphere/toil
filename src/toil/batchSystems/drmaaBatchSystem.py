@@ -158,7 +158,9 @@ class AbstractDRMAABatchSystem(BatchSystemSupport):
             self.session.control(self.jobs[str(jid)], drmaa.JobControlAction.TERMINATE)
         while jobIDs:
             for jid in jobIDs:
-                if self.session.jobStatus(self.jobs[str(jid)]) == drmaa.JobState.FAILED:
+                if str(jid) not in self.jobs:
+                    jobIDs.remove(jid)
+                elif self.session.jobStatus(self.jobs[str(jid)]) == drmaa.JobState.FAILED:
                     jobIDs.remove(jid)
                     del self.jobs[str(jid)]
                 elif self.session.jobStatus(self.jobs[str(jid)]) == drmaa.JobState.DONE:
