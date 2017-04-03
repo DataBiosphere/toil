@@ -53,7 +53,7 @@ def main():
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not specified."
                         "This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("-w", "--workers", dest='workers', default=0,
-                        help="Specify a number of workers to launch alongside the leader when the"
+                        help="Specify a number of workers to launch alongside the leader when the "
                              "cluster is created. This can be useful if running toil without "
                              "auto-scaling but with need of more hardware support")
     config = parseBasicOptions(parser)
