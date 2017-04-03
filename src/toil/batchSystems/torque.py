@@ -86,7 +86,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
-            return None
 
         """
         Implementation-specific helper methods
@@ -132,6 +131,23 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             fh.write(command + "\n")
             fh.close
             return tmpFile
+        
+        def pbsTorqueNodes(self):
+            """ Determines whether we are running on OSS PBS/Torque or
+                proprietary PBSPro and returns its nodes.
+            """
+            pbsFlavor = ""
+
+            try:
+                output = subprocess.check_output(["pbsnodes", "-x"])
+                output = subprocess.check_output(["pbsnodes", "-a", "-F", "json"])
+            except subprocess.CalledProcessError as e:
+                logger.error("PBS/Torque's pbsnodes command does not seem to support XML output")
+                #XXX
+                pbsFlavor = "pbspro"
+                pass 
+
+            return pbsFlavor, nodes
 
     """
     The interface for the PBS/Torque batch system
@@ -142,23 +158,35 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         maxCPU = 0
         maxMEM = MemoryString("0K")
+        pbsFlavor, nodes = cls.pbsTorqueNodes()
 
-        # parse XML output from pbsnodes
-        root = ET.fromstring(subprocess.check_output(["pbsnodes","-x"]))
+        if pbsVersion == "oss":
+            # parse XML output from pbsnodes
+            root = ET.fromstring(nodes)
+            # for each node, grab status line
+            for node in root.findall('./Node/status'):
+                # then split up the status line by comma and iterate
+                status = {}
+                for state in node.text.split(","):
+                    statusType, statusState = state.split("=")
+                    status[statusType] = statusState
+                if status['ncpus'] is None or status['totmem'] is None:
+                    RuntimeError("pbsnodes command does not return ncpus or totmem columns")
+                if status['ncpus'] > maxCPU:
+                    maxCPU = status['ncpus']
+                if MemoryString(status['totmem']) > maxMEM:
+                    maxMEM = MemoryString(status['totmem'])
+        
+        elif pbsVersion == "pbspro":
+            for node in nodes['nodes']:
+                ncpus = node['resources_available']['ncpus']
+                mem = node['resources_available']['mem'] # XXX: perhaps use vmem instead here?
 
-        # for each node, grab status line
-        for node in root.findall('./Node/status'):
-            # then split up the status line by comma and iterate
-            status = {}
-            for state in node.text.split(","):
-                statusType, statusState = state.split("=")
-                status[statusType] = statusState
-            if status['ncpus'] is None or status['totmem'] is None:
-                RuntimeError("pbsnodes command does not return ncpus or totmem columns")
-            if status['ncpus'] > maxCPU:
-                maxCPU = status['ncpus']
-            if MemoryString(status['totmem']) > maxMEM:
-                maxMEM = MemoryString(status['totmem'])
+                if ncpus > maxCPU:
+                    maxCPU = ncpus
+                if MemoryString(mem) > maxMEM:
+                    maxMEM = mem
+                    
 
         if maxCPU is 0 or maxMEM is MemoryString("0K"):
             RuntimeError('pbsnodes returned null ncpus or totmem info')
