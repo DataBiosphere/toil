@@ -260,7 +260,12 @@ class Leader:
                             continue
 
                         # If the job is a checkpoint and has remaining retries then reissue it.
-                        elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 0:
+                        # The logic behind using > 1 rather than > 0 here: Since this job has
+                        # been tried once (without decreasing its retry count as the job
+                        # itself was successful), and its subtree failed, it shouldn't be retried
+                        # unless it has more than 1 try.
+                        elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 1:
+                            jobGraph.setupJobAfterFailure(self.config)
                             logger.warn('Job: %s is being restarted as a checkpoint after the total '
                                         'failure of jobs in its subtree.', jobGraph.jobStoreID)
                             self.issueJob(JobNode.fromJobGraph(jobGraph))
