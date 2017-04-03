@@ -63,7 +63,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.keyName = self.instanceMetaData['public-keys'].keys()[0]
         self.masterPublicKey = self.setSSH()
         self.tags = self._getLeader(self.clusterName).tags
-        self.workerRootVolSize = config.workerRootVolSize
+        self.nodeStorage = config.nodeStorage
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
@@ -370,14 +370,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None,
-                      vpcSubnet=None, rootVolSize=50):
+                      vpcSubnet=None, leaderStorage=50):
         if userTags is None:
             userTags = {}
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         sgs = cls._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=rootVolSize)
+        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=leaderStorage)
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',

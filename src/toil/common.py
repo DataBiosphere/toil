@@ -90,7 +90,7 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
-        self.workerRootVolSize = None
+        self.nodeStorage = 50
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxint 
@@ -226,7 +226,7 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
-        setOption("workerRootVolSize", int)
+        setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -420,10 +420,10 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
-    addOptionFn("--workerDiskSize", dest="workerRootVolSize", default=None,
+    addOptionFn("--nodeStorage", dest="nodeStorage", default=50,
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "
-                      "space. The default value is 50."))  # Note: the default is set in _getBlockDeviceMapping
+                      "space. The default value is 50."))
     
     #        
     # Parameters to limit service jobs / detect service deadlocks
