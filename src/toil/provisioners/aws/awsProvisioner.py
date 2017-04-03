@@ -526,7 +526,7 @@ class AWSProvisioner(AbstractProvisioner):
                     raise
 
     def _addNodes(self, instances, numNodes, preemptable=False):
-        bdm = self._getBlockDeviceMapping(self.instanceType)
+        bdm = self._getBlockDeviceMapping(self.instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config.sseKey else self.config.sseKey
         entryPoint = 'mesos-slave' if not self.config.sseKey else "waitForKey.sh"
