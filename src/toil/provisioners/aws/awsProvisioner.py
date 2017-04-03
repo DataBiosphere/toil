@@ -48,21 +48,31 @@ class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, config=None, batchSystem=None):
         super(AWSProvisioner, self).__init__(config, batchSystem)
-        self.instanceMetaData = get_instance_metadata()
-        self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
-        self.ctx = self._buildContext(clusterName=self.clusterName)
         self.spotBid = None
-        assert config.preemptableNodeType or config.nodeType
-        if config.preemptableNodeType is not None:
-            nodeBidTuple = config.preemptableNodeType.split(':', 1)
-            self.spotBid = nodeBidTuple[1]
-            self.instanceType = ec2_instance_types[nodeBidTuple[0]]
+        # assert config.preemptableNodeType or config.nodeType
+        if config:
+            self.ctx = self._buildContext(clusterName=self.clusterName)
+            self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
+            self.instanceMetaData = get_instance_metadata()
+            self.leaderIP = self.instanceMetaData['local-ipv4']
+            self.keyName = self.instanceMetaData['public-keys'].keys()[0]
+            self.tags = self._getLeader(self.clusterName).tags
+            self.masterPublicKey = self.setSSH()
+            if config.preemptableNodeType is not None:
+                nodeBidTuple = config.preemptableNodeType.split(':', 1)
+                self.spotBid = nodeBidTuple[1]
+                self.instanceType = ec2_instance_types[nodeBidTuple[0]]
+            else:
+                self.instanceType = ec2_instance_types[config.nodeType]
         else:
-            self.instanceType = ec2_instance_types[config.nodeType]
-        self.leaderIP = self.instanceMetaData['local-ipv4']
-        self.keyName = self.instanceMetaData['public-keys'].keys()[0]
-        self.masterPublicKey = self.setSSH()
-        self.tags = self._getLeader(self.clusterName).tags
+            self.ctx = None
+            self.clusterName = None
+            self.instanceMetaData = None
+            self.leaderIP = None
+            self.keyName = None
+            self.tags = None
+            self.masterPublicKey = None
+        self.subnetID = None
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
@@ -406,11 +416,18 @@ class AWSProvisioner(AbstractProvisioner):
 
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
-        self._addTags([leader], defaultTags)
 
+        # if we running launch cluster we need to save this data as it won't be generated
+        # from the metadata. This data is needed to launch worker nodes.
+        self.leaderIP = leader.ip_address
+        self._addTags([leader], defaultTags)
+        self.clusterName = clusterName
+        self.keyName = keyName
+        self.tags = leader.tags
+        self.subnetID = leader.subnet_id
         if workers:
             workersCreated = self.setNodeCount(workers)
-            logger.info('Added %d workers with %d workers requested',workersCreated, workers)
+            logger.info('Added %d workers with %d workers requested', workersCreated, workers)
 
         return leader
 
@@ -548,7 +565,7 @@ class AWSProvisioner(AbstractProvisioner):
                   'block_device_map': bdm,
                   'instance_profile_arn': arn,
                   'placement': getCurrentAWSZone()}
-        kwargs["subnet_id"] = self._getClusterInstance(self.instanceMetaData).subnet_id
+        kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
         instancesLaunched = []
 
