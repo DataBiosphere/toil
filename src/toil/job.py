@@ -524,7 +524,9 @@ class Job(JobLikeObject):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
                                'predecessor of the job receiving the promise')
-        jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
+        with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
+            promise = UnfulfilledPromiseSentinel(str(self), False)
+            cPickle.dump(promise, fileHandle, cPickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
@@ -1745,3 +1747,22 @@ class PromisedRequirement(object):
             elif isinstance(kwargs.get(r), PromisedRequirement):
                 foundPromisedRequirement = True
         return foundPromisedRequirement
+
+
+class UnfulfilledPromiseSentinel(object):
+    """This should be overwritten by a proper promised value. Throws an
+    exception when unpickled."""
+    def __init__(self, fulfillingJobName, unpickled):
+        self.fulfillingJobName = fulfillingJobName
+
+    @staticmethod
+    def __setstate__(stateDict):
+        """Only called when unpickling. This won't be unpickled unless the
+        promise wasn't resolved, so we throw an exception."""
+        jobName = stateDict['fulfillingJobName']
+        raise RuntimeError("This job was passed a promise that wasn't yet resolved when it "
+                           "ran. The job {jobName} that fulfills this promise hasn't yet "
+                           "finished. This means that there aren't enough constraints to "
+                           "ensure the current job always runs after {jobName}. Consider adding a "
+                           "follow-on indirection between this job and its parent, or adding "
+                           "this job as a child/follow-on of {jobName}.".format(jobName=jobName))
