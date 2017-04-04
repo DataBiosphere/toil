@@ -369,14 +369,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None,
-                      vpcSubnet=None):
+                      vpcSubnet=None, rootVolSize=50):
         if userTags is None:
             userTags = {}
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         profileARN = cls._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         sgs = cls._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=rootVolSize)
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
@@ -592,13 +592,13 @@ class AWSProvisioner(AbstractProvisioner):
                     self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
-    def _getBlockDeviceMapping(cls, instanceType):
+    def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib
         bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
-        root_vol.size = 50
+        root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
         for disk in xrange(1, instanceType.disks + 1):

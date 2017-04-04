@@ -52,6 +52,9 @@ def main():
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not specified."
                         "This subnet needs to have auto assign IPs turned on.")
+    parser.add_argument("--diskSize", dest='rootVolSize', type=int, default=50,
+                        help="Specify the size (in gigabytes) of the root volume for the leader instance."
+                             "This is an EBS volume. ")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
@@ -74,4 +77,4 @@ def main():
 
     provisioner.launchCluster(instanceType=config.nodeType, clusterName=config.clusterName,
                               keyName=config.keyPairName, spotBid=spotBid, userTags=tagsDict, zone=config.zone,
-                              vpcSubnet=config.vpcSubnet)
+                              vpcSubnet=config.vpcSubnet, rootVolSize=config.rootVolSize)
