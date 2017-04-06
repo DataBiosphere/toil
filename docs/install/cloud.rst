@@ -49,13 +49,6 @@ rest of the tutorial. Note: the zone is different from an EC2 region. A
 region corresponds to a geographical area like ``us-west-2 (Oregon)``, and
 availability zones are partitions of this area like ``us-west-2a``.
 
-An important caveat to note here is that there is no currently parameter to
-specify the size of the instance's root volume, which is currently set to 50 Gb.
-This support will be added soon, but in the mean time instances with ephemeral SSD
-volumes should be used if > 50 Gb of disk will be needed by any job in the pipeline.
-See `here <https://aws.amazon.com/ec2/instance-types/>`_ for a full selection of
-EC2 instance types.
-
 Once the leader is running, the ``ssh-cluster`` and ``rsync-cluster`` utilities can be
 used to interact with the instance::
 
