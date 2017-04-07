@@ -60,7 +60,10 @@ def drmaaPath():
         pass
 
     ## check LD_LIBRARY_PATH and other likely locations
-    search_path = os.environ['LD_LIBRARY_PATH'].split(':')
+    try:
+        search_path = os.environ['LD_LIBRARY_PATH'].split(':')
+    except KeyError:
+        search_path = []
     search_path += ['/opt', '/lib', '/usr']
     for root in search_path:
         path = findFile('libdrmaa.so.1.0', root)
