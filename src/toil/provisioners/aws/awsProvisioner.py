@@ -386,10 +386,11 @@ class AWSProvisioner(AbstractProvisioner):
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
         bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
-                          sshKey='AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
+                          sshKey=self.masterPublicKey,
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_group_ids': [sg.id for sg in sgs],
@@ -419,15 +420,20 @@ class AWSProvisioner(AbstractProvisioner):
 
         # if we running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
-        self.ctx = ctx
         self.leaderIP = leader.ip_address
         self._addTags([leader], defaultTags)
+        self.ctx = ctx
+        self.spotBid = spotBid
+        self.instanceType = ec2_instance_types[instanceType]
         self.clusterName = clusterName
         self.keyName = keyName
         self.tags = leader.tags
         self.subnetID = leader.subnet_id
         if workers:
-            workersCreated = self.setNodeCount(workers)
+            # assuming that if the leader was launched without a spotbid then all workers
+            # will be non-preemptable
+            # adding 1 to workers because setNodeCount is including leader (is this intended?)
+            workersCreated = self.setNodeCount(workers + 1, preemptable=spotBid)
             logger.info('Added %d workers with %d workers requested', workersCreated, workers)
 
         return leader
