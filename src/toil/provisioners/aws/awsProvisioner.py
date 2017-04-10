@@ -419,6 +419,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # if we running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
+        self.ctx = ctx
         self.leaderIP = leader.ip_address
         self._addTags([leader], defaultTags)
         self.clusterName = clusterName
