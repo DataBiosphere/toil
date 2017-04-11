@@ -51,9 +51,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
         subprocess.check_call(callCommand)
 
-    def createClusterUtil(self):
+    def createClusterUtil(self, args=[]):
         callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
                        '--nodeType=%s' % self.instanceType, self.clusterName]
+        callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -105,10 +106,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        self.createClusterUtil()
+        self.createClusterUtil(args=['-w', '2'])  # launch the custer with two workers to test static provisioning
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
+
+        # test that two worker nodes were created + 1 for leader
+        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(both=True)))
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
