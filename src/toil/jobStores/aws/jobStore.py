@@ -306,14 +306,13 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
     
-    def _awsJobFromItem(self, jobStoreID, item):
-        if "overlarge" in item:
-            assert item["overlarge"] == "true"
-            assert self.fileExists(jobStoreID)
+    def _awsJobFromItem(self, item):
+        if "overlargeID" in item:
+            assert self.fileExists(item["overlargeID"])
             #This is an overlarge job, download the actual attributes
             #from the file store
             log.debug("Loading overlarge job from S3.")
-            with self.readFileStream(jobStoreID) as fh:
+            with self.readFileStream(item["overlargeID"]) as fh:
                 binary = fh.read()
         else:
             binary,_ = SDBHelper.attributesToBinary(item)
@@ -325,12 +324,10 @@ class AWSJobStore(AbstractJobStore):
         binary = cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize():
             #Store as an overlarge job in S3
-            overlargeJobFile = self.FileInfo(job.jobStoreID, job.jobStoreID, encrypted=False)
-            with overlargeJobFile.uploadStream() as writable:
+            with self.writeFileStream() as (writable, fileID):
                 writable.write(binary)
-            overlargeJobFile.save()
             item = SDBHelper.binaryToAttributes('')
-            item["overlarge"] = "true"
+            item["overlargeID"] = fileID
         else:
             item = SDBHelper.binaryToAttributes(binary)
         return item
@@ -359,12 +356,12 @@ class AWSJobStore(AbstractJobStore):
         result = None
         for attempt in retry_sdb():
             with attempt:
-                result = self.jobsDomain.select(
+                result = list(self.jobsDomain.select(
                     consistent_read=True,
-                    query="select * from `%s`" % self.jobsDomain.name)
+                    query="select * from `%s`" % self.jobsDomain.name))
         assert result is not None
         for jobItem in result:
-            yield self._awsJobFromItem(jobItem.name, dict(jobItem))
+            yield self._awsJobFromItem(jobItem)
 
     def load(self, jobStoreID):
         item = None
@@ -373,7 +370,7 @@ class AWSJobStore(AbstractJobStore):
                 item = self.jobsDomain.get_attributes(jobStoreID, consistent_read=True)
         if not item:
             raise NoSuchJobException(jobStoreID)
-        job = self._awsJobFromItem(jobStoreID, item)
+        job = self._awsJobFromItem(item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
         log.debug("Loaded job %s", jobStoreID)
@@ -397,9 +394,9 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(jobStoreID, consistent_read=True)
-        if self.fileExists(jobStoreID):
+        if "overlargeID" in item:
             log.debug("Deleting job from filestore")
-            self.deleteFile(jobStoreID)
+            self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():
             with attempt:
                 self.jobsDomain.delete_attributes(item_name=jobStoreID)
