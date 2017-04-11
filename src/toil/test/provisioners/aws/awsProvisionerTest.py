@@ -51,9 +51,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
         subprocess.check_call(callCommand)
 
-    def createClusterUtil(self):
+    def createClusterUtil(self, args=[]):
         callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
                        '--nodeType=%s' % self.instanceType, self.clusterName]
+        callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -105,7 +106,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        self.createClusterUtil()
+        requestedRootVolSize = 100
+        requestedWorkerVolSize = 80  # this is not testable until static provisioning is merged.
+        self.createClusterUtil(args=['--diskSize', str(requestedRootVolSize),
+                                     '--workerDiskSize', str(requestedWorkerVolSize)])  # run with custom diskSize
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
@@ -158,8 +162,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(checkStatsCommand)
 
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
-        volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
+        rootVolume = self.leader.block_device_mapping["/dev/xvda"]
+        assert isinstance(rootVolume, BlockDeviceType)
+        self.assertGreaterEqual(rootVolume.size, requestedWorkerVolSize)
+        volumeID = rootVolume.volume_id
         ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
