@@ -82,7 +82,7 @@ class AbstractBatchSystem(object):
     def setUserScript(self, userScript):
         """
         Set the user script for this workflow. This method must be called before the first job is
-        issued to this batch system, and only if :meth:`supportsHotDeployment` returns True,
+        issued to this batch system, and only if :meth:`.supportsHotDeployment` returns True,
         otherwise it will raise an exception.
 
         :param toil.resource.Resource userScript: the resource object representing the user script
@@ -115,7 +115,8 @@ class AbstractBatchSystem(object):
         """
         Kills the given job IDs.
 
-        :param list[int] jobIDs: list of IDs of jobs to kill
+        :param jobIDs: list of IDs of jobs to kill
+        :type jobIDs: list[int]
         """
         raise NotImplementedError()
 
@@ -152,7 +153,7 @@ class AbstractBatchSystem(object):
 
         :param float maxWait: the number of seconds to block, waiting for a result
 
-        :rtype: (str, int)|None
+        :rtype: tuple(str, int) or None
         :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
                  Otherwise it returns None. wallTime is the number of seconds (a float) in
                  wall-clock time the job ran for or None if this batch system does not support
