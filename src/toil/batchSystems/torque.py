@@ -29,7 +29,11 @@ from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBa
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
+    
+
 
     # class-specific Worker
     class Worker(AbstractGridEngineBatchSystem.Worker):
@@ -43,7 +47,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
-            # TODO: qstat supports XML output which is more comprehensive, so maybe use that?
+            # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
             for currline in stdout.split('\n'):
                 items = currline.strip().split()
                 if items:
@@ -131,23 +135,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             fh.write(command + "\n")
             fh.close
             return tmpFile
-        
-        def pbsTorqueNodes(self):
-            """ Determines whether we are running on OSS PBS/Torque or
-                proprietary PBSPro and returns its nodes.
-            """
-            pbsFlavor = ""
 
-            try:
-                output = subprocess.check_output(["pbsnodes", "-x"])
-                output = subprocess.check_output(["pbsnodes", "-a", "-F", "json"])
-            except subprocess.CalledProcessError as e:
-                logger.error("PBS/Torque's pbsnodes command does not seem to support XML output")
-                #XXX
-                pbsFlavor = "pbspro"
-                pass 
-
-            return pbsFlavor, nodes
 
     """
     The interface for the PBS/Torque batch system
@@ -158,11 +146,11 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         maxCPU = 0
         maxMEM = MemoryString("0K")
-        pbsFlavor, nodes = cls.pbsTorqueNodes()
+        pbsFlavor = _pbsVersion()
 
-        if pbsVersion == "oss":
+        if pbsFlavor == "oss":
             # parse XML output from pbsnodes
-            root = ET.fromstring(nodes)
+            root = ET.fromstring(subprocess.check_output(["pbsnodes","-x"]))
             # for each node, grab status line
             for node in root.findall('./Node/status'):
                 # then split up the status line by comma and iterate
@@ -177,7 +165,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 if MemoryString(status['totmem']) > maxMEM:
                     maxMEM = MemoryString(status['totmem'])
         
-        elif pbsVersion == "pbspro":
+        elif pbsFlavor == "pro":
+            nodes = subprocess.check_output(["pbsnodes", "-a", "-F", "json"])
             for node in nodes['nodes']:
                 ncpus = node['resources_available']['ncpus']
                 mem = node['resources_available']['mem'] # XXX: perhaps use vmem instead here?
@@ -194,3 +183,16 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             logger.info("Got maxCPU: %s and maxMEM: %s" % (maxCPU, maxMEM, ))
 
         return maxCPU, maxMEM
+
+def _pbsVersion():
+    """ Determines PBS/Torque version via pbsnodes
+    """
+    try:
+        subprocess.check_output(["pbsnodes", "--version"])
+    except subprocess.CalledProcessError as e:
+        if e.returncode != 0:
+            logger.error("Could not determine PBS/Torque version")
+        elif "PBSPro" in e.output:
+            return "pro"
+        else:
+            return "oss"
