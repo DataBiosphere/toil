@@ -47,13 +47,33 @@ logger = logging.getLogger(__name__)
 class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, config=None, batchSystem=None):
+        """
+        Initialize the AWS Provisioner object. The object is created in two distinct
+        ways:
+
+        1.  The first is by the `toil launch-cluster` utility which does not pass a config
+            and creates a "static" provisioner. Fields are initialized to None and
+            are set later when the leader is created via `self.launchCluster`. This
+            round-about initialization is necessary because launch-cluster is a
+            classmethod.
+
+        2.  The second is used when doing regular autoscaling and the provisioner is
+            initialized with a config file. This happens in `Toil._setProvisioner()`
+
+        Probably in the future these two models of provisioner should be separated
+        into a custer manager class which is initialized with a clusterName and a
+        provisioner class which does autoscaling with a cluster manager.
+
+        :param config: Optional config object from common.py
+        :param batchSystem:
+        """
         super(AWSProvisioner, self).__init__(config, batchSystem)
         self.spotBid = None
         # assert config.preemptableNodeType or config.nodeType
         if config:
-            self.ctx = self._buildContext(clusterName=self.clusterName)
-            self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.instanceMetaData = get_instance_metadata()
+            self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
+            self.ctx = self._buildContext(clusterName=self.clusterName)
             self.leaderIP = self.instanceMetaData['local-ipv4']
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
