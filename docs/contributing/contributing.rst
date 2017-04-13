@@ -113,6 +113,7 @@ this may come up empty. To fix it, run the following:
 
 .. _Docker: https://www.docker.com/products/docker
 .. _Quay: https://quay.io/
+.. _log into Quay: https://docs.quay.io/solution/getting-started.html
 
 
 .. _appliance_dev:
@@ -128,9 +129,49 @@ as soon as a developer makes a commit or dirties the working copy they will no
 longer be able to rely on Toil to automatically detect the proper Toil Appliance
 image. Instead, developers wishing to test any appliance changes in autoscaling
 should build and push their own appliance image to a personal Docker registry.
-See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
-configure Toil to pull the Toil Appliance image from your personal repo instead
-of the our official Quay account.
+
+Here is a general workflow: (similar instructions apply when using
+Docker Hub)
+
+1. Make some changes to the provisioner of your local version of Toil.
+
+2. Go to the location where you installed the Toil source code and run::
+
+        $ make docker
+
+   to automatically build a docker image that can now be uploaded to
+   your personal `Quay`_ account. If you have not installed Toil source
+   code yet check out `Building from Source`_.
+
+3. If it's not already you will need Docker installed and need
+   to `log into Quay`_. Also you will want to make sure that your Quay
+   account is public.
+
+4. Set the environment variable ``TOIL_DOCKER_REGISTRY`` to your Quay
+   account. If you find yourself doing this often you may want to add::
+
+        export TOIL_DOCKER_REGISTRY=quay.io/<MY_QUAY_USERNAME>
+
+   to your ``.bashrc`` or equivalent.
+
+5. Now you can run::
+
+        $ make push_docker
+
+   which will upload the docker image to your Quay account. Take note of
+   the image's tag for the next step.
+
+6. Finally you will need to tell Toil from where to pull the Appliance
+   image you've created (it uses the Toil release you have installed by
+   default). To do this set the environment variable
+   ``TOIL_APPLIANCE_SELF`` to the url of your image. For more info see
+   :ref:`envars`.
+
+7. Now you can launch your cluster! For more information see
+   :ref:`Toil_Provisioner`.
+
+Running Cluster Locally
+~~~~~~~~~~~~~~~~~~~~~~~
 
 The Toil Appliance container can also be useful as a test environment since it
 can simulate a Toil cluster locally. An important caveat for this is autoscaling,
