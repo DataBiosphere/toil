@@ -969,11 +969,13 @@ class JobStoreSupport(AbstractJobStore):
 
     @classmethod
     def getSize(cls, url):
+        if url.scheme.lower() == 'ftp':
+            return None
         for attempt in retry_http():
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # just read the header for content length
-                    return readable.info().get('content-length')
+                    return int(readable.info().get('content-length'))
 
     @classmethod
     def _readFromUrl(cls, url, writable):
