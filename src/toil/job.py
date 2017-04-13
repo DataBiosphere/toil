@@ -1384,10 +1384,10 @@ class FunctionWrappingJob(Job):
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
     """
-    A job function is a function whose first argument is a :class:`job.Job` \
+    A job function is a function whose first argument is a :class:`.Job` \
     instance that is the wrapping job for the function. This can be used to \
     add successor jobs for the function and perform all the functions the \
-    :class:`job.Job` class provides.
+    :class:`.Job` class provides.
 
     To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
     instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
@@ -1621,7 +1621,7 @@ class Promise(object):
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
 
-    Let T be a job. Instances of :class:`Promise` (termed a *promise*) are returned by T.rv(),
+    Let T be a job. Instances of :class:`.Promise` (termed a *promise*) are returned by T.rv(),
     which is used to reference the return value of T's run function. When the promise is passed
     to the constructor (or as an argument to a wrapped function) of a different, successor job
     the promise will be replaced by the actual referenced return value. This mechanism allows a
@@ -1643,7 +1643,7 @@ class Promise(object):
     def __init__(self, job, path):
         """
         :param Job job: the job whose return value this promise references
-        :param path: see :meth:`Job.rv`
+        :param path: see :meth:`.Job.rv`
         """
         self.job = job
         self.path = path
@@ -1696,7 +1696,7 @@ class PromisedRequirement(object):
 
         Use when resource requirements depend on the return value of a parent function.
         PromisedRequirements can be modified by passing a function that takes the
-        :class:`Promise` as input.
+        :class:`.Promise` as input.
 
         For example, let f, g, and h be functions. Then a Toil workflow can be
         defined as follows::
@@ -1706,7 +1706,8 @@ class PromisedRequirement(object):
 
         :param valueOrCallable: A single Promise instance or a function that
                                 takes \*args as input parameters.
-        :param int|Promise \*args: variable length argument list
+        :param \*args: variable length argument list
+        :type \*args: int or .Promise
         """
         if hasattr(valueOrCallable, '__call__'):
             assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
