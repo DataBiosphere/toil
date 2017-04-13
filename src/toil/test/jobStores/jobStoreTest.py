@@ -781,6 +781,15 @@ class AbstractEncryptedJobStoreTest:
             return config
 
 
+class AbstractSSEJobStoreTest:
+    # noinspection PyAbstractClass
+    class Test(AbstractJobStoreTest.Test):
+        def _createConfig(self):
+            config = super(AbstractSSEJobStoreTest.Test, self)._createConfig()
+            config.sse = True
+            return config
+
+
 class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         return FileJobStore(self.namePrefix)
@@ -1170,6 +1179,9 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
+@needs_aws
+class SSEAWSJobStoreTest(AWSJobStoreTest, AbstractSSEJobStoreTest.Test):
+    pass
 
 @needs_azure
 @needs_encryption
