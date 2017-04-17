@@ -524,7 +524,9 @@ class Job(JobLikeObject):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
                                'predecessor of the job receiving the promise')
-        jobStoreFileID = self._promiseJobStore.getEmptyFileStoreID()
+        with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
+            promise = UnfulfilledPromiseSentinel(str(self), False)
+            cPickle.dump(promise, fileHandle, cPickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
@@ -1384,10 +1386,10 @@ class FunctionWrappingJob(Job):
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
     """
-    A job function is a function whose first argument is a :class:`job.Job` \
+    A job function is a function whose first argument is a :class:`.Job` \
     instance that is the wrapping job for the function. This can be used to \
     add successor jobs for the function and perform all the functions the \
-    :class:`job.Job` class provides.
+    :class:`.Job` class provides.
 
     To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
     instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
@@ -1621,7 +1623,7 @@ class Promise(object):
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
 
-    Let T be a job. Instances of :class:`Promise` (termed a *promise*) are returned by T.rv(),
+    Let T be a job. Instances of :class:`.Promise` (termed a *promise*) are returned by T.rv(),
     which is used to reference the return value of T's run function. When the promise is passed
     to the constructor (or as an argument to a wrapped function) of a different, successor job
     the promise will be replaced by the actual referenced return value. This mechanism allows a
@@ -1643,7 +1645,7 @@ class Promise(object):
     def __init__(self, job, path):
         """
         :param Job job: the job whose return value this promise references
-        :param path: see :meth:`Job.rv`
+        :param path: see :meth:`.Job.rv`
         """
         self.job = job
         self.path = path
@@ -1696,7 +1698,7 @@ class PromisedRequirement(object):
 
         Use when resource requirements depend on the return value of a parent function.
         PromisedRequirements can be modified by passing a function that takes the
-        :class:`Promise` as input.
+        :class:`.Promise` as input.
 
         For example, let f, g, and h be functions. Then a Toil workflow can be
         defined as follows::
@@ -1706,7 +1708,8 @@ class PromisedRequirement(object):
 
         :param valueOrCallable: A single Promise instance or a function that
                                 takes \*args as input parameters.
-        :param int|Promise \*args: variable length argument list
+        :param \*args: variable length argument list
+        :type \*args: int or .Promise
         """
         if hasattr(valueOrCallable, '__call__'):
             assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
@@ -1745,3 +1748,22 @@ class PromisedRequirement(object):
             elif isinstance(kwargs.get(r), PromisedRequirement):
                 foundPromisedRequirement = True
         return foundPromisedRequirement
+
+
+class UnfulfilledPromiseSentinel(object):
+    """This should be overwritten by a proper promised value. Throws an
+    exception when unpickled."""
+    def __init__(self, fulfillingJobName, unpickled):
+        self.fulfillingJobName = fulfillingJobName
+
+    @staticmethod
+    def __setstate__(stateDict):
+        """Only called when unpickling. This won't be unpickled unless the
+        promise wasn't resolved, so we throw an exception."""
+        jobName = stateDict['fulfillingJobName']
+        raise RuntimeError("This job was passed a promise that wasn't yet resolved when it "
+                           "ran. The job {jobName} that fulfills this promise hasn't yet "
+                           "finished. This means that there aren't enough constraints to "
+                           "ensure the current job always runs after {jobName}. Consider adding a "
+                           "follow-on indirection between this job and its parent, or adding "
+                           "this job as a child/follow-on of {jobName}.".format(jobName=jobName))

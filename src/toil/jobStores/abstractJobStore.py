@@ -53,20 +53,18 @@ class InvalidImportExportUrlException(Exception):
 
 
 class NoSuchJobException(Exception):
+    """Indicates that the specified job does not exist."""
     def __init__(self, jobStoreID):
         """
-        Indicates that the specified job does not exist
-
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
         super(NoSuchJobException, self).__init__("The job '%s' does not exist" % jobStoreID)
 
 
 class ConcurrentFileModificationException(Exception):
+    """Indicates that the file was attempted to be modified by multiple processes at once."""
     def __init__(self, jobStoreFileID):
         """
-        Indicates that the file was attempted to be modified by multiple processes at once.
-
         :param str jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
         """
@@ -75,12 +73,10 @@ class ConcurrentFileModificationException(Exception):
 
 
 class NoSuchFileException(Exception):
+    """Indicates that the specified file does not exist."""
     def __init__(self, jobStoreFileID, customName=None):
         """
-        Indicates that the specified file does not exist
-
         :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
-
         :param str customName: optionally, an alternate name for the nonexistent file
         """
         if customName is None:
@@ -91,12 +87,14 @@ class NoSuchFileException(Exception):
 
 
 class NoSuchJobStoreException(Exception):
+    """Indicates that the specified job store does not exist."""
     def __init__(self, locator):
         super(NoSuchJobStoreException, self).__init__(
             "The job store '%s' does not exist, so there is nothing to restart" % locator)
 
 
 class JobStoreExistsException(Exception):
+    """Indicates that the specified job store already exists."""
     def __init__(self, locator):
         super(JobStoreExistsException, self).__init__(
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
@@ -273,7 +271,7 @@ class AbstractJobStore(object):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return: The jobStoreFileId of the imported file or None if sharedFileName was given
-        :rtype: FileID|None
+        :rtype: FileID or None
         """
         # Note that the helper method _importFile is used to read from the source and write to
         # destination (which is the current job store in this case). To implement any
@@ -298,7 +296,7 @@ class AbstractJobStore(object):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return The jobStoreFileId of imported file or None if sharedFileName was given
-        :rtype: FileID|None
+        :rtype: FileID or None
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
@@ -314,7 +312,7 @@ class AbstractJobStore(object):
         """
         Exports file to destination pointed at by the destination URL.
 
-        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+        Refer to :meth:`.importFile` documentation for currently supported URL schemes.
 
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
@@ -335,7 +333,7 @@ class AbstractJobStore(object):
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
-               that in PEP-484 type hints.
+               that in :pep:`484` type hints.
 
         :param str jobStoreFileID: The id of the file that will be exported.
 
@@ -730,9 +728,10 @@ class AbstractJobStore(object):
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
-        :param str|None jobStoreID: If specified the file will be associated with that job and when
+        :param jobStoreID: If specified the file will be associated with that job and when
                jobStore.delete(job) is called all files written with the given job.jobStoreID will
                be removed from the job store.
+        :type jobStoreID: str or None
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -969,11 +968,13 @@ class JobStoreSupport(AbstractJobStore):
 
     @classmethod
     def getSize(cls, url):
+        if url.scheme.lower() == 'ftp':
+            return None
         for attempt in retry_http():
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # just read the header for content length
-                    return readable.info().get('content-length')
+                    return int(readable.info().get('content-length'))
 
     @classmethod
     def _readFromUrl(cls, url, writable):
