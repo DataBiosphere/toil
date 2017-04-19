@@ -103,6 +103,10 @@ class MesosBatchSystem(BatchSystemSupport,
         self.intendedKill = set()
 
         # Map of host address to job ids
+        # this is somewhat redundant since Mesos returns the number of workers per
+        # node. However, that information isn't guaranteed to reach the leader,
+        # so we also track the state here. When the information is returned from
+        # mesos, prefer that information over this attempt at state tracking.
         self.hostToJobIDs = {}
 
         # Dict of launched jobIDs to TaskData objects
@@ -525,10 +529,12 @@ class MesosBatchSystem(BatchSystemSupport,
             slaveIP = None
             try:
                 slaveIP = self.runningJobMap[jobID].slaveIP
-                del self.runningJobMap[jobID]
             except KeyError:
                 log.warning("Job %i returned exit code %i but isn't tracked as running.",
                             jobID, _exitStatus)
+            else:
+                del self.runningJobMap[jobID]
+
             try:
                 self.hostToJobIDs[slaveIP].remove(jobID)
             except KeyError:

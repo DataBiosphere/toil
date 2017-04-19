@@ -641,7 +641,7 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             return self.__getNodesInCluster(self.ctx, self.clusterName, both=both)
 
-    def _getWorkersInCluster(self, preemptable):
+    def _getProvisionedNodes(self, preemptable):
         entireCluster = self._getNodesInCluster(both=True)
         logger.debug('All nodes in cluster %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP and
@@ -649,6 +649,9 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Workers found in cluster %s', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return workerInstances
+
+
+
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):

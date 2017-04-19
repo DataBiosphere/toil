@@ -25,7 +25,7 @@ import time
 from bd2k.util.retry import retry, never
 from bd2k.util.threading import ExceptionalThread
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
+from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 
 log = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ class AbstractProvisioner(object):
         """
         for attempt in retry(predicate=self.retryPredicate):
             with attempt:
-                workerInstances = self._getWorkersInCluster(preemptable)
+                workerInstances = _getNodesInCluster()
                 numCurrentNodes = len(workerInstances)
                 delta = numNodes - numCurrentNodes
                 if delta > 0:
@@ -189,7 +189,7 @@ class AbstractProvisioner(object):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            nodes = self.batchSystem.getNodes(preemptable)
+            nodes = self.getWorkersInCluster(preemptable)
             # Join nodes and instances on private IP address.
             nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
             log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
@@ -237,8 +237,75 @@ class AbstractProvisioner(object):
         raise NotImplementedError
 
     @abstractmethod
-    def _getWorkersInCluster(self, preemptable):
+    def _getProvisionedNodes(self, preemptable):
         raise NotImplementedError
+
+    def getWorkersInCluster(self, preemptable):
+        """
+        Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
+        NodeInfo objects, one for each node.
+
+        This method is the definitive source on nodes in cluster, & is responsible for consolidating
+        cluster state between the provisioner & batch system.
+
+        :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
+               If None, all nodes will be returned.
+
+        :rtype: dict[str,NodeInfo]
+        """
+        # TODO: order is important here - explain
+        allMesosNodes = self.batchSystem.getNodes(preemptable, timeout=None)
+        recentMesosNodes = self.batchSystem.getNodes(preemptable)
+        provisionerNodes = self._getProvisionedNodes(preemptable)
+        nodesToReturn = {}
+
+        if len(recentMesosNodes) != len(provisionerNodes):
+
+            assert len(recentMesosNodes) < len(provisionerNodes)
+            # if this assertion is false it means that user-managed nodes are being
+            # used that are outside the provisioners control
+            # this would violate many basic assumptions in autoscaling so it currently not allowed
+
+            for ip in (node.private_ip_address for node in provisionerNodes):
+                info = None
+                if ip not in recentMesosNodes:
+                    # we don't have up to date information about the node
+                    try:
+                        info = allMesosNodes[ip]
+                    except KeyError:
+                        # never seen by mesos - 1 of 3 possibilities:
+                        # 1) node is still launching mesos & will come online soon
+                        # 2) no jobs have been assigned to this worker. This means the executor was never
+                        #    launched, so we don't even get an executorInfo back indicating 0 workers running
+                        # 3) mesos crashed before launching, worker will never come online
+                        # In all 3 situations it's safe to fake executor info with 0 workers, since in all
+                        # cases there are no workers running. We also won't waste any money in cases 1/2 since
+                        # we will still wait for the end of the node's billing cycle for the actual
+                        # termination.
+                        info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
+                                        memoryTotal=1, memoryUsed=0, requestedMemory=0,
+                                        workers=0)
+                    else:
+                        # Node was tracked but we haven't seen this in the last 10 minutes
+                        inUse = self.batchSystem.nodeInUse(ip)
+                        if not inUse:
+                            # The node hasn't reported in the last 10 minutes & last we know
+                            # there weren't any tasks running. We will fake executorInfo with no
+                            # worker to reflect this, since otherwise this node will never
+                            # be considered for termination
+                            info.workers = 0
+                        else:
+                            # despite the node not reporting to mesos jobs may still be running
+                            # so we can't terminate the node
+                            pass
+                    log.debug("Worker node at %s is not reporting executor information")
+                    pass
+                else:
+                    # mesos knows about the ip & we have up to date information - easy!
+                    info = recentMesosNodes[ip]
+
+                # add info to list to return
+                nodesToReturn[ip] = info
 
     @abstractmethod
     def _remainingBillingInterval(self, instance):

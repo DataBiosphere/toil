@@ -245,7 +245,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def _addNodes(self, instances, numNodes, preemptable):
         pass
 
-    def _getWorkersInCluster(self, preemptable):
+    def getWorkersInCluster(self, preemptable):
         pass
 
     def _logAndTerminate(self, instanceIDs):

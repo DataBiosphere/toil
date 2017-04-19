@@ -368,6 +368,19 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def nodeInUse(self, nodeIP):
+        """
+        Can be used to determine if a worker node is running any tasks. If the node is doesn't
+        exist, this function should simply return False.
+
+        :param str nodeIP: The worker nodes private IP address
+
+        :return: True if the worker node has been issued any tasks, else False
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
 class InsufficientSystemResources(Exception):
     """
     To be raised when a job requests more of a particular resource than is either currently allowed

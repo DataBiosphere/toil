@@ -306,7 +306,7 @@ class ScalerThread(ExceptionalThread):
         self.minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
-            self.totalNodes = self._getClusterNodes()
+            self.totalNodes = len(self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable))
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
@@ -314,43 +314,12 @@ class ScalerThread(ExceptionalThread):
         if scaler.config.clusterStats:
             self.scaler.provisioner.startStats(preemptable=preemptable)
 
-    def _getClusterNodes(self):
-        mesosNodes = self.scaler.leader.batchSystem.getNodes(self.preemptable)
-        provisionerNodes = self.scaler.provisioner._getWorkersInCluster(self.preemptable)
-        if len(mesosNodes) != len(provisionerNodes):
-            # nodes in mesos & not in provisioner: strange but ok - maybe user set those up
-            # just filter them out since they shouldn't be considered for termination
-            # outside scalers domain
-            for ip in (node.private_ip_address for node in provisionerNodes):
-                if ip not in mesosNodes:
-                    # nodes in provisioner but not mesos - executor info is None so normally these
-                    # aren't terminated. Timeout for these? After 45 minutes they should be terminated?
-                    # actually, we can check if tasks have been assigned to the node - if so what do we do?
-                    #    dd
-                    try:
-                        info = self.scaler.leader.batchSystem.getNodes(self.preemptable, timeout=None)[ip]
-                        # seen by mesos but not in the last 10 minutes. We don't want to kill tasks that could be still
-                        # running but I think 20 minutes of no offers or framework messages is ok to assume dead.
-                        # actually we could do even better & check if the BS is tracking any tasks on the node.
-                        # if it turns out to be ok to kill, fake executor info with 0 workers
-                    except KeyError:
-                        # never seen by mesos - problem spinning up, or no tasks assigned. Either way it is OK
-                        # to kill. Is the billing interval based on provis or mesos? Better be spin up not mesos
-                        # action: fake the executor info with 0 workers.
-                        pass
-                    logger.debug("Worker node at %s is not reporting executor information")
-                    pass
-                else:
-                    # remove from nodes pending executor registration if applicable
-                    pass
-
-
     def tryRun(self):
         global _preemptableNodeDeficit
 
         while not self.scaler.stop:
             with throttle(self.scaler.config.scaleInterval):
-                self.totalNodes = self._getClusterNodes()
+                self.totalNodes = len(self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable))
                 # Estimate the number of nodes to run the issued jobs.
                 # Number of jobs issued
                 queueSize = self.scaler.leader.getNumberOfJobsIssued(preemptable=self.preemptable)
