@@ -29,7 +29,11 @@ from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBa
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
+    
+
 
     # class-specific Worker
     class Worker(AbstractGridEngineBatchSystem.Worker):
@@ -43,7 +47,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
-            # TODO: qstat supports XML output which is more comprehensive, so maybe use that?
+            # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
             for currline in stdout.split('\n'):
                 items = currline.strip().split()
                 if items:
@@ -86,7 +90,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
-            return None
 
         """
         Implementation-specific helper methods
@@ -133,36 +136,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             fh.close
             return tmpFile
 
-    """
-    The interface for the PBS/Torque batch system
-    """
-
     @classmethod
     def obtainSystemConstants(cls):
 
-        maxCPU = 0
-        maxMEM = MemoryString("0K")
+        # See: https://github.com/BD2KGenomics/toil/pull/1617#issuecomment-293525747
+        logger.debug("PBS/Torque does not need obtainSystemConstants to assess global \
+                    cluster resources.")
 
-        # parse XML output from pbsnodes
-        root = ET.fromstring(subprocess.check_output(["pbsnodes","-x"]))
 
-        # for each node, grab status line
-        for node in root.findall('./Node/status'):
-            # then split up the status line by comma and iterate
-            status = {}
-            for state in node.text.split(","):
-                statusType, statusState = state.split("=")
-                status[statusType] = statusState
-            if status['ncpus'] is None or status['totmem'] is None:
-                RuntimeError("pbsnodes command does not return ncpus or totmem columns")
-            if status['ncpus'] > maxCPU:
-                maxCPU = status['ncpus']
-            if MemoryString(status['totmem']) > maxMEM:
-                maxMEM = MemoryString(status['totmem'])
-
-        if maxCPU is 0 or maxMEM is MemoryString("0K"):
-            RuntimeError('pbsnodes returned null ncpus or totmem info')
-        else:
-            logger.info("Got maxCPU: %s and maxMEM: %s" % (maxCPU, maxMEM, ))
-
-        return maxCPU, maxMEM
+        #return maxCPU, maxMEM
+        return None, None
