@@ -285,6 +285,7 @@ class CWLJob(Job):
                                                             outdir=outdir,
                                                             tmpdir=tmpdir,
                                                             tmpdir_prefix="tmp",
+                                                            make_fs_access=cwltool.stdfsaccess.StdFsAccess,
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
