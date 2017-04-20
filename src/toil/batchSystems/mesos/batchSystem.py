@@ -227,6 +227,9 @@ class MesosBatchSystem(BatchSystemSupport,
             else:
                 log.debug('Job %s ended naturally before it could be killed.', jobId)
 
+    def nodeInUse(self, nodeIP):
+        return nodeIP in self.hostToJobIDs
+
     def getWaitDuration(self):
         """
         Gets the period of time to wait (floating point, in seconds) between checking for
