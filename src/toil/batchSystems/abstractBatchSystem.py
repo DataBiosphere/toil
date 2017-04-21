@@ -381,6 +381,26 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def setNodeFiltering(self, filter):
+        """
+        TODO: make context manager
+        Used to prevent races in autoscaling where
+        1) nodes have reported to the autoscaler as having no jobs
+        2) scaler decides to terminate these nodes. In parallel the batch system assigns jobs to the same nodes
+        3) scaler terminates nodes, resulting in job failures for all jobs on that node.
+
+        Call this method prior to node termination to ensure that nodes being considered for termination are not
+        assigned new jobs. Call the method again passing None as the filter to disable the filtering
+        after node termination is done.
+
+        :param method | None: If a method is passed it will be used as a filter on nodes considered when assigning new jobs.
+            If None is passed, no filter will be used & any currently used filter will be replaced.
+
+        :rtype: None
+        """
+        raise NotImplementedError()
+
 class InsufficientSystemResources(Exception):
     """
     To be raised when a job requests more of a particular resource than is either currently allowed

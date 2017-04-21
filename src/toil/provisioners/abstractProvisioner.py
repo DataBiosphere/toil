@@ -108,6 +108,10 @@ class AbstractProvisioner(object):
             # propagate any errors raised in the threads execution
             thread.join(timeout=0)
 
+    def _nodeFilter(self):
+        # TODO: take executor info & get instance object which can then be passed to _considerNodes
+        pass
+
     def _gatherStats(self, preemptable):
         def toDict(nodeInfo):
             # convert NodeInfo object to dict to improve JSON output
@@ -189,29 +193,12 @@ class AbstractProvisioner(object):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
+            self.batchSystem.setNodeFiltering()
             nodes = self.getWorkersInCluster(preemptable)
             # Join nodes and instances on private IP address.
             nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
             log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
-            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
-            # the batch system to report stale nodes for which the corresponding instance was
-            # terminated already. There can also be instances that the batch system doesn't have
-            # nodes for yet. We'll ignore those, too, unless forced.
-            nodesToTerminate = []
-            for instance, nodeInfo in nodes:
-                if force:
-                    nodesToTerminate.append((instance, nodeInfo))
-                elif nodeInfo is not None and nodeInfo.workers < 1:
-                    nodesToTerminate.append((instance, nodeInfo))
-                else:
-                    log.debug('Not terminating instances %s. Node info: %s', instance, nodeInfo)
-            # Sort nodes by number of workers and time left in billing cycle
-            nodesToTerminate.sort(key=lambda (instance, nodeInfo): (
-                nodeInfo.workers if nodeInfo else 1,
-                self._remainingBillingInterval(instance)))
-            if not force:
-                # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-                nodesToTerminate = [nodeTuple for nodeTuple in nodesToTerminate if self._remainingBillingInterval(nodeTuple[0]) <= 0.15]
+            nodesToTerminate = self._considerNodes(nodes, force)
             nodesToTerminate = nodesToTerminate[:numNodes]
             if log.isEnabledFor(logging.DEBUG):
                 for instance, nodeInfo in nodesToTerminate:
@@ -219,6 +206,7 @@ class AbstractProvisioner(object):
                               "would be billed again in %s minutes.", instance.id, nodeInfo,
                               60 * self._remainingBillingInterval(instance))
             instances = [instance for instance, nodeInfo in nodesToTerminate]
+            self.batchSystem.setNodeFiltering(None)
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
             instances = sorted(instances, key=self._remainingBillingInterval)
@@ -227,6 +215,30 @@ class AbstractProvisioner(object):
         if instances:
             self._logAndTerminate(instances)
         return len(instances)
+
+    def _considerNodes(self, nodes, force=False):
+        # Unless forced, exclude nodes with runnning workers. Note that it is possible for
+        # the batch system to report stale nodes for which the corresponding instance was
+        # terminated already. There can also be instances that the batch system doesn't have
+        # nodes for yet. We'll ignore those, too, unless forced.
+        nodesToTerminate = []
+        for instance, nodeInfo in nodes:
+            if force:
+                nodesToTerminate.append((instance, nodeInfo))
+            elif nodeInfo is not None and nodeInfo.workers < 1:
+                nodesToTerminate.append((instance, nodeInfo))
+            else:
+                # TODO: fix node info __str__
+                log.debug('Not terminating instances %s. Node info: %s', instance, nodeInfo)
+        # Sort nodes by number of workers and time left in billing cycle
+        nodesToTerminate.sort(key=lambda (instance, nodeInfo): (
+            nodeInfo.workers if nodeInfo else 1,
+            self._remainingBillingInterval(instance)))
+        if not force:
+            # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
+            nodesToTerminate = [nodeTuple for nodeTuple in nodesToTerminate if
+                                self._remainingBillingInterval(nodeTuple[0]) <= 0.15]
+        return nodesToTerminate
 
     @abstractmethod
     def _addNodes(self, instances, numNodes, preemptable):

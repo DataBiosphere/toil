@@ -109,6 +109,9 @@ class MesosBatchSystem(BatchSystemSupport,
         # mesos, prefer that information over this attempt at state tracking.
         self.hostToJobIDs = {}
 
+        # see self.setNodeFilter
+        self.nodeFilter = None
+
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}
 
@@ -229,6 +232,9 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def nodeInUse(self, nodeIP):
         return nodeIP in self.hostToJobIDs
+
+    def setNodeFiltering(self, filter):
+        self.nodeFilter = filter
 
     def getWaitDuration(self):
         """
@@ -471,6 +477,15 @@ class MesosBatchSystem(BatchSystemSupport,
                     pass
             else:
                 self.nonPreemptibleNodes.add(offer.slave_id.value)
+
+    def _filterOfferedNodes(self, offers):
+        if not self.nodeFilter:
+            return offers
+        executorInfoOrNone = [self.executors.get(socket.gethostbyname(offer.hostname)) for offer in offers]
+        executorInfos = filter(None, executorInfoOrNone)
+        executorsToConsider = filter(self.nodeFilter, executorInfos)
+        ipsToConsider = {ex.nodeAddress for ex in executorsToConsider}
+        return [offer for offer in offers if socket.gethostbyname(offer.hostname) in ipsToConsider]
 
     def _newMesosTask(self, job, offer):
         """

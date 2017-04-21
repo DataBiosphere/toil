@@ -479,6 +479,14 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     ctx.ec2.delete_volume(volumeID)
 
+    def considerNode(self, executorInfo):
+        """
+
+        :param executorInfo:
+        :return:
+        """
+
+
     def _logAndTerminate(self, instances):
         self._terminateInstances(instances, self.ctx)
 
@@ -649,9 +657,6 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Workers found in cluster %s', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return workerInstances
-
-
-
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
