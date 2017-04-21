@@ -234,13 +234,16 @@ class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
     def __init__(self, tool, cwljob, **kwargs):
-        builder = cwltool.builder.Builder()
-        builder.job = {}
-        builder.requirements = []
-        builder.outdir = None
-        builder.tmpdir = None
-        builder.timeout = 0
-        builder.resources = {}
+        if 'builder' in kwargs:
+            builder = kwargs["builder"]
+        else:
+            builder = cwltool.builder.Builder()
+            builder.job = {}
+            builder.requirements = []
+            builder.outdir = None
+            builder.tmpdir = None
+            builder.timeout = 0
+            builder.resources = {}
         req = tool.evalResources(builder, {})
         self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
@@ -714,7 +717,9 @@ def main(args=None, stdout=sys.stdout):
         else:
             basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
             builder = t._init_job(job, basedir=basedir, use_container=use_container)
-            (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
+            (wf1, wf2) = makeJob(t, {}, use_container=use_container,
+                    preserve_environment=options.preserve_environment,
+                    tmpdir=os.path.realpath(outdir), builder=builder)
             try:
                 if isinstance(wf1, CWLWorkflow):
                     [unsupportedDefaultCheck(s.tool) for s in wf1.cwlwf.steps]
