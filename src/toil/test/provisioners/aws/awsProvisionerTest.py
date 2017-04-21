@@ -161,11 +161,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(checkStatsCommand)
 
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        rootVolume = self.leader.block_device_mapping["/dev/xvda"]
-        assert isinstance(rootVolume, BlockDeviceType)
+        rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
+        assert isinstance(rootBlockDevice, BlockDeviceType)
+        volumeID = rootBlockDevice.volume_id
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
-        volumeID = rootVolume.volume_id
-        ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
         for attempt in range(6):
