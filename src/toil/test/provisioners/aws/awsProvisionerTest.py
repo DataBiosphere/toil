@@ -113,7 +113,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         ctx = AWSProvisioner._buildContext(self.clusterName)
 
         # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner.__getNodesInCluster(ctx, both=True)))
+        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, both=True)))
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools

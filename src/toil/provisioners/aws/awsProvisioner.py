@@ -289,7 +289,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
         if wait:
@@ -464,7 +464,7 @@ class AWSProvisioner(AbstractProvisioner):
             return e.status == 400 and 'dependent object' in e.body
 
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
@@ -659,7 +659,7 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
-    def __getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
+    def _getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
         pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                        'instance-state-name': 'pending'})
 
@@ -673,14 +673,8 @@ class AWSProvisioner(AbstractProvisioner):
         elif both:
             return [x for x in instances.union(set(runningInstances))]
 
-    def _getNodesInCluster(self, preeptable=False, both=False):
-        if not both:
-            return self.__getNodesInCluster(self.ctx, self.clusterName, preemptable=preeptable)
-        else:
-            return self.__getNodesInCluster(self.ctx, self.clusterName, both=both)
-
     def _getWorkersInCluster(self, preemptable):
-        entireCluster = self._getNodesInCluster(both=True)
+        entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True)
         logger.debug('All nodes in cluster %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP and
                            preemptable != (i.spot_instance_request_id is None)]
