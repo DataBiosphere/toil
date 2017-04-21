@@ -108,10 +108,6 @@ class AbstractProvisioner(object):
             # propagate any errors raised in the threads execution
             thread.join(timeout=0)
 
-    def _nodeFilter(self):
-        # TODO: take executor info & get instance object which can then be passed to _considerNodes
-        pass
-
     def _gatherStats(self, preemptable):
         def toDict(nodeInfo):
             # convert NodeInfo object to dict to improve JSON output
@@ -171,7 +167,7 @@ class AbstractProvisioner(object):
         """
         for attempt in retry(predicate=self.retryPredicate):
             with attempt:
-                workerInstances = _getNodesInCluster()
+                workerInstances = self.getWorkersInCluster(preemptable)
                 numCurrentNodes = len(workerInstances)
                 delta = numNodes - numCurrentNodes
                 if delta > 0:
@@ -193,20 +189,26 @@ class AbstractProvisioner(object):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            self.batchSystem.setNodeFiltering()
-            nodes = self.getWorkersInCluster(preemptable)
-            # Join nodes and instances on private IP address.
-            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
-            log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
-            nodesToTerminate = self._considerNodes(nodes, force)
-            nodesToTerminate = nodesToTerminate[:numNodes]
-            if log.isEnabledFor(logging.DEBUG):
-                for instance, nodeInfo in nodesToTerminate:
-                    log.debug("Instance %s is about to be terminated. Its node info is %r. It "
-                              "would be billed again in %s minutes.", instance.id, nodeInfo,
-                              60 * self._remainingBillingInterval(instance))
-            instances = [instance for instance, nodeInfo in nodesToTerminate]
-            self.batchSystem.setNodeFiltering(None)
+            # iMap = ip : instance
+            ipMap = {instance.ip: instance for instance in instances}
+            def _nodeFilter(executorInfo):
+                return not bool(self._considerNodes([(ipMap.get(executorInfo.nodeAddress), executorInfo.nodeInfo)]))
+            with self.batchSystem.nodeFiltering(_nodeFilter):
+                # while this context manager is active, the batch system will not launch any
+                # news tasks on nodes that are being considered for termination (as determined by the
+                # _nodeFilter method)
+                nodes = self.getWorkersInCluster(preemptable)
+                # Join nodes and instances on private IP address.
+                nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
+                log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
+                nodesToTerminate = self._considerNodes(nodes, force)
+                nodesToTerminate = nodesToTerminate[:numNodes]
+                if log.isEnabledFor(logging.DEBUG):
+                    for instance, nodeInfo in nodesToTerminate:
+                        log.debug("Instance %s is about to be terminated. Its node info is %r. It "
+                                  "would be billed again in %s minutes.", instance.id, nodeInfo,
+                                  60 * self._remainingBillingInterval(instance))
+                instances = [instance for instance, nodeInfo in nodesToTerminate]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
             instances = sorted(instances, key=self._remainingBillingInterval)

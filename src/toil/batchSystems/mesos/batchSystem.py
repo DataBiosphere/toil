@@ -110,7 +110,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.hostToJobIDs = {}
 
         # see self.setNodeFilter
-        self.nodeFilter = None
+        self.nodeFilter = []
 
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}
@@ -233,8 +233,11 @@ class MesosBatchSystem(BatchSystemSupport,
     def nodeInUse(self, nodeIP):
         return nodeIP in self.hostToJobIDs
 
-    def setNodeFiltering(self, filter):
-        self.nodeFilter = filter
+    def nodeFiltering(self, filter):
+        assert not self.nodeFilter
+        self.nodeFilter = [filter]
+        yield
+        self.nodeFilter = []
 
     def getWaitDuration(self):
         """
@@ -483,7 +486,7 @@ class MesosBatchSystem(BatchSystemSupport,
             return offers
         executorInfoOrNone = [self.executors.get(socket.gethostbyname(offer.hostname)) for offer in offers]
         executorInfos = filter(None, executorInfoOrNone)
-        executorsToConsider = filter(self.nodeFilter, executorInfos)
+        executorsToConsider = filter(self.nodeFilter[0], executorInfos)
         ipsToConsider = {ex.nodeAddress for ex in executorsToConsider}
         return [offer for offer in offers if socket.gethostbyname(offer.hostname) in ipsToConsider]
 

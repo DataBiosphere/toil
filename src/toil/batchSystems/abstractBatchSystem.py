@@ -22,6 +22,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from Queue import Queue, Empty
+from contextlib import contextmanager
 
 from bd2k.util.objects import abstractclassmethod
 
@@ -382,9 +383,9 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         raise NotImplementedError()
 
     @abstractmethod
-    def setNodeFiltering(self, filter):
+    @contextmanager
+    def nodeFiltering(self, filter):
         """
-        TODO: make context manager
         Used to prevent races in autoscaling where
         1) nodes have reported to the autoscaler as having no jobs
         2) scaler decides to terminate these nodes. In parallel the batch system assigns jobs to the same nodes
@@ -394,9 +395,8 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         assigned new jobs. Call the method again passing None as the filter to disable the filtering
         after node termination is done.
 
-        :param method | None: If a method is passed it will be used as a filter on nodes considered when assigning new jobs.
-            If None is passed, no filter will be used & any currently used filter will be replaced.
-
+        :param method: This will be used as a filter on nodes considered when assigning new jobs.
+            After this context manager exits the filter should be removed
         :rtype: None
         """
         raise NotImplementedError()
