@@ -110,9 +110,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
+        ctx = AWSProvisioner._buildContext(self.clusterName)
 
         # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(both=True)))
+        self.assertEqual(2 + 1, len(AWSProvisioner.__getNodesInCluster(ctx, both=True)))
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
@@ -161,7 +162,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
-        ctx = AWSProvisioner._buildContext(self.clusterName)
         assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
         volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
         ctx.ec2.get_all_volumes(volume_ids=[volumeID])
