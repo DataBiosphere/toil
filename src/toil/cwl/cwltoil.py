@@ -234,7 +234,7 @@ class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
     def __init__(self, tool, cwljob, **kwargs):
-       if 'builder' in kwargs:
+        if 'builder' in kwargs:
             builder = kwargs["builder"]
         else:
             builder = cwltool.builder.Builder()
