@@ -108,8 +108,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         requestedRootVolSize = 100
         requestedWorkerVolSize = 80  # this is not testable until static provisioning is merged.
-        self.createClusterUtil(args=['--diskSize', str(requestedRootVolSize),
-                                     '--workerDiskSize', str(requestedWorkerVolSize)])  # run with custom diskSize
+        self.createClusterUtil(args=['--leaderStorage', str(requestedRootVolSize)])  # run with custom diskSize
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
@@ -164,7 +163,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         ctx = AWSProvisioner._buildContext(self.clusterName)
         rootVolume = self.leader.block_device_mapping["/dev/xvda"]
         assert isinstance(rootVolume, BlockDeviceType)
-        self.assertGreaterEqual(rootVolume.size, requestedWorkerVolSize)
+        self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
         volumeID = rootVolume.volume_id
         ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
