@@ -164,7 +164,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
         assert isinstance(rootBlockDevice, BlockDeviceType)
         volumeID = rootBlockDevice.volume_id
-        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
         self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
