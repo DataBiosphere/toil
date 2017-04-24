@@ -38,6 +38,7 @@ AZUREUSER=${10}
 SSHKEY=${11}
 GITHUB_SOURCE=${12}
 GITHUB_BRANCH=${13}
+PYTHON_PACKAGES="${14}"
 HOMEDIR="/home/$AZUREUSER"
 VMNAME=`hostname`
 VMNUMBER=`echo $VMNAME | sed 's/.*[^0-9]\([0-9]\+\)*$/\1/'`
@@ -447,6 +448,11 @@ if [ "$TOILENABLED" == "true" ] ; then
   sudo wget https://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
   sudo easy_install mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
   sudo rm mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
+fi
+
+if [ "x${PYTHON_PACKAGES}" != "x" ] ; then
+    # Install additional Python packages
+    time sudo pip install --upgrade ${PYTHON_PACKAGES}
 fi
 
 date
