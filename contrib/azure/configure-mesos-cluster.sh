@@ -345,6 +345,11 @@ if isagent ; then
 
   # Set up the Mesos salve work directory in the ephemeral /mnt
   echo "/mnt" | sudo tee /etc/mesos-slave/work_dir
+    
+  # Set the root reserved fraction of that device to 0 to work around
+  # <https://github.com/BD2KGenomics/toil/issues/1650> and
+  # <https://issues.apache.org/jira/browse/MESOS-7420>
+  sudo tune2fs -m 0 `findmnt --target /mnt -n -o SOURCE`
 
   # Add mesos-dns IP addresses at the top of resolv.conf
   RESOLV_TMP=resolv.conf.temp
