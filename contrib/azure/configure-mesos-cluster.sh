@@ -426,6 +426,9 @@ if [ "$TOILENABLED" == "true" ] ; then
   # Get a reasonably new pip
   time sudo easy_install pip
   
+  # Upgrade setuptools
+  time sudo pip install setuptools --upgrade
+  
   # Install Toil from Git, retrieving the correct version. If you want a release
   # you might be able to use a tag here instead.
   echo "Installing branch ${GITHUB_BRANCH} of ${GITHUB_SOURCE} for Toil."
