@@ -200,6 +200,8 @@ then
     echo "WARNING: Docker could not be installed! Continuing anyway!"
 fi
 
+# Authorize the normal user to use Docker
+sudo usermod -aG docker $AZUREUSER
 
 ############
 # setup OMS
