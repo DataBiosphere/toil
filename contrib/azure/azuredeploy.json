@@ -200,6 +200,13 @@
       "metadata": {
         "description": "Branch on Github to pull cluster setup scripts and Toil from."
       }
+    },
+    "pythonPackages": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Extra Python package specifiers to install, like 'pysam>=1.0'. Space separated."
+      }
     }
   },
   "variables": {
@@ -390,6 +397,9 @@
           "githubBranch": {
             "value": "[parameters('githubBranch')]"
           },
+          "pythonPackages": {
+            "value": "[parameters('pythonPackages')]"
+          },
           "omsStorageAccount": {
             "value": "[variables('omsStorageAccount')]"
           },
@@ -481,6 +491,9 @@
           },
           "githubBranch": {
             "value": "[parameters('githubBranch')]"
+          },
+          "pythonPackages": {
+            "value": "[parameters('pythonPackages')]"
           },
           "omsStorageAccount": {
             "value": "[variables('omsStorageAccount')]"
