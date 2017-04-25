@@ -505,7 +505,7 @@ class AWSProvisioner(AbstractProvisioner):
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
-            wait_transition(instance, {'running', 'shutting-down'}, 'terminated')
+            wait_transition(instance, {'pending', 'running', 'shutting-down'}, 'terminated')
         logger.info('Instance(s) terminated.')
 
     @classmethod
