@@ -74,7 +74,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.ctx = self._buildContext(clusterName=self.clusterName)
-            self.leaderIP = self.instanceMetaData['local-ipv4']
+            self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self.setSSH()
@@ -440,7 +440,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # if we running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
-        self.leaderIP = leader.ip_address
+        self.leaderIP = leader.private_ip_address
         self._addTags([leader], defaultTags)
         self.ctx = ctx
         self.spotBid = spotBid
@@ -452,8 +452,7 @@ class AWSProvisioner(AbstractProvisioner):
         if workers:
             # assuming that if the leader was launched without a spotbid then all workers
             # will be non-preemptable
-            # adding (and subtracting) 1 because setNodeCount is including leader (is this intended?)
-            workersCreated = self.setNodeCount(workers + 1, preemptable=spotBid) - 1
+            workersCreated = self.setNodeCount(workers, preemptable=spotBid)
             logger.info('Added %d workers with %d workers requested', workersCreated, workers)
 
         return leader
