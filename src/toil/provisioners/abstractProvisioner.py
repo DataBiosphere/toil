@@ -267,59 +267,63 @@ class AbstractProvisioner(object):
 
         :rtype: dict[str,NodeInfo]
         """
-        # TODO: order is important here - explain
+        def _getInfo(allMesosNodes, ip):
+            info = None
+            try:
+                info = allMesosNodes[ip]
+            except KeyError:
+                # never seen by mesos - 1 of 3 possibilities:
+                # 1) node is still launching mesos & will come online soon
+                # 2) no jobs have been assigned to this worker. This means the executor was never
+                #    launched, so we don't even get an executorInfo back indicating 0 workers running
+                # 3) mesos crashed before launching, worker will never come online
+                # In all 3 situations it's safe to fake executor info with 0 workers, since in all
+                # cases there are no workers running. We also won't waste any money in cases 1/2 since
+                # we will still wait for the end of the node's billing cycle for the actual
+                # termination.
+                info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
+                                memoryTotal=1, memoryUsed=0, requestedMemory=0,
+                                workers=0)
+            else:
+                # Node was tracked but we haven't seen this in the last 10 minutes
+                inUse = self.batchSystem.nodeInUse(ip)
+                if not inUse:
+                    # The node hasn't reported in the last 10 minutes & last we know
+                    # there weren't any tasks running. We will fake executorInfo with no
+                    # worker to reflect this, since otherwise this node will never
+                    # be considered for termination
+                    info.workers = 0
+                else:
+                    pass
+                    # despite the node not reporting to mesos jobs may still be running
+                    # so we can't terminate the node
+            return info
+
         allMesosNodes = self.batchSystem.getNodes(preemptable, timeout=None)
         recentMesosNodes = self.batchSystem.getNodes(preemptable)
         provisionerNodes = self._getProvisionedNodes(preemptable)
-        nodesToReturn = {}
 
         if len(recentMesosNodes) != len(provisionerNodes):
-
+            nodesToReturn = {}
             assert len(recentMesosNodes) < len(provisionerNodes)
             # if this assertion is false it means that user-managed nodes are being
             # used that are outside the provisioners control
             # this would violate many basic assumptions in autoscaling so it currently not allowed
-
             for ip in (node.private_ip_address for node in provisionerNodes):
                 info = None
+                log.debug("Worker node at %s is not reporting executor information")
                 if ip not in recentMesosNodes:
                     # we don't have up to date information about the node
-                    try:
-                        info = allMesosNodes[ip]
-                    except KeyError:
-                        # never seen by mesos - 1 of 3 possibilities:
-                        # 1) node is still launching mesos & will come online soon
-                        # 2) no jobs have been assigned to this worker. This means the executor was never
-                        #    launched, so we don't even get an executorInfo back indicating 0 workers running
-                        # 3) mesos crashed before launching, worker will never come online
-                        # In all 3 situations it's safe to fake executor info with 0 workers, since in all
-                        # cases there are no workers running. We also won't waste any money in cases 1/2 since
-                        # we will still wait for the end of the node's billing cycle for the actual
-                        # termination.
-                        info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
-                                        memoryTotal=1, memoryUsed=0, requestedMemory=0,
-                                        workers=0)
-                    else:
-                        # Node was tracked but we haven't seen this in the last 10 minutes
-                        inUse = self.batchSystem.nodeInUse(ip)
-                        if not inUse:
-                            # The node hasn't reported in the last 10 minutes & last we know
-                            # there weren't any tasks running. We will fake executorInfo with no
-                            # worker to reflect this, since otherwise this node will never
-                            # be considered for termination
-                            info.workers = 0
-                        else:
-                            # despite the node not reporting to mesos jobs may still be running
-                            # so we can't terminate the node
-                            pass
-                    log.debug("Worker node at %s is not reporting executor information")
-                    pass
+                    info = _getInfo(allMesosNodes, ip)
                 else:
                     # mesos knows about the ip & we have up to date information - easy!
                     info = recentMesosNodes[ip]
-
                 # add info to list to return
                 nodesToReturn[ip] = info
+            return nodesToReturn
+        else:
+            return provisionerNodes
+
 
     @abstractmethod
     def _remainingBillingInterval(self, instance):
