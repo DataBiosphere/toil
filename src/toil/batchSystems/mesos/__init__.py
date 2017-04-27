@@ -19,6 +19,8 @@ TaskData = namedtuple('TaskData', (
     'startTime',
     # Mesos' ID of the slave where task is being run
     'slaveID',
+    # IP of slave where task is being run
+    'slaveIP',
     # Mesos' ID of the executor running the task
     'executorID',
     # Memory requirement of the task
