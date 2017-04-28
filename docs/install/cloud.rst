@@ -160,21 +160,7 @@ CGCloud allows you to do so without logging into the AWS web interface::
 Azure
 -----
 
-.. image:: https://azuredeploy.net/deploybutton.png
-   :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
-   :alt: Microsoft Azure deploy button
-
-Toil comes with a `cluster template`_ to facilitate easy deployment of clusters
-running Toil on Microsoft Azure. The template allows these clusters to be
-created and managed through the Azure portal. To use the template to set up a
-Toil Mesos cluster on Azure, use the deploy button above, or open the
-`deploy link`_ in your browser.
-
-For more information, see the `cluster template`_'s documentation, or read our
-walkthrough on :ref:`azure-walkthrough`.
-
-.. _cluster template: https://github.com/BD2KGenomics/toil/blob/master/contrib/azure/README.md
-.. _deploy link: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
+.. include:: azure.rst
 
 .. _installationOpenStack:
 
