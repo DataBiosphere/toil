@@ -11,6 +11,9 @@ Services is currently the best-supported solution.
 On all cloud providers, it is recommended that you run long-running jobs on
 remote systems using a terminal multiplexer such as `screen`_ or `tmux`_.
 
+For details on including dependencies in your distributed workflows have a
+look at :ref:`hotDeploying`.
+
 Screen
 ------
 
@@ -18,7 +21,7 @@ Simply type ``screen`` to open a new ``screen``
 session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run
 ``screen -r`` to reconnect to it. Commands running under ``screen`` will
 continue running even when you are disconnected, allowing you to unplug your
-laptop and take it home without ending your Toil jobs. See :ref:`Toil_Provisioner`
+laptop and take it home without ending your Toil jobs. See :ref:`sshCluster`
 for complications that can occur when using screen within the Toil Appliance.
 
 .. _screen: https://www.gnu.org/software/screen/
@@ -30,26 +33,100 @@ Autoscaling
 -----------
 
 The fastest way to get started with Toil in a cloud environment is by using
-Toil's autoscaling capabilities to handle node provisioning. You can do this by
-using the :ref:`Toil_Provisioner` or CGCloud_.
+Toil's autoscaling capabilities to handle node provisioning. Autoscaling is a
+powerful and efficient tool for running your cluster in the cloud. It manages
+your cluster for you and scales up or down depending on the workflow's demands.
 
-To begin, launch a Toil leader instance using your choice of provisioners.
+If you haven't already, take a look at :ref:`installProvisioner` for information
+on getting autoscaling set up before continuing on.
 
-Once we have our leader instance launched, the only remaining step is
-to kick off our Toil run with special autoscaling options. Now might be
-an opportune time to read up on Toil's extensive configuration options
-by passing ``--help`` to your toil script invocation.
+Autoscaling uses the cluster utilities. For more information see :ref:`clusterRef`.
 
-There are a number of autoscaling specific options, but only 2 options are
-strictly necessary to enable autoscaling: ``--provisioner=aws`` and ``--nodeType=<>``.
+.. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
+
+.. note::
+
+    CGCloud_ can also act as a provisioner for AWS and has lots of functionality
+    for statically provisioning a cluster (adjusting your cluster's size manually
+    when a workflow isn't running). However it is being phased out in favor on the
+    native provisioner.
+
+.. _launchingCluster:
+
+Launching a Cluster
+^^^^^^^^^^^^^^^^^^^
+
+Using the provisioner to launch a Toil leader instance is simple using the
+:ref:`launchCluster` command::
+
+    $ toil launch-cluster CLUSTER-NAME-HERE --nodeType=t2.micro \
+       -z us-west-2a --keyPairName=your-AWS-key-pair-name
+
+The cluster name is used to uniquely identify your cluster and will be used to
+populate the instance's ``Name`` tag. In addition, the Toil provisioner will
+automatically tag your cluster with an ``Owner`` tag that corresponds to your
+keypair name to facilitate cost tracking.
+
+The nodeType is an `EC2 instance type`_. This only affects any nodes launched now.
+
+The ``-z`` parameter is important since it specifies which EC2 availability
+zone to launch the cluster in. Alternatively, you can specify this option
+via the ``TOIL_AWS_ZONE`` environment variable. We will assume this environment variable is set for the
+rest of the tutorial. Note: the zone is different from an EC2 region. A
+region corresponds to a geographical area like ``us-west-2 (Oregon)``, and
+availability zones are partitions of this area like ``us-west-2a``.
+
+For more information on options try::
+
+    $ toil launch-cluster --help
+
+Uploading Workflow
+^^^^^^^^^^^^^^^^^^
+
+Now that our cluster is launched we use the :ref:`rsyncCluster` utility to copy
+the workflow to the leader. For a simple workflow in a single file this might
+look like::
+
+    $ toil rysnc-cluster MY-CLUSTER ~/toil-workflow.py :/
+
+.. note::
+
+    If your toil workflow has dependencies have a look at the :ref:`hotDeploying`
+    section for a detailed explanation on how to include them.
+
+.. _runningAutoscaling:
+
+Running a Workflow with Autoscaling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The only remaining step is to kick off our Toil run with special autoscaling options.
+
+First we use the :ref:`sshCluster` utility to log on to the leader. ::
+
+    $ toil ssh-cluster MY-CLUSTER
+
+In order for your script to make use of autoscaling you will need to specify the options
+``--provisioner=aws`` and ``--nodeType=<>`` where nodeType is the name of an `EC2 instance type`_
 These options, respectively, tell Toil that we are running on AWS (currently the
 only supported autoscaling environment) and which instance type to use for the
-Toil worker instances.
+Toil worker instances. Here is an example: ::
+
+    $ python my-toi-script.py --provisioner=aws --nodeType=m3.large
+
+For more information on other autoscaling (and other) options
+have a look at :ref:`workflowOptions` and/or run::
+
+    $ python my-toil-script.py --help
+
+.. important::
+
+    Some important caveats about starting a toil run through an ssh session are
+    explained in the :ref:`sshCluster` section.
 
 Preemptability
 ^^^^^^^^^^^^^^
 
-Toil can run on a heterogenous cluster of both preemptable and non-preemptable nodes.
+Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes.
 Our preemptable node type can be set by using the ``--preemptableNodeType=<>`` flag. While individual jobs can
 each explicitly specify whether or not they should be run on preemptable nodes
 via the boolean ``preemptable`` resource requirement, the
