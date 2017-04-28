@@ -6,6 +6,9 @@ Developing a workflow
 This tutorial walks through the features of Toil necessary for developing a
 workflow using the Toil Python API.
 
+.. note::
+
+    "script" and "workflow" will be used interchangeably
 
 Scripting quick start
 ---------------------
@@ -694,7 +697,7 @@ workers of the cluster. Instructions for installing Docker can be found on the
 
 .. _Docker: https://docs.docker.com/engine/getstarted/step_one/
 
-When using CGCloud or Toil-based autoscaling, Docker will be automatically set up
+When using Toil-based autoscaling, Docker will be automatically set up
 on the cluster's worker nodes, so no additional installation steps are necessary.
 Further information on using Toil-based autoscaling can be found in the :ref:`Autoscaling`
 documentation.
