@@ -190,7 +190,7 @@ class AbstractProvisioner(object):
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.batchSystem, AbstractScalableBatchSystem):
             # iMap = ip : instance
-            ipMap = {instance.ip: instance for instance in instances}
+            ipMap = {instance.private_ip_address: instance for instance in instances}
             def _nodeFilter(executorInfo):
                 return not bool(self._considerNodes([(ipMap.get(executorInfo.nodeAddress), executorInfo.nodeInfo)]))
             with self.batchSystem.nodeFiltering(_nodeFilter):
