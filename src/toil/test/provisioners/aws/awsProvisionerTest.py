@@ -195,12 +195,12 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
-        sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
-        with open(sseKeyFile, 'w') as f:
-            f.write('01234567890123456789012345678901')
+        fileToSort = os.path.join(os.getcwd(), 'sortFile')
+        with open(fileToSort, 'w') as f:
+            f.write('01234567890123456789012345678901' * 1000)
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(sseKeyFile, ':/home/keyFile')
-        os.unlink(sseKeyFile)
+        self.rsyncUtil(fileToSort, ':/home/sortFile')
+        os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
         # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster

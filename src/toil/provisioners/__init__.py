@@ -69,6 +69,12 @@ class Cluster(object):
 
     def rsyncCluster(self, args):
         self.provisioner.rsyncLeader(self.clusterName, args, self.zone)
+        ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
+        instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
+        workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
+        for instance in workers:
+            self.provisioner._rsyncNode(instance.public_dns_name, args, applianceName='toil_worker')
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
