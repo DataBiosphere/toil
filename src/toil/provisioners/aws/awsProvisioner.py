@@ -452,7 +452,7 @@ class AWSProvisioner(AbstractProvisioner):
         if workers:
             # assuming that if the leader was launched without a spotbid then all workers
             # will be non-preemptable
-            workersCreated = self.setNodeCount(workers, preemptable=spotBid)
+            workersCreated = self.setNodeCount(workers, preemptable=bool(spotBid))
             logger.info('Added %d workers with %d workers requested', workersCreated, workers)
 
         return leader
