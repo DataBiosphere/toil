@@ -197,7 +197,7 @@ class AbstractProvisioner(object):
                 # while this context manager is active, the batch system will not launch any
                 # news tasks on nodes that are being considered for termination (as determined by the
                 # _nodeFilter method)
-                nodes = self.getWorkersInCluster(preemptable)
+                nodes = self.getClusterInfo(preemptable)
                 # Join nodes and instances on private IP address.
                 nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
                 log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
@@ -255,6 +255,9 @@ class AbstractProvisioner(object):
         raise NotImplementedError
 
     def getWorkersInCluster(self, preemptable):
+        return self._getProvisionedNodes(preemptable)
+
+    def getClusterInfo(self, preemptable):
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
@@ -306,7 +309,7 @@ class AbstractProvisioner(object):
         if len(recentMesosNodes) != len(provisionerNodes):
             log.debug("Consolidating state between mesos and provisioner")
             ipToInfo = {}
-            assert len(recentMesosNodes) < len(provisionerNodes)
+            # fixme: what happens if awsFilterImpairedNodes is used?
             # if this assertion is false it means that user-managed nodes are being
             # used that are outside the provisioners control
             # this would violate many basic assumptions in autoscaling so it currently not allowed
