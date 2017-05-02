@@ -23,6 +23,7 @@ import socket
 import time
 import sys
 from collections import defaultdict
+from contextlib import contextmanager
 from operator import attrgetter
 from struct import unpack
 
@@ -234,6 +235,7 @@ class MesosBatchSystem(BatchSystemSupport,
     def nodeInUse(self, nodeIP):
         return nodeIP in self.hostToJobIDs
 
+    @contextmanager
     def nodeFiltering(self, filter):
         assert not self.nodeFilter
         self.nodeFilter = [filter]
