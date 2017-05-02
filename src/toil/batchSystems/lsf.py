@@ -23,6 +23,7 @@ import subprocess
 import time
 from threading import Thread
 from datetime import date
+import os
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
