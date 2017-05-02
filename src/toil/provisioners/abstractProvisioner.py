@@ -304,12 +304,13 @@ class AbstractProvisioner(object):
         provisionerNodes = self._getProvisionedNodes(preemptable)
 
         if len(recentMesosNodes) != len(provisionerNodes):
-            nodesToReturn = {}
+            nodesToReturn = []
             assert len(recentMesosNodes) < len(provisionerNodes)
             # if this assertion is false it means that user-managed nodes are being
             # used that are outside the provisioners control
             # this would violate many basic assumptions in autoscaling so it currently not allowed
-            for ip in (node.private_ip_address for node in provisionerNodes):
+            for node, ip in ((node, node.private_ip_address) for node in provisionerNodes):
+                ipToInfo = {}
                 info = None
                 log.debug("Worker node at %s is not reporting executor information")
                 if ip not in recentMesosNodes:
@@ -319,7 +320,8 @@ class AbstractProvisioner(object):
                     # mesos knows about the ip & we have up to date information - easy!
                     info = recentMesosNodes[ip]
                 # add info to list to return
-                nodesToReturn[ip] = info
+                ipToInfo[ip] = info
+                nodesToReturn.append((node, ipToInfo))
             return nodesToReturn
         else:
             return provisionerNodes
