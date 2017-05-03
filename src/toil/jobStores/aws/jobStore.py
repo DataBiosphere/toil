@@ -778,7 +778,10 @@ class AWSJobStore(AbstractJobStore):
                 retry timeout expires.
         """
         log.debug("Binding to job store domain '%s'.", domain_name)
-        for attempt in retry_sdb(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e)):
+        retryargs = dict(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e))
+        if not block:
+            retryargs['timeout'] = 15
+        for attempt in retry_sdb(**retryargs):
             with attempt:
                 try:
                     return self.db.get_domain(domain_name)
