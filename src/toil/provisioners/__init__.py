@@ -74,6 +74,7 @@ class Cluster(object):
         leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
         workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
         for instance in workers:
+            self.provisioner._waitForNode(instance, 'toil_worker')
             self.provisioner._rsyncNode(instance.public_dns_name, args, applianceName='toil_worker')
 
     def destroyCluster(self):
