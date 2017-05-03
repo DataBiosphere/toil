@@ -205,9 +205,8 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def _runScript(self, toilOptions):
         # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
         # hacky, but it works.
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)
 
     @integrative
