@@ -404,6 +404,19 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         """
         raise NotImplementedError()
 
+    @abstractmethod
+    def ignoreNode(self, nodeAddress):
+        """
+        Stop sending jobs to this node. Used in autoscaling
+        when the autoscaler is ready to terminate a node, but 
+        jobs are still running. This allows the node to be terminated
+        after the current jobs have finished.
+
+        :param str: IP address of node to ignore.
+        :rtype: None
+        """
+        raise NotImplementedError()
+
 class InsufficientSystemResources(Exception):
     """
     To be raised when a job requests more of a particular resource than is either currently allowed

@@ -32,11 +32,8 @@ def createTagsDict(tagList):
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
-    parser.add_argument("--nodeType", dest='nodeType', required=True,
-                        help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                             "provisioner used. For the aws provisioner this is the name of an "
-                             "EC2 instance type followed by a colon and the price in dollar to "
-                             "bid for a spot instance, for example 'c3.8xlarge:0.42'.")
+    parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
+                        help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
                         help="The name of the AWS key pair to include on the instance")
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
@@ -52,8 +49,13 @@ def main():
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not specified. "
                         "This subnet needs to have auto assign IPs turned on.")
-    parser.add_argument("-w", "--workers", dest='workers', default=0, type=int,
-                        help="Specify a number of workers to launch alongside the leader when the "
+    parser.add_argument("--nodeTypes", dest='nodeTypes', default="", type=str,
+                        help="Node type for {non-|}preemptable nodes. The syntax depends on the "
+                             "provisioner used. For the aws provisioner this is the name of an "
+                             "EC2 instance type followed by a colon and the price in dollar to "
+                             "bid for a spot instance, for example 'c3.8xlarge:0.42'.")
+    parser.add_argument("--numNodes", dest='numNodes', default="", type=str,
+                        help="Specify a number of non-preemptable workers to launch alongside the leader when the "
                              "cluster is created. This can be useful if running toil without "
                              "auto-scaling but with need of more hardware support")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
@@ -65,7 +67,12 @@ def main():
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
-    spotBid = None
+    spotBids = []
+    nodeTypes = []
+    preemptableNodeTypes = []
+    numNodes = []
+    numPreemptableNodes = []
+    leaderSpotBid = None
     if config.provisioner == 'aws':
         logger.info('Using aws provisioner.')
         try:
@@ -73,19 +80,35 @@ def main():
         except ImportError:
             raise RuntimeError('The aws extra must be installed to use this provisioner')
         provisioner = AWSProvisioner()
-        parsedBid = config.nodeType.split(':', 1)
-        if len(config.nodeType) != len(parsedBid[0]):
-            # there is a bid
-            spotBid = float(parsedBid[1])
-            config.nodeType = parsedBid[0]
+
+        #Parse leader node type and spot bid
+        parsedBid = config.leaderNodeType.split(':', 1)
+        if len(config.leaderNodeType) != len(parsedBid[0]):
+            leaderSpotBid = float(parsedBid[1])
+            config.leaderNodeType = parsedBid[0]
+        for nodeTypeStr, num in zip(config.nodeTypes.split(), numNodes):
+            parsedBid = nodeTypeStr.split(':', 1)
+            if len(nodeTypeStr) != len(parsedBid[0]):
+                #Is a preemptable node
+
+                preemptableNodeTypes.append(parsedBid[0])
+                spotBids.append(float(parsedBid[1]))
+                numPreemptableNodes.append(int(num))
+            else:
+                nodeTypes.append(nodeTypeStr)
+                numNodes.append(int(num))
     else:
         assert False
 
-    provisioner.launchCluster(instanceType=config.nodeType,
+    provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
+                              leaderSpotBid=leaderSpotBid,
+                              nodeTypes=nodeTypes,
+                              preemptableNodeTypes=preemptableNodeTypes,
+                              numWorkers=numNodes,
+                              numPreemptableWorkers = numPreemptableNodes,
                               keyName=config.keyPairName,
                               clusterName=config.clusterName,
-                              workers=config.workers,
-                              spotBid=spotBid,
+                              spotBids=spotBids,
                               userTags=tagsDict,
                               zone=config.zone,
                               leaderStorage=config.leaderStorage,

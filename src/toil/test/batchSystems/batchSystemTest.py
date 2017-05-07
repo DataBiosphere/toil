@@ -349,6 +349,20 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         self._stopMesos()
         super(MesosBatchSystemTest, self).tearDown()
 
+    def testIgnoreNode(self):
+        self.batchSystem.ignoreNode('localhost')
+        jobNode = JobNode(command='sleep 1000', jobName='test2', unitName=None,
+                           jobStoreID='1', requirements=defaultRequirements)
+        job = self.batchSystem.issueBatchJob(jobNode)
+
+        issuedID = self._waitForJobsToIssue(1)
+        self.assertEqual(set(issuedID), {job})
+
+        runningJobIDs = self._waitForJobsToStart(1)
+        #Make sure job is NOT running
+        self.assertEqual(set(runningJobIDs), set({}))
+
+
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
