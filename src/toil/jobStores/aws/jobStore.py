@@ -39,7 +39,7 @@ from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
-from boto.exception import S3CreateError
+from boto.exception import S3CreateError, S3DataError
 from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
 from concurrent.futures import ThreadPoolExecutor
@@ -485,6 +485,9 @@ class AWSJobStore(AbstractJobStore):
         dstKey = cls._getKeyForUrl(url)
         try:
             dstKey.send_file(readable, chunked_transfer=True)
+        except S3DataError:
+            # readable does not suport seeking - fall back to naive method
+            dstKey.set_contents_from_string(readable.read())
         finally:
             dstKey.bucket.connection.close()
 
