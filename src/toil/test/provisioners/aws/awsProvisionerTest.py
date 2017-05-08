@@ -276,9 +276,9 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             command.extend(toilOptions)
             self.sshUtil(command)
 
-    @integrative
-    def testAutoScaledCluster(self):
-        self._test()
+    # @integrative
+    # def testAutoScaledCluster(self):
+    #     self._test()
 
 
 class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
