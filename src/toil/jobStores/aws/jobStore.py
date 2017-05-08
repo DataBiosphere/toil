@@ -484,7 +484,7 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(cls, readable, url):
         dstKey = cls._getKeyForUrl(url)
         try:
-            dstKey.set_contents_from_string(readable.read())
+            dstKey.send_file(readable, chunked_transfer=True)
         finally:
             dstKey.bucket.connection.close()
 
