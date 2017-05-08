@@ -20,6 +20,9 @@ import re
 import sys
 import tempfile
 import time
+import socket
+import fcntl
+import struct
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -71,7 +74,7 @@ class Config(object):
         self.batchSystem = "singleMachine"
         self.disableHotDeployment = False
         self.scale = 1
-        self.mesosMasterAddress = 'localhost:5050'
+        self.mesosMasterAddress = '%s:5050' % getLocalIP()
         self.parasolCommand = "parasol"
         self.parasolMaxBatches = 10000
         self.environment = {}
@@ -1114,3 +1117,24 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
+
+def getLocalIP():
+    """
+    Gets the local IP address of the machine that calls this function.
+    This works on CoreOS but is not guaranteed to work on any other
+    systems.
+
+    taken from http://stackoverflow.com/a/24196955
+
+    :return: IP address as a string
+    """
+    def get_ip_address(ifname):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack('256s', ifname[:15])
+        )[20:24])
+
+    return get_ip_address('eth0')
