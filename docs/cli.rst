@@ -146,7 +146,8 @@ and these limits will resolve the issue.
 Cluster Utilities
 -----------------
 There are several utilities used for starting and managing a Toil cluster using
-the AWS provisioner. The cluster utilities are used for :ref:`runningAWS` and are comprised of
+the AWS provisioner. They are installed via the ``[aws]`` extra. For installation
+details see :ref:`installProvisioner`. The cluster utilities are used for :ref:`runningAWS` and are comprised of
 ``toil launch-cluster``, ``toil rsync-cluster``, ``toil ssh-cluster``, and
 ``toil destroy-cluster`` entry points. For a detailed explanation of the cluster
 utilities run::
@@ -170,8 +171,8 @@ for a full list of its options and functionality.
 launch-cluster
 ^^^^^^^^^^^^^^
 
-Running ``toil launch cluster`` starts up a leader for a cluster. Workers can be
-addee to the initial cluster by specifying the ``-w`` option. For an example usage see
+Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
+added to the initial cluster by specifying the ``-w`` option. For an example usage see
 :ref:`launchingCluster`. More information can be found using the ``--help`` option.
 
 .. _sshCluster:
@@ -179,10 +180,8 @@ addee to the initial cluster by specifying the ``-w`` option. For an example usa
 ssh-cluster
 ^^^^^^^^^^^
 
-Toil provides the ability to ssh into the leader of the cluster.
-
-The last utility provided by the Toil Provisioner is ``ssh-cluster`` and it
-can be used as follows::
+Toil provides the ability to ssh into the leader of the cluster. This
+can be done as follows::
 
     $ toil ssh-cluster CLUSTER-NAME-HERE
 
