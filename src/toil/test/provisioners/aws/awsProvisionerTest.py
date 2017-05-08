@@ -136,8 +136,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--clean=always',
                        '--retryCount=2',
                        '--clusterStats=/home/',
-                       '--logDebug',
-                       '--provisioner=aws']
+                       '--logDebug']
 
         if spotInstances:
             toilOptions.extend([
