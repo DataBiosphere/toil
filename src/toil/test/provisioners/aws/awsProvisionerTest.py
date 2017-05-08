@@ -102,13 +102,23 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, spotInstances=False, fulfillableBid=True):
+    def _test(self, spotInstances=False, fulfillableBid=True, testVolSize=False):
+        """
+        Does the work of the testing. Many features' test are thrown in here is no particular
+        order
+
+        :param spotInstances: Specify if you want to use spotInstances
+        :param fulfillableBid: If false, the bid will never succeed. Used to test bid failure
+        """
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         requestedRootVolSize = 100
         requestedWorkerVolSize = 80  # this is not testable until static provisioning is merged.
-        self.createClusterUtil(args=['--leaderStorage', str(requestedRootVolSize)])  # run with custom diskSize
+        if testVolSize:
+            self.createClusterUtil(args=['--leaderStorage', str(requestedRootVolSize)])  # run with custom diskSize
+        else:
+            self.createClusterUtil()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
@@ -164,8 +174,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
         rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
         assert isinstance(rootBlockDevice, BlockDeviceType)
         volumeID = rootBlockDevice.volume_id
-        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
-        self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
+        if testVolSize:
+            rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+            self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
         for attempt in range(6):
@@ -214,12 +225,12 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self._test(spotInstances=False)
+        self._test(spotInstances=False, testVolSize=True)
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self._test(spotInstances=True)
+        self._test(spotInstances=True, testVolSize=True)
 
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
