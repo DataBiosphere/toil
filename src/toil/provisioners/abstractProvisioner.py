@@ -86,7 +86,7 @@ class AbstractProvisioner(object):
             self._shutDownStats()
         log.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes != 0:
+        if totalNodes != len(self.staticNodesDict):  # ignore static nodes
             raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
 
     def _shutDownStats(self):
@@ -218,6 +218,10 @@ class AbstractProvisioner(object):
             # nodes for yet. We'll ignore those, too, unless forced.
             nodesToTerminate = []
             for instance, nodeInfo in nodes:
+                if instance.private_ip_address in self.staticNodesDict:
+                    # we don't want to automatically terminate any statically
+                    # provisioned nodes
+                    continue
                 if force:
                     nodesToTerminate.append((instance, nodeInfo))
                 elif nodeInfo is not None and nodeInfo.workers < 1:
