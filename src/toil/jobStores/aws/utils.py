@@ -15,14 +15,21 @@
 from __future__ import absolute_import
 import base64
 import bz2
+import os
 import socket
 import logging
 import types
 
 import errno
+import uuid
 from ssl import SSLError
 
 # Python 3 compatibility imports
+import itertools
+
+from StringIO import StringIO
+
+from bd2k.util.exceptions import panic
 from six import iteritems
 
 from bd2k.util.retry import retry
@@ -32,7 +39,76 @@ from boto.exception import (SDBResponseError,
                             S3CreateError,
                             S3CopyError)
 
+from toil.jobStores.utils import WritablePipe
+
 log = logging.getLogger(__name__)
+
+
+class MultiPartPipe(WritablePipe):
+
+    def __init__(self, fileInfo, partSize, bucket):
+        super(MultiPartPipe, self).__init__()
+        self.info = fileInfo
+        self.partSize = partSize
+        self.bucket = bucket
+
+    def readFrom(self, readable, allowInlining=False):
+        buf = readable.read(self.partSize)
+        if allowInlining and len(buf) <= self.info._maxInlinedSize():
+            self.info.content = buf
+        else:
+            headers = self.info._s3EncryptionHeaders()
+            for attempt in retry_s3():
+                with attempt:
+                    upload = self.bucket.initiate_multipart_upload(
+                        key_name=self.info.fileID,
+                        headers=headers)
+            try:
+                for part_num in itertools.count():
+                    # There must be at least one part, even if the file is empty.
+                    if len(buf) == 0 and part_num > 0:
+                        break
+                    for attempt in retry_s3():
+                        with attempt:
+                            upload.upload_part_from_file(fp=StringIO(buf),
+                                                         # part numbers are 1-based
+                                                         part_num=part_num + 1,
+                                                         headers=headers)
+                    if len(buf) == 0:
+                        break
+                    buf = readable.read(self.partSize)
+            except:
+                with panic(log=log):
+                    for attempt in retry_s3():
+                        with attempt:
+                            upload.cancel_upload()
+            else:
+                for attempt in retry_s3():
+                    with attempt:
+                        self.info.version = upload.complete_upload().version_id
+
+
+class SinglePartPipe(WritablePipe):
+
+    def __init__(self, fileInfo, awsJobStore):
+        super(SinglePartPipe, self).__init__()
+        self.info = fileInfo
+        self.store = awsJobStore
+
+    def readFrom(self, readable, allowInlining=False):
+        buf = readable.read()
+        if allowInlining and len(buf) <= self.info._maxInlinedSize():
+            self.info.content = buf
+        else:
+            key = self.store.filesBucket.new_key(key_name=self.info.fileID)
+            buf = StringIO(buf)
+            headers = self.info._s3EncryptionHeaders()
+            for attempt in retry_s3():
+                with attempt:
+                    assert buf.len == key.set_contents_from_file(fp=buf,
+                                                                 headers=headers)
+            self.info.version = key.version_id
+
 
 
 class SDBHelper(object):
@@ -168,6 +244,69 @@ class SDBHelper(object):
 
 from boto.sdb.connection import SDBConnection
 
+
+def fileSizeAndTime(localFilePath):
+    file_stat = os.stat(localFilePath)
+    file_size, file_time = file_stat.st_size, file_stat.st_mtime
+    return file_size, file_time
+
+def multipart(localFilePath, partSize, bucket, fileID, headers):
+    """
+
+    :param localFilePath:
+    :param partSize:
+    :param bucket:
+    :param fileID:
+    :param headers:
+    :return: version of the newly uploaded file
+    """
+    file_size, file_time = fileSizeAndTime(localFilePath)
+    if file_size <= partSize:
+        key = bucket.new_key(key_name=fileID)
+        key.name = fileID
+        for attempt in retry_s3():
+            with attempt:
+                key.set_contents_from_filename(localFilePath, headers=headers)
+        version = key.version_id
+    else:
+        with open(localFilePath, 'rb') as f:
+            for attempt in retry_s3():
+                with attempt:
+                    upload = bucket.initiate_multipart_upload(
+                        key_name=fileID,
+                        headers=headers)
+            try:
+                start = 0
+                part_num = itertools.count()
+                while start < file_size:
+                    end = min(start + partSize, file_size)
+                    assert f.tell() == start
+                    for attempt in retry_s3():
+                        with attempt:
+                            upload.upload_part_from_file(fp=f,
+                                                         part_num=next(part_num) + 1,
+                                                         size=end - start,
+                                                         headers=headers)
+                    start = end
+                assert f.tell() == file_size == start
+            except:
+                with panic(log=log):
+                    for attempt in retry_s3():
+                        with attempt:
+                            upload.cancel_upload()
+            else:
+                for attempt in retry_s3():
+                    with attempt:
+                        version = upload.complete_upload().version_id
+    for attempt in retry_s3():
+        with attempt:
+            key = bucket.get_key(fileID,
+                                 headers=headers,
+                                 version_id=version)
+    assert key.size == file_size
+    # Make resonably sure that the file wasn't touched during the upload
+    assert fileSizeAndTime(localFilePath) == (file_size, file_time)
+    return version
 
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
                                replace=True, expected_value=None):

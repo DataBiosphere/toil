@@ -57,7 +57,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
                                       bucket_location_to_region,
-                                      region_to_bucket_location)
+                                      region_to_bucket_location, MultiPartPipe, SinglePartPipe)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -1292,10 +1292,6 @@ class AWSJobStore(AbstractJobStore):
             else:
                 return {}
 
-        def _fileSizeAndTime(self, localFilePath):
-            file_stat = os.stat(localFilePath)
-            file_size, file_time = file_stat.st_size, file_stat.st_mtime
-            return file_size, file_time
 
         def __repr__(self):
             r = custom_repr
