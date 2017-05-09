@@ -67,6 +67,7 @@ class AbstractProvisioner(object):
         self.statsThreads = []
         self.statsPath = config.clusterStats if config else None
         self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
+        self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
 
 
     @staticmethod
@@ -152,6 +153,15 @@ class AbstractProvisioner(object):
                 self.stats[threadName] = stats
         else:
             pass
+
+    def setStaticNodesDict(self, nodes):
+        """
+        this is a very hacky way to ignore the nodes that were spun up before the scalar
+        started. This should probably be reworked in the near future.
+
+        :param nodes:
+        """
+        self.staticNodesDict = nodes
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         """
