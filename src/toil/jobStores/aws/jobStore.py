@@ -16,7 +16,6 @@ from __future__ import absolute_import
 
 from contextlib import contextmanager, closing
 import logging
-from multiprocessing import cpu_count
 
 import os
 import re
@@ -42,7 +41,6 @@ import boto.sdb
 from boto.exception import S3CreateError, S3DataError
 from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
-from concurrent.futures import ThreadPoolExecutor
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -57,90 +55,13 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
                                       bucket_location_to_region,
-                                      region_to_bucket_location, MultiPartPipe, SinglePartPipe)
+                                      region_to_bucket_location, MultiPartPipe, SinglePartPipe, copyKeyMultipart,
+                                      multipartUpload)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
-
-
-def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
-    """
-    Copies a key from a source key to a destination key in multiple parts. Note that if the
-    destination key exists it will be overwritten implicitly, and if it does not exist a new
-    key will be created. If the destination bucket does not exist an error will be raised.
-
-    :param boto.s3.key.Key srcKey: The source key to be copied from.
-    :param str dstBucketName: The name of the destination bucket for the copy.
-    :param str dstKeyName: The name of the destination key that will be created or overwritten.
-    :param int partSize: The size of each individual part, must be >= 5 MiB but large enough to
-           not exceed 10k parts for the whole file
-    :param dict headers: Any headers that should be passed.
-
-    :rtype: boto.s3.multipart.CompletedMultiPartUpload
-    :return: An object representing the completed upload.
-    """
-
-    def copyPart(partIndex):
-        if exceptions:
-            return None
-        try:
-            for attempt in retry_s3():
-                with attempt:
-                    start = partIndex * partSize
-                    end = min(start + partSize, totalSize)
-                    part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                     src_key_name=srcKey.name,
-                                                     src_version_id=srcKey.version_id,
-                                                     # S3 part numbers are 1-based
-                                                     part_num=partIndex + 1,
-                                                     # S3 range intervals are closed at the end
-                                                     start=start, end=end - 1,
-                                                     headers=headers)
-        except Exception as e:
-            if len(exceptions) < 5:
-                exceptions.append(e)
-                log.error('Failed to copy part number %d:', partIndex, exc_info=True)
-            else:
-                log.warn('Also failed to copy part number %d due to %s.', partIndex, e)
-            return None
-        else:
-            log.debug('Successfully copied part %d of %d.', partIndex, totalParts)
-            # noinspection PyUnboundLocalVariable
-            return part
-
-    totalSize = srcKey.size
-    totalParts = (totalSize + partSize - 1) / partSize
-    exceptions = []
-    # We need a location-agnostic connection to S3 so we can't use the one that we
-    # normally use for interacting with the job store bucket.
-    with closing(boto.connect_s3()) as s3:
-        for attempt in retry_s3():
-            with attempt:
-                dstBucket = s3.get_bucket(dstBucketName)
-                upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
-        log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
-                 srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-        try:
-            # We can oversubscribe cores by at least a factor of 16 since each copy task just
-            # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
-            # exactly free either. Lastly, we don't need more threads than we have parts.
-            with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                parts = list(executor.map(copyPart, xrange(0, totalParts)))
-                if exceptions:
-                    raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
-                assert len(filter(None, parts)) == totalParts
-        except:
-            with panic(log=log):
-                upload.cancel_upload()
-        else:
-            for attempt in retry_s3():
-                with attempt:
-                    completed = upload.complete_upload()
-                    log.info("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
-                             srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-                    return completed
 
 
 class AWSJobStore(AbstractJobStore):
@@ -1051,51 +972,9 @@ class AWSJobStore(AbstractJobStore):
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                if file_size <= self.outer.partSize:
-                    key = self.outer.filesBucket.new_key(key_name=self.fileID)
-                    key.name = self.fileID
-                    for attempt in retry_s3():
-                        with attempt:
-                            key.set_contents_from_filename(localFilePath, headers=headers)
-                    self.version = key.version_id
-                else:
-                    with open(localFilePath, 'rb') as f:
-                        for attempt in retry_s3():
-                            with attempt:
-                                upload = self.outer.filesBucket.initiate_multipart_upload(
-                                    key_name=self.fileID,
-                                    headers=headers)
-                        try:
-                            start = 0
-                            part_num = itertools.count()
-                            while start < file_size:
-                                end = min(start + self.outer.partSize, file_size)
-                                assert f.tell() == start
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.upload_part_from_file(fp=f,
-                                                                     part_num=next(part_num) + 1,
-                                                                     size=end - start,
-                                                                     headers=headers)
-                                start = end
-                            assert f.tell() == file_size == start
-                        except:
-                            with panic(log=log):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.cancel_upload()
-                        else:
-                            for attempt in retry_s3():
-                                with attempt:
-                                    self.version = upload.complete_upload().version_id
-                for attempt in retry_s3():
-                    with attempt:
-                        key = self.outer.filesBucket.get_key(self.fileID,
-                                                             headers=headers,
-                                                             version_id=self.version)
-                assert key.size == file_size
-                # Make resonably sure that the file wasn't touched during the upload
-                assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
+                version = multipartUpload(localFilePath, partSize=self.outer.partSize,
+                                          bucket=self.outer.filesBucket, fileID=self.fileID,
+                                          headers=headers)
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
