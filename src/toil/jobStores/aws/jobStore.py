@@ -978,7 +978,7 @@ class AWSJobStore(AbstractJobStore):
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                version = multipartUpload(localFilePath, partSize=self.outer.partSize,
+                self.version = multipartUpload(localFilePath, partSize=self.outer.partSize,
                                           bucket=self.outer.filesBucket, fileID=self.fileID,
                                           headers=headers)
 
