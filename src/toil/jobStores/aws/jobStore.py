@@ -55,8 +55,8 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
                                       bucket_location_to_region,
-                                      region_to_bucket_location, MultiPartPipe, SinglePartPipe, copyKeyMultipart,
-                                      multipartUpload, uploadReadable)
+                                      region_to_bucket_location, copyKeyMultipart,
+                                      multipartUpload, uploadReadable, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -405,11 +405,15 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(cls, readable, url):
         dstKey = cls._getKeyForUrl(url)
         try:
-            fileSize = os.fstat(readable.fileno()).st_size
+            readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
+            fileSize = readable.tell()  # tells the current position in file - in this case == size of file
+            readable.seek(0)  # go to the 0th byte from the start of the file
         except:
             # not a local file - fall back to naive method
+            log.debug("Could not determine file size of %s, uploading whole file at once", dstKey.name)
             dstKey.set_contents_from_string(readable.read())
         else:
+            log.debug("Uploading %s with size %s, will use multipart uploading if applicable", dstKey.name, fileSize)
             uploadReadable(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
         finally:
             dstKey.bucket.connection.close()
@@ -968,7 +972,7 @@ class AWSJobStore(AbstractJobStore):
                     raise
 
         def upload(self, localFilePath):
-            file_size, file_time = self._fileSizeAndTime(localFilePath)
+            file_size, file_time = fileSizeAndTime(localFilePath)
             if file_size <= self._maxInlinedSize():
                 with open(localFilePath) as f:
                     self.content = f.read()
