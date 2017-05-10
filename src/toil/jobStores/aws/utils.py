@@ -276,34 +276,7 @@ def multipartUpload(localFilePath, partSize, bucket, fileID, headers):
         version = key.version_id
     else:
         with open(localFilePath, 'rb') as f:
-            for attempt in retry_s3():
-                with attempt:
-                    upload = bucket.initiate_multipart_upload(
-                        key_name=fileID,
-                        headers=headers)
-            try:
-                start = 0
-                part_num = itertools.count()
-                while start < file_size:
-                    end = min(start + partSize, file_size)
-                    assert f.tell() == start
-                    for attempt in retry_s3():
-                        with attempt:
-                            upload.upload_part_from_file(fp=f,
-                                                         part_num=next(part_num) + 1,
-                                                         size=end - start,
-                                                         headers=headers)
-                    start = end
-                assert f.tell() == file_size == start
-            except:
-                with panic(log=log):
-                    for attempt in retry_s3():
-                        with attempt:
-                            upload.cancel_upload()
-            else:
-                for attempt in retry_s3():
-                    with attempt:
-                        version = upload.complete_upload().version_id
+            version = uploadReadable(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
             key = bucket.get_key(fileID,
@@ -312,6 +285,38 @@ def multipartUpload(localFilePath, partSize, bucket, fileID, headers):
     assert key.size == file_size
     # Make resonably sure that the file wasn't touched during the upload
     assert fileSizeAndTime(localFilePath) == (file_size, file_time)
+    return version
+
+
+def uploadReadable(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
+    for attempt in retry_s3():
+        with attempt:
+            upload = bucket.initiate_multipart_upload(
+                key_name=fileID,
+                headers=headers)
+    try:
+        start = 0
+        part_num = itertools.count()
+        while start < file_size:
+            end = min(start + partSize, file_size)
+            assert readable.tell() == start
+            for attempt in retry_s3():
+                with attempt:
+                    upload.upload_part_from_file(fp=readable,
+                                                 part_num=next(part_num) + 1,
+                                                 size=end - start,
+                                                 headers=headers)
+            start = end
+        assert readable.tell() == file_size == start
+    except:
+        with panic(log=log):
+            for attempt in retry_s3():
+                with attempt:
+                    upload.cancel_upload()
+    else:
+        for attempt in retry_s3():
+            with attempt:
+                version = upload.complete_upload().version_id
     return version
 
 

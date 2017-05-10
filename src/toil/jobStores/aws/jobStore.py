@@ -56,7 +56,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       bucket_location_to_region,
                                       region_to_bucket_location, MultiPartPipe, SinglePartPipe, copyKeyMultipart,
-                                      multipartUpload)
+                                      multipartUpload, uploadReadable)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -405,10 +405,12 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(cls, readable, url):
         dstKey = cls._getKeyForUrl(url)
         try:
-            dstKey.send_file(readable, chunked_transfer=True)
-        except S3DataError:
-            # readable does not suport seeking - fall back to naive method
+            fileSize = os.fstat(readable.fileno()).st_size
+        except:
+            # not a local file - fall back to naive method
             dstKey.set_contents_from_string(readable.read())
+        else:
+            uploadReadable(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
         finally:
             dstKey.bucket.connection.close()
 
