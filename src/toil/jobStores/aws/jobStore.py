@@ -55,7 +55,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
-                                      multipartUpload, uploadReadable, fileSizeAndTime)
+                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -413,7 +413,7 @@ class AWSJobStore(AbstractJobStore):
                 canDetermineSize = False
             if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
                 log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
-                uploadReadable(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
+                chunkedFileUpload(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
             else:
                 # we either don't know the size, or the size is small
                 log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
@@ -981,9 +981,9 @@ class AWSJobStore(AbstractJobStore):
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                self.version = multipartUpload(localFilePath, partSize=self.outer.partSize,
-                                          bucket=self.outer.filesBucket, fileID=self.fileID,
-                                          headers=headers)
+                self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
+                                              bucket=self.outer.filesBucket, fileID=self.fileID,
+                                              headers=headers)
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):

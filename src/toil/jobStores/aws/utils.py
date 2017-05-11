@@ -184,7 +184,7 @@ def fileSizeAndTime(localFilePath):
     return file_size, file_time
 
 
-def multipartUpload(localFilePath, partSize, bucket, fileID, headers):
+def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     Uploads a file to s3, using multipart uploading if applicable
 
@@ -205,19 +205,19 @@ def multipartUpload(localFilePath, partSize, bucket, fileID, headers):
         version = key.version_id
     else:
         with open(localFilePath, 'rb') as f:
-            version = uploadReadable(f, bucket, fileID, file_size, headers, partSize)
+            version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
             key = bucket.get_key(fileID,
                                  headers=headers,
                                  version_id=version)
     assert key.size == file_size
-    # Make resonably sure that the file wasn't touched during the upload
+    # Make reasonably sure that the file wasn't touched during the upload
     assert fileSizeAndTime(localFilePath) == (file_size, file_time)
     return version
 
 
-def uploadReadable(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
+def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
     for attempt in retry_s3():
         with attempt:
             upload = bucket.initiate_multipart_upload(
