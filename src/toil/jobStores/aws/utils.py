@@ -21,7 +21,6 @@ import logging
 import types
 
 import errno
-import uuid
 from contextlib import closing
 from ssl import SSLError
 from multiprocessing import cpu_count
@@ -29,7 +28,6 @@ from multiprocessing import cpu_count
 # Python 3 compatibility imports
 import itertools
 
-from StringIO import StringIO
 
 import boto
 from bd2k.util.exceptions import panic
@@ -43,76 +41,7 @@ from boto.exception import (SDBResponseError,
                             S3CreateError,
                             S3CopyError)
 
-from toil.jobStores.utils import WritablePipe
-
 log = logging.getLogger(__name__)
-
-
-class MultiPartPipe(WritablePipe):
-
-    def __init__(self, fileInfo, partSize, bucket):
-        super(MultiPartPipe, self).__init__()
-        self.info = fileInfo
-        self.partSize = partSize
-        self.bucket = bucket
-
-    def readFrom(self, readable, allowInlining=False):
-        buf = readable.read(self.partSize)
-        if allowInlining and len(buf) <= self.info._maxInlinedSize():
-            self.info.content = buf
-        else:
-            headers = self.info._s3EncryptionHeaders()
-            for attempt in retry_s3():
-                with attempt:
-                    upload = self.bucket.initiate_multipart_upload(
-                        key_name=self.info.fileID,
-                        headers=headers)
-            try:
-                for part_num in itertools.count():
-                    # There must be at least one part, even if the file is empty.
-                    if len(buf) == 0 and part_num > 0:
-                        break
-                    for attempt in retry_s3():
-                        with attempt:
-                            upload.upload_part_from_file(fp=StringIO(buf),
-                                                         # part numbers are 1-based
-                                                         part_num=part_num + 1,
-                                                         headers=headers)
-                    if len(buf) == 0:
-                        break
-                    buf = readable.read(self.partSize)
-            except:
-                with panic(log=log):
-                    for attempt in retry_s3():
-                        with attempt:
-                            upload.cancel_upload()
-            else:
-                for attempt in retry_s3():
-                    with attempt:
-                        self.info.version = upload.complete_upload().version_id
-
-
-class SinglePartPipe(WritablePipe):
-
-    def __init__(self, fileInfo, awsJobStore):
-        super(SinglePartPipe, self).__init__()
-        self.info = fileInfo
-        self.store = awsJobStore
-
-    def readFrom(self, readable, allowInlining=False):
-        buf = readable.read()
-        if allowInlining and len(buf) <= self.info._maxInlinedSize():
-            self.info.content = buf
-        else:
-            key = self.store.filesBucket.new_key(key_name=self.info.fileID)
-            buf = StringIO(buf)
-            headers = self.info._s3EncryptionHeaders()
-            for attempt in retry_s3():
-                with attempt:
-                    assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                 headers=headers)
-            self.info.version = key.version_id
-
 
 
 class SDBHelper(object):

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from contextlib import contextmanager, closing
 import logging
 
-import os
 import re
 import uuid
 import base64
@@ -38,7 +37,7 @@ from boto.sdb.connection import SDBConnection
 from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
-from boto.exception import S3CreateError, S3DataError
+from boto.exception import S3CreateError
 from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
 
