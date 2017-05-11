@@ -404,18 +404,18 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(cls, readable, url):
         dstKey = cls._getKeyForUrl(url)
         try:
-            multipart = True
+            canDetermineSize = True
             try:
                 readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
                 fileSize = readable.tell()  # tells the current position in file - in this case == size of file
                 readable.seek(0)  # go to the 0th byte from the start of the file
             except:
-                # not a local file - fall back to naive method
-                multipart = False
-            if multipart and fileSize > 0:
+                canDetermineSize = False
+            if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
                 log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
                 uploadReadable(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
             else:
+                # we either don't know the size, or the size is small
                 log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
                 dstKey.set_contents_from_string(readable.read())
         finally:
