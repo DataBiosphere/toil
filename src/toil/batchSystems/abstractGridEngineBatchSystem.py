@@ -117,7 +117,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
 
                 # submit job and get batch system ID
                 batchJobID = self.submitJob(subLine)
-                logger.debug("Submitted job %d", batchJobID)
+                logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
                 # TODO: Note that this currently stores a tuple of (batch system

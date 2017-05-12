@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 import logging
 import os
+import stat
 from pipes import quote
 import subprocess
 import time
@@ -23,6 +24,7 @@ import sys
 import xml.etree.ElementTree as ET
 import tempfile
 
+from toil import resolveEntryPoint
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 
@@ -73,9 +75,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
             so, se = process.communicate()
+            result = so
             # TODO: the full URI here may be needed on complex setups, stripping
             # down to integer job ID only may be bad long-term
-            result = int(so.strip().split('.')[0])
+            #logger.debug("Submitting job with: {}\n".format(so))
+            #if so is not '':
+            #    result = int(so.strip().split('.')[0])
             return result
 
         def getJobExitCode(self, torqueJobID):
@@ -106,7 +111,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # qsubline = ['qsub', '-V', '-j', 'oe', '-o', '/dev/null',
             #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
-            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
+            #qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
+            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID), '-j', 'oe', '-e', 'cwltoil_pbspro_err.log', '-o', 'cwltoil_pbspro_out.log']
+            #qsubline.append('-V')
+            #qsubline.append('-v')
+            #qsubline.append('PATH')
+            #qsubline.append('-v')
+            #qsubline.append('PROJECT')
 
             if self.boss.environment:
                 qsubline.append('-v')
@@ -129,19 +140,29 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             now this goes to default tempdir
             """
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
+            venv_prefix = "source activate root"
             fh = open(tmpFile , 'w')
-            fh.write("$!/bin/bash\n\n")
+            fh.write("#!/bin/sh\n")
+            fh.write("#PBS -q normalsp\n")
+            fh.write("#PBS -l walltime=00:10:00\n")
+            fh.write("#PBS -e torque_run_wrapper_err.log\n")
+            fh.write("#PBS -o torque_run_wrapper_out.log\n\n")
             fh.write("cd $PBS_O_WORKDIR\n\n")
+            fh.write(venv_prefix + " && ")
+            #command = command.replace(command, resolveEntryPoint('_toil_worker'))
             fh.write(command + "\n")
+
             fh.close
+            logger.debug('Chmod wrapper with exec permissions: ' + tmpFile)
+            os.chmod(tmpFile, stat.S_IEXEC | stat.S_IXGRP | stat.S_IRUSR)
+            
             return tmpFile
 
     @classmethod
     def obtainSystemConstants(cls):
 
         # See: https://github.com/BD2KGenomics/toil/pull/1617#issuecomment-293525747
-        logger.debug("PBS/Torque does not need obtainSystemConstants to assess global \
-                    cluster resources.")
+        logger.debug("PBS/Torque does not need obtainSystemConstants to assess global cluster resources.")
 
 
         #return maxCPU, maxMEM
