@@ -165,9 +165,10 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
-                fd, absPath = self._getTempFile()
-                os.link(self._extractPathFromUrl(url), absPath)
+                fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
+                os.unlink(absPath)
+                os.link(self._extractPathFromUrl(url), absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
