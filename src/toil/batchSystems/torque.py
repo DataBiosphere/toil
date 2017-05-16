@@ -45,17 +45,25 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         def getRunningJobIDs(self):
             times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
-            process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
+            currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
+            logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
+            # Limit qstat to current username to avoid clogging the batch system on heavily loaded clusters
+            #job_user = os.environ.get('USER')
+            #process = subprocess.Popen(['qstat', '-u', job_user], stdout=subprocess.PIPE)
+            process = subprocess.Popen(['qstat'], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
+            # so instead we stick with plain commandline "qstat" outputs
             for currline in stdout.split('\n'):
                 items = currline.strip().split()
                 if items:
-                    jobid = items[0].strip().split('.')[0]
+                    jobid = items[0].strip()
+                    if jobid in currentjobs:
+                        logger.debug("getRunningJobIDs job status for is: " + items[4])
                     if jobid in currentjobs and items[4] == 'R':
                         walltime = items[3]
+                        logger.debug("getRunningJobIDs qstat reported walltime is: " + walltime)
                         # normal qstat has a quirk with job time where it reports '0'
                         # when initially running; this catches this case
                         if walltime == '0':
@@ -64,6 +72,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                             walltime = time.mktime(time.strptime(walltime, "%H:%M:%S"))
                         times[currentjobs[jobid]] = walltime
 
+            logger.debug("Job times from qstat are: " + str(times))
             return times
 
         def killJob(self, jobID):
