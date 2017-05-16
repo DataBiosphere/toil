@@ -137,6 +137,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--mesosMaster=%s:5050' % self.leader.private_ip_address,
                        '--clean=always',
                        '--retryCount=2',
+                       '--clusterStats=/home/',
                        '--logDebug',
                        '--provisioner=aws']
 
@@ -276,10 +277,6 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             command.extend(toilOptions)
             self.sshUtil(command)
 
-    @integrative
-    def testAutoScaledCluster(self):
-        self._test()
-
 
 class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
@@ -292,8 +289,6 @@ class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         self.instanceType = 'm3.large' # instance needs to be available on the spot market
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
-    def test(self):
-        self._test(spotInstances=True, fulfillableBid=False)
 
     def _getScript(self):
         def userScript():
