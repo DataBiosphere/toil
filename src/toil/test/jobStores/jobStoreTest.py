@@ -1180,7 +1180,6 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
-@pytest.mark.xfail(reason="AWS API limitations")
 @needs_aws
 class SSEAWSJobStoreTest(AWSJobStoreTest, AbstractSSEJobStoreTest.Test):
     pass

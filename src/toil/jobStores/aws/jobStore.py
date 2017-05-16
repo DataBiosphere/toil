@@ -414,7 +414,8 @@ class AWSJobStore(AbstractJobStore):
                                                         sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
-        if issubclass(otherCls, AWSJobStore):
+        if issubclass(otherCls, AWSJobStore) and (self.sse == self.sseKeyPath):
+            # either no encryption or SSE-C encryption
             dstKey = self._getKeyForUrl(url)
             try:
                 info = self.FileInfo.loadOrFail(jobStoreFileID)
