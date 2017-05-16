@@ -460,7 +460,8 @@ class AbstractJobStoreTest:
                                  oneMiB=2 ** 20,
                                  partSizeMinusOne=cls.mpTestPartSize - 1,
                                  partSize=cls.mpTestPartSize,
-                                 partSizePlusOne=cls.mpTestPartSize + 1))
+                                 partSizePlusOne=cls.mpTestPartSize + 1,
+                                 tenGb=80000000000))
 
             def testImportSharedFile(self, otherCls):
                 """
