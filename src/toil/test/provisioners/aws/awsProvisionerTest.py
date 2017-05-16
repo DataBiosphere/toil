@@ -137,7 +137,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--mesosMaster=%s:5050' % self.leader.private_ip_address,
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/home/',
                        '--logDebug',
                        '--provisioner=aws']
 
@@ -221,11 +220,6 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @needs_aws
     def testAutoScale(self):
         self._test(spotInstances=False)
-
-    @integrative
-    @needs_aws
-    def testSpotAutoScale(self):
-        self._test(spotInstances=True)
 
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
