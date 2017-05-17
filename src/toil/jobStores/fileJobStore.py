@@ -168,12 +168,18 @@ class FileJobStore(AbstractJobStore):
                 fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
                 os.unlink(absPath)
-                os.link(self._extractPathFromUrl(url), absPath)
+                try:
+                    os.link(self._extractPathFromUrl(url), absPath)
+                except OSError:
+                    shutil.copyfile(self._extractPathFromUrl(url), absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
-                os.link(self._extractPathFromUrl(url), path)
+                try:
+                    os.link(self._extractPathFromUrl(url), path)
+                except:
+                    shutil.copyfile(self._extractPathFromUrl(url), path)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
