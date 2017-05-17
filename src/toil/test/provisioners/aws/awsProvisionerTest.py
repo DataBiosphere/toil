@@ -199,7 +199,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), 'sortFile')
         with open(fileToSort, 'w') as f:
-            f.write('01234567890123456789012345678901' * 1000)
+            f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
         self.rsyncUtil(fileToSort, ':/home/sortFile')
         os.unlink(fileToSort)
