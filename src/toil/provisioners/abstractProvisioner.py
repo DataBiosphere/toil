@@ -68,7 +68,10 @@ class AbstractProvisioner(object):
         self.statsPath = config.clusterStats if config else None
         self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
         self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
+        self.static = {}
 
+    def getStaticNodes(self, preemptable):
+        return self.static[preemptable]
 
     @staticmethod
     def retryPredicate(e):
@@ -86,11 +89,11 @@ class AbstractProvisioner(object):
             self._shutDownStats()
         log.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes > len(self.staticNodesDict):  # ignore static nodes
+        if totalNodes > len(self.getStaticNodes(preemptable)):  # ignore static nodes
             raise RuntimeError('Provisioner could not terminate all autoscaled nodes. There are '
-                               '%s nodes left in the cluster, %s of which were statically provisioned' % (totalNodes, len(self.staticNodesDict))
+                               '%s nodes left in the cluster, %s of which were statically provisioned' % (totalNodes, len(self.getStaticNodes(preemptable)))
                                )
-        elif totalNodes < len(self.staticNodesDict):  # ignore static nodes
+        elif totalNodes < len(self.getStaticNodes(preemptable)):  # ignore static nodes
             raise RuntimeError('Provisioner incorrectly terminated statically provisioned nodes.')
 
     def _shutDownStats(self):
@@ -158,14 +161,14 @@ class AbstractProvisioner(object):
         else:
             pass
 
-    def setStaticNodesDict(self, nodes):
+    def setStaticNodesDict(self, nodes, preemptable):
         """
         this is a very hacky way to ignore the nodes that were spun up before the scalar
         started. This should probably be reworked in the near future.
 
         :param nodes:
         """
-        self.staticNodesDict = nodes
+        self.static[preemptable] = nodes
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         """
@@ -222,7 +225,8 @@ class AbstractProvisioner(object):
             # nodes for yet. We'll ignore those, too, unless forced.
             nodesToTerminate = []
             for instance, nodeInfo in nodes:
-                if instance.private_ip_address in self.staticNodesDict:
+                staticNodes = self.getStaticNodes(preemptable)
+                if instance.private_ip_address in staticNodes:
                     # we don't want to automatically terminate any statically
                     # provisioned nodes
                     continue
