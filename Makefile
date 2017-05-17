@@ -16,15 +16,15 @@ define help
 
 Supported targets: prepare, develop, docs, sdist, clean, test, pypi, docker and push_docker.
 
-Please note that all build targets require a virtualenv to be active. 
+Please note that all build targets require a virtualenv to be active.
 
 The 'prepare' target installs Toil's build requirements into the current virtualenv.
 
-The 'develop' target creates an editable install of Toil and its runtime requirements in the 
-current virtualenv. The install is called 'editable' because changes to the source code 
-immediately affect the virtualenv. Set the 'extras' variable to ensure that the 'develop' target 
-installs support for extras. Consult setup.py for the list of supported extras. To install Toil 
-in develop mode with all extras, run 
+The 'develop' target creates an editable install of Toil and its runtime requirements in the
+current virtualenv. The install is called 'editable' because changes to the source code
+immediately affect the virtualenv. Set the 'extras' variable to ensure that the 'develop' target
+installs support for extras. Consult setup.py for the list of supported extras. To install Toil
+in develop mode with all extras, run
 
 	make develop extras=[mesos,aws,google,azure,cwl,encryption]
 
@@ -214,7 +214,7 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.4.1 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1
 
 
 check_venv:

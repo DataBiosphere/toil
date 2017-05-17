@@ -28,7 +28,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.0-2.0.89.ubuntu1404',
+                         'mesos=1.0.1-2.0.93.ubuntu1404',
+                         "nodejs", # CWL support for javascript expressions
                          'rsync',
                          'screen'])
 
@@ -61,6 +62,9 @@ print(heredoc('''
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
+        && echo "deb http://deb.nodesource.com/node_6.x trusty main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
         && apt-get -y update \
         && apt-get -y install {dependencies} \
         && apt-get clean && rm -rf /var/lib/apt/lists/*

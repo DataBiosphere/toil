@@ -104,7 +104,9 @@ class AWSProvisioner(AbstractProvisioner):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     @staticmethod
     def retryPredicate(e):
@@ -659,11 +661,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
-        pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'pending'})
-
-        runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'running'})
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'pending'})
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'running'})
         instances = set(pendingInstances)
         if not preemptable and not both:
             return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
