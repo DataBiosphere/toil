@@ -222,6 +222,11 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testAutoScale(self):
         self._test(spotInstances=False)
 
+    @integrative
+    @needs_aws
+    def testSpotAutoScale(self):
+        self._test(spotInstances=True)
+
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """

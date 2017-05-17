@@ -32,8 +32,10 @@ test_suites = {
         'CachingFileStoreTestWithGoogleJobStore',
         None],
     'integration-test': [
-        'AWSAutoscaleTest',
-        'UtilsTest and testAWSProvisionerUtils'
+        'AWSRestartTest',
+        'PremptableDeficitCompensationTest',
+        'UtilsTest and testAWSProvisionerUtils',
+        'AWSAutoscaleTest'
     ]}
 
 
