@@ -674,10 +674,11 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _getWorkersInCluster(self, preemptable):
         entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True)
-        logger.debug('All nodes in cluster %s', entireCluster)
-        workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP and
-                           preemptable != (i.spot_instance_request_id is None)]
-        logger.debug('Workers found in cluster %s', workerInstances)
+        logger.debug('All nodes in cluster: %s', entireCluster)
+        workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP]
+        logger.debug('All workers found in cluster: %s', workerInstances)
+        workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
+        logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return workerInstances
 

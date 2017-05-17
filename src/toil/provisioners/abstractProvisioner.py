@@ -86,8 +86,12 @@ class AbstractProvisioner(object):
             self._shutDownStats()
         log.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes != len(self.staticNodesDict):  # ignore static nodes
-            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
+        if totalNodes > len(self.staticNodesDict):  # ignore static nodes
+            raise RuntimeError('Provisioner could not terminate all autoscaled nodes. There are '
+                               '%s nodes left in the cluster, %s of which were statically provisioned' % (totalNodes, len(self.staticNodesDict))
+                               )
+        elif totalNodes < len(self.staticNodesDict):  # ignore static nodes
+            raise RuntimeError('Provisioner incorrectly terminated statically provisioned nodes.')
 
     def _shutDownStats(self):
         def getFileName():
