@@ -79,3 +79,10 @@ class Cluster(object):
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
+
+class Node(object):
+    def __init__(self, publicIP, privateIP, name, nodeInfo=None):
+        self.publicIP = publicIP
+        self.privateIP = privateIP
+        self.nodeInfo = nodeInfo
+        self.name = name
