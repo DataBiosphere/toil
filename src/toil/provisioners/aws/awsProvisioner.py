@@ -45,23 +45,53 @@ logger = logging.getLogger(__name__)
 
 class AWSProvisioner(AbstractProvisioner):
 
-    def __init__(self, config, batchSystem):
+    def __init__(self, config=None, batchSystem=None):
+        """
+        Initialize the AWS Provisioner object. The object is created in two distinct
+        ways:
+
+        1.  The first is by the `toil launch-cluster` utility which does not pass a config
+            and creates a "static" provisioner. Fields are initialized to None and
+            are set later when the leader is created via `self.launchCluster`. This
+            round-about initialization is necessary because launch-cluster is a
+            classmethod.
+
+        2.  The second is used when doing regular autoscaling and the provisioner is
+            initialized with a config file. This happens in `Toil._setProvisioner()`
+
+        Probably in the future these two models of provisioner should be separated
+        into a custer manager class which is initialized with a clusterName and a
+        provisioner class which does autoscaling with a cluster manager.
+
+        :param config: Optional config object from common.py
+        :param batchSystem:
+        """
         super(AWSProvisioner, self).__init__(config, batchSystem)
-        self.instanceMetaData = get_instance_metadata()
-        self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
-        self.ctx = self._buildContext(clusterName=self.clusterName)
         self.spotBid = None
-        assert config.preemptableNodeType or config.nodeType
-        if config.preemptableNodeType is not None:
-            nodeBidTuple = config.preemptableNodeType.split(':', 1)
-            self.spotBid = nodeBidTuple[1]
-            self.instanceType = ec2_instance_types[nodeBidTuple[0]]
+        # assert config.preemptableNodeType or config.nodeType
+        if config:
+            self.instanceMetaData = get_instance_metadata()
+            self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
+            self.ctx = self._buildContext(clusterName=self.clusterName)
+            self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
+            self.keyName = self.instanceMetaData['public-keys'].keys()[0]
+            self.tags = self._getLeader(self.clusterName).tags
+            self.masterPublicKey = self.setSSH()
+            if config.preemptableNodeType is not None:
+                nodeBidTuple = config.preemptableNodeType.split(':', 1)
+                self.spotBid = nodeBidTuple[1]
+                self.instanceType = ec2_instance_types[nodeBidTuple[0]]
+            else:
+                self.instanceType = ec2_instance_types[config.nodeType]
         else:
-            self.instanceType = ec2_instance_types[config.nodeType]
-        self.leaderIP = self.instanceMetaData['local-ipv4']
-        self.keyName = self.instanceMetaData['public-keys'].keys()[0]
-        self.masterPublicKey = self.setSSH()
-        self.tags = self._getLeader(self.clusterName).tags
+            self.ctx = None
+            self.clusterName = None
+            self.instanceMetaData = None
+            self.leaderIP = None
+            self.keyName = None
+            self.tags = None
+            self.masterPublicKey = None
+        self.subnetID = None
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
@@ -73,7 +103,9 @@ class AWSProvisioner(AbstractProvisioner):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     @staticmethod
     def retryPredicate(e):
@@ -258,7 +290,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
         if wait:
@@ -366,46 +398,64 @@ class AWSProvisioner(AbstractProvisioner):
             finally:
                 s.close()
 
-    @classmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None, userTags=None, zone=None,
-                      vpcSubnet=None):
+    def launchCluster(self, instanceType, keyName, clusterName, workers=0,
+                      spotBid=None, userTags=None, zone=None, vpcSubnet=None):
         if userTags is None:
             userTags = {}
-        ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        profileARN = cls._getProfileARN(ctx)
+        ctx = self._buildContext(clusterName=clusterName, zone=zone)
+        profileARN = self._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
-        sgs = cls._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = cls._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
+        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
-                          sshKey='AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
+                          sshKey=self.masterPublicKey,
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': instanceType,
                   'user_data': userData, 'block_device_map': bdm,
-                  'instance_profile_arn': profileARN}
+                  'instance_profile_arn': profileARN,
+                  'placement': zone}
         if vpcSubnet:
             kwargs["subnet_id"] = vpcSubnet
         if not spotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=cls._discoverAMI(ctx),
+            create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
                                       spec=kwargs, num_instances=1)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
             list(create_spot_instances(ec2=ctx.ec2,
                                        price=spotBid,
-                                       image_id=cls._discoverAMI(ctx),
+                                       image_id=self._discoverAMI(ctx),
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
                                        num_instances=1))
-        leader = cls._getLeader(clusterName=clusterName, wait=True, zone=zone)
+        leader = self._getLeader(clusterName=clusterName, wait=True, zone=zone)
 
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
-        cls._addTags([leader], defaultTags)
+
+        # if we running launch cluster we need to save this data as it won't be generated
+        # from the metadata. This data is needed to launch worker nodes.
+        self.leaderIP = leader.private_ip_address
+        self._addTags([leader], defaultTags)
+        self.ctx = ctx
+        self.spotBid = spotBid
+        self.instanceType = ec2_instance_types[instanceType]
+        self.clusterName = clusterName
+        self.keyName = keyName
+        self.tags = leader.tags
+        self.subnetID = leader.subnet_id
+        if workers:
+            # assuming that if the leader was launched without a spotbid then all workers
+            # will be non-preemptable
+            workersCreated = self.setNodeCount(workers, preemptable=bool(spotBid))
+            logger.info('Added %d workers with %d workers requested', workersCreated, workers)
+
         return leader
 
     @classmethod
@@ -414,7 +464,7 @@ class AWSProvisioner(AbstractProvisioner):
             return e.status == 400 and 'dependent object' in e.body
 
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls.__getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
@@ -451,16 +501,11 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
-        # get all volume ids now. After termination the block device mapping attr
-        # will not be populated
-        ebsIDs = [x.block_device_mapping["/dev/xvda"].volume_id for x in instances]
-
         logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
-            wait_transition(instance, {'running', 'shutting-down'}, 'terminated')
-        cls._deleteRootEBS(ebsIDs, ctx)
+            wait_transition(instance, {'pending', 'running', 'shutting-down'}, 'terminated')
         logger.info('Instance(s) terminated.')
 
     @classmethod
@@ -471,12 +516,6 @@ class AWSProvisioner(AbstractProvisioner):
                 ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
-    @classmethod
-    def _deleteRootEBS(cls, ebsIDs, ctx):
-        for volumeID in ebsIDs:
-            for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
-                with attempt:
-                    ctx.ec2.delete_volume(volumeID)
 
     def considerNode(self, executorInfo):
         """
@@ -484,7 +523,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param executorInfo:
         :return:
         """
-
+        pass
 
     def _logAndTerminate(self, instances):
         self._terminateInstances(instances, self.ctx)
@@ -546,8 +585,8 @@ class AWSProvisioner(AbstractProvisioner):
     def _addNodes(self, instances, numNodes, preemptable=False):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
-        keyPath = '' if not self.config.sseKey else self.config.sseKey
-        entryPoint = 'mesos-slave' if not self.config.sseKey else "waitForKey.sh"
+        keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
+        entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
         workerData = dict(role='worker',
                           image=applianceSelf(),
                           entrypoint=entryPoint,
@@ -560,8 +599,9 @@ class AWSProvisioner(AbstractProvisioner):
                   'instance_type': self.instanceType.name,
                   'user_data': userData,
                   'block_device_map': bdm,
-                  'instance_profile_arn': arn}
-        kwargs["subnet_id"] = self._getClusterInstance(self.instanceMetaData).subnet_id
+                  'instance_profile_arn': arn,
+                  'placement': getCurrentAWSZone()}
+        kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
         instancesLaunched = []
 
@@ -601,7 +641,7 @@ class AWSProvisioner(AbstractProvisioner):
         return len(instancesLaunched)
 
     def _propagateKey(self, instances):
-        if not self.config.sseKey:
+        if not self.config or not self.config.sseKey:
             return
         for node in instances:
             for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
@@ -616,7 +656,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
-        root_vol = BlockDeviceType()
+        root_vol = BlockDeviceType(delete_on_termination=True)
         root_vol.size = 50
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
@@ -628,12 +668,15 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
-    def __getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
-        pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'pending'})
-
-        runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                       'instance-state-name': 'running'})
+    def _getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'pending'})
+        for attempt in retry(predicate=AWSProvisioner.throttlePredicate):
+            with attempt:
+                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'running'})
         instances = set(pendingInstances)
         if not preemptable and not both:
             return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
@@ -642,18 +685,13 @@ class AWSProvisioner(AbstractProvisioner):
         elif both:
             return [x for x in instances.union(set(runningInstances))]
 
-    def _getNodesInCluster(self, preeptable=False, both=False):
-        if not both:
-            return self.__getNodesInCluster(self.ctx, self.clusterName, preemptable=preeptable)
-        else:
-            return self.__getNodesInCluster(self.ctx, self.clusterName, both=both)
-
     def _getProvisionedNodes(self, preemptable):
-        entireCluster = self._getNodesInCluster(both=True)
-        logger.debug('All nodes in cluster %s', entireCluster)
-        workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP and
-                           preemptable != (i.spot_instance_request_id is None)]
-        logger.debug('Workers found in cluster %s', workerInstances)
+        entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True)
+        logger.debug('All nodes in cluster: %s', entireCluster)
+        workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP]
+        logger.debug('All workers found in cluster: %s', workerInstances)
+        workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
+        logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return workerInstances
 

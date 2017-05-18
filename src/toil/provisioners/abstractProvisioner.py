@@ -51,14 +51,27 @@ class AbstractProvisioner(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, config, batchSystem):
+
+    def __init__(self, config=None, batchSystem=None):
+        """
+        Initialize provisioner. If config and batchSystem are not specified, the
+        provisioner is being used to manage nodes without a workflow
+
+        :param config: Config from common.py
+        :param batchSystem: The batchSystem used during run
+        """
         self.config = config
         self.batchSystem = batchSystem
         self.stop = False
         self.stats = {}
         self.statsThreads = []
-        self.statsPath = config.clusterStats
-        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
+        self.statsPath = config.clusterStats if config else None
+        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
+        self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
+        self.static = {}
+
+    def getStaticNodes(self, preemptable):
+        return self.static[preemptable]
 
     @staticmethod
     def retryPredicate(e):
@@ -76,8 +89,12 @@ class AbstractProvisioner(object):
             self._shutDownStats()
         log.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes != 0:
-            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
+        if totalNodes > len(self.getStaticNodes(preemptable)):  # ignore static nodes
+            raise RuntimeError('Provisioner could not terminate all autoscaled nodes. There are '
+                               '%s nodes left in the cluster, %s of which were statically provisioned' % (totalNodes, len(self.getStaticNodes(preemptable)))
+                               )
+        elif totalNodes < len(self.getStaticNodes(preemptable)):  # ignore static nodes
+            raise RuntimeError('Provisioner incorrectly terminated statically provisioned nodes.')
 
     def _shutDownStats(self):
         def getFileName():
@@ -144,6 +161,15 @@ class AbstractProvisioner(object):
         else:
             pass
 
+    def setStaticNodesDict(self, nodes, preemptable):
+        """
+        this is a very hacky way to ignore the nodes that were spun up before the scalar
+        started. This should probably be reworked in the near future.
+
+        :param nodes:
+        """
+        self.static[preemptable] = nodes
+
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         """
         Attempt to grow or shrink the number of prepemptable or non-preemptable worker nodes in
@@ -160,7 +186,7 @@ class AbstractProvisioner(object):
                of nodes. For example, when downsizing a cluster, a provisioner might leave nodes
                running if they have active jobs running on them.
 
-        :rtype: int :return: the number of nodes in the cluster after making the necessary
+        :rtype: int :return: the number of worker nodes in the cluster after making the necessary
                 adjustments. This value should be, but is not guaranteed to be, close or equal to
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
@@ -192,7 +218,8 @@ class AbstractProvisioner(object):
             # iMap = ip : instance
             ipMap = {instance.private_ip_address: instance for instance in instances}
             def _nodeFilter(executorInfo):
-                return not bool(self._considerNodes([(ipMap.get(executorInfo.nodeAddress), executorInfo.nodeInfo)]))
+                return not bool(self._considerNodes([(ipMap.get(executorInfo.nodeAddress), executorInfo.nodeInfo)],
+                                                    preemptable=preemptable))
             with self.batchSystem.nodeFiltering(_nodeFilter):
                 # while this context manager is active, the batch system will not launch any
                 # news tasks on nodes that are being considered for termination (as determined by the
@@ -201,7 +228,7 @@ class AbstractProvisioner(object):
                 # Join nodes and instances on private IP address.
                 nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
                 log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
-                nodesToTerminate = self._considerNodes(nodes, force)
+                nodesToTerminate = self._considerNodes(nodes, force, preemptable=preemptable)
                 nodesToTerminate = nodesToTerminate[:numNodes]
                 if log.isEnabledFor(logging.DEBUG):
                     for instance, nodeInfo in nodesToTerminate:
@@ -218,13 +245,18 @@ class AbstractProvisioner(object):
             self._logAndTerminate(instances)
         return len(instances)
 
-    def _considerNodes(self, nodes, force=False):
+    def _considerNodes(self, nodes, force=False, preemptable=False):
         # Unless forced, exclude nodes with runnning workers. Note that it is possible for
         # the batch system to report stale nodes for which the corresponding instance was
         # terminated already. There can also be instances that the batch system doesn't have
         # nodes for yet. We'll ignore those, too, unless forced.
         nodesToTerminate = []
         for instance, nodeInfo in nodes:
+            staticNodes = self.getStaticNodes(preemptable)
+            if instance.private_ip_address in staticNodes:
+                # we don't want to automatically terminate any statically
+                # provisioned nodes
+                continue
             if force:
                 nodesToTerminate.append((instance, nodeInfo))
             elif nodeInfo is not None and nodeInfo.workers < 1:

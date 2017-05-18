@@ -48,8 +48,8 @@ def runSetup():
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170217172322',
-                'schema-salad==2.2.20170216125639',
+                'cwltool==1.0.20170413194156',
+                'schema-salad==2.5.20170328195758',
                 'cwltest>=1.0.20170214185319']},
         package_dir={'': 'src'},
         packages=find_packages(where='src',

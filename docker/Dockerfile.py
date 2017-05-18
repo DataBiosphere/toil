@@ -28,7 +28,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.0-2.0.89.ubuntu1404',
+                         'mesos=1.0.1-2.0.93.ubuntu1404',
+                         "nodejs", # CWL support for javascript expressions
                          'rsync',
                          'screen'])
 
@@ -61,6 +62,9 @@ print(heredoc('''
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
+        && echo "deb http://deb.nodesource.com/node_6.x trusty main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
         && apt-get -y update \
         && apt-get -y install {dependencies} \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -84,8 +88,9 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN wget -O /usr/bin/docker https://get.docker.com/builds/Linux/x86_64/docker-1.10.3 \
-        && chmod +x /usr/bin/docker
+    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.12.3.tgz \
+         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
+         && chmod u+x /usr/local/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
