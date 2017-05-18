@@ -75,6 +75,19 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             logger.debug("Job times from qstat are: " + str(times))
             return times
 
+        def getUpdatedBatchJob(self, maxWait):
+            try:
+                logger.debug("getUpdatedBatchJob AAAAAAAA")
+                pbsJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
+                self.updatedJobsQueue.task_done()
+                jobID, retcode = (self.jobIDs[pbsJobID], retcode)
+                self.currentjobs -= {self.jobIDs[pbsJobID]}
+            except Empty:
+                logger.debug("getUpdatedBatchJob BBBBBBB")
+                pass
+            else:
+                return jobID, retcode, None
+
         def killJob(self, jobID):
             subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
 
@@ -121,12 +134,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
             #qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
-            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID), '-j', 'oe', '-e', 'cwltoil_pbspro_err.log', '-o', 'cwltoil_pbspro_out.log']
+            qsubline = ['qsub', '-N', 'toil_job_{}'.format(jobID), '-j', 'oe', '-e', 'cwltoil_pbspro_err.log', '-o', 'cwltoil_pbspro_out.log']
             #qsubline.append('-V')
-            #qsubline.append('-v')
-            #qsubline.append('PATH')
-            #qsubline.append('-v')
-            #qsubline.append('PROJECT')
+            qsubline.append('-v')
+            qsubline.append('PATH')
+            qsubline.append('-v')
+            qsubline.append('PROJECT')
 
             if self.boss.environment:
                 qsubline.append('-v')
