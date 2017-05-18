@@ -242,16 +242,22 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def setNodeCount(self, numNodes, preemptable=False, force=False):
         return self._pick(preemptable).setNodeCount(numNodes=numNodes)
 
-    def _addNodes(self, instances, numNodes, preemptable):
+    def addNodes(self, numNodes, preemptable):
         pass
 
     def getWorkersInCluster(self, preemptable):
+        """
+        Returns a list of Node objects, each representing a worker node in the cluster
+
+        :param preemptable: If True only return preemptable nodes else return non-preemptable nodes
+        :return: list of Node
+        """
         pass
 
-    def _logAndTerminate(self, instanceIDs):
+    def logAndTerminate(self, instanceIDs):
         pass
 
-    def _remainingBillingInterval(self, instance):
+    def remainingBillingInterval(self, node):
         pass
 
     # FIXME: Not part of AbstractScalableBatchSystem but used by the tests

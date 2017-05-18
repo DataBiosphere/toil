@@ -147,32 +147,56 @@ class AbstractProvisioner(object):
         else:
             pass
 
-    def setStaticNodesDict(self, nodes, preemptable):
+    def setStaticNodes(self, nodes, preemptable):
         """
-        this is a very hacky way to ignore the nodes that were spun up before the scalar
-        started. This should probably be reworked in the near future.
+        Allows tracking of statically provisioned nodes. These are
+        treated differently than autoscaled nodes in that they should not
+        be automatically terminated.
 
-        :param nodes:
+        :param nodes: list of Node objects
         """
         self.static[preemptable] = nodes
 
     @abstractmethod
-    def _addNodes(self, instances, numNodes, preemptable):
+    def addNodes(self, numNodes, preemptable):
+        """
+
+        :param numNodes:
+        :param preemptable:
+        :return:
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def _logAndTerminate(self, instances):
+    def logAndTerminate(self, nodes):
+        """
+        Terminate the nodes represented by given Node objects
+
+        :param nodes: list of Node objects
+        :return:
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def _getProvisionedNodes(self, preemptable):
+    def getProvisionedWorkers(self, preemptable):
+        """
+        Gets all nodes known about in the provisioner. Includes both static and autoscaled
+        nodes.
+
+        :param preemptable:
+        :return:
+        """
         raise NotImplementedError
 
-    def getWorkersInCluster(self, preemptable):
-        return self._getProvisionedNodes(preemptable)
-
     @abstractmethod
-    def _remainingBillingInterval(self, instance):
+    def remainingBillingInterval(self, node):
+        """
+        Calculate how much of a node's allocated billing interval is
+        left in this cycle.
+
+        :param node: Node object
+        :return: float from 0 -> 1.0 representing percentage of pre-paid time left in cycle
+        """
         raise NotImplementedError
 
     @abstractmethod

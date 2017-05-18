@@ -308,8 +308,9 @@ class ScalerThread(ExceptionalThread):
         self.minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
-            self.totalNodes = len(self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable))
-            self.scaler.provisioner.setStaticNodesDict(self.scaler.leader.batchSystem.getNodes(self.preemptable), self.preemptable)
+            nodes = self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable)
+            self.totalNodes = len(nodes)
+            self.scaler.provisioner.setStaticNodes(nodes, self.preemptable)
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
@@ -451,13 +452,12 @@ class ScalerThread(ExceptionalThread):
         """
         for attempt in retry(predicate=self.scaler.provisioner.retryPredicate):
             with attempt:
-                workerInstances = self.scaler.provisioner.getWorkersInCluster(preemptable)
+                workerInstances = self.getNodes(preemptable=preemptable)
                 numCurrentNodes = len(workerInstances)
                 delta = numNodes - numCurrentNodes
                 if delta > 0:
                     logger.info('Adding %i %s nodes to get to desired cluster size of %i.', delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-                    numNodes = numCurrentNodes + self._addNodes(workerInstances,
-                                                                numNodes=delta,
+                    numNodes = numCurrentNodes + self._addNodes(numNodes=delta,
                                                                 preemptable=preemptable)
                 elif delta < 0:
                     logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
@@ -469,73 +469,74 @@ class ScalerThread(ExceptionalThread):
                     logger.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
-    def _addNodes(self, nodes, numNodes, preemptable):
-        return self.scaler.provisioner._addNodes(nodes, numNodes, preemptable)
+    def _addNodes(self, numNodes, preemptable):
+        return self.scaler.provisioner.addNodes(numNodes, preemptable)
 
-    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
+    def _removeNodes(self, nodeToNodeInfo, numNodes, preemptable=False, force=False):
         # If the batch system is scalable, we can use the number of currently running workers on
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             # iMap = ip : instance
-            ipMap = {instance.privateIP: instance for instance in instances}
+            ipMap = {instance.privateIP: instance for instance in nodeToNodeInfo.keys()}
             def _nodeFilter(executorInfo):
-                return not bool(self._considerNodes([(ipMap.get(executorInfo.nodeAddress), executorInfo.nodeInfo)],
-                                                    preemptable=preemptable))
+                # what if nodes are added during removeNodes? This ip map may be out of date
+                return not bool(self.chooseNodes({ipMap.get(executorInfo.nodeAddress): executorInfo.nodeInfo},
+                                                 preemptable=preemptable))
             with self.scaler.leader.batchSystem.nodeFiltering(_nodeFilter):
                 # while this context manager is active, the batch system will not launch any
                 # news tasks on nodes that are being considered for termination (as determined by the
                 # _nodeFilter method)
-                nodes = self.getClusterInfo(preemptable)
+                nodeToNodeInfo = self.getNodes(preemptable)
                 # Join nodes and instances on private IP address.
-                nodes = [(instance, nodes.get(instance.privateIP)) for instance in instances]
-                logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
-                nodesToTerminate = self._considerNodes(nodes, force, preemptable=preemptable)
+                logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodeToNodeInfo)))
+                nodesToTerminate = self.chooseNodes(nodeToNodeInfo, force, preemptable=preemptable)
                 nodesToTerminate = nodesToTerminate[:numNodes]
                 if logger.isEnabledFor(logging.DEBUG):
-                    for instance, nodeInfo in nodesToTerminate:
-                        logger.debug("Instance %s is about to be terminated. Its node info is %r. It "
-                                  "would be billed again in %s minutes.", instance.id, nodeInfo,
-                                  60 * self.scaler.provisioner._remainingBillingInterval(instance))
-                instances = [instance for instance, nodeInfo in nodesToTerminate]
+                    for instance in nodesToTerminate:
+                        logger.debug("Instance %s is about to be terminated. It "
+                                     "would be billed again in %s minutes.",
+                                     instance, 60 * self.scaler.provisioner.remainingBillingInterval(instance))
+                nodeToNodeInfo = nodesToTerminate
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances, key=self.scaler.provisioner._remainingBillingInterval)
-            instances = [instance for instance in islice(instances, numNodes)]
-        logger.info('Terminating %i instance(s).', len(instances))
-        if instances:
-            self.scaler.provisioner._logAndTerminate(instances)
-        return len(instances)
+            nodeToNodeInfo = sorted(nodeToNodeInfo, key=self.scaler.provisioner.remainingBillingInterval)
+            nodeToNodeInfo = [instance for instance in islice(nodeToNodeInfo, numNodes)]
+        logger.info('Terminating %i instance(s).', len(nodeToNodeInfo))
+        if nodeToNodeInfo:
+            self.scaler.provisioner.logAndTerminate(nodeToNodeInfo)
+        return len(nodeToNodeInfo)
 
-    def _considerNodes(self, nodes, force=False, preemptable=False):
+    def chooseNodes(self, nodeToNodeInfo, force=False, preemptable=False):
         # Unless forced, exclude nodes with runnning workers. Note that it is possible for
         # the batch system to report stale nodes for which the corresponding instance was
         # terminated already. There can also be instances that the batch system doesn't have
         # nodes for yet. We'll ignore those, too, unless forced.
         nodesToTerminate = []
-        for node in nodes:
+        for node, nodeInfo in nodeToNodeInfo.items():
             staticNodes = self.scaler.provisioner.getStaticNodes(preemptable)
             if node.publicIP in staticNodes:
                 # we don't want to automatically terminate any statically
                 # provisioned nodes
                 continue
             if force:
-                nodesToTerminate.append(node)
-            elif node.nodeInfo is not None and node.nodeInfo.workers < 1:
-                nodesToTerminate.append(node)
+                nodesToTerminate.append((node, nodeInfo))
+            elif nodeInfo is not None and nodeInfo.workers < 1:
+                nodesToTerminate.append((node, nodeInfo))
             else:
                 # TODO: fix node info __str__
                 logger.debug('Not terminating instances %s. Node info: %s', node, node.nodeInfo)
         # Sort nodes by number of workers and time left in billing cycle
-        nodesToTerminate.sort(key=lambda (node): (
-            node.nodeInfo.workers if node.nodeInfo else 1,
-            self.scaler.provisioner._remainingBillingInterval(node)))
+        nodesToTerminate.sort(key=lambda ((node, nodeInfo)): (
+            nodeInfo.workers if node.nodeInfo else 1,
+            self.scaler.provisioner.remainingBillingInterval(node))
+                              )
         if not force:
             # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-            nodesToTerminate = [nodeTuple for nodeTuple in nodesToTerminate if
-                                self.scaler.provisioner._remainingBillingInterval(nodeTuple[0]) <= 0.15]
-        return nodesToTerminate
+            nodesToTerminate = [node for node in nodesToTerminate if
+                                self.scaler.provisioner.remainingBillingInterval(node) <= 0.15]
+        return [node for node,_ in nodesToTerminate]
 
-    def getClusterInfo(self, preemptable):
+    def getNodes(self, preemptable):
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
@@ -546,7 +547,7 @@ class ScalerThread(ExceptionalThread):
         :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
                If None, all nodes will be returned.
 
-        :rtype: dict[str,NodeInfo]
+        :rtype: dict[Node, NodeInfo]
         """
         def _getInfo(allMesosNodes, ip):
             info = None
@@ -582,27 +583,27 @@ class ScalerThread(ExceptionalThread):
 
         allMesosNodes = self.scaler.leader.batchSystem.getNodes(preemptable, timeout=None)
         recentMesosNodes = self.scaler.leader.batchSystem.getNodes(preemptable)
-        provisionerNodes = self.scaler.provisioner._getProvisionedNodes(preemptable)
+        provisionerNodes = self.scaler.provisioner.getProvisionedWorkers(preemptable)
 
         if len(recentMesosNodes) != len(provisionerNodes):
             logger.debug("Consolidating state between mesos and provisioner")
-            ipToInfo = {}
+            nodeToInfo = {}
             # fixme: what happens if awsFilterImpairedNodes is used?
             # if this assertion is false it means that user-managed nodes are being
             # used that are outside the provisioners control
             # this would violate many basic assumptions in autoscaling so it currently not allowed
             for node, ip in ((node, node.privateIP) for node in provisionerNodes):
                 info = None
-                logger.debug("Worker node at %s is not reporting executor information")
                 if ip not in recentMesosNodes:
+                    logger.debug("Worker node at %s is not reporting executor information")
                     # we don't have up to date information about the node
                     info = _getInfo(allMesosNodes, ip)
                 else:
                     # mesos knows about the ip & we have up to date information - easy!
                     info = recentMesosNodes[ip]
                 # add info to dict to return
-                ipToInfo[ip] = info
-            return ipToInfo
+                nodeToInfo[node] = info
+            return nodeToInfo
         else:
             return recentMesosNodes
 

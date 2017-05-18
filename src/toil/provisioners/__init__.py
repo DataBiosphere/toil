@@ -81,8 +81,15 @@ class Cluster(object):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
 
 class Node(object):
-    def __init__(self, publicIP, privateIP, name, nodeInfo=None):
+
+    def __init__(self, publicIP, privateIP, name, launchTime):
         self.publicIP = publicIP
         self.privateIP = privateIP
-        self.nodeInfo = nodeInfo
         self.name = name
+        self.launchTime = launchTime
+
+    def __str__(self):
+        return "%s at %s" % (self.name, self.publicIP)
+
+    def __hash__(self):
+        return hash(self.publicIP)

@@ -38,7 +38,7 @@ from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes
+from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes, Node
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +163,8 @@ class AWSProvisioner(AbstractProvisioner):
         command = args if args else ['bash']
         cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
 
-    def _remainingBillingInterval(self, instance):
-        return awsRemainingBillingInterval(instance)
+    def remainingBillingInterval(self, node):
+        return awsRemainingBillingInterval(node)
 
     @classmethod
     @memoize
@@ -525,8 +525,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
         pass
 
-    def _logAndTerminate(self, instances):
-        self._terminateInstances(instances, self.ctx)
+    def logAndTerminate(self, nodes):
+        self._terminateInstances(nodes, self.ctx)
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):
@@ -582,7 +582,7 @@ class AWSProvisioner(AbstractProvisioner):
                 else:
                     raise
 
-    def _addNodes(self, instances, numNodes, preemptable=False):
+    def addNodes(self, numNodes, preemptable):
         bdm = self._getBlockDeviceMapping(self.instanceType)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
@@ -685,7 +685,7 @@ class AWSProvisioner(AbstractProvisioner):
         elif both:
             return [x for x in instances.union(set(runningInstances))]
 
-    def _getProvisionedNodes(self, preemptable):
+    def getProvisionedWorkers(self, preemptable):
         entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP]
@@ -693,7 +693,9 @@ class AWSProvisioner(AbstractProvisioner):
         workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
         logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
-        return workerInstances
+        return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
+                     name=i.id, launchTime=i.launch_time)
+                for i in workerInstances]
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
