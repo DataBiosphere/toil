@@ -307,6 +307,7 @@ class ScalerThread(ExceptionalThread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             self.totalNodes = len(self.scaler.leader.batchSystem.getNodes(self.preemptable))
+            self.scaler.provisioner.setStaticNodesDict(self.scaler.leader.batchSystem.getNodes(self.preemptable), self.preemptable)
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
