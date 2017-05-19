@@ -233,7 +233,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def launchCluster(self):
         # add arguments to test that static workers launch and that we can specify leader storage
-        self.createClusterUtil(args=['-w', '2', '--leaderStorage', self.requestedLeaderStorage])
+        self.createClusterUtil(args=['-w', '2', '--leaderStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
         # test that two worker nodes were created + 1 for leader
         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
