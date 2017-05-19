@@ -524,7 +524,7 @@ class ScalerThread(ExceptionalThread):
                 nodesToTerminate.append((node, nodeInfo))
             else:
                 # TODO: fix node info __str__
-                logger.debug('Not terminating instances %s. Node info: %s', node, node.nodeInfo)
+                logger.debug('Not terminating instances %s. Node info: %s', node, nodeInfo)
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda ((node, nodeInfo)): (
             nodeInfo.workers if node.nodeInfo else 1,
