@@ -28,7 +28,9 @@ simulate a cluster locally (see :ref:`appliance_dev` for details).
 When using the Toil provisioner, the appliance image will be automatically chosen
 based on the pip installed version of Toil on your system. That choice can be
 overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
-``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables.
+``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables. If
+you are developing autoscaling and want to test and build your own
+appliance have a look at :ref:`appliance_dev`.
 
 Using the provisioner to launch a Toil leader instance is simple::
 

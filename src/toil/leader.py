@@ -724,11 +724,11 @@ class Leader:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    messages = [line.rstrip('\n') for line in logFileStream]
-                    logFormat = '\n%s    ' % jobStoreID
-                    logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
-                                jobGraph, logFormat.join(messages))
-                    StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, messages, self.config)
+                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warn,
+                                                      message='The job seems to have left a log file, indicating failure: %s' % jobGraph)
+                if self.config.writeLogs or self.config.writeLogsGzip:
+                    with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
+                        StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, logFileStream, self.config)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we

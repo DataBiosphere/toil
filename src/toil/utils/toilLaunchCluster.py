@@ -42,7 +42,7 @@ def main():
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its"
                              "children. Tags are of the form: "
-                             " --t key1=value1 --tag key2=value2 "
+                             " -t key1=value1 --tag key2=value2 "
                              "Multiple tags are allowed and each tag needs its own flag. By "
                              "default the cluster is tagged with "
                              " {"
@@ -55,6 +55,10 @@ def main():
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for the leader instance. "
                              "This is an EBS volume. ")
+    parser.add_argument("-w", "--workers", dest='workers', default=0, type=int,
+                        help="Specify a number of workers to launch alongside the leader when the "
+                             "cluster is created. This can be useful if running toil without "
+                             "auto-scaling but with need of more hardware support")
     config = parseBasicOptions(parser)
     setLoggingFromOptions(config)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
@@ -66,7 +70,7 @@ def main():
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         except ImportError:
             raise RuntimeError('The aws extra must be installed to use this provisioner')
-        provisioner = AWSProvisioner
+        provisioner = AWSProvisioner()
         parsedBid = config.nodeType.split(':', 1)
         if len(config.nodeType) != len(parsedBid[0]):
             # there is a bid
@@ -75,6 +79,12 @@ def main():
     else:
         assert False
 
-    provisioner.launchCluster(instanceType=config.nodeType, clusterName=config.clusterName,
-                              keyName=config.keyPairName, spotBid=spotBid, userTags=tagsDict, zone=config.zone,
-                              vpcSubnet=config.vpcSubnet, leaderStorage=config.leaderStorage)
+    provisioner.launchCluster(instanceType=config.nodeType,
+                              keyName=config.keyPairName,
+                              clusterName=config.clusterName,
+                              workers=config.workers,
+                              spotBid=spotBid,
+                              userTags=tagsDict,
+                              zone=config.zone,
+                              leaderStorage=config.leaderStorage,
+                              vpcSubnet=config.vpcSubnet)

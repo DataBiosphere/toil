@@ -33,7 +33,7 @@ explain the components of this code in detail.
 Job basics
 ----------
 
-The atomic unit of work in a Toil workflow is a *job* (:class:`toil.job.Job`).
+The atomic unit of work in a Toil workflow is a :class:`~toil.job.Job`.
 User scripts inherit from this base class to define units of work. For example,
 here is a more long-winded class-based version of the job in the quick start
 example::
@@ -185,7 +185,7 @@ rerun a job retryCount number of times before marking it fully failed.
 In the common scenario that a small subset of jobs fail (including retry
 attempts) within a workflow Toil will continue to run other jobs until it can
 do no more, at which point :func:`toil.job.Job.Runner.startToil` will raise a
-:class:`toil.leader.FailedJobsException` exception. Typically at this point
+:exc:`toil.leader.FailedJobsException` exception. Typically at this point
 the user can decide to fix the script and resume the workflow or delete the
 job-store manually and rerun the complete workflow.
 
@@ -751,11 +751,15 @@ script, as described in cgl-docker-lib containerization standards. Alternately,
 the entrypoint to the container can be set using the docker option
 ``--entrypoint``. The container should be runnable directly with Docker as:
 
+.. code-block:: console
+
     $ docker run <docker parameters> <tool name> <tool parameters>
 
 For example:
 
-    $ docker run -d quay.io/ucsc-cgl/bwa -s -o /data/aligned /data/ref.fa'
+.. code-block:: console
+
+    $ docker run -d quay.io/ucsc-cgl/bwa -s -o /data/aligned /data/ref.fa
 
 
 .. _service-dev-ref:

@@ -38,6 +38,7 @@ AZUREUSER=${10}
 SSHKEY=${11}
 GITHUB_SOURCE=${12}
 GITHUB_BRANCH=${13}
+PYTHON_PACKAGES="${14}"
 HOMEDIR="/home/$AZUREUSER"
 VMNAME=`hostname`
 VMNUMBER=`echo $VMNAME | sed 's/.*[^0-9]\([0-9]\+\)*$/\1/'`
@@ -200,6 +201,8 @@ then
     echo "WARNING: Docker could not be installed! Continuing anyway!"
 fi
 
+# Authorize the normal user to use Docker
+sudo usermod -aG docker $AZUREUSER
 
 ############
 # setup OMS
@@ -342,6 +345,11 @@ if isagent ; then
 
   # Set up the Mesos salve work directory in the ephemeral /mnt
   echo "/mnt" | sudo tee /etc/mesos-slave/work_dir
+    
+  # Set the root reserved fraction of that device to 0 to work around
+  # <https://github.com/BD2KGenomics/toil/issues/1650> and
+  # <https://issues.apache.org/jira/browse/MESOS-7420>
+  sudo tune2fs -m 0 `findmnt --target /mnt -n -o SOURCE`
 
   # Add mesos-dns IP addresses at the top of resolv.conf
   RESOLV_TMP=resolv.conf.temp
@@ -426,6 +434,9 @@ if [ "$TOILENABLED" == "true" ] ; then
   # Get a reasonably new pip
   time sudo easy_install pip
   
+  # Upgrade setuptools
+  time sudo pip install setuptools --upgrade
+  
   # Install Toil from Git, retrieving the correct version. If you want a release
   # you might be able to use a tag here instead.
   echo "Installing branch ${GITHUB_BRANCH} of ${GITHUB_SOURCE} for Toil."
@@ -442,6 +453,11 @@ if [ "$TOILENABLED" == "true" ] ; then
   sudo wget https://downloads.mesosphere.io/master/ubuntu/${UBUNTU_VERSION}/mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
   sudo easy_install mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
   sudo rm mesos-${BINDINGS_MESOS_VERSION}-py2.7-linux-x86_64.egg
+fi
+
+if [ "x${PYTHON_PACKAGES}" != "x" ] ; then
+    # Install additional Python packages
+    time sudo pip install --upgrade ${PYTHON_PACKAGES}
 fi
 
 date

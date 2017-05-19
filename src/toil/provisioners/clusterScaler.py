@@ -307,6 +307,7 @@ class ScalerThread(ExceptionalThread):
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             self.totalNodes = len(self.scaler.leader.batchSystem.getNodes(self.preemptable))
+            self.scaler.provisioner.setStaticNodesDict(self.scaler.leader.batchSystem.getNodes(self.preemptable), self.preemptable)
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
@@ -355,10 +356,11 @@ class ScalerThread(ExceptionalThread):
                 # Make correction, if necessary (only do so if cluster is busy and average runtime is higher than historical
                 # average)
                 if runtimeCorrection != 1.0:
-                    logger.warn("Historical avg. runtime (%s) is less than current avg. runtime (%s) and cluster"
-                                " is being well utilised (%s running jobs), increasing cluster requirement by: %s" % 
-                                (historicalAvgRuntime, currentAvgRuntime, numberOfRunningJobs, runtimeCorrection))
                     estimatedNodes = int(round(estimatedNodes * runtimeCorrection))
+                    if self.totalNodes < self.maxNodes:
+                        logger.warn("Historical avg. runtime (%s) is less than current avg. runtime (%s) and cluster"
+                                    " is being well utilised (%s running jobs), increasing cluster requirement by: %s" % 
+                                    (historicalAvgRuntime, currentAvgRuntime, numberOfRunningJobs, runtimeCorrection))
 
                 # If we're the non-preemptable scaler, we need to see if we have a deficit of
                 # preemptable nodes that we should compensate for.
@@ -376,11 +378,11 @@ class ScalerThread(ExceptionalThread):
 
                 jobsPerNode = (0 if nodesToRunRecentJobs <= 0
                                else len(recentJobShapes) / float(nodesToRunRecentJobs))
-                if estimatedNodes > 0:
+                if estimatedNodes > 0 and self.totalNodes < self.maxNodes:
                     logger.info('Estimating that cluster needs %s %s of shape %s, from current '
                                 'size of %s, given a queue size of %s, the number of jobs per node '
                                 'estimated to be %s, an alpha parameter of %s and a run-time length correction of %s.',
-                                estimatedNodes, self.nodeTypeString, self.nodeShape, 
+                                estimatedNodes, self.nodeTypeString, self.nodeShape,
                                 self.totalNodes, queueSize, jobsPerNode,
                                 self.scaler.config.alphaPacking, runtimeCorrection)
 
