@@ -138,6 +138,7 @@ def _docker(job,
                 containerName = baseDockerCall[baseDockerCall.index('--name') + 1]
         else:
             containerName = _getContainerName(job)
+            baseDockerCall.extend(['--name', containerName])
     except ValueError:
         containerName = _getContainerName(job)
         baseDockerCall.extend(['--name', containerName])
