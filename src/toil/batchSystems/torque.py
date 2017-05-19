@@ -107,12 +107,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             return result
 
         def getJobExitCode(self, torqueJobID):
-            args = ["qstat", "-x", "-f", str(torqueJobID)]
+            args = ["qstat", "-x", "-f", str(torqueJobID).split('.')[0]]
 
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             for line in process.stdout:
                 line = line.strip()
-                logger.debug("getJobExitCode exit status: " + line)
+                #logger.debug("getJobExitCode exit status: " + line)
                 # Case differences due to PBSPro vs OSS Torque qstat outputs
                 if line.startswith("failed") or line.startswith("FAILED") and int(line.split()[1]) == 1:
                     return 1
