@@ -116,7 +116,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 # Case differences due to PBSPro vs OSS Torque qstat outputs
                 if line.startswith("failed") or line.startswith("FAILED") and int(line.split()[1]) == 1:
                     return 1
-                if line.startswith("exit_status") or line.startswith("EXIT_STATUS"):
+                if line.startswith("exit_status") or line.startswith("Exit_status"):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
