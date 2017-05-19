@@ -323,7 +323,7 @@ class ScalerThread(ExceptionalThread):
 
         while not self.scaler.stop:
             with throttle(self.scaler.config.scaleInterval):
-                self.totalNodes = len(self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable))
+                self.totalNodes = len(self.scaler.leader.provisioner.getProvisionedWorkers(self.preemptable))
                 # Estimate the number of nodes to run the issued jobs.
                 # Number of jobs issued
                 queueSize = self.scaler.leader.getNumberOfJobsIssued(preemptable=self.preemptable)
