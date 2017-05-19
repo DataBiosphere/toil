@@ -402,7 +402,10 @@ class AWSProvisioner(AbstractProvisioner):
                 s.close()
 
     def launchCluster(self, instanceType, keyName, clusterName, workers=0, spotBid=None, userTags=None,
-                      zone=None, vpcSubnet=None, leaderStorage=50):
+                      zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
+        # only use this node storage value if launchCluster is called from cluster utility
+        if self.config is None:
+            self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)

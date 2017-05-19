@@ -89,6 +89,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def launchCluster(self):
         self.createClusterUtil()
 
+    def getRootVolID(self):
+        rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
+        assert isinstance(rootBlockDevice, BlockDeviceType)
+        return rootBlockDevice.volume_id
+
     @abstractmethod
     def _getScript(self):
         """
@@ -179,15 +184,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
+        self.getRootVolID()
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
-        assert isinstance(rootBlockDevice, BlockDeviceType)
-        volumeID = rootBlockDevice.volume_id
-        """
-        if testVolSize:
-            rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
-            self.assertGreaterEqual(rootVolume.size, requestedRootVolSize)
-        """
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
         for attempt in range(6):
@@ -212,6 +210,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
+        self.requestedLeaderStorage = 80
 
     def setUp(self):
         super(AWSAutoscaleTest, self).setUp()
@@ -233,10 +232,18 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.sshUtil(runCommand)
 
     def launchCluster(self):
-        self.createClusterUtil(args=['-w', '2'])
+        # add arguments to test that static workers launch and that we can specify leader storage
+        self.createClusterUtil(args=['-w', '2', '--leaderStorage', self.requestedLeaderStorage])
         ctx = AWSProvisioner._buildContext(self.clusterName)
         # test that two worker nodes were created + 1 for leader
         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+
+    def getRootVolID(self):
+        volumeID = super(AWSAutoscaleTest, self).getRootVolID()
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        # test that the leader is given adequate storage
+        self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
 
     @integrative
     @needs_aws
