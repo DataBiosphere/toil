@@ -50,7 +50,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # Limit qstat to current username to avoid clogging the batch system on heavily loaded clusters
             #job_user = os.environ.get('USER')
             #process = subprocess.Popen(['qstat', '-u', job_user], stdout=subprocess.PIPE)
-            process = subprocess.Popen(['qstat'], stdout=subprocess.PIPE)
+            # -x shows exit status in PBSPro
+            process = subprocess.Popen(['qstat', '-x'], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
@@ -113,7 +114,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 line = line.strip()
                 if line.startswith("failed") and int(line.split()[1]) == 1:
                     return 1
-                if line.startswith("exit_status"):
+                if line.startswith("exit_status") or line.startswith("EXIT_STATUS"):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
