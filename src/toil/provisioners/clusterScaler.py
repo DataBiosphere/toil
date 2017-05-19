@@ -308,7 +308,7 @@ class ScalerThread(ExceptionalThread):
         self.minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
-            nodes = self.scaler.leader.provisioner.getWorkersInCluster(self.preemptable)
+            nodes = self.scaler.leader.provisioner.getProvisionedWorkers(self.preemptable)
             self.totalNodes = len(nodes)
             self.scaler.provisioner.setStaticNodes(nodes, self.preemptable)
         else:
