@@ -587,25 +587,23 @@ class ScalerThread(ExceptionalThread):
 
         if len(recentMesosNodes) != len(provisionerNodes):
             logger.debug("Consolidating state between mesos and provisioner")
-            nodeToInfo = {}
-            # fixme: what happens if awsFilterImpairedNodes is used?
-            # if this assertion is false it means that user-managed nodes are being
-            # used that are outside the provisioners control
-            # this would violate many basic assumptions in autoscaling so it currently not allowed
-            for node, ip in ((node, node.privateIP) for node in provisionerNodes):
-                info = None
-                if ip not in recentMesosNodes:
-                    logger.debug("Worker node at %s is not reporting executor information")
-                    # we don't have up to date information about the node
-                    info = _getInfo(allMesosNodes, ip)
-                else:
-                    # mesos knows about the ip & we have up to date information - easy!
-                    info = recentMesosNodes[ip]
-                # add info to dict to return
-                nodeToInfo[node] = info
-            return nodeToInfo
-        else:
-            return recentMesosNodes
+        nodeToInfo = {}
+        # fixme: what happens if awsFilterImpairedNodes is used?
+        # if this assertion is false it means that user-managed nodes are being
+        # used that are outside the provisioners control
+        # this would violate many basic assumptions in autoscaling so it currently not allowed
+        for node, ip in ((node, node.privateIP) for node in provisionerNodes):
+            info = None
+            if ip not in recentMesosNodes:
+                logger.debug("Worker node at %s is not reporting executor information")
+                # we don't have up to date information about the node
+                info = _getInfo(allMesosNodes, ip)
+            else:
+                # mesos knows about the ip & we have up to date information - easy!
+                info = recentMesosNodes[ip]
+            # add info to dict to return
+            nodeToInfo[node] = info
+        return nodeToInfo
 
     def shutDown(self, preemptable):
         if not self.stop:
