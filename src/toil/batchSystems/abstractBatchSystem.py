@@ -31,7 +31,7 @@ from toil.fileStore import shutdownFileStore
 logger = logging.getLogger(__name__)
 
 # TODO: should this be an attribute?  Used in the worker and the batch system
-sleepSeconds = 1
+sleepSeconds = 10
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
