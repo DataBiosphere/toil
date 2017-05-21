@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 import logging
 import os
-import stat
 from pipes import quote
 import subprocess
 import time
@@ -24,7 +23,6 @@ import sys
 import xml.etree.ElementTree as ET
 import tempfile
 
-from toil import resolveEntryPoint
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 
@@ -78,13 +76,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         def getUpdatedBatchJob(self, maxWait):
             try:
-                logger.debug("getUpdatedBatchJob AAAAAAAA")
+                logger.debug("getUpdatedBatchJob: Job updates")
                 pbsJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
                 self.updatedJobsQueue.task_done()
                 jobID, retcode = (self.jobIDs[pbsJobID], retcode)
                 self.currentjobs -= {self.jobIDs[pbsJobID]}
             except Empty:
-                logger.debug("getUpdatedBatchJob BBBBBBB")
+                logger.debug("getUpdatedBatchJob: Job queue is empty")
                 pass
             else:
                 return jobID, retcode, None
@@ -99,11 +97,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
             so, se = process.communicate()
             result = so
-            # TODO: the full URI here may be needed on complex setups, stripping
-            # down to integer job ID only may be bad long-term
-            #logger.debug("Submitting job with: {}\n".format(so))
-            #if so is not '':
-            #    result = int(so.strip().split('.')[0])
             return result
 
         def getJobExitCode(self, torqueJobID):
@@ -137,7 +130,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
             # Passing -V overwrites the environment
-            #qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
             qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
             if self.boss.environment:
