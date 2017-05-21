@@ -138,12 +138,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             # Passing -V overwrites the environment
             #qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
-            qsubline = ['qsub', '-N', 'toil_job_{}'.format(jobID), '-j', 'oe', '-e', 'cwltoil_pbspro_err.log', '-o', 'cwltoil_pbspro_out.log']
-            #qsubline.append('-V')
-            qsubline.append('-v')
-            qsubline.append('PATH')
-            qsubline.append('-v')
-            qsubline.append('PROJECT')
+            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
             if self.boss.environment:
                 qsubline.append('-v')
@@ -166,20 +161,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             now this goes to default tempdir
             """
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
-            #venv_prefix = "source activate root"
             fh = open(tmpFile , 'w')
             fh.write("#!/bin/sh\n")
             fh.write("#PBS -q normalsp\n")
-            #fh.write("#PBS -l walltime=00:10:00\n")
-            fh.write("#PBS -e torque_run_wrapper_err.log\n")
-            fh.write("#PBS -o torque_run_wrapper_out.log\n\n")
             fh.write("cd $PBS_O_WORKDIR\n\n")
-            #fh.write(venv_prefix + " && ")
             fh.write(command + "\n")
 
             fh.close
-            logger.debug('Chmod wrapper with exec permissions: ' + tmpFile)
-            os.chmod(tmpFile, stat.S_IEXEC | stat.S_IXGRP | stat.S_IRUSR)
             
             return tmpFile
 
