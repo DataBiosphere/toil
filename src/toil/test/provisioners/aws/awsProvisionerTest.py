@@ -184,7 +184,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
-        self.getRootVolID()
+        volumeID = self.getRootVolID()
         ctx = AWSProvisioner._buildContext(self.clusterName)
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
@@ -239,6 +239,11 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
 
     def getRootVolID(self):
+        """
+        Adds in test to check that EBS volume is build with adequate size.
+        Otherwise is functionally equivalent to parent.
+        :return: volumeID
+        """
         volumeID = super(AWSAutoscaleTest, self).getRootVolID()
         ctx = AWSProvisioner._buildContext(self.clusterName)
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
