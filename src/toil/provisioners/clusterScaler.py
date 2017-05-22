@@ -426,7 +426,7 @@ class ScalerThread(ExceptionalThread):
 
                 self.scaler.provisioner.checkStats()
                     
-        self.scaler.provisioner.shutDown(preemptable=self.preemptable)
+        self.shutDown(preemptable=self.preemptable)
         logger.info('Scaler exited normally.')
 
     def setNodeCount(self, numNodes, preemptable=False, force=False):
@@ -527,7 +527,7 @@ class ScalerThread(ExceptionalThread):
                 logger.debug('Not terminating instances %s. Node info: %s', node, nodeInfo)
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda ((node, nodeInfo)): (
-            nodeInfo.workers if node.nodeInfo else 1,
+            nodeInfo.workers if nodeInfo else 1,
             self.scaler.provisioner.remainingBillingInterval(node))
                               )
         if not force:
@@ -606,9 +606,8 @@ class ScalerThread(ExceptionalThread):
         return nodeToInfo
 
     def shutDown(self, preemptable):
-        if not self.stop:
-            # only shutdown the stats threads once
-            self.scaler.provisioner._shutDownStats()
+        # only shutdown the stats threads once
+        self.scaler.provisioner._shutDownStats()
         logger.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
         if totalNodes > len(self.scaler.provisioner.getStaticNodes(preemptable)):  # ignore static nodes

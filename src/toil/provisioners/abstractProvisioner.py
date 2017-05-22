@@ -93,7 +93,7 @@ class AbstractProvisioner(object):
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
-        if self.config.clusterStats and self.scaleable:
+        if self.config.clusterStats and self.scaleable and not self.stop:
             self.stop = True
             for thread in self.statsThreads:
                 thread.join()
