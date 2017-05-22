@@ -514,7 +514,7 @@ class ScalerThread(ExceptionalThread):
         nodesToTerminate = []
         for node, nodeInfo in nodeToNodeInfo.items():
             staticNodes = self.scaler.provisioner.getStaticNodes(preemptable)
-            if node.publicIP in staticNodes:
+            if node.privateIP in staticNodes:
                 # we don't want to automatically terminate any statically
                 # provisioned nodes
                 continue
