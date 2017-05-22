@@ -156,8 +156,8 @@ class AbstractProvisioner(object):
         :param nodes: list of Node objects
         """
         prefix = 'non-' if not preemptable else ''
-        log.debug("Adding %s to %spreemptable static nodes", nodes, preemptable)
-        self.static[preemptable] = nodes
+        log.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
+        self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
     def addNodes(self, numNodes, preemptable):
