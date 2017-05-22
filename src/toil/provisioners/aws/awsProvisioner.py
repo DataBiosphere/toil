@@ -499,8 +499,14 @@ class AWSProvisioner(AbstractProvisioner):
                            'roles will not be deleted.')
 
     @classmethod
+    def _terminateNodes(cls, nodes, ctx):
+        instanceIDs = [x.name for x in nodes]
+        logger.info('Terminating instance(s): %s', instanceIDs)
+        cls._terminateIDs(instanceIDs, ctx)
+
+    @classmethod
     def _terminateInstances(cls, instances, ctx):
-        instanceIDs = [x.name for x in instances]
+        instanceIDs = [x.id for x in instances]
         logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
@@ -526,7 +532,7 @@ class AWSProvisioner(AbstractProvisioner):
         pass
 
     def logAndTerminate(self, nodes):
-        self._terminateInstances(nodes, self.ctx)
+        self._terminateNodes(nodes, self.ctx)
 
     @classmethod
     def _deleteIAMProfiles(cls, instances, ctx):
