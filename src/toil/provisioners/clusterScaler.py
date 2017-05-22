@@ -514,10 +514,15 @@ class ScalerThread(ExceptionalThread):
         nodesToTerminate = []
         for node, nodeInfo in nodeToNodeInfo.items():
             staticNodes = self.scaler.provisioner.getStaticNodes(preemptable)
+            prefix = 'non-' if not preemptable else ''
             if node.privateIP in staticNodes:
                 # we don't want to automatically terminate any statically
                 # provisioned nodes
+                logger.debug("Found %s in %spreemptable static nodes", node.privateIP, prefix)
                 continue
+            else:
+                logger.debug("Did not find %s in %spreemptable static nodes", node.privateIP, prefix)
+                pass
             if force:
                 nodesToTerminate.append((node, nodeInfo))
             elif nodeInfo is not None and nodeInfo.workers < 1:

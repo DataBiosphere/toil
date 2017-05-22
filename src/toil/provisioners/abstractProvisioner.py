@@ -155,6 +155,8 @@ class AbstractProvisioner(object):
 
         :param nodes: list of Node objects
         """
+        prefix = 'non-' if not preemptable else ''
+        log.debug("Adding %s to %spreemptable static nodes", nodes, preemptable)
         self.static[preemptable] = nodes
 
     @abstractmethod
