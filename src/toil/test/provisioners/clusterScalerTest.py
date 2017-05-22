@@ -245,7 +245,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def addNodes(self, numNodes, preemptable):
         pass
 
-    def getWorkersInCluster(self, preemptable):
+    def getProvisionedWorkers(self, preemptable):
         """
         Returns a list of Node objects, each representing a worker node in the cluster
 

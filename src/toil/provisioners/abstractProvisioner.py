@@ -62,10 +62,6 @@ class AbstractProvisioner(object):
         self.config = config
         self.batchSystem = batchSystem
         self.stop = False
-        self.stats = {}
-        self.statsThreads = []
-        self.statsPath = config.clusterStats if config else None
-        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
         self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
         self.static = {}
 
@@ -81,71 +77,6 @@ class AbstractProvisioner(object):
         :return: boolean indicating whether the exception e should be retried
         """
         return never(e)
-
-    def _shutDownStats(self):
-        def getFileName():
-            extension = '.json'
-            file = '%s-stats' % self.config.jobStore
-            counter = 0
-            while True:
-                suffix = str(counter).zfill(3) + extension
-                fullName = os.path.join(self.statsPath, file + suffix)
-                if not os.path.exists(fullName):
-                    return fullName
-                counter += 1
-        if self.config.clusterStats and self.scaleable and not self.stop:
-            self.stop = True
-            for thread in self.statsThreads:
-                thread.join()
-            fileName = getFileName()
-            with open(fileName, 'w') as f:
-                json.dump(self.stats, f)
-
-    def startStats(self, preemptable):
-        thread = ExceptionalThread(target=self._gatherStats, args=[preemptable])
-        thread.start()
-        self.statsThreads.append(thread)
-
-    def checkStats(self):
-        for thread in self.statsThreads:
-            # propagate any errors raised in the threads execution
-            thread.join(timeout=0)
-
-    def _gatherStats(self, preemptable):
-        def toDict(nodeInfo):
-            # convert NodeInfo object to dict to improve JSON output
-            return dict(memory=nodeInfo.memoryUsed,
-                        cores=nodeInfo.coresUsed,
-                        memoryTotal=nodeInfo.memoryTotal,
-                        coresTotal=nodeInfo.coresTotal,
-                        requestedCores=nodeInfo.requestedCores,
-                        requestedMemory=nodeInfo.requestedMemory,
-                        workers=nodeInfo.workers,
-                        time=time.time()  # add time stamp
-                        )
-        if self.scaleable:
-            stats = {}
-            try:
-                while not self.stop:
-                    nodeInfo = self.batchSystem.getNodes(preemptable)
-                    for nodeIP in nodeInfo.keys():
-                        nodeStats = nodeInfo[nodeIP]
-                        if nodeStats is not None:
-                            nodeStats = toDict(nodeStats)
-                            try:
-                                # if the node is already registered update the dictionary with
-                                # the newly reported stats
-                                stats[nodeIP].append(nodeStats)
-                            except KeyError:
-                                # create a new entry for the node
-                                stats[nodeIP] = [nodeStats]
-                    time.sleep(60)
-            finally:
-                threadName = 'Preemptable' if preemptable else 'Non-preemptable'
-                log.debug('%s provisioner stats thread shut down successfully.', threadName)
-                self.stats[threadName] = stats
-        else:
-            pass
 
     def setStaticNodes(self, nodes, preemptable):
         """
