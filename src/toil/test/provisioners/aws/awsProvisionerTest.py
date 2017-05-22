@@ -249,6 +249,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
+        return volumeID
 
     @integrative
     @needs_aws
