@@ -112,7 +112,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, spotInstances=False, fulfillableBid=True, testVolSize=False):
+    def _test(self, spotInstances=False, fulfillableBid=True):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
@@ -123,14 +123,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        """
-        requestedRootVolSize = 100
-        requestedWorkerVolSize = 80  # this is not testable until static provisioning is merged.
-        if testVolSize:
-            self.createClusterUtil(args=['--leaderStorage', str(requestedRootVolSize)])  # run with custom diskSize
-        else:
-            self.createClusterUtil()
-        """
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
@@ -245,21 +237,23 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super(AWSAutoscaleTest, self).getRootVolID()
+        """
         ctx = AWSProvisioner._buildContext(self.clusterName)
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
+        """
         return volumeID
 
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self._test(spotInstances=False, testVolSize=True)
+        self._test(spotInstances=False)
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self._test(spotInstances=True, testVolSize=True)
+        self._test(spotInstances=True)
 
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
