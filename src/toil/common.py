@@ -74,7 +74,7 @@ class Config(object):
         self.disableHotDeployment = False
         self.scale = 1
         # may return localhost on some systems (not osx and coreos) https://stackoverflow.com/a/166520
-        self.mesosMasterAddress = '%s:5050' % socket.gethostbyname(socket.gethostname())
+        self.mesosMasterAddress = '%s:5050' % 'localhost' # socket.gethostbyname(socket.gethostname())
         self.parasolCommand = "parasol"
         self.parasolMaxBatches = 10000
         self.environment = {}
