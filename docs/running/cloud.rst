@@ -6,7 +6,16 @@ Running in the cloud
 ====================
 
 Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web
-Services is currently the best-supported solution.
+Services (AWS) is currently the best-supported solution. Toil provides the
+:ref:`clusterRef` to conveniently create AWS clusters, connect to the leader
+of the cluster, and then launch a workflow that runs distributedly on the
+entire cluster.
+
+The :ref:`StaticProvisioning` section explains how a static cluster (one that
+won't change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
+
+The :ref:`Autoscaling` section details how to create a cluster and run a workflow
+that will dynamically scale depending on the workflows needs.
 
 On all cloud providers, it is recommended that you run long-running jobs on
 remote systems using a terminal multiplexer such as `screen`_ or `tmux`_.
@@ -16,6 +25,9 @@ look at :ref:`hotDeploying`.
 
 Screen
 ------
+
+Screen allows you to run toil workflows in the cloud without the risk of a bad
+connection forcing the workflow to fail.
 
 Simply type ``screen`` to open a new ``screen``
 session. Later, type ``ctrl-a`` and then ``d`` to disconnect from it, and run
@@ -44,13 +56,6 @@ Autoscaling uses the cluster utilities. For more information see :ref:`clusterRe
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
-.. note::
-
-    CGCloud_ can also act as a provisioner for AWS and has lots of functionality
-    for statically provisioning a cluster (adjusting your cluster's size manually
-    when a workflow isn't running). However it is being phased out in favor on the
-    native provisioner.
-
 .. _launchingCluster:
 
 Launching a Cluster
@@ -69,7 +74,7 @@ keypair name to facilitate cost tracking.
 
 The nodeType is an `EC2 instance type`_. This only affects any nodes launched now.
 
-The ``-z`` parameter is important since it specifies which EC2 availability
+The ``-z`` parameter specifies which EC2 availability
 zone to launch the cluster in. Alternatively, you can specify this option
 via the ``TOIL_AWS_ZONE`` environment variable. We will assume this environment variable is set for the
 rest of the tutorial. Note: the zone is different from an EC2 region. A
@@ -154,6 +159,36 @@ workflow.
    ``--mesosMaster``. Using the public IP will prevent the nodes from properly
    discovering each other.
 
+.. _StaticProvisioning:
+
+Static Provisioning
+-------------------
+
+Toil can be used to manage a cluster in the cloud by using the :ref:`clusterRef`.
+The cluster utilities also make it easy to run a toil workflow directly on this
+cluster. We call this static provisioning because the size of the cluster does not
+change. This is in contrast with :ref:`Autoscaling`.
+
+To launch a cluster with a specific number of worker nodes we use the ``-w`` option.::
+
+    $ toil launch-cluster CLUSTER-NAME-HERE --nodeType=t2.micro \
+       -z us-west-2a --keyPairName=your-AWS-key-pair-name -w 3
+
+This will spin up a leader node with three additional workers all with the same type.
+
+Now we can follow the instructions under :ref:`runningAWS` to start the workflow
+on the cluster.
+
+Currently static provisioning is only possible during the cluster's creation.
+The ability to add new nodes and remove existing nodes via the native provisioner is
+in development, but can also be achieved through CGCloud_. Of course the cluster can
+always be deleted with the :ref:`destroyCluster` utility.
+
+.. note::
+
+    CGCloud_ also can do static provisioning for an AWS cluster, however it is being
+    phased out in favor on the native provisioner.
+
 .. _runningAWS:
 
 Running on AWS
@@ -169,7 +204,7 @@ This allows all nodes in the cluster access to the job store which would not be
 possible if we were to use the ``file`` job store with a locally mounted file
 system on the leader.
 
-Copy ``HelloWorld.py`` to the leader node, and run::
+Copy ``HelloWorld.py`` to the leader node using the :ref:`rsyncCluster` command, and run::
 
    $ python HelloWorld.py \
           --batchSystem=mesos \
