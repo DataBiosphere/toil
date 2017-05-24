@@ -221,7 +221,6 @@ class LSFBatchSystem(BatchSystemSupport):
         for batch_id in self.getIssuedBatchJobIDs():
             if batch_id in self.lsfJobIDs:
                 currentjobs.add(self.lsfJobIDs[batch_id])
-        self.lsfJobIDs[x] for x in self.getIssuedBatchJobIDs())
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
 
         for curline in process.stdout:
