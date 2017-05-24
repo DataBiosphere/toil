@@ -70,7 +70,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         super(AWSProvisioner, self).__init__(config)
         self.spotBid = None
-        # assert config.preemptableNodeType or config.nodeType
+        self.instanceType = {}
         if config:
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
@@ -79,12 +79,15 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
+            assert config.preemptableNodeType or config.nodeType
             if config.preemptableNodeType is not None:
                 nodeBidTuple = config.preemptableNodeType.split(':', 1)
+                preemptable = True
                 self.spotBid = nodeBidTuple[1]
-                self.instanceType = ec2_instance_types[nodeBidTuple[0]]
+                self.instanceType[preemptable] = ec2_instance_types[nodeBidTuple[0]]
             else:
-                self.instanceType = ec2_instance_types[config.nodeType]
+                preemptable = False
+                self.instanceType[preemptable] = ec2_instance_types[config.nodeType]
         else:
             self.ctx = None
             self.clusterName = None
@@ -142,7 +145,8 @@ class AWSProvisioner(AbstractProvisioner):
         self._addTags([leader], defaultTags)
         self.ctx = ctx
         self.spotBid = spotBid
-        self.instanceType = ec2_instance_types[instanceType]
+        preemptable = True if spotBid else False
+        self.instanceType[preemptable] = ec2_instance_types[instanceType]
         self.clusterName = clusterName
         self.keyName = keyName
         self.tags = leader.tags
@@ -156,7 +160,7 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, preemptable=False):
-        instanceType = self.instanceType
+        instanceType = self.instanceType[preemptable]
         return Shape(wallTime=60 * 60,
                      memory=instanceType.memory * 2 ** 30,
                      cores=instanceType.cores,
@@ -226,7 +230,8 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, numNodes, preemptable):
-        bdm = self._getBlockDeviceMapping(self.instanceType)
+        instanceType = self.instanceType[preemptable]
+        bdm = self._getBlockDeviceMapping(instanceType)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
         entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
@@ -239,7 +244,7 @@ class AWSProvisioner(AbstractProvisioner):
         sgs = [sg for sg in self.ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         kwargs = {'key_name': self.keyName,
                   'security_group_ids': [sg.id for sg in sgs],
-                  'instance_type': self.instanceType.name,
+                  'instance_type': instanceType.name,
                   'user_data': userData,
                   'block_device_map': bdm,
                   'instance_profile_arn': arn,
@@ -259,7 +264,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(self.spotBid, self.instanceType.name, self.ctx)
+                    kwargs['placement'] = getSpotZone(self.spotBid, instanceType.name, self.ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
                                                                    price=self.spotBid,
