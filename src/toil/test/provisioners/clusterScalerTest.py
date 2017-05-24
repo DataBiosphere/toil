@@ -254,7 +254,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         """
         pass
 
-    def logAndTerminate(self, instanceIDs):
+    def terminateNodes(self, instanceIDs):
         pass
 
     def remainingBillingInterval(self, node):

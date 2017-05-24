@@ -11,20 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import logging
-import os
 from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
 
 
-import time
 
 from bd2k.util.retry import never
-from bd2k.util.threading import ExceptionalThread
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +46,7 @@ class AbstractProvisioner(object):
     __metaclass__ = ABCMeta
 
 
-    def __init__(self, config=None, batchSystem=None):
+    def __init__(self, config=None):
         """
         Initialize provisioner. If config and batchSystem are not specified, the
         provisioner is being used to manage nodes without a workflow
@@ -60,7 +55,6 @@ class AbstractProvisioner(object):
         :param batchSystem: The batchSystem used during run
         """
         self.config = config
-        self.batchSystem = batchSystem
         self.stop = False
         self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
         self.static = {}
@@ -71,7 +65,9 @@ class AbstractProvisioner(object):
     @staticmethod
     def retryPredicate(e):
         """
-        Return true if the exception e should be retried by the cluster scaler
+        Return true if the exception e should be retried by the cluster scaler.
+        For example, should return true if the exception was due to exceeding an API rate limit.
+        The error will be retried with exponential backoff.
 
         :param e: exception raised during execution of setNodeCount
         :return: boolean indicating whether the exception e should be retried
@@ -80,7 +76,7 @@ class AbstractProvisioner(object):
 
     def setStaticNodes(self, nodes, preemptable):
         """
-        Allows tracking of statically provisioned nodes. These are
+        Used to track statically provisioned nodes. These nodes are
         treated differently than autoscaled nodes in that they should not
         be automatically terminated.
 
@@ -93,31 +89,32 @@ class AbstractProvisioner(object):
     @abstractmethod
     def addNodes(self, numNodes, preemptable):
         """
+        Used to add worker nodes to the cluster
 
-        :param numNodes:
-        :param preemptable:
-        :return:
+        :param numNodes: The number of nodes to add
+        :param preemptable: whether or not the nodes will be preemptable
+        :return: number of nodes successfully added
         """
         raise NotImplementedError
 
     @abstractmethod
-    def logAndTerminate(self, nodes):
+    def terminateNodes(self, nodes):
         """
         Terminate the nodes represented by given Node objects
 
         :param nodes: list of Node objects
-        :return:
         """
         raise NotImplementedError
 
     @abstractmethod
     def getProvisionedWorkers(self, preemptable):
         """
-        Gets all nodes known about in the provisioner. Includes both static and autoscaled
-        nodes.
+        Gets all nodes of the given preemptability from the provisioner.
+        Includes both static and autoscaled nodes.
 
-        :param preemptable:
-        :return:
+        :param preemptable: Boolean value indicating whether to return preemptable nodes or
+           non-preemptable nodes
+        :return: list of Node objects
         """
         raise NotImplementedError
 
@@ -148,20 +145,47 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
-    def rsyncLeader(cls, clusterName, src, dst):
+    def rsyncLeader(cls, clusterName, args):
+        """
+        Rsyncs to the leader of the cluster with the specified name. The arguments are passed directly to
+        Rsync.
+
+        :param clusterName: name of the cluster to target
+        :param args: list of string arguments to rsync. Identical to the normal arguments to rsync, but the
+           host name of the remote host can be omitted. ex) ['/localfile', ':/remotedest']
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
+        """
+        Launches a cluster with the specified instance type for the leader with the specified name.
+
+        :param instanceType: desired type of the leader instance
+        :param keyName: name of the ssh key pair to launch the instance with
+        :param clusterName: desired identifier of the cluster
+        :param spotBid: how much to bid for the leader instance. If none, use on demand pricing.
+        :return:
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def sshLeader(cls, clusterName, args):
+        """
+        SSH into the leader instnace of the specified cluster with the specified arguments to SSH.
+        :param clusterName: name of the cluster to target
+        :param args: list of string arguments to ssh.
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def destroyCluster(cls, clusterName):
+        """
+        Terminates all nodes in the specified cluster and cleans up all resources associated with the
+        cluser.
+        :param clusterName: identifier of the cluster to terminate.
+        """
         raise NotImplementedError

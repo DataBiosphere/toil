@@ -511,7 +511,7 @@ class ScalerThread(ExceptionalThread):
             nodeToNodeInfo = [instance for instance in islice(nodeToNodeInfo, numNodes)]
         logger.info('Terminating %i instance(s).', len(nodeToNodeInfo))
         if nodeToNodeInfo:
-            self.scaler.provisioner.logAndTerminate(nodeToNodeInfo)
+            self.scaler.provisioner.terminateNodes(nodeToNodeInfo)
         return len(nodeToNodeInfo)
 
     def chooseNodes(self, nodeToNodeInfo, force=False, preemptable=False):
