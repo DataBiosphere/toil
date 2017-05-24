@@ -654,7 +654,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--version", action='version', version=baseVersion)
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
-                    metavar=("VAR1,VAR2"),
+                    metavar=("VAR1 VAR2"),
                     default=("PATH",),
                     dest="preserve_environment")
 
