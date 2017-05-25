@@ -311,9 +311,14 @@ class ScalerThread(ExceptionalThread):
         self.minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
         self.maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
-            nodes = self.scaler.leader.provisioner.getProvisionedWorkers(self.preemptable)
-            self.totalNodes = len(nodes)
-            self.scaler.provisioner.setStaticNodes(nodes, self.preemptable)
+            for preemptable in (True, False):
+                # although this thread only deals with either preemptable or non-preemptable nodes,
+                # the presence of any statically provisioned nodes effects both scaler threads so we
+                # will check for both preemptable and non preemptable static nodes
+                nodes = self.scaler.leader.provisioner.getProvisionedWorkers(preemptable)
+                self.scaler.provisioner.setStaticNodes(nodes, preemptable)
+                if preemptable == self.preemptable:
+                    self.totalNodes = len(nodes)
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
