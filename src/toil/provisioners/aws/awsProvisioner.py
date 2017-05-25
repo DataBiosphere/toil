@@ -160,7 +160,7 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, preemptable=False):
-        instanceType = self.instanceType[preemptable]
+        instanceType = self._getInstanceType(preemptable)
         return Shape(wallTime=60 * 60,
                      memory=instanceType.memory * 2 ** 30,
                      cores=instanceType.cores,
@@ -230,7 +230,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, numNodes, preemptable):
-        instanceType = self.instanceType[preemptable]
+        instanceType = self._getInstanceType(preemptable)
         bdm = self._getBlockDeviceMapping(instanceType)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
@@ -299,6 +299,16 @@ class AWSProvisioner(AbstractProvisioner):
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time)
                 for i in workerInstances]
+
+    def _getInstanceType(self, preemptable):
+        try:
+            iType = self.instanceType[preemptable]
+        except KeyError:
+            # if (non)preemptable node type has not been explicitly defined default to the other
+            # node type. Can occur, for example, if user specifies only preemptable nodes but the spot bid was too low.
+            # in that situation we want on-demand nodes of the same size.
+            iType = self.instanceType[not preemptable]
+        return iType
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
