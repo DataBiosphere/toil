@@ -235,7 +235,6 @@ class MesosBatchSystem(BatchSystemSupport,
 
     @contextmanager
     def nodeFiltering(self, filter):
-        assert not self.nodeFilter
         self.nodeFilter = [filter]
         yield
         self.nodeFilter = []
