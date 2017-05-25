@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 import time
+from contextlib import contextmanager
 from threading import Thread, Event
 import logging
 import random
@@ -233,6 +234,13 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     def getNodes(self, preemptable=False):
         return self._pick(preemptable).getNodes()
+
+    def nodeInUse(self, nodeIP):
+        return False
+
+    @contextmanager
+    def nodeFiltering(self, filter):
+        pass
 
     # AbstractProvisioner methods
 
