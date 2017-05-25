@@ -492,15 +492,14 @@ class ScalerThread(ExceptionalThread):
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             # iMap = ip : instance
-            ipMap = {instance.privateIP: instance for instance in nodeToNodeInfo.keys()}
-            def _nodeFilter(executorInfo):
-                # what if nodes are added during removeNodes? This ip map may be out of date
+            ipMap = {node.privateIP: node for node in nodeToNodeInfo.keys()}
+            def filterRemovableNodes(executorInfo):
                 return not bool(self.chooseNodes({ipMap.get(executorInfo.nodeAddress): executorInfo.nodeInfo},
                                                  preemptable=preemptable))
-            with self.scaler.leader.batchSystem.nodeFiltering(_nodeFilter):
+            with self.scaler.leader.batchSystem.nodeFiltering(filterRemovableNodes):
                 # while this context manager is active, the batch system will not launch any
                 # news tasks on nodes that are being considered for termination (as determined by the
-                # _nodeFilter method)
+                # filterRemovableNodes method)
                 nodeToNodeInfo = self.getNodes(preemptable)
                 # Join nodes and instances on private IP address.
                 logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodeToNodeInfo)))
@@ -528,6 +527,9 @@ class ScalerThread(ExceptionalThread):
         # nodes for yet. We'll ignore those, too, unless forced.
         nodesToTerminate = []
         for node, nodeInfo in nodeToNodeInfo.items():
+            if node is None:
+                logger.info("Node with info %s was not found in our node list", nodeInfo)
+                continue
             staticNodes = self.scaler.provisioner.getStaticNodes(preemptable)
             prefix = 'non-' if not preemptable else ''
             if node.privateIP in staticNodes:
@@ -543,7 +545,6 @@ class ScalerThread(ExceptionalThread):
             elif nodeInfo is not None and nodeInfo.workers < 1:
                 nodesToTerminate.append((node, nodeInfo))
             else:
-                # TODO: fix node info __str__
                 logger.debug('Not terminating instances %s. Node info: %s', node, nodeInfo)
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda ((node, nodeInfo)): (
