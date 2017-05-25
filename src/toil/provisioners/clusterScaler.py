@@ -325,10 +325,12 @@ class ScalerThread(ExceptionalThread):
 
         self.stats = None
         if scaler.config.clusterStats:
+            logger.debug("Starting up cluster statistics...")
             self.stats = ClusterStats(self.scaler.leader.config.clusterStats,
                                       self.scaler.leader.batchSystem,
                                       self.scaler.provisioner.clusterName)
             self.stats.startStats(preemptable=preemptable)
+            logger.debug("...Cluster stats started.")
 
     def tryRun(self):
         global _preemptableNodeDeficit
@@ -638,6 +640,7 @@ class ScalerThread(ExceptionalThread):
 class ClusterStats(object):
 
     def __init__(self, path, batchSystem, clusterName):
+        logger.debug("Initializing cluster statistics")
         self.stats = {}
         self.statsThreads = []
         self.statsPath = path
@@ -690,6 +693,7 @@ class ClusterStats(object):
                         time=time.time()  # add time stamp
                         )
         if self.scaleable:
+            logger.debug("Staring to gather statistics")
             stats = {}
             try:
                 while not self.stop:
