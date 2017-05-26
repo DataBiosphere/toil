@@ -318,7 +318,7 @@ class ScalerThread(ExceptionalThread):
                 nodes = self.scaler.leader.provisioner.getProvisionedWorkers(preemptable)
                 self.scaler.provisioner.setStaticNodes(nodes, preemptable)
                 if preemptable == self.preemptable:
-                    self.totalNodes = len(nodes)
+                    self.totalNodes = len(nodes) if nodes else 0
         else:
             self.totalNodes = 0
         logger.info('Starting with %s %s(s) in the cluster.', self.totalNodes, self.nodeTypeString)
@@ -627,7 +627,8 @@ class ScalerThread(ExceptionalThread):
         return nodeToInfo
 
     def shutDown(self, preemptable):
-        self.stats.shutDownStats()
+        if self.stats:
+            self.stats.shutDownStats()
         logger.debug('Forcing provisioner to reduce cluster size to zero.')
         totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
         if totalNodes > len(self.scaler.provisioner.getStaticNodes(preemptable)):  # ignore static nodes
