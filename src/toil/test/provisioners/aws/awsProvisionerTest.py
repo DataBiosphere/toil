@@ -200,7 +200,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), 'sortFile')
         with open(fileToSort, 'w') as f:
-            # Fixme: making this file larger causes the test to hang 
+            # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
         self.rsyncUtil(fileToSort, ':/home/sortFile')
@@ -235,6 +235,13 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         ctx = AWSProvisioner._buildContext(self.clusterName)
         # test that two worker nodes were created + 1 for leader
         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+
+    def _runScript(self, toilOptions):
+        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
+        # hacky, but it works.
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand.extend(toilOptions)
+        self.sshUtil(runCommand)
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
