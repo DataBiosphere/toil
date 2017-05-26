@@ -207,9 +207,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
-        # hacky, but it works.
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -237,9 +235,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
 
     def _runScript(self, toilOptions):
-        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
-        # hacky, but it works.
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
