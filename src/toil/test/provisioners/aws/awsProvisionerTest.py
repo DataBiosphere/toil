@@ -200,6 +200,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), 'sortFile')
         with open(fileToSort, 'w') as f:
+            # Fixme: making this file larger causes the test to hang 
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
         self.rsyncUtil(fileToSort, ':/home/sortFile')
@@ -213,10 +214,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.sshUtil(runCommand)
 
     def launchCluster(self):
-        self.createClusterUtil(args=['-w', '2'])
-        ctx = AWSProvisioner._buildContext(self.clusterName)
-        # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+        self.createClusterUtil()
 
     @integrative
     @needs_aws
@@ -228,6 +226,15 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self._test(spotInstances=True)
 
+class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def launchCluster(self):
+        self.createClusterUtil(args=['-w', '2'])
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        # test that two worker nodes were created + 1 for leader
+        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
