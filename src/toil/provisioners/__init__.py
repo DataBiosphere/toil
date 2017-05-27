@@ -18,7 +18,6 @@ import os
 
 from bd2k.util import parse_iso_utc, less_strict_bool
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -86,6 +85,8 @@ class Cluster(object):
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
 
+    def monitorCluster(self, args):
+        self.provisioner.startMonitoring(self.clusterName, args)
 
 class Node(object):
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable):

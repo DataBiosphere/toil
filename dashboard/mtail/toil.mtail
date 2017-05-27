@@ -1,0 +1,35 @@
+gauge autoscaler_cur_size
+gauge autoscaler_desired_size
+gauge autoscaler_queue_size
+counter total_issued_jobs
+counter issued_jobs by job_type
+counter total_completed_jobs
+counter completed_jobs by job_type
+counter total_failed_jobs
+counter failed_jobs by job_type
+counter missing_jobs
+
+/cluster needs (?P<desired_size>\d+).* nodes of shape .+, from current size of (?P<cur_size>\d+), given a queue size of (?P<queue_size>\d+)/ {
+     autoscaler_desired_size = $desired_size
+     autoscaler_cur_size = $cur_size
+     autoscaler_queue_size = $queue_size
+}
+
+/Issued job '(?P<job_type>\S+)'/ {
+     issued_jobs[$job_type]++
+     total_issued_jobs++
+}
+
+/Job store ID .* with batch system id .* is missing for the 1 time/ {
+     missing_jobs++
+}
+
+/Due to failure we are reducing the remaining retry count of job '(?P<job_type>\S+)'.*with ID.*to (\d+)/ {
+     total_failed_jobs++
+     failed_jobs[$job_type]++
+}
+
+/Job ended successfully: '(?P<job_type>\S+)'/ {
+     completed_jobs[$job_type]++
+     total_completed_jobs++
+}

@@ -160,6 +160,13 @@ class Leader:
         """
         # Start the stats/logging aggregation thread
         self.statsAndLogging.start()
+        if self.config.monitorCluster:
+            from toil.provisioners.aws import ToilMtailServer
+            mtailServer = ToilMtailServer(logger)
+
+        else:
+            mtailServer = None
+
         try:
 
             # Start service manager thread
@@ -187,6 +194,9 @@ class Leader:
         finally:
             # Ensure the stats and logging thread is properly shutdown
             self.statsAndLogging.shutdown()
+            if mtailServer:
+                mtailServer.shutdown()
+
 
         # Filter the failed jobs
         self.toilState.totalFailedJobs = filter(lambda j : self.jobStore.exists(j.jobStoreID), self.toilState.totalFailedJobs)

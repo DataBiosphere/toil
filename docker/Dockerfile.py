@@ -27,6 +27,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'libssl-dev',
                          'wget',
                          'curl',
+                         'git',
                          'openssh-server',
                          'mesos=1.0.1-2.0.93.ubuntu1404',
                          "nodejs", # CWL support for javascript expressions

@@ -13,6 +13,8 @@
 # limitations under the License.
 import logging
 import os
+import tempfile
+import subprocess
 from collections import namedtuple
 from operator import attrgetter
 import datetime
@@ -191,11 +193,26 @@ ec2FullPolicy = dict(Version="2012-10-17", Statement=[
 s3FullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="s3:*")])
 
+
 sdbFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="sdb:*")])
 
 iamFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="iam:*")])
+
+
+class ToilMtailServer:
+    def __init__(self, logger):
+        self.logger = logger
+        self.mtailProc = subprocess.Popen(["docker", "attach",
+                                        "toil_mtail"],
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.mtailHandler = logging.StreamHandler(stream=self.mtailProc.stdin)
+        self.logger.addHandler(self.mtailHandler)
+
+    def shutdown(self):
+        self.logger.removeHandler(self.mtailHandler)
+        self.mtailProc.kill()
 
 
 logDir = '--log_dir=/var/lib/mesos'
@@ -292,6 +309,29 @@ coreos:
             --name=toil_{role} \
             {image} \
             {args}
+    - name: "node-exporter.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=node-exporter container
+        After=docker.service
+
+        [Service]
+        Restart=on-failure
+        RestartSec=2
+        ExecPre=-/usr/bin/docker rm node_exporter
+        ExecStart=/usr/bin/docker run \
+            -p 9100:9100 \
+            -v /proc:/host/proc \
+            -v /sys:/host/sys \
+            -v /:/rootfs \
+            --name node-exporter \
+            --restart always \
+            prom/node-exporter:0.12.0 \
+            -collector.procfs /host/proc \
+            -collector.sysfs /host/sys \
+            -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
+        
 
 ssh_authorized_keys:
     - "ssh-rsa {sshKey}"

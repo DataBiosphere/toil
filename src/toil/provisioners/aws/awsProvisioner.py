@@ -44,6 +44,8 @@ from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
 
+from toil.version import dockerRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -236,12 +238,16 @@ class AWSProvisioner(AbstractProvisioner):
                            'roles will not be deleted.')
 
     @classmethod
-    def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
+    def sshLeader(cls, clusterName, args=None, zone=None, appliance=True, **kwargs):
         leader = cls._getLeader(clusterName, zone=zone)
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
+        if appliance:
+            cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
+        else:
+            del kwargs['tty']
+            cls._coreSSH(leader.public_dns_name, *command, **kwargs)
 
     @classmethod
     def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
@@ -442,6 +448,8 @@ class AWSProvisioner(AbstractProvisioner):
         if not strict:
             kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
+        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090',
+            '-L', '3903:localhost:3903'])
         if sshOptions:
             # add specified options to ssh command
             assert isinstance(sshOptions, list)
@@ -475,7 +483,7 @@ class AWSProvisioner(AbstractProvisioner):
         return stdout
 
     @classmethod
-    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
+    def _rsyncNode(cls, ip, args, applianceName='toil_leader', appliance=False, **kwargs):
         remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         sshCommand = "ssh"
@@ -493,9 +501,10 @@ class AWSProvisioner(AbstractProvisioner):
             parsedArgs.append(i)
         if not hostInserted:
             raise ValueError("No remote host found in argument list")
-        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
+        command = ['rsync', '-e', sshCommand]
+        if appliance:
+            command += ['--rsync-path', remoteRsync]
         logger.debug("Running %r.", command + parsedArgs)
-
         return subprocess.check_call(command + parsedArgs)
 
     @classmethod
@@ -842,3 +851,60 @@ class AWSProvisioner(AbstractProvisioner):
                     with attempt:
                         ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
+
+    @classmethod
+    def startMonitoring(cls, clusterName, args):
+        try:
+            cls.sshLeader(clusterName=clusterName, args=["docker", "rm" , 
+                                            "-f", "-v", "prometheus_server"], appliance=False)
+            cls.sshLeader(clusterName=clusterName, args=["docker", "rm", 
+                                            "-f", "-v", "grafana_server"], appliance=False)
+            cls.sshLeader(clusterName=clusterName, args=["docker", "rm", 
+                                            "-f", "-v", "toil_mtail"], appliance=False)
+        except RuntimeError:
+            pass
+
+        leader = cls._getLeader(clusterName)
+
+        cls.sshLeader(clusterName=clusterName, args=["docker", "pull",
+                                        "quay.io/adderan/toil-prometheus"], appliance=False)
+        cls.sshLeader(clusterName=clusterName, args=["docker", "pull",
+                                        "quay.io/adderan/toil-grafana"], appliance=False)
+        cls.sshLeader(clusterName=clusterName, args=["docker", "pull",
+                                        "quay.io/adderan/toil-mtail"], appliance=False)
+
+        cls.sshLeader(clusterName=clusterName, args=["docker", "run", 
+                                        "--name", "prometheus_server", 
+                                        "-d", 
+                                        "-p=9090:9090", 
+                                        "quay.io/adderan/toil-prometheus", 
+                                        "%s:3903" % leader.private_dns_name, str(clusterName)], appliance=False)
+        cls.sshLeader(clusterName=clusterName, args=["docker", "run",
+                                         "--name", "grafana_server",
+                                         "-d", "-p=3000:3000",
+                                         "quay.io/adderan/toil-grafana"], appliance=False)
+        cls.sshLeader(clusterName=clusterName, args=["docker", "run",
+                                  "-d",
+                                  "--interactive",
+                                  "--name", "toil_mtail",
+                                  "-p", "3903:3903",
+                                  "quay.io/adderan/toil-mtail"], appliance=False)
+
+
+        def requestPredicate(e):
+            if isinstance(e, RuntimeError):
+                return True
+            return False
+
+        #Add prometheus data source
+        for attempt in retry(predicate=requestPredicate):
+            with attempt:
+                cls.sshLeader(clusterName=clusterName, args=['curl', '-i', '--user', 'admin:admin', '-H',
+                                                     'Content-Type: application/json',
+                                                     '-X', 'POST',
+                                                     '-d', '{"name":"DS_PROMETHEUS",\
+                                                     "type":"prometheus",\
+                                                     "url":"http://localhost:9090",\
+                                                     "access":"direct"}',
+                                                     'http://localhost:3000/api/datasources'])
+

@@ -85,6 +85,7 @@ class Config(object):
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
+        self.monitorCluster = False
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
@@ -211,7 +212,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-	setOption("preemptableCompensation", float)
+        setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
@@ -398,6 +399,9 @@ def _addOptions(addGroupFn, config):
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "
                       "space. The default value is 50."))
+    addOptionFn("--monitorCluster", dest="monitorCluster",
+                default=False, action="store_true",
+                help="Enable mtail monitoring service.")
     
     #        
     # Parameters to limit service jobs / detect service deadlocks

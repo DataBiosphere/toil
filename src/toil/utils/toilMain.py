@@ -35,7 +35,7 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import toilKill, toilStats, toilStatus, toilClean, toilLaunchCluster, toilDestroyCluster, toilSSHCluster, toilRsyncCluster
+    from toil.utils import toilKill, toilStats, toilStatus, toilClean, toilLaunchCluster, toilDestroyCluster, toilSSHCluster, toilRsyncCluster, toilMonitorCluster
     commandMapping = {name[4:].lower(): module for name, module in iteritems(locals())}
     commandMapping = {name[:-7]+'-'+name[-7:] if name.endswith('cluster') else name: module for name, module in iteritems(commandMapping)}
     return commandMapping

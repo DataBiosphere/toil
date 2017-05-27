@@ -16,10 +16,10 @@ from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
 
+import os
 
-
-from bd2k.util.retry import never
-
+from bd2k.util.retry import retry, never
+from toil.lib.bioio import getTempFile
 
 log = logging.getLogger(__name__)
 
@@ -192,5 +192,15 @@ class AbstractProvisioner(object):
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
         cluser.
         :param clusterName: identifier of the cluster to terminate.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def startMonitoring(cls, clusterName):
+        """
+        Start up a dashboard on the leader node for monitoring cluster CPU and memory usage
+        and tracking issued, queued, completed, and failed jobs.
+        :param clusterName: identifier of the cluster on which to start the dashboard
         """
         raise NotImplementedError
