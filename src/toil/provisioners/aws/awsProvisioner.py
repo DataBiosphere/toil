@@ -22,6 +22,8 @@ import time
 import sys
 
 # Python 3 compatibility imports
+from _ssl import SSLError
+
 from six import iteritems
 from six.moves import xrange
 
@@ -176,8 +178,13 @@ class AWSProvisioner(AbstractProvisioner):
         if coreOSAMI is not None:
             return coreOSAMI
         # that ownerID corresponds to coreOS
-        coreOSAMI = [ami for ami in ctx.ec2.get_all_images(owners=['679593333241']) if
-                     descriptionMatches(ami)]
+
+        for attempt in retry(predicate= lambda e : isinstance(e, SSLError)):
+            # SSLError is thrown when get_all_images times out
+            with attempt:
+                amis = ctx.ec2.get_all_images(owners=['679593333241'])
+
+        coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
         assert len(coreOSAMI) == 1
         return coreOSAMI.pop().id
