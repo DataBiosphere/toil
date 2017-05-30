@@ -198,7 +198,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
-        fileToSort = os.path.join(os.getcwd(), 'sortFile')
+        fileToSort = os.path.join(os.getcwd(), str(uuid4()))
         with open(fileToSort, 'w') as f:
             # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
