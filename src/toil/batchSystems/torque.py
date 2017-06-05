@@ -91,6 +91,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     logger.debug('Exit Status: ' + status)
                     return int(status)
                 if 'unknown job id' in line.lower():
+                    # some clusters configure Torque to forget everything about just
+                    # finished jobs instantly, apparently for performance reasons
                     logger.debug('Batch system no longer remembers about job {}'.format(torqueJobID))
                     # return assumed success; status files should reveal failure
                     return 0
