@@ -20,6 +20,7 @@ import subprocess
 import time
 import math
 import sys
+import shlex
 import xml.etree.ElementTree as ET
 import tempfile
 
@@ -138,6 +139,15 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             
             if reqline:
                 qsubline += ['-l',','.join(reqline)]
+            
+            # All other qsub parameters can be passed through the environment (see man qsub).
+            # No attempt is made to parse them out here and check that they do not conflict
+            # with those that we already constructed above
+            arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
+            if arglineEnv is not None:
+                logger.debug("Additional Torque arguments appended to qsub from "\
+                        "TOIL_TORQUE_ARGS env. variable: {}".format(arglineEnv))
+                qsubline += shlex.split(arglineEnv)
 
             # "Native extensions" for TORQUE (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_TORQUE_ARGS')
