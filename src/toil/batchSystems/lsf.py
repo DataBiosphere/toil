@@ -207,17 +207,20 @@ class LSFBatchSystem(BatchSystemSupport):
                 time.sleep(5)
 
     def getIssuedBatchJobIDs(self):
-        """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
+        """A list of jobs (as jobIDs) currently issued (may be running, or maybe
         just waiting).
         """
         return self.currentjobs
 
     def getRunningBatchJobIDs(self):
-        """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
+        """Gets a map of jobs (as jobIDs) currently running (not just waiting)
         and a how long they have been running for (in seconds).
         """
         times = {}
-        currentjobs = set(self.lsfJobIDs[x] for x in self.getIssuedBatchJobIDs())
+        currentjobs = set()
+        for batch_id in self.getIssuedBatchJobIDs():
+            if batch_id in self.lsfJobIDs:
+                currentjobs.add(self.lsfJobIDs[batch_id])
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
 
         for curline in process.stdout:
