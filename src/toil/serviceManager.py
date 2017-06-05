@@ -29,6 +29,7 @@ class ServiceManager( object ):
     Manages the scheduling of services.
     """
     def __init__(self, jobStore, toilState):
+        logger.debug("Initializing service manager")
         self.jobStore = jobStore
         
         self.toilState = toilState

@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def awsRemainingBillingInterval(instance):
+    """
+    Takes a node object and determines how far into it's billing cycle it is.
+    
+    :param instance:
+    :return:
+    """
     def partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the
@@ -30,7 +36,7 @@ def awsRemainingBillingInterval(instance):
         quarter into the billing cycle, with three quarters remaining before we will be charged
         again for that instance.
         """
-        launch_time = parse_iso_utc(instance.launch_time)
+        launch_time = parse_iso_utc(instance.launchTime)
         now = datetime.datetime.utcnow()
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
@@ -79,3 +85,20 @@ class Cluster(object):
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
+
+class Node(object):
+
+    def __init__(self, publicIP, privateIP, name, launchTime):
+        self.publicIP = publicIP
+        self.privateIP = privateIP
+        self.name = name
+        self.launchTime = launchTime
+
+    def __str__(self):
+        return "%s at %s" % (self.name, self.publicIP)
+
+    def __repr__(self):
+        return str(self)
+
+    def __hash__(self):
+        return hash(self.publicIP)
