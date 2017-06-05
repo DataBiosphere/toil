@@ -80,7 +80,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
-            self.masterPublicKey = self.setSSH()
+            self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
             assert config.preemptableNodeType or config.nodeType
             if config.preemptableNodeType is not None:
