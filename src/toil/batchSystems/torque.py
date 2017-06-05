@@ -131,7 +131,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
             if reqlineEnv is not None:
-                logger.debug("Additional Torque resource requirements appended to qsub from TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+                logger.debug("Additional Torque resource requirements appended to qsub from "\
+                        "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
 
                 reqline.append(reqlineEnv)
             
