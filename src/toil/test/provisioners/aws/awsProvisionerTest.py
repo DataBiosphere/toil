@@ -151,6 +151,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--retryCount=2',
                        '--clusterStats=/home/',
                        '--logDebug',
+                       '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
         if spotInstances:
@@ -209,26 +210,23 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
-        fileToSort = os.path.join(os.getcwd(), 'sortFile')
+        fileToSort = os.path.join(os.getcwd(), str(uuid4()))
         with open(fileToSort, 'w') as f:
+            # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
         self.rsyncUtil(fileToSort, ':/home/sortFile')
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
-        # hacky, but it works.
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
     def launchCluster(self):
-        # add arguments to test that static workers launch and that we can specify leader storage
-        self.createClusterUtil(args=['-w', '2', '--leaderStorage', str(self.requestedLeaderStorage)])
+        # add arguments to test that we can specify leader storage
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
 
     def getRootVolID(self):
         """
@@ -255,6 +253,20 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self._test(spotInstances=True)
 
+class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def launchCluster(self):
+        self.createClusterUtil(args=['-w', '2'])
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        # test that two worker nodes were created + 1 for leader
+        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+
+    def _runScript(self, toilOptions):
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand.extend(toilOptions)
+        self.sshUtil(runCommand)
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """

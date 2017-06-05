@@ -720,7 +720,7 @@ class Toil(object):
             from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
-            self._provisioner = AWSProvisioner(self.config, self._batchSystem)
+            self._provisioner = AWSProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner
