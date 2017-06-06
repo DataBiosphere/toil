@@ -161,7 +161,9 @@ def _docker(job,
         # When piping, all arguments now get merged into a single string to bash -c.
         # We try to support spaces in paths by wrapping them all in quotes first.
         chain_params = [' '.join(p) for p in [map(pipes.quote, q) for q in parameters]]
-        call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c', ' | '.join(chain_params)]
+        # Use bash's set -eo pipefail to detect and abort on a failure in any command in the chain
+        call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c',
+                                 'set -eo pipefail && {}'.format(' | '.join(chain_params))]
     else:
         call = baseDockerCall + [tool] + parameters
     _logger.info("Calling docker with " + repr(call))

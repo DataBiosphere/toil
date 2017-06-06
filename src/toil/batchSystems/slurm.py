@@ -134,7 +134,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # slurm_load_jobs error: Invalid job id specified
                 # There is no job information, so exit.
                 if len(values)>0 and values[0] == 'slurm_load_jobs':
-                    return None
+                    return (None, None)
                 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and

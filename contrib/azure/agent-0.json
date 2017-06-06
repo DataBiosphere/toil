@@ -140,6 +140,12 @@
         "description": "Branch on Github to pull cluster setup scripts and Toil from."
       }
     },
+    "pythonPackages": {
+      "type": "string",
+      "metadata": {
+        "description": "Extra Python package specifiers to install, like 'pysam>=1.0'. Space separated."
+      }
+    },
     "omsStorageAccount": {
       "type": "string",
       "metadata": {

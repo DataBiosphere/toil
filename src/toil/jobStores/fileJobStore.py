@@ -165,15 +165,21 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
-                fd, absPath = self._getTempFile()
-                shutil.copyfile(self._extractPathFromUrl(url), absPath)
+                fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
+                os.unlink(absPath)
+                try:
+                    os.link(self._extractPathFromUrl(url), absPath)
+                except OSError:
+                    shutil.copyfile(self._extractPathFromUrl(url), absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
-                with self.writeSharedFileStream(sharedFileName) as writable:
-                    with open(self._extractPathFromUrl(url), 'r') as readable:
-                        shutil.copyfileobj(readable, writable)
+                path = self._getSharedFilePath(sharedFileName)
+                try:
+                    os.link(self._extractPathFromUrl(url), path)
+                except:
+                    shutil.copyfile(self._extractPathFromUrl(url), path)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
@@ -290,11 +296,14 @@ class FileJobStore(AbstractJobStore):
     # with specific jobs.
     ##########################################  
 
+    def _getSharedFilePath(self, sharedFileName):
+        return os.path.join(self.jobStoreDir, sharedFileName)
+
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         # the isProtected parameter has no effect on the fileStore
         assert self._validateSharedFileName( sharedFileName )
-        with open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' ) as f:
+        with open(self._getSharedFilePath(sharedFileName), 'w') as f:
             yield f
 
     @contextmanager
