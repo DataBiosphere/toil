@@ -372,7 +372,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         filePath[-1], extension = os.path.splitext(filePath[-1])
         require(extension in ('.py', '.pyc'),
                 'The name of a user script/module must end in .py or .pyc.')
-        log.debug("Module name is %s", name)
         if name == '__main__':
             log.debug("Discovering real name of module")
             # User script/module was invoked as the main program
@@ -393,6 +392,10 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 cls._check_conflict(dirPath, name)
         else:
             # User module was imported. Determine the directory containing the top-level package
+            if filePath[-1] == '__init__':
+                # module is a subpackage
+                filePath.pop()
+
             for package in reversed(name.split('.')):
                 dirPathTail = filePath.pop()
                 assert dirPathTail == package
