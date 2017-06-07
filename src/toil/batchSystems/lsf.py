@@ -217,7 +217,13 @@ class LSFBatchSystem(BatchSystemSupport):
         and a how long they have been running for (in seconds).
         """
         times = {}
-        currentjobs = set(self.lsfJobIDs[x] for x in self.getIssuedBatchJobIDs())
+        currentjobs = set()
+        for x in self.getIssuedBatchJobIDs():
+            if x in self.lsfJobIDs:
+                currentjobs.add(self.lsfJobIDs[x])
+            else:
+                #not yet started
+                pass
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
 
         for curline in process.stdout:
