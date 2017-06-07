@@ -3,12 +3,14 @@ import signal
 import time
 import uuid
 from threading import Thread
+from subprocess import CalledProcessError
 
 import os
+from pwd import getpwuid
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import dockerCall, _containerIsRunning, _dockerKill, STOP, FORGO, RM
+from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
 from toil.test import ToilTest
 
 _log = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ class DockerTest(ToilTest):
     def setUp(self):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
-    def testDockerClean(self):
+    def testDockerClean(self, caching=True):
         """
         Run the test container that creates a file in the work dir, and sleeps for 5 minutes.  Ensure
         that the calling job gets SIGKILLed after a minute, leaving behind the spooky/ghost/zombie
@@ -57,6 +59,8 @@ class DockerTest(ToilTest):
         options.logLevel = 'INFO'
         options.workDir = work_dir
         options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
         for rm in (True, False):
             for detached in (True, False):
                 if detached and rm:
@@ -64,7 +68,6 @@ class DockerTest(ToilTest):
                 for defer in (FORGO, STOP, RM, None):
                     # Not using base64 logic here since it might create a name starting with a `-`.
                     container_name = uuid.uuid4().hex
-                    print rm, detached, defer
                     A = Job.wrapJobFn(_testDockerCleanFn, data_dir, detached, rm, defer,
                                       container_name)
                     try:
@@ -93,6 +96,62 @@ class DockerTest(ToilTest):
                         # Prepare for the next test.
                         _dockerKill(container_name, RM)
                         os.remove(test_file)
+
+    def testDockerPipeChain(self, caching=True):
+        """
+        Test for piping API for dockerCall().  Using this API (activated when list of
+        argument lists is given as parameters), commands a piped together into a chain
+        ex:  parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ] should execute:
+        printf 'x\n y\n' | wc -l
+        """
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
+        A = Job.wrapJobFn(_testDockerPipeChainFn)
+        rv = Job.Runner.startToil(A, options)
+        assert rv.strip() == '2'
+
+    def testDockerPipeChainErrorDetection(self, caching=True):
+        """
+        By default, executing cmd1 | cmd2 | ... | cmdN, will only return an error
+        if cmdN fails.  This can lead to all manor of errors being silently missed.
+        This tests to make sure that the piping API for dockerCall() throws an exception
+        if non-last commands in the chain fail.
+        """
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
+        A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
+        rv = Job.Runner.startToil(A, options)
+        assert rv == True
+
+    def testDockerPermissions(self, caching=True):
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
+        A = Job.wrapJobFn(_testDockerPermissions)
+        Job.Runner.startToil(A, options)
+
+    def testDockerPermissionsNonCaching(self):
+        self.testDockerPermissions(caching=False)
+
+    def testNonCachingDockerChain(self):
+        self.testDockerPipeChain(caching=False)
+
+    def testNonCachingDockerChainErrorDetection(self):
+        self.testDockerPipeChainErrorDetection(caching=False)
+
+    def testNonCachingDockerClean(self):
+        self.testDockerClean(caching=False)
 
 
 def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
@@ -127,3 +186,39 @@ def _testDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, contain
     t.daemon = True
     t.start()
     dockerCall(job, tool='quay.io/ucsc_cgl/spooky_test', workDir=workDir, defer=defer, dockerParameters=dockerParameters)
+
+
+def _testDockerPipeChainFn(job):
+    """
+    Return the result of simple pipe chain.  Should be 2
+    """
+    parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
+    return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
+
+def _testDockerPipeChainErrorFn(job):
+    """
+    Return True if the command exit 1 | wc -l raises a CalledProcessError when run through 
+    the docker interface
+    """
+    parameters = [ ['exit', '1'], ['wc', '-l'] ]
+    try:
+        return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
+    except CalledProcessError:
+        return True
+    return False
+
+def _testDockerPermissions(job):
+    testDir = job.fileStore.getLocalTempDir()
+    dockerCall(job, tool='ubuntu', workDir=testDir, parameters=[['touch', '/data/test.txt']])
+    outFile = os.path.join(testDir, 'test.txt')
+    assert os.path.exists(outFile)
+    assert not ownerName(outFile) == "root"
+
+
+def ownerName(filename):
+    """
+    Determines a given file's owner
+    :param str filename: path to a file
+    :return: name of filename's owner
+    """
+    return getpwuid(os.stat(filename).st_uid).pw_name

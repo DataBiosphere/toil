@@ -171,12 +171,14 @@ def system(command):
     subprocess.check_call(command, shell=isinstance(command, string_types), bufsize=-1)
 
 def getTotalCpuTimeAndMemoryUsage():
-    """Gives the total cpu time and memory usage of itself and its children.
+    """
+    Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
+    itself and its single largest child.
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-    totalCPUTime = me.ru_utime+me.ru_stime+childs.ru_utime+childs.ru_stime
-    totalMemoryUsage = me.ru_maxrss+ me.ru_maxrss
+    totalCPUTime = me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime
+    totalMemoryUsage = me.ru_maxrss + childs.ru_maxrss
     return totalCPUTime, totalMemoryUsage
 
 def getTotalCpuTime():
@@ -185,7 +187,7 @@ def getTotalCpuTime():
     return getTotalCpuTimeAndMemoryUsage()[0]
 
 def getTotalMemoryUsage():
-    """Gets the amount of memory used by the process and its children.
+    """Gets the amount of memory used by the process and its largest child.
     """
     return getTotalCpuTimeAndMemoryUsage()[1]
 

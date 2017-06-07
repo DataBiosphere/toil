@@ -4,9 +4,13 @@
 
 Toil is a scalable, efficient, cross-platform pipeline management system,
 written entirely in Python, and designed around the principles of functional
-programming. Full documentation for the latest stable release can be found at
-`Read the Docs`_.
+programming.
 
+* Check the `website`_ for a description of Toil and its features.
+* Full documentation for the latest stable release can be found at
+  `Read the Docs`_.
+
+.. _website: http://toil.ucsc-cgl.org/
 .. _Read the Docs: http://toil.readthedocs.org/
 
 

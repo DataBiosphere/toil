@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import, print_function
 import unittest
+import logging
 import os
 import random
 
@@ -25,11 +26,17 @@ from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest
 
+logger = logging.getLogger(__name__)
 
 class JobTest(ToilTest):
     """
     Tests testing the job class
     """
+
+    @classmethod
+    def setUpClass(cls):
+        super(JobTest, cls).setUpClass()
+        logging.basicConfig(level=logging.DEBUG)
 
     def testStatic(self):
         """
@@ -253,6 +260,112 @@ class JobTest(ToilTest):
                         .intersection(self.reachable(fNode, adjacencyList))) > 0
                 and (fNode, tNode) not in childEdges and (fNode, tNode) not in followOnEdges):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
+
+    def testNewCheckpointIsLeafVertexNonRootCase(self):
+        """
+        Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
+        identifies leaf vertices incorrectly
+
+        Test verification of new checkpoint jobs being leaf verticies,
+        starting with the following baseline workflow:
+
+            Parent
+              |
+            Child # Checkpoint=True
+
+        """
+
+        def createWorkflow():
+            rootJob = Job.wrapJobFn(simpleJobFn, "Parent")
+            childCheckpointJob = rootJob.addChildJobFn(simpleJobFn, "Child", checkpoint=True)
+            return rootJob, childCheckpointJob
+
+        self.runNewCheckpointIsLeafVertexTest(createWorkflow)
+
+    def testNewCheckpointIsLeafVertexRootCase(self):
+        """
+        Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
+                              omits the workflow root job
+
+        Test verification of a new checkpoint job being leaf vertex,
+        starting with a baseline workflow of a single, root job:
+
+            Root # Checkpoint=True
+
+        """
+
+        def createWorkflow():
+            rootJob = Job.wrapJobFn(simpleJobFn, "Root", checkpoint=True)
+            return rootJob, rootJob
+
+        self.runNewCheckpointIsLeafVertexTest(createWorkflow)
+
+    def runNewCheckpointIsLeafVertexTest(self, createWorkflowFn):
+        """
+        Test verification that a checkpoint job is a leaf vertex using both
+        valid and invalid cases.
+
+        :param createWorkflowFn: function to create and new workflow and return a tuple of:
+
+                                 0) the workflow root job
+                                 1) a checkpoint job to test within the workflow
+
+        """
+
+        logger.info('Test checkpoint job that is a leaf vertex')
+        self.runCheckpointVertexTest(*createWorkflowFn(),
+                                     expectedException=None)
+
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a service')
+        self.runCheckpointVertexTest(*createWorkflowFn(),
+                                     checkpointJobService=TrivialService("LeafTestService"),
+                                     expectedException=JobGraphDeadlockException)
+
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
+        self.runCheckpointVertexTest(*createWorkflowFn(),
+                                     checkpointJobChild=Job.wrapJobFn(
+                                         simpleJobFn, "LeafTestChild"),
+                                     expectedException=JobGraphDeadlockException)
+
+        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
+        self.runCheckpointVertexTest(*createWorkflowFn(),
+                                     checkpointJobFollowOn=Job.wrapJobFn(
+                                         simpleJobFn,
+                                         "LeafTestFollowOn"),
+                                     expectedException=JobGraphDeadlockException)
+
+    def runCheckpointVertexTest(self,
+                                workflowRootJob,
+                                checkpointJob,
+                                checkpointJobService=None,
+                                checkpointJobChild=None,
+                                checkpointJobFollowOn=None,
+                                expectedException=None):
+        """
+        Modifies the checkpoint job according to the given parameters
+        then runs the workflow, checking for the expected exception, if any.
+        """
+
+        self.assertTrue(checkpointJob.checkpoint)
+
+        if checkpointJobService is not None:
+            checkpointJob.addService(checkpointJobService)
+        if checkpointJobChild is not None:
+            checkpointJob.addChild(checkpointJobChild)
+        if checkpointJobFollowOn is not None:
+            checkpointJob.addFollowOn(checkpointJobFollowOn)
+
+        # Run the workflow and check for the expected behavior
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "INFO"
+        if expectedException is None:
+            Job.Runner.startToil(workflowRootJob, options)
+        else:
+            try:
+                Job.Runner.startToil(workflowRootJob, options)
+                self.fail("The expected exception was not thrown")
+            except expectedException as ex:
+                logger.info("The expected exception was thrown: %s", repr(ex))
 
     def testEvaluatingRandomDAG(self):
         """
@@ -495,6 +608,9 @@ class JobTest(ToilTest):
             if cyclic(i, visited, []):
                 return False
         return True
+
+def simpleJobFn(job, value):
+    job.fileStore.logToMaster(value)
 
 def fn1Test(string, outputFile):
     """

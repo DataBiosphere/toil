@@ -26,7 +26,6 @@ from threading import Lock, Condition
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six.moves import xrange
-from six import iteritems
 
 import toil
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
@@ -231,7 +230,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getRunningBatchJobIDs(self):
         now = time.time()
-        return {jobID: now - info.time for jobID, info in iteritems(self.runningJobs)}
+        return {jobID: now - info.time for jobID, info in self.runningJobs.items()}
 
     def shutdown(self):
         """

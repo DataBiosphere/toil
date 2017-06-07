@@ -153,6 +153,9 @@ class AbstractJobStoreTest:
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
             self.assertEquals(jobOnMaster.logJobStoreFileID, None)
 
+            
+
+
             # Create a second instance of the job store, simulating a worker ...
             #
             worker = self._createJobStore()
@@ -357,6 +360,8 @@ class AbstractJobStoreTest:
             master.delete(jobOnMaster.jobStoreID)
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
+
+
 
         def _prepareTestFile(self, store, size=None):
             """
@@ -946,7 +951,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     self.assertEqual(s, f.read())
 
     def testInaccessableLocation(self):
-        url = 's3://cgl-toil-tests-disallow-getbucketlocation/README'
+        url = 's3://toil-no-location-bucket-dont-delete/README'
         with patch('toil.jobStores.aws.jobStore.log') as mock_log:
             jobStoreID = self.master.importFile(url)
             self.assertTrue(self.master.fileExists(jobStoreID))
@@ -979,6 +984,23 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (num_parts / 2))
             else:
                 self.fail('Expected a RuntimeError to be raised')
+    def testOverlargeJob(self):
+        master = self.master
+        masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+        overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
+                                    requirements=masterRequirements,
+                                    jobName='test-overlarge', unitName='onMaster',
+                                    jobStoreID=None, predecessorNumber=0)
+
+        #Make the pickled size of the job larger than 256K
+        with open("/dev/urandom", "r") as random:
+            overlargeJobNodeOnMaster.jobName = random.read(512 * 1024)
+        overlargeJobOnMaster = master.create(overlargeJobNodeOnMaster)
+        self.assertTrue(master.exists(overlargeJobOnMaster.jobStoreID))
+        overlargeJobOnMasterDownloaded = master.load(overlargeJobOnMaster.jobStoreID)
+        jobsOnMaster = [job for job in master.jobs()]
+        self.assertEqual(jobsOnMaster, [overlargeJobOnMaster])
+        master.delete(overlargeJobOnMaster.jobStoreID)
 
     def _prepareTestFile(self, bucket, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
@@ -1041,7 +1063,6 @@ class InvalidAWSJobStoreTest(ToilTest):
                           'us-west-2:a_b')
 
 
-@experimental
 @needs_azure
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = 'toiltest'
@@ -1092,11 +1113,13 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
-        from toil.jobStores.azureJobStore import AzureJobStore
+        from toil.jobStores.azureJobStore import AzureJobStore, retry_azure
         url = urlparse.urlparse(url)
         blob = AzureJobStore._parseWasbUrl(url)
-        content = blob.service.get_blob_to_bytes(blob.container, blob.name)
-        return hashlib.md5(content).hexdigest()
+        for attempt in retry_azure():
+            with attempt:
+                content = blob.service.get_blob_to_bytes(blob.container, blob.name)
+                return hashlib.md5(content).hexdigest()
 
     def _createExternalStore(self):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
@@ -1116,7 +1139,6 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         blobService.delete_container(containerName)
 
 
-@experimental
 @needs_azure
 class InvalidAzureJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
@@ -1142,7 +1164,6 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
     pass
 
 
-@experimental
 @needs_azure
 @needs_encryption
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):

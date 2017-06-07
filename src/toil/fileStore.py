@@ -135,8 +135,8 @@ class FileStore(object):
         the job.
 
         :return: The absolute path to a new local temporary directory. This directory will exist
-        for the duration of the job only, and is guaranteed to be deleted once the job terminates,
-        removing all files it contains recursively.
+                 for the duration of the job only, and is guaranteed to be deleted once the job
+                 terminates, removing all files it contains recursively.
         :rtype: str
         """
         return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
@@ -145,8 +145,8 @@ class FileStore(object):
         """
         Get a new local temporary file that will persist for the duration of the job.
 
-        :return: The absolute path to a local temporary file. This file will exist for the duration
-        of the job only, and is guaranteed to be deleted once the job terminates.
+        :return: The absolute path to a local temporary file. This file will exist for the
+                 duration of the job only, and is guaranteed to be deleted once the job terminates.
         :rtype: str
         """
         handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
@@ -174,11 +174,11 @@ class FileStore(object):
         Takes a file (as a path) and uploads it to the job store.
 
         :param string localFileName: The path to the local file to upload.
-        :param Boolean cleanup: if True then the copy of the global file will be deleted once the
+        :param bool cleanup: if True then the copy of the global file will be deleted once the
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
         :return: an ID that can be used to retrieve the file.
-        :rtype: FileID
+        :rtype: toil.fileStore.FileID
         """
         raise NotImplementedError()
 
@@ -187,7 +187,7 @@ class FileStore(object):
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
-        :param Boolean cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
+        :param bool cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
                   2) the ID of the resulting file in the job store.
@@ -203,11 +203,11 @@ class FileStore(object):
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.
 
-        :param FileID fileStoreID: job store id for the file
+        :param toil.fileStore.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
-        :param boolean cache: Described in :func:`~filestore.Filestore.readGlobalFile`
-        :param boolean mutable: Described in :func:`~filestore.Filestore.readGlobalFile`
+        :param bool cache: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
+        :param bool mutable: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
         :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
         :rtype: str
         """
@@ -248,7 +248,7 @@ class FileStore(object):
         return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID, dstUrl):
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+        raise NotImplementedError()
 
     # A utility method for accessing filenames
     def _resolveAbsoluteLocalPath(self, filePath):
@@ -598,11 +598,11 @@ class CachingFileStore(FileStore):
         The cache parameter will be used only if the file isn't already in the cache, and
         provided user path (if specified) is in the scope of local temp dir.
 
-        :param boolean cache: If True, a copy of the file will be saved into a cache that can be
+        :param bool cache: If True, a copy of the file will be saved into a cache that can be
                used by other workers. caching supports multiple concurrent workers requesting the
                same file by allowing only one to download the file while the others wait for it to
                complete.
-        :param boolean mutable: If True, the file path returned points to a file that is
+        :param bool mutable: If True, the file path returned points to a file that is
                modifiable by the user. Using False is recommended as it saves disk by making
                multiple workers share a file via hard links. The default is False unless backwards
                compatibility was requested.
@@ -720,6 +720,13 @@ class CachingFileStore(FileStore):
                         self._JobState.updateJobSpecificFiles(self, fileStoreID, localFilePath,
                                                               0.0, False)
         return localFilePath
+
+    def exportFile(self, jobStoreFileID, dstUrl):
+        while jobStoreFileID in self._pendingFileWrites:
+            # The file is still being writting to the job store - wait for this process to finish prior to
+            # exporting it
+            time.sleep(1)
+        self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def readGlobalFileStream(self, fileStoreID):
         if fileStoreID in self.filesToDelete:
@@ -970,7 +977,7 @@ class CachingFileStore(FileStore):
         :param str localFilePath: Path to the Source file
         :param jobStoreFileID: jobStoreID for the file
         :param str callingFunc: Who called this function, 'write' or 'read'
-        :param boolean mutable: See modifiable in readGlobalFile
+        :param bool mutable: See modifiable in readGlobalFile
         """
         assert callingFunc in ('read', 'write')
         # Set up the modifiable variable if it wasn't provided by the user in the function call.
@@ -1657,6 +1664,9 @@ class NonCachingFileStore(FileStore):
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 
+    def exportFile(self, jobStoreFileID, dstUrl):
+        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+
     def deleteLocalFile(self, fileStoreID):
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
@@ -1773,7 +1783,14 @@ class NonCachingFileStore(FileStore):
                 if filename == '.jobState':
                     jobStateFiles.append(os.path.join(root, filename))
         for filename in jobStateFiles:
-            yield NonCachingFileStore._readJobState(filename)
+            try:
+                yield NonCachingFileStore._readJobState(filename)
+            except IOError as e:
+                if e.errno == 2:
+                    # job finished & deleted its jobState file since the jobState files were discovered
+                    continue
+                else:
+                    raise
 
     @staticmethod
     def _readJobState(jobStateFileName):

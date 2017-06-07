@@ -70,8 +70,14 @@ class Config(object):
         #Restarting the workflow options
         self.restart = False
 
-        #Batch system common options
-        setDefaultBatchOptions(self)
+        #Batch system options
+        self.batchSystem = "singleMachine"
+        self.disableHotDeployment = False
+        self.scale = 1
+        self.mesosMasterAddress = 'localhost:5050'
+        self.parasolCommand = "parasol"
+        self.parasolMaxBatches = 10000
+        self.environment = {}
 
         #Autoscaling options
         self.provisioner = None
@@ -85,7 +91,7 @@ class Config(object):
         self.maxPreemptableNodes = 0
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
-        self.scaleInterval = 10
+        self.scaleInterval = 30
         self.preemptableCompensation = 0.0
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
@@ -186,7 +192,11 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
-        setBatchOptions(self, setOption)
+        setOption("disableHotDeployment")
+        setOption("scale", float, fC(0.0))
+        setOption("mesosMasterAddress")
+        setOption("parasolCommand")
+        setOption("parasolMaxBatches", int, iC(1))
 
         setOption("environment", parseSetEnv)
     
@@ -319,7 +329,25 @@ def _addOptions(addGroupFn, config):
 
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
-    addBatchOptions(addOptionFn)
+    addOptionFn("--batchSystem", dest="batchSystem", default=None,
+                      help=("The type of batch system to run the job(s) with, currently can be one "
+                            "of singleMachine, parasol, gridEngine, lsf or mesos'. default=%s" % config.batchSystem))
+    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
+                help=("Should hot-deployment of the user script be deactivated? If True, the user "
+                      "script/package should be present at the same location on all workers. "
+                      "default=%s" % config.disableHotDeployment))
+    addOptionFn("--scale", dest="scale", default=None,
+                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
+                      "Used in singleMachine batch system. default=%s" % config.scale))
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
+                help=("The host and port of the Mesos master separated by colon. default=%s" % config.mesosMasterAddress))
+    addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
+                      help="The name or path of the parasol program. Will be looked up on PATH "
+                           "unless it starts with a slashdefault=%s" % config.parasolCommand)
+    addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
+                help="Maximum number of job batches the Parasol batch is allowed to create. One "
+                     "batch is created for jobs with a a unique set of resource requirements. "
+                     "default=%i" % config.parasolMaxBatches)
 
     #
     #Auto scaling options
@@ -636,7 +664,7 @@ class Toil(object):
             with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
-                cPickle.dump(promise, fH)
+                cPickle.dump(promise, fH, protocol=cPickle.HIGHEST_PROTOCOL)
 
             # Setup the first wrapper and cache it
             rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
@@ -679,7 +707,7 @@ class Toil(object):
             from bd2k.util.ec2.credentials import enable_metadata_credential_caching
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
-            self._provisioner = AWSProvisioner(self.config, self._batchSystem)
+            self._provisioner = AWSProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner
@@ -784,7 +812,8 @@ class Toil(object):
                 logger.info('User script %s belongs to Toil. No need to hot-deploy it.', userScript)
                 userScript = None
             else:
-                if self._batchSystem.supportsHotDeployment():
+                if (self._batchSystem.supportsHotDeployment() and
+                        not self.config.disableHotDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:

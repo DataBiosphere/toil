@@ -42,7 +42,12 @@ def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
         pass
     else:
         zone = os.environ.get('TOIL_AWS_ZONE', None)
-        if spotBid:
+        if not zone and runningOnEC2():
+            try:
+                zone = get_instance_metadata()['placement']['availability-zone']
+            except KeyError:
+                pass
+        if not zone and spotBid:
             # if spot bid is present, all the other parameters must be as well
             assert bool(spotBid) == bool(nodeType) == bool(ctx)
             # if the zone is unset and we are using the spot market, optimize our
@@ -52,11 +57,6 @@ def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
             zone = boto.config.get('Boto', 'ec2_region_name')
             if zone is not None:
                 zone += 'a'  # derive an availability zone in the region
-        if not zone and runningOnEC2():
-            try:
-                zone = get_instance_metadata()['placement']['availability-zone']
-            except KeyError:
-                pass
     return zone
 
 
@@ -113,10 +113,13 @@ def choose_spot_zone(zones, bid, spot_history):
     for zone in zones:
         zone_histories = filter(lambda zone_history:
                                 zone_history.availability_zone == zone.name, spot_history)
-        price_deviation = std_dev([history.price for history in zone_histories])
-        recent_price = zone_histories[0]
+        if zone_histories:
+            price_deviation = std_dev([history.price for history in zone_histories])
+            recent_price = zone_histories[0].price
+        else:
+            price_deviation, recent_price = 0.0, bid
         zone_tuple = ZoneTuple(name=zone.name, price_deviation=price_deviation)
-        (markets_over_bid, markets_under_bid)[recent_price.price < bid].append(zone_tuple)
+        (markets_over_bid, markets_under_bid)[recent_price < bid].append(zone_tuple)
 
     return min(markets_under_bid or markets_over_bid,
                key=attrgetter('price_deviation')).name
@@ -127,7 +130,8 @@ def optimize_spot_bid(ctx, instance_type, spot_bid):
     Check whether the bid is sane and makes an effort to place the instance in a sensible zone.
     """
     spot_history = _get_spot_history(ctx, instance_type)
-    _check_spot_bid(spot_bid, spot_history)
+    if spot_history:
+        _check_spot_bid(spot_bid, spot_history)
     zones = ctx.ec2.get_all_zones()
     most_stable_zone = choose_spot_zone(zones, spot_bid, spot_history)
     logger.info("Placing spot instances in zone %s.", most_stable_zone)
@@ -275,6 +279,8 @@ coreos:
 
         [Service]
         Restart=on-failure
+        RestartSec=2
+        ExecPre=-/usr/bin/docker rm toil_{role}
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -282,6 +288,8 @@ coreos:
             -v /var/lib/mesos:/var/lib/mesos \
             -v /var/lib/docker:/var/lib/docker \
             -v /var/lib/toil:/var/lib/toil \
+            -v /var/lib/cwl:/var/lib/cwl \
+            -v /tmp:/tmp \
             --name=toil_{role} \
             {image} \
             {args}

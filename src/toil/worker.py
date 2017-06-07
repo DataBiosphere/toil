@@ -383,6 +383,9 @@ def main():
             if successorJobNode.disk > jobGraph.disk:
                 logger.debug("We need more disk for the next job, so finishing")
                 break
+            if successorJobNode.preemptable != jobGraph.preemptable:
+                logger.debug("Preemptability is different for the next job, returning to the leader")
+                break
             if successorJobNode.predecessorNumber > 1:
                 logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
                 break

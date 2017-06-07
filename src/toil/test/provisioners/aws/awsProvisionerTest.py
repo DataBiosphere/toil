@@ -17,6 +17,11 @@ import subprocess
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
+
+import time
+from boto.ec2.blockdevicemapping import BlockDeviceType
+from boto.exception import EC2ResponseError
+
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
 from uuid import uuid4
@@ -46,12 +51,19 @@ class AbstractAWSAutoscaleTest(ToilTest):
         callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
         subprocess.check_call(callCommand)
 
-    def createClusterUtil(self):
+    def createClusterUtil(self, args=None):
+        if args is None:
+            args = []
         callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
                        '--nodeType=%s' % self.instanceType, self.clusterName]
+        callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
-    def __init__(self, methodName='AWSprovisioner'):
+    def cleanJobStoreUtil(self):
+        callCommand = ['toil', 'clean', self.jobStore]
+        subprocess.check_call(callCommand)
+
+    def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.instanceType = 'm3.large'
         self.keyName = 'jenkins@jenkins-master'
@@ -62,17 +74,20 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def setUp(self):
         super(AbstractAWSAutoscaleTest, self).setUp()
-        self.jobStore = 'aws:%s:toil-it-%s' % (self.awsRegion(), uuid4())
 
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
         self.destroyClusterUtil()
+        self.cleanJobStoreUtil()
 
     def getMatchingRoles(self, clusterName):
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         ctx = AWSProvisioner._buildContext(clusterName)
         roles = list(ctx.local_roles())
         return roles
+
+    def launchCluster(self):
+        self.createClusterUtil()
 
     @abstractmethod
     def _getScript(self):
@@ -96,10 +111,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        self.createClusterUtil()
+        self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
+        ctx = AWSProvisioner._buildContext(self.clusterName)
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
@@ -123,6 +139,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--retryCount=2',
                        '--clusterStats=/home/',
                        '--logDebug',
+                       '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
         if spotInstances:
@@ -148,7 +165,25 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
+        assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
+        volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
+        ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
+        self.leader.update()
+        for attempt in range(6):
+            # https://github.com/BD2KGenomics/toil/issues/1567
+            # retry this for up to 1 minute until the volume disappears
+            try:
+                ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+                time.sleep(10)
+            except EC2ResponseError as e:
+                if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
+                    break
+                else:
+                    raise
+        else:
+            self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
+
         assert len(self.getMatchingRoles(self.clusterName)) == 0
 
 
@@ -156,21 +191,28 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
-        self.clusterName = 'aws-provisioner-test-' + str(uuid4())
+        self.clusterName = 'provisioner-test-' + str(uuid4())
+
+    def setUp(self):
+        super(AWSAutoscaleTest, self).setUp()
+        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
-        sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
-        with open(sseKeyFile, 'w') as f:
+        fileToSort = os.path.join(os.getcwd(), str(uuid4()))
+        with open(fileToSort, 'w') as f:
+            # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(sseKeyFile, ':/home/keyFile')
-        os.unlink(sseKeyFile)
+        self.rsyncUtil(fileToSort, ':/home/sortFile')
+        os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/keyFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)
+
+    def launchCluster(self):
+        self.createClusterUtil()
 
     @integrative
     @needs_aws
@@ -182,6 +224,20 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self._test(spotInstances=True)
 
+class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def launchCluster(self):
+        self.createClusterUtil(args=['-w', '2'])
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        # test that two worker nodes were created + 1 for leader
+        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+
+    def _runScript(self, toilOptions):
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand.extend(toilOptions)
+        self.sshUtil(runCommand)
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
@@ -196,6 +252,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         super(AWSRestartTest, self).setUp()
         self.instanceType = 't2.micro'
         self.scriptName = "/home/restartScript.py"
+        self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
         def restartScript():
@@ -250,6 +307,7 @@ class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def setUp(self):
         super(PremptableDeficitCompensationTest, self).setUp()
         self.instanceType = 'm3.large' # instance needs to be available on the spot market
+        self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
         self._test(spotInstances=True, fulfillableBid=False)

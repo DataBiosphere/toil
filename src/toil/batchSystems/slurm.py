@@ -134,7 +134,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # slurm_load_jobs error: Invalid job id specified
                 # There is no job information, so exit.
                 if len(values)>0 and values[0] == 'slurm_load_jobs':
-                    return None
+                    return (None, None)
                 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and
@@ -184,10 +184,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
             if nativeConfig is not None:
                 logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_RESOURCES env. variable: {}".format(nativeConfig))
-                if "--mem" or "--cpus-per-task" in nativeConfig:
+                if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
                     raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
 
-                sbatch_line.extend([nativeConfig])
+                sbatch_line.extend(nativeConfig.split())
 
             return sbatch_line
 

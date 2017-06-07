@@ -35,6 +35,7 @@ from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.jobGraph import JobNode
+from toil.job import ServiceJobNode
 from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
@@ -140,7 +141,7 @@ class Leader:
         self.statsAndLogging = StatsAndLogging(self.jobStore, self.config)
 
         # Set used to monitor deadlocked jobs
-        self.potentialDeadlockedJobs = None
+        self.potentialDeadlockedJobs = set()
         self.potentialDeadlockTime = 0
 
         # internal jobs we should not expose at top level debugging
@@ -488,40 +489,44 @@ class Leader:
         """
         Checks if the system is deadlocked running service jobs.
         """
-        # If there are no updated jobs and at least some jobs issued
-        if len(self.toilState.updatedJobs) == 0 and self.getNumberOfJobsIssued() > 0:
+        totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
+        totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
+        # If there are no updated jobs and at least some jobs running
+        if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
+            serviceJobs = filter(lambda x : isinstance(x, ServiceJobNode), self.jobBatchSystemIDToIssuedJob.values())
+            runningServiceJobs = set(filter(lambda x : self.serviceManager.isRunning(x), serviceJobs))
+            assert len(runningServiceJobs) <= totalRunningJobs
 
-            # If all scheduled jobs are services
-            assert self.serviceJobsIssued + self.preemptableServiceJobsIssued <= self.getNumberOfJobsIssued()
-            if self.serviceJobsIssued + self.preemptableServiceJobsIssued == self.getNumberOfJobsIssued():
-
-                # Sanity check that all issued jobs are actually services
-                for jobNode in self.jobBatchSystemIDToIssuedJob.values():
-                    assert jobNode.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob
-
-                # An active service job is one that is not in the process of terminating
-                activeServiceJobs = filter(lambda x : self.serviceManager.isActive(x), self.jobBatchSystemIDToIssuedJob.values())
-
-                # If all the service jobs are active then we have a potential deadlock
-                if len(activeServiceJobs) == len(self.jobBatchSystemIDToIssuedJob):
-                    # We wait self.config.deadlockWait seconds before declaring the system deadlocked
-                    if self.potentialDeadlockedJobs != activeServiceJobs:
-                        self.potentialDeadlockedJobs = activeServiceJobs
-                        self.potentialDeadlockTime = time.time()
-                    elif time.time() - self.potentialDeadlockTime >= self.config.deadlockWait:
-                        raise DeadlockException("The system is service deadlocked - all issued jobs %s are active services" % self.getNumberOfJobsIssued())
+            # If all the running jobs are active services then we have a potential deadlock
+            if len(runningServiceJobs) == totalRunningJobs:
+                # We wait self.config.deadlockWait seconds before declaring the system deadlocked
+                if self.potentialDeadlockedJobs != runningServiceJobs:
+                    self.potentialDeadlockedJobs = runningServiceJobs
+                    self.potentialDeadlockTime = time.time()
+                elif time.time() - self.potentialDeadlockTime >= self.config.deadlockWait:
+                    raise DeadlockException("The system is service deadlocked - all %d running jobs are active services" % totalRunningJobs)
+            else:
+                # We have observed non-service jobs running, so reset the potential deadlock
+                self.potentialDeadlockedJobs = set()
+                self.potentialDeadlockTime = 0
+        else:
+            # We have observed non-service jobs running, so reset the potential deadlock
+            self.potentialDeadlockedJobs = set()
+            self.potentialDeadlockTime = 0
 
 
     def issueJob(self, jobNode):
         """
         Add a job to the queue of jobs
         """
-        if jobNode.preemptable:
-            self.preemptableJobsIssued += 1
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
                                     self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
+        if jobNode.preemptable:
+            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # so increment this value after the job is added to the issuedJob dict
+            self.preemptableJobsIssued += 1
         cur_logger = (logger.debug if jobNode.jobName.startswith(self.debugJobNames)
                       else logger.info)
         cur_logger("Issued job %s with job batch system ID: "
@@ -596,11 +601,13 @@ class Leader:
         Removes a job from the system.
         """
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
-        jobNode = self.jobBatchSystemIDToIssuedJob.pop(jobBatchSystemID)
+        jobNode = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         if jobNode.preemptable:
+            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # so decrement this value before removing the job from the issuedJob map
             assert self.preemptableJobsIssued > 0
             self.preemptableJobsIssued -= 1
-
+        del self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         # If service job
         if jobNode.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Decrement the number of services
@@ -717,11 +724,11 @@ class Leader:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    messages = [line.rstrip('\n') for line in logFileStream]
-                    logFormat = '\n%s    ' % jobStoreID
-                    logger.warn('The job seems to have left a log file, indicating failure: %s\n%s',
-                                jobGraph, logFormat.join(messages))
-                    StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, messages, self.config)
+                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warn,
+                                                      message='The job seems to have left a log file, indicating failure: %s' % jobGraph)
+                if self.config.writeLogs or self.config.writeLogsGzip:
+                    with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
+                        StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, logFileStream, self.config)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we

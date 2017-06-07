@@ -21,6 +21,7 @@ from toil.version import baseVersion
 from toil.lib.bioio import setLoggingFromOptions
 
 from argparse import ArgumentParser
+import cwltool.errors
 import cwltool.load_tool
 import cwltool.main
 import cwltool.workflow
@@ -39,7 +40,6 @@ import json
 import sys
 import logging
 import copy
-import shutil
 import functools
 
 # Python 3 compatibility imports
@@ -126,7 +126,16 @@ def resolve_indirect(d):
     else:
         return res
 
-def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, rename_collision=False):
+def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, rename_collision=False,
+            existing={}):
+    """Extract input file from Toil jobstore.
+
+    Uses standard filestore to retrieve file, then provides a symlink to it
+    for running. If export is True (for final outputs), it gets copied to
+    the final location.
+
+    Keeps track of files being used locally with 'existing'
+    """
     # File literal outputs with no path, from writeFile
     if fileTuple is None:
         raise cwltool.process.UnsupportedRequirement("CWL expression file inputs not yet supported in Toil")
@@ -152,18 +161,21 @@ def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, r
     else:
         srcPath = fileStore.readGlobalFile(fileStoreID)
         if srcPath != dstPath:
-            if copy:
-                shutil.copyfile(srcPath, dstPath)
+            if os.path.exists(dstPath):
+                if index.get(dstPath, None) != fileStoreID:
+                    raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" % (index.get(dstPath, None), fileStoreID, dstPath))
             else:
-                if os.path.exists(dstPath):
-                    if index.get(dstPath, None) != fileStoreID:
-                        raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" % (index.get(dstPath, None), fileStoreID, dstPath))
-                else:
-                    os.symlink(srcPath, dstPath)
+                os.symlink(srcPath, dstPath)
+                existing[srcPath] = dstPath
             index[dstPath] = fileStoreID
     return dstPath
 
-def writeFile(writeFunc, index, x):
+def writeFile(writeFunc, index, existing, x):
+    """Write output files back into Toil jobstore.
+
+    'existing' is a set of files retrieved as inputs from getFile. This ensures
+    they are mapped back as the same name if passed through.
+    """
     # Toil fileStore references are tuples of pickle and internal file
     if isinstance(x, tuple):
         return x
@@ -173,6 +185,7 @@ def writeFile(writeFunc, index, x):
         return None
     else:
         if x not in index:
+            x = existing.get(x, x)
             if not urlparse.urlparse(x).scheme:
                 rp = os.path.realpath(x)
             else:
@@ -199,8 +212,7 @@ def addFilePartRefs(p):
         nameroot, nameext = os.path.splitext(basename)
         for k, v in [("dirname", dirname,), ("basename", basename),
                      ("nameroot", nameroot), ("nameext", nameext)]:
-            if k not in p:
-                p[k] = v
+            p[k] = v
     return p
 
 def locToPath(p):
@@ -233,13 +245,16 @@ class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
     def __init__(self, tool, cwljob, **kwargs):
-        builder = cwltool.builder.Builder()
-        builder.job = {}
-        builder.requirements = []
-        builder.outdir = None
-        builder.tmpdir = None
-        builder.timeout = 0
-        builder.resources = {}
+        if 'builder' in kwargs:
+            builder = kwargs["builder"]
+        else:
+            builder = cwltool.builder.Builder()
+            builder.job = {}
+            builder.requirements = []
+            builder.outdir = None
+            builder.tmpdir = None
+            builder.timeout = 0
+            builder.resources = {}
         req = tool.evalResources(builder, {})
         self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
@@ -270,27 +285,33 @@ class CWLJob(Job):
         os.mkdir(outdir)
         os.mkdir(tmpdir)
 
-        # Copy input files out of the global file store.
+        # Copy input files out of the global file store, ensure path/location synchronized
         index = {}
-        adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index))
+        existing = {}
+        adjustFilesWithSecondary(cwljob, functools.partial(getFile, fileStore, inpdir, index=index,
+                                                           existing=existing))
+        cwltool.pathmapper.adjustFileObjs(cwljob, pathToLoc)
+        cwltool.pathmapper.adjustFileObjs(cwljob, addFilePartRefs)
 
         # Run the tool
         opts = copy.deepcopy(self.executor_options)
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or tmpdir)
-        output = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                  basedir=os.getcwd(),
-                                                  outdir=outdir,
-                                                  tmpdir=tmpdir,
-                                                  tmpdir_prefix="tmp",
-                                                  **opts)
-        cwltool.builder.adjustDirObjs(output, locToPath)
-        cwltool.builder.adjustFileObjs(output, locToPath)
-        cwltool.builder.adjustFileObjs(output, functools.partial(computeFileChecksums,
-                                                                 cwltool.stdfsaccess.StdFsAccess(outdir)))
+        (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
+                                                            basedir=os.getcwd(),
+                                                            outdir=outdir,
+                                                            tmpdir=tmpdir,
+                                                            tmpdir_prefix="tmp",
+                                                            make_fs_access=cwltool.stdfsaccess.StdFsAccess,
+                                                            **opts)
+        if status != "success":
+            raise cwltool.errors.WorkflowException(status)
+        cwltool.pathmapper.adjustDirObjs(output, locToPath)
+        cwltool.pathmapper.adjustFileObjs(output, locToPath)
+        cwltool.pathmapper.adjustFileObjs(output, functools.partial(computeFileChecksums,
+                                                                    cwltool.stdfsaccess.StdFsAccess(outdir)))
         # Copy output files into the global file store.
-        adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}))
-
+        adjustFiles(output, functools.partial(writeFile, fileStore.writeGlobalFile, {}, existing))
         return output
 
 
@@ -576,6 +597,7 @@ class CWLWorkflow(Job):
 cwltool.process.supportedProcessRequirements = ("DockerRequirement",
                                                 "ExpressionEngineRequirement",
                                                 "InlineJavascriptRequirement",
+                                                "InitialWorkDirRequirement",
                                                 "SchemaDefRequirement",
                                                 "EnvVarRequirement",
                                                 "CreateFileRequirement",
@@ -597,6 +619,15 @@ def unsupportedInputCheck(p):
     if p.get("contents") and (not p.get("path") and not p.get("location")):
         raise cwltool.process.UnsupportedRequirement("CWL File literals not yet supported in Toil")
 
+def unsupportedRequirementsCheck(requirements):
+    """Check for specific requirement cases we don't support.
+    """
+    for r in requirements:
+        if r["class"] == "InitialWorkDirRequirement":
+            for l in r.get("listing", []):
+                if isinstance(l, dict) and l.get("writable"):
+                    raise cwltool.process.UnsupportedRequirement("CWL writable InitialWorkDirRequirement not yet supported in Toil")
+
 def unsupportedDefaultCheck(tool):
     """Check for file-based defaults, which don't get staged correctly in Toil.
     """
@@ -615,6 +646,7 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--conformance-test", action="store_true")
+    parser.add_argument("--not-strict", action="store_true")
     parser.add_argument("--no-container", action="store_true")
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
@@ -622,7 +654,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--version", action='version', version=baseVersion)
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
-                    metavar=("VAR1,VAR2"),
+                    metavar=("VAR1 VAR2"),
                     default=("PATH",),
                     dest="preserve_environment")
 
@@ -644,9 +676,11 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
+    useStrict = not options.not_strict
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
-                                        resolver=cwltool.resolver.tool_resolver)
+                                        resolver=cwltool.resolver.tool_resolver, strict=useStrict)
+        unsupportedRequirementsCheck(t.requirements)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
         return 33
@@ -666,14 +700,14 @@ def main(args=None, stdout=sys.stdout):
         job = {}
 
     try:
-        cwltool.builder.adjustDirObjs(job, unsupportedInputCheck)
-        cwltool.builder.adjustFileObjs(job, unsupportedInputCheck)
+        cwltool.pathmapper.adjustDirObjs(job, unsupportedInputCheck)
+        cwltool.pathmapper.adjustFileObjs(job, unsupportedInputCheck)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
         return 33
 
-    cwltool.builder.adjustDirObjs(job, pathToLoc)
-    cwltool.builder.adjustFileObjs(job, pathToLoc)
+    cwltool.pathmapper.adjustDirObjs(job, pathToLoc)
+    cwltool.pathmapper.adjustFileObjs(job, pathToLoc)
 
     if type(t) == int:
         return t
@@ -696,10 +730,10 @@ def main(args=None, stdout=sys.stdout):
 
     with Toil(options) as toil:
         def importDefault(tool):
-            cwltool.builder.adjustDirObjs(tool, locToPath)
-            cwltool.builder.adjustFileObjs(tool, locToPath)
+            cwltool.pathmapper.adjustDirObjs(tool, locToPath)
+            cwltool.pathmapper.adjustFileObjs(tool, locToPath)
             adjustFiles(tool, lambda x: "file://%s" % x if not urlparse.urlparse(x).scheme else x)
-            adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}))
+            adjustFiles(tool, functools.partial(writeFile, toil.importFile, {}, {}))
         t.visit(importDefault)
 
         if options.restart:
@@ -707,7 +741,9 @@ def main(args=None, stdout=sys.stdout):
         else:
             basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
             builder = t._init_job(job, basedir=basedir, use_container=use_container)
-            (wf1, wf2) = makeJob(t, {}, use_container=use_container, preserve_environment=options.preserve_environment, tmpdir=os.path.realpath(outdir))
+            (wf1, wf2) = makeJob(t, {}, use_container=use_container,
+                    preserve_environment=options.preserve_environment,
+                    tmpdir=os.path.realpath(outdir), builder=builder)
             try:
                 if isinstance(wf1, CWLWorkflow):
                     [unsupportedDefaultCheck(s.tool) for s in wf1.cwlwf.steps]
@@ -715,22 +751,23 @@ def main(args=None, stdout=sys.stdout):
                 logging.error(e)
                 return 33
 
-            cwltool.builder.adjustDirObjs(builder.job, locToPath)
-            cwltool.builder.adjustFileObjs(builder.job, locToPath)
+            cwltool.pathmapper.adjustDirObjs(builder.job, locToPath)
+            cwltool.pathmapper.adjustFileObjs(builder.job, locToPath)
             adjustFiles(builder.job, lambda x: "file://%s" % os.path.abspath(os.path.join(basedir, x))
                         if not urlparse.urlparse(x).scheme else x)
-            cwltool.builder.adjustDirObjs(builder.job, pathToLoc)
-            cwltool.builder.adjustFileObjs(builder.job, pathToLoc)
-            cwltool.builder.adjustFileObjs(builder.job, addFilePartRefs)
-            adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}))
+            cwltool.pathmapper.adjustDirObjs(builder.job, pathToLoc)
+            cwltool.pathmapper.adjustFileObjs(builder.job, pathToLoc)
+            cwltool.pathmapper.adjustFileObjs(builder.job, addFilePartRefs)
+            adjustFiles(builder.job, functools.partial(writeFile, toil.importFile, {}, {}))
             wf1.cwljob = builder.job
             outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
 
         try:
-            adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={},
+            adjustFilesWithSecondary(outobj, functools.partial(getFile, toil, outdir, index={}, existing={},
                                                                export=True, rename_collision=True))
+            cwltool.pathmapper.adjustFileObjs(outobj, pathToLoc)
         except cwltool.process.UnsupportedRequirement as e:
             logging.error(e)
             return 33

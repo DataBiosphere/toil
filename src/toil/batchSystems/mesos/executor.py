@@ -110,8 +110,10 @@ class MesosExecutor(mesos.interface.Executor):
                 message = Expando(address=self.address)
                 psutil.cpu_percent()
             else:
-                message.nodeInfo = dict(cores=float(psutil.cpu_percent()) * .01,
-                                        memory=float(psutil.virtual_memory().percent) * .01,
+                message.nodeInfo = dict(coresUsed=float(psutil.cpu_percent()) * .01,
+                                        memoryUsed=float(psutil.virtual_memory().percent) * .01,
+                                        coresTotal=psutil.cpu_count(),
+                                        memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
             driver.sendFrameworkMessage(repr(message))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
@@ -125,8 +127,17 @@ class MesosExecutor(mesos.interface.Executor):
         def runTask():
             log.debug("Running task %s", task.task_id.value)
             sendUpdate(mesos_pb2.TASK_RUNNING)
+            try:
+                taskData = pickle.loads(task.data)
+            except:
+                exc_info = sys.exc_info()
+                log.error('Exception while unpickling task:', exc_info=exc_info)
+                exc_type, exc_value, exc_trace = exc_info
+                sendUpdate(mesos_pb2.TASK_FAILED, wallTime=None,
+                           message=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                return
+
             # This is where task.data is first invoked. Using this position to setup cleanupInfo
-            taskData = pickle.loads(task.data)
             if self.workerCleanupInfo is not None:
                 assert self.workerCleanupInfo == taskData.workerCleanupInfo
             else:

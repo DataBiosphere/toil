@@ -21,7 +21,7 @@ The Runner contains the methods needed to configure and start a Toil run.
 
 .. autoclass:: toil.job::Job.Runner
    :members:
-   
+
 Toil
 ----
 The Toil class provides for a more general way to configure and start a Toil run.
@@ -35,29 +35,29 @@ The Service class allows databases and servers to be spawned within a Toil workf
 
 .. autoclass:: toil.job::Job.Service
    :members:
-   
+
 FunctionWrappingJob
 -------------------
-The subclass of Job for wrapping user functions. 
+The subclass of Job for wrapping user functions.
 
 
 .. autoclass:: toil.job::FunctionWrappingJob
    :members:
-   
+
 JobFunctionWrappingJob
 ----------------------
 The subclass of FunctionWrappingJob for wrapping user job functions.
 
 .. autoclass:: toil.job::JobFunctionWrappingJob
    :members:
-   
+
 EncapsulatedJob
 ---------------
 The subclass of Job for *encapsulating* a job, allowing a subgraph of jobs to be treated as a single job.
 
 .. autoclass:: toil.job::EncapsulatedJob
    :members:
-   
+
 Promise
 -------
 The class used to reference return values of jobs/services not yet run/started.
@@ -72,8 +72,23 @@ Exceptions
 ----------
 Toil specific exceptions.
 
-.. autoclass:: toil.job::JobException
-   :members: 
-   
-.. autoclass:: toil.job::JobGraphDeadlockException
+.. autoexception:: toil.job::JobException
+   :members:
+
+.. autoexception:: toil.job::JobGraphDeadlockException
+   :members:
+
+.. autoexception:: toil.jobStores.abstractJobStore::ConcurrentFileModificationException
+   :members:
+
+.. autoexception:: toil.jobStores.abstractJobStore::JobStoreExistsException
+   :members:
+
+.. autoexception:: toil.jobStores.abstractJobStore::NoSuchFileException
+   :members:
+
+.. autoexception:: toil.jobStores.abstractJobStore::NoSuchJobException
+   :members:
+
+.. autoexception:: toil.jobStores.abstractJobStore::NoSuchJobStoreException
    :members:
