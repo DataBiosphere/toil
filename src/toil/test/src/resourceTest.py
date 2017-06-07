@@ -75,7 +75,6 @@ class ResourceTest(ToilTest):
         else:
             oldPrefix = None
         try:
-            pycFiles = set(pyFile + 'c' for pyFile in pyFiles)
             for relPath in pyFiles:
                 path = os.path.join(dirPath, relPath)
                 mkdir_p(os.path.dirname(path))
@@ -86,8 +85,8 @@ class ResourceTest(ToilTest):
                 userScript = importlib.import_module(moduleName)
                 try:
                     self._test(userScript.__name__,
-                               expectedContents=pycFiles,
-                               allowExtraContents=virtualenv)
+                               expectedContents=pyFiles,
+                               allowExtraContents=True)
                 finally:
                     del userScript
                     while moduleName:
