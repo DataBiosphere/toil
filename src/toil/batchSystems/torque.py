@@ -31,18 +31,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-def _pbsVersion():
-    """ Determines PBS/Torque version via pbsnodes
-    """
-    try:
-        subprocess.check_output(["pbsnodes", "--version"])
-    except subprocess.CalledProcessError as e:
-       if e.returncode != 0:
-            logger.error("Could not determine PBS/Torque version")
-       elif "PBSPro" in e.output:
-            return "pro"
-       else:
-            return "oss"
+
         
 
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
@@ -51,24 +40,44 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
     # class-specific Worker
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
+        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
+            super(self.__class__, self).__init__(newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss)
+            self._version = self._pbsVersion()
+
+        def _pbsVersion(self):
+            """ Determines PBS/Torque version via pbsnodes
+            """
+            try:
+                out = subprocess.check_output(["pbsnodes", "--version"])
+
+                if "PBSPro" in out:
+                     logger.debug("PBS Pro proprietary Torque version detected")
+                     self._version = "pro"
+                else:
+                     logger.debug("Torque OSS version detected")
+                     self._version = "oss"
+            except subprocess.CalledProcessError as e:
+               if e.returncode != 0:
+                    logger.error("Could not determine PBS/Torque version")
+
+            return self._version
         
-        # Determine if we are in PBSPro or OSS variant of Torque/PBS batch system
-        version = _pbsVersion()
 
         """
         Torque-specific AbstractGridEngineWorker methods
         """
         def getRunningJobIDs(self):
             times = {}
+            
             currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
             # Limit qstat to current username to avoid clogging the batch system on heavily loaded clusters
             #job_user = os.environ.get('USER')
             #process = subprocess.Popen(['qstat', '-u', job_user], stdout=subprocess.PIPE)
             # -x shows exit status in PBSPro, not XML output like OSS PBS
-            if version == "pro":
+            if self._version == "pro":
                 process = subprocess.Popen(['qstat', '-x'], stdout=subprocess.PIPE)
-            elif version == "oss":
+            elif self._version == "oss":
                 process = subprocess.Popen(['qstat'], stdout=subprocess.PIPE)
 
 
@@ -118,13 +127,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
             so, se = process.communicate()
-            result = so
-            return result
+            return so
 
         def getJobExitCode(self, torqueJobID):
-            if version == "pro":
+            if self._version == "pro":
                 args = ["qstat", "-x", "-f", str(torqueJobID).split('.')[0]]
-            elif version == "oss":
+            elif self._version == "oss":
                 args = ["qstat", "-f", str(torqueJobID).split('.')[0]]
 
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -227,6 +235,3 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         #return maxCPU, maxMEM
         return None, None
-
-
-
