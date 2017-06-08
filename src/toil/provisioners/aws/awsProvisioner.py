@@ -598,17 +598,14 @@ class AWSProvisioner(AbstractProvisioner):
             finally:
                 s.close()
 
-
     @classmethod
     def _terminateNodes(cls, nodes, ctx):
         instanceIDs = [x.name for x in nodes]
-        logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
 
     @classmethod
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
-        logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
