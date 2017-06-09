@@ -23,7 +23,7 @@ def _parasolOptions(addOptionFn):
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % 1000)
-    
+
 def _singleMachineOptions(addOptionFn):
     addOptionFn("--scale", dest="scale", default=None,
         help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
@@ -44,40 +44,45 @@ _options = list(_OPTIONS)
 
 def addOptionsDefinition(optionsDefinition):
     _options.append(optionsDefinition)
-    
-    
+
+
 def setOptions(config, setOption):
     batchSystem = config.batchSystem
-    
+
     factory = batchSystemFactoryFor(batchSystem)
     batchSystem = factory()
-    
+
     batchSystem.setOptions(setOption)
-    
+
 def addOptions(addOptionFn):
-        
+
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
               help=("The type of batch system to run the job(s) with, currently can be one "
                     "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
-    
+    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
+                help=("Should hot-deployment of the user script be deactivated? If True, the user "
+                      "script/package should be present at the same location on all workers. "
+                      "default=false"))
+
     for o in _options:
         o(addOptionFn)
 
 def setDefaultOptions(config):
     '''
-    Set default options for builtin batch systems. This is required if a Config 
+    Set default options for builtin batch systems. This is required if a Config
     object is not constructed from an Options object.
     '''
-    
+
     config.batchSystem = "singleMachine"
+    config.disableHotDeployment = False
     config.environment = {}
 
     # single machine
     config.scale = 1
-    
+
     # mesos
     config.masterAddress = 'localhost:5050'
-    
+
     # parasol
     config.parasolCommand = 'parasol'
     config.parasolMaxBatches = 10000
