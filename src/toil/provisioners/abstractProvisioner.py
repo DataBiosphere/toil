@@ -154,7 +154,11 @@ class AbstractProvisioner(object):
         :param clusterName: name of the cluster to target
         :param args: list of string arguments to rsync. Identical to the normal arguments to rsync, but the
            host name of the remote host can be omitted. ex) ['/localfile', ':/remotedest']
-        :param strict: If False, strict host key checking is disabled. (Enabled by default.)
+        :param \**kwargs:
+           See below
+
+        :Keyword Arguments:
+            * *strict*: if False, strict host key checking is disabled. (Enabled by default.)
         """
         raise NotImplementedError
 
