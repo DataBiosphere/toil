@@ -222,9 +222,9 @@ class AWSProvisioner(AbstractProvisioner):
         cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
 
     @classmethod
-    def rsyncLeader(cls, clusterName, args, zone=None):
+    def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
         leader = cls._getLeader(clusterName, zone=zone)
-        cls._rsyncNode(leader.public_dns_name, args)
+        cls._rsyncNode(leader.public_dns_name, args, **kwargs)
 
     def remainingBillingInterval(self, node):
         return awsRemainingBillingInterval(node)
@@ -416,9 +416,18 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
         """
-        kwargs: input, tty, appliance, collectStdout, sshOptions
+        If strict=False, strict host key checking will be temporarily disabled.
+        This is provided as a convenience for internal/automated functions and
+        ought to be set to True whenever feasible, or whenever the user is directly
+        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
+        to be False by default.
+
+        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
         """
-        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t']
+        commandTokens = ['ssh', '-t']
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         if sshOptions:
             # add specified options to ssh command
@@ -453,10 +462,13 @@ class AWSProvisioner(AbstractProvisioner):
         return stdout
 
     @classmethod
-    def _rsyncNode(cls, ip, args, applianceName='toil_leader'):
-        sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
+    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
         remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
         parsedArgs = []
+        sshCommand = "ssh"
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
         hostInserted = False
         # Insert remote host address
         for i in args:
