@@ -40,7 +40,8 @@ from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes, Node
+from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
+                               Node, NoSuchClusterException)
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +327,6 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
-
     @staticmethod
     def _throttlePredicate(e):
         if not isinstance(e, BotoServerError):
@@ -363,7 +363,6 @@ class AWSProvisioner(AbstractProvisioner):
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
         return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
-
 
     @classmethod
     @memoize
@@ -407,7 +406,6 @@ class AWSProvisioner(AbstractProvisioner):
         """
         kwargs['appliance'] = True
         return cls._coreSSH(leaderIP, *args, **kwargs)
-
 
     @classmethod
     def _sshInstance(cls, nodeIP, *args, **kwargs):
@@ -454,7 +452,6 @@ class AWSProvisioner(AbstractProvisioner):
         assert stderr is None
         return stdout
 
-
     @classmethod
     def _rsyncNode(cls, ip, args, applianceName='toil_leader'):
         sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
@@ -484,15 +481,18 @@ class AWSProvisioner(AbstractProvisioner):
                                "character.")
         namespace = clusterName
         if not namespace.startswith('/'):
-            namespace = '/'+namespace+'/'
-        return namespace.replace('-','/')
+            namespace = '/' + namespace + '/'
+        return namespace.replace('-', '/')
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
-        leader = instances[0]  # assume leader was launched first
+        try:
+            leader = instances[0]  # assume leader was launched first
+        except IndexError:
+            raise NoSuchClusterException(clusterName)
         if wait:
             logger.info("Waiting for toil_leader to enter 'running' state...")
             wait_instances_running(ctx.ec2, [leader])
@@ -535,7 +535,6 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.info('...SSH connection established.')
                 # ssh succeeded
                 return
-
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):

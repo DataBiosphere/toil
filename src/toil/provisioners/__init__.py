@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 def awsRemainingBillingInterval(instance):
     """
     Takes a node object and determines how far into it's billing cycle it is.
-    
+
     :param instance:
     :return:
     """
@@ -86,8 +86,8 @@ class Cluster(object):
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
 
-class Node(object):
 
+class Node(object):
     def __init__(self, publicIP, privateIP, name, launchTime):
         self.publicIP = publicIP
         self.privateIP = privateIP
@@ -102,3 +102,9 @@ class Node(object):
 
     def __hash__(self):
         return hash(self.publicIP)
+
+
+class NoSuchClusterException(Exception):
+    """Indicates that the specified cluster does not exist."""
+    def __init__(self, clusterName):
+        super(NoSuchClusterException, self).__init__("The cluster '%s' could not be found" % clusterName)
