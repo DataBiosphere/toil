@@ -15,10 +15,10 @@
 Launches a toil leader instance with the specified provisioner
 """
 import logging
-from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
+from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 def createTagsDict(tagList):
@@ -57,7 +57,6 @@ def main():
                              "cluster is created. This can be useful if running toil without "
                              "auto-scaling but with need of more hardware support")
     config = parseBasicOptions(parser)
-    setLoggingFromOptions(config)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
     spotBid = None
