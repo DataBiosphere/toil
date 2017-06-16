@@ -3,7 +3,7 @@
 Command Line Interface
 ======================
 
-Toil command line interface has two parts. The first consists of the options that can
+The Toil command line interface has two parts. The first consists of the options that can
 be specified when running a Toil workflow. These are described directly below.
 
 The second command line interface is the :ref:`clusterRef`.
