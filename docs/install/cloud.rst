@@ -24,7 +24,7 @@ allows us to spin up a cluster without any external dependencies.
 
 Getting started with the native provisioner is simple:
 
-#. Make sure you have toil installed with the AWS extras. For detailed instructions see :ref:`extras`.
+#. Make sure you have Toil installed with the AWS extras. For detailed instructions see :ref:`extras`.
 
 #. You will need an AWS account and you will need to save your AWS credentials on your local
    machine. For help setting up an AWS account see
