@@ -125,9 +125,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             nativeConfig = os.getenv('TOIL_TORQUE_ARGS')
             if nativeConfig is not None:
                 logger.debug("Native TORQUE options appended to qsub from TOIL_TORQUE_RESOURCES env. variable: {}".format(nativeConfig))
-                #if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
                 if ("mem=" in nativeConfig) or ("nodes=" in nativeConfig) or ("ppn=" in nativeConfig):
-                    raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(nativeConfig))
             qsubline.extend(nativeConfig.split())
             
             return qsubline
