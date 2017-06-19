@@ -111,7 +111,7 @@ First we use the :ref:`sshCluster` utility to log on to the leader. ::
     $ toil ssh-cluster MY-CLUSTER
 
 In order for your script to make use of autoscaling you will need to specify the options
-``--provisioner=aws`` and ``--nodeType=<>`` where nodeType is the name of an `EC2 instance type`_
+``--provisioner=aws`` and ``--nodeType=<>`` where nodeType is the name of an `EC2 instance type`_.
 These options, respectively, tell Toil that we are running on AWS (currently the
 only supported autoscaling environment) and which instance type to use for the
 Toil worker instances. Here is an example: ::
