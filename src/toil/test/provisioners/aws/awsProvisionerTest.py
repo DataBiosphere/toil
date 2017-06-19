@@ -226,7 +226,6 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def launchCluster(self):
         # add arguments to test that we can specify leader storage
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
-        ctx = AWSProvisioner._buildContext(self.clusterName)
 
     def getRootVolID(self):
         """
@@ -253,20 +252,20 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self._test(spotInstances=True)
 
-class AWSStaticAutoscaleTest(AWSAutoscaleTest):
-    """
-    Runs the tests on a statically provisioned cluster with autoscaling enabled.
-    """
-    def launchCluster(self):
-        self.createClusterUtil(args=['-w', '2'])
-        ctx = AWSProvisioner._buildContext(self.clusterName)
-        # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
-
-    def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
-        runCommand.extend(toilOptions)
-        self.sshUtil(runCommand)
+# class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+#     """
+#     Runs the tests on a statically provisioned cluster with autoscaling enabled.
+#     """
+#     def launchCluster(self):
+#         self.createClusterUtil(args=['-w', '2', '--nodeStorage'])
+#         ctx = AWSProvisioner._buildContext(self.clusterName)
+#         # test that two worker nodes were created + 1 for leader
+#         self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+#
+#     def _runScript(self, toilOptions):
+#         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+#         runCommand.extend(toilOptions)
+#         self.sshUtil(runCommand)
 
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
