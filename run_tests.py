@@ -40,26 +40,31 @@ test_suites = {
     ]}
 
 
-def run_tests(keywords, index, args):
+def run_tests(keywords, index, args, captureOutput=False):
     args = [sys.executable, '-m', 'pytest', '-vv',
             '--junitxml', 'test-report-%s.xml' % index,
             '-k', keywords] + args
     log.info('Running %r', args)
+    if captureOutput:
+        with open(keywords + '.log', mode='w') as out:
+            return subprocess.Popen(args, stdout=out, stderr=subprocess.STDOUT)
     return subprocess.Popen(args)
 
 
-def main(suite, args):
+def main(suite, args, captureOutput=False):
     suite = test_suites[suite]
     for name in glob.glob('test-report-*.xml'):
         os.unlink(name)
     num_failures = 0
     index = itertools.count()
     pids = set()
+    pidsToKeyword = {}
     try:
         for keyword in suite:
             if keyword:
-                process = run_tests(keyword, str(next(index)), args)
+                process = run_tests(keyword, str(next(index)), args, captureOutput=captureOutput)
                 pids.add(process.pid)
+                pidsToKeyword[process.pid] = keyword
         while pids:
             pid, status = os.wait()
             pids.remove(pid)
@@ -67,8 +72,12 @@ def main(suite, args):
                 status = os.WEXITSTATUS(status)
                 if status:
                     num_failures += 1
+                    log.info('Test keyword %s failed', pidsToKeyword[pid])
             else:
                 num_failures += 1
+                log.info('Test keyword %s failed', pidsToKeyword[pid])
+            log.info('Test keyword %s passed successfully', pidsToKeyword[pid])
+            del pidsToKeyword[pid]
     except:
         for pid in pids:
             os.kill(pid, 15)
@@ -80,6 +89,7 @@ def main(suite, args):
         process = run_tests(everything_else, str(next(index)), args)
         if process.wait():
             num_failures += 1
+            log.info('Test keyword %s failed which was running in series', everything_else)
 
     import xml.etree.ElementTree as ET
     testsuites = ET.Element('testsuites')
