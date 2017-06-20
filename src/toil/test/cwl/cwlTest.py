@@ -26,6 +26,14 @@ from six import u as unicode
 
 from toil.test import ToilTest, needs_cwl
 
+
+@needs_cwl
+class CWLDirTest(ToilTest):
+    """Tests related to the 'Directory' directive"""
+    def test_true(self):
+      return (12)
+
+
 @needs_cwl
 class CWLTest(ToilTest):
 
