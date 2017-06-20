@@ -35,7 +35,8 @@ test_suites = {
         'AWSRestartTest',
         'PremptableDeficitCompensationTest',
         'UtilsTest and testAWSProvisionerUtils',
-        'AWSAutoscaleTest'
+        'AWSAutoscaleTest',
+        'AWSStaticAutoscaleTest'
     ]}
 
 

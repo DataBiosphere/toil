@@ -22,6 +22,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from Queue import Queue, Empty
+from contextlib import contextmanager
 
 from bd2k.util.objects import abstractclassmethod
 
@@ -366,6 +367,38 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
                If None, all nodes will be returned.
 
         :rtype: dict[str,NodeInfo]
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def nodeInUse(self, nodeIP):
+        """
+        Can be used to determine if a worker node is running any tasks. If the node is doesn't
+        exist, this function should simply return False.
+
+        :param str nodeIP: The worker nodes private IP address
+
+        :return: True if the worker node has been issued any tasks, else False
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    @contextmanager
+    def nodeFiltering(self, filter):
+        """
+        Used to prevent races in autoscaling where
+        1) nodes have reported to the autoscaler as having no jobs
+        2) scaler decides to terminate these nodes. In parallel the batch system assigns jobs to the same nodes
+        3) scaler terminates nodes, resulting in job failures for all jobs on that node.
+
+        Call this method prior to node termination to ensure that nodes being considered for termination are not
+        assigned new jobs. Call the method again passing None as the filter to disable the filtering
+        after node termination is done.
+
+        :param method: This will be used as a filter on nodes considered when assigning new jobs.
+            After this context manager exits the filter should be removed
+        :rtype: None
         """
         raise NotImplementedError()
 

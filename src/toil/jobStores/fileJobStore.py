@@ -85,7 +85,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
-    ########################################## 
+    ##########################################
 
     def create(self, jobNode):
         # The absolute path to the job directory.
@@ -165,15 +165,21 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
-                fd, absPath = self._getTempFile()
-                shutil.copyfile(self._extractPathFromUrl(url), absPath)
+                fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
+                os.unlink(absPath)
+                try:
+                    os.link(self._extractPathFromUrl(url), absPath)
+                except OSError:
+                    shutil.copyfile(self._extractPathFromUrl(url), absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
-                with self.writeSharedFileStream(sharedFileName) as writable:
-                    with open(self._extractPathFromUrl(url), 'r') as readable:
-                        shutil.copyfileobj(readable, writable)
+                path = self._getSharedFilePath(sharedFileName)
+                try:
+                    os.link(self._extractPathFromUrl(url), path)
+                except:
+                    shutil.copyfile(self._extractPathFromUrl(url), path)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
@@ -288,13 +294,16 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with shared files, i.e. files not associated
     # with specific jobs.
-    ##########################################  
+    ##########################################
+
+    def _getSharedFilePath(self, sharedFileName):
+        return os.path.join(self.jobStoreDir, sharedFileName)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         # the isProtected parameter has no effect on the fileStore
         assert self._validateSharedFileName( sharedFileName )
-        with open( os.path.join( self.jobStoreDir, sharedFileName ), 'w' ) as f:
+        with open(self._getSharedFilePath(sharedFileName), 'w') as f:
             yield f
 
     @contextmanager
@@ -335,7 +344,7 @@ class FileJobStore(AbstractJobStore):
 
     ##########################################
     # Private methods
-    ##########################################   
+    ##########################################
 
     def _getAbsPath(self, relativePath):
         """
@@ -347,10 +356,10 @@ class FileJobStore(AbstractJobStore):
     def _getRelativePath(self, absPath):
         """
         absPath  is the absolute path to a file in the store,.
-        
-        :rtype : string, string is the path to the absPath file relative to the 
+
+        :rtype : string, string is the path to the absPath file relative to the
         self.tempFilesDir
-        
+
         """
         return absPath[len(self.tempFilesDir)+1:]
 
@@ -375,13 +384,13 @@ class FileJobStore(AbstractJobStore):
         :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
         """
         if not self.fileExists(jobStoreFileID):
-            raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
+            raise NoSuchFileException(jobStoreFileID)
 
     def _getTempSharedDir(self):
         """
         Gets a temporary directory in the hierarchy of directories in self.tempFilesDir.
         This directory may contain multiple shared jobs/files.
-        
+
         :rtype : string, path to temporary directory in which to place files/directories.
         """
         tempDir = self.tempFilesDir

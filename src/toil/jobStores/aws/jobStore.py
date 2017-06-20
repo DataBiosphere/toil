@@ -16,14 +16,14 @@ from __future__ import absolute_import
 
 from contextlib import contextmanager, closing
 import logging
-from multiprocessing import cpu_count
 
-import os
 import re
 import uuid
 import base64
 import hashlib
 import itertools
+import urlparse
+import urllib
 
 # Python 3 compatibility imports
 from six.moves import xrange, cPickle, StringIO, reprlib
@@ -32,17 +32,10 @@ from six import iteritems
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass
-from boto.sdb.domain import Domain
-from boto.s3.bucket import Bucket
-from boto.s3.connection import S3Connection
-from boto.sdb.connection import SDBConnection
-from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
-from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
-from concurrent.futures import ThreadPoolExecutor
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -57,90 +50,13 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
                                       bucket_location_to_region,
-                                      region_to_bucket_location)
+                                      region_to_bucket_location, copyKeyMultipart,
+                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
-
-
-def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
-    """
-    Copies a key from a source key to a destination key in multiple parts. Note that if the
-    destination key exists it will be overwritten implicitly, and if it does not exist a new
-    key will be created. If the destination bucket does not exist an error will be raised.
-
-    :param boto.s3.key.Key srcKey: The source key to be copied from.
-    :param str dstBucketName: The name of the destination bucket for the copy.
-    :param str dstKeyName: The name of the destination key that will be created or overwritten.
-    :param int partSize: The size of each individual part, must be >= 5 MiB but large enough to
-           not exceed 10k parts for the whole file
-    :param dict headers: Any headers that should be passed.
-
-    :rtype: boto.s3.multipart.CompletedMultiPartUpload
-    :return: An object representing the completed upload.
-    """
-
-    def copyPart(partIndex):
-        if exceptions:
-            return None
-        try:
-            for attempt in retry_s3():
-                with attempt:
-                    start = partIndex * partSize
-                    end = min(start + partSize, totalSize)
-                    part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                     src_key_name=srcKey.name,
-                                                     src_version_id=srcKey.version_id,
-                                                     # S3 part numbers are 1-based
-                                                     part_num=partIndex + 1,
-                                                     # S3 range intervals are closed at the end
-                                                     start=start, end=end - 1,
-                                                     headers=headers)
-        except Exception as e:
-            if len(exceptions) < 5:
-                exceptions.append(e)
-                log.error('Failed to copy part number %d:', partIndex, exc_info=True)
-            else:
-                log.warn('Also failed to copy part number %d due to %s.', partIndex, e)
-            return None
-        else:
-            log.debug('Successfully copied part %d of %d.', partIndex, totalParts)
-            # noinspection PyUnboundLocalVariable
-            return part
-
-    totalSize = srcKey.size
-    totalParts = (totalSize + partSize - 1) / partSize
-    exceptions = []
-    # We need a location-agnostic connection to S3 so we can't use the one that we
-    # normally use for interacting with the job store bucket.
-    with closing(boto.connect_s3()) as s3:
-        for attempt in retry_s3():
-            with attempt:
-                dstBucket = s3.get_bucket(dstBucketName)
-                upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
-        log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
-                 srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-        try:
-            # We can oversubscribe cores by at least a factor of 16 since each copy task just
-            # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
-            # exactly free either. Lastly, we don't need more threads than we have parts.
-            with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                parts = list(executor.map(copyPart, xrange(0, totalParts)))
-                if exceptions:
-                    raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
-                assert len(filter(None, parts)) == totalParts
-        except:
-            with panic(log=log):
-                upload.cancel_upload()
-        else:
-            for attempt in retry_s3():
-                with attempt:
-                    completed = upload.complete_upload()
-                    log.info("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
-                             srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-                    return completed
 
 
 class AWSJobStore(AbstractJobStore):
@@ -484,7 +400,20 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(cls, readable, url):
         dstKey = cls._getKeyForUrl(url)
         try:
-            dstKey.set_contents_from_string(readable.read())
+            canDetermineSize = True
+            try:
+                readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
+                fileSize = readable.tell()  # tells the current position in file - in this case == size of file
+                readable.seek(0)  # go to the 0th byte from the start of the file
+            except:
+                canDetermineSize = False
+            if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
+                log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
+                chunkedFileUpload(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
+            else:
+                # we either don't know the size, or the size is small
+                log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
+                dstKey.set_contents_from_string(readable.read())
         finally:
             dstKey.bucket.connection.close()
 
@@ -659,7 +588,20 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_s3():
             with attempt:
                 key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-                return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
+                key.set_canned_acl('public-read')
+                url = key.generate_url(query_auth=False,
+                                       expires_in=self.publicUrlExpiration.total_seconds())
+                # boto doesn't properly remove the x-amz-security-token parameter when
+                # query_auth is False when using an IAM role (see issue #2043). Including the
+                # x-amz-security-token parameter without the access key results in a 403,
+                # even if the resource is public, so we need to remove it.
+                scheme, netloc, path, query, fragment = urlparse.urlsplit(url)
+                params = urlparse.parse_qs(query)
+                if 'x-amz-security-token' in params:
+                    del params['x-amz-security-token']
+                query = urllib.urlencode(params, doseq=True)
+                url = urlparse.urlunsplit((scheme, netloc, path, query, fragment))
+                return url
 
     def getSharedPublicUrl(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)
@@ -1042,57 +984,15 @@ class AWSJobStore(AbstractJobStore):
                     raise
 
         def upload(self, localFilePath):
-            file_size, file_time = self._fileSizeAndTime(localFilePath)
+            file_size, file_time = fileSizeAndTime(localFilePath)
             if file_size <= self._maxInlinedSize():
                 with open(localFilePath) as f:
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
-                if file_size <= self.outer.partSize:
-                    key = self.outer.filesBucket.new_key(key_name=self.fileID)
-                    key.name = self.fileID
-                    for attempt in retry_s3():
-                        with attempt:
-                            key.set_contents_from_filename(localFilePath, headers=headers)
-                    self.version = key.version_id
-                else:
-                    with open(localFilePath, 'rb') as f:
-                        for attempt in retry_s3():
-                            with attempt:
-                                upload = self.outer.filesBucket.initiate_multipart_upload(
-                                    key_name=self.fileID,
-                                    headers=headers)
-                        try:
-                            start = 0
-                            part_num = itertools.count()
-                            while start < file_size:
-                                end = min(start + self.outer.partSize, file_size)
-                                assert f.tell() == start
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.upload_part_from_file(fp=f,
-                                                                     part_num=next(part_num) + 1,
-                                                                     size=end - start,
-                                                                     headers=headers)
-                                start = end
-                            assert f.tell() == file_size == start
-                        except:
-                            with panic(log=log):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.cancel_upload()
-                        else:
-                            for attempt in retry_s3():
-                                with attempt:
-                                    self.version = upload.complete_upload().version_id
-                for attempt in retry_s3():
-                    with attempt:
-                        key = self.outer.filesBucket.get_key(self.fileID,
-                                                             headers=headers,
-                                                             version_id=self.version)
-                assert key.size == file_size
-                # Make resonably sure that the file wasn't touched during the upload
-                assert self._fileSizeAndTime(localFilePath) == (file_size, file_time)
+                self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
+                                              bucket=self.outer.filesBucket, fileID=self.fileID,
+                                              headers=headers)
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
@@ -1289,10 +1189,6 @@ class AWSJobStore(AbstractJobStore):
             else:
                 return {}
 
-        def _fileSizeAndTime(self, localFilePath):
-            file_stat = os.stat(localFilePath)
-            file_size, file_time = file_stat.st_size, file_stat.st_mtime
-            return file_size, file_time
 
         def __repr__(self):
             r = custom_repr

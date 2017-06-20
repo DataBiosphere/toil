@@ -11,21 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import logging
-import os
 from abc import ABCMeta, abstractmethod
 
 from collections import namedtuple
 
-from itertools import islice
 
-import time
 
-from bd2k.util.retry import retry, never
-from bd2k.util.threading import ExceptionalThread
+from bd2k.util.retry import never
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
 
 log = logging.getLogger(__name__)
 
@@ -51,197 +45,89 @@ class AbstractProvisioner(object):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, config, batchSystem):
+
+    def __init__(self, config=None):
+        """
+        Initialize provisioner. If config and batchSystem are not specified, the
+        provisioner is being used to manage nodes without a workflow
+
+        :param config: Config from common.py
+        :param batchSystem: The batchSystem used during run
+        """
         self.config = config
-        self.batchSystem = batchSystem
         self.stop = False
-        self.stats = {}
-        self.statsThreads = []
-        self.statsPath = config.clusterStats
-        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem)
+        self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
+        self.static = {}
+
+    def getStaticNodes(self, preemptable):
+        return self.static[preemptable]
 
     @staticmethod
     def retryPredicate(e):
         """
-        Return true if the exception e should be retried by the cluster scaler
+        Return true if the exception e should be retried by the cluster scaler.
+        For example, should return true if the exception was due to exceeding an API rate limit.
+        The error will be retried with exponential backoff.
 
         :param e: exception raised during execution of setNodeCount
         :return: boolean indicating whether the exception e should be retried
         """
         return never(e)
 
-    def shutDown(self, preemptable):
-        if not self.stop:
-            # only shutdown the stats threads once
-            self._shutDownStats()
-        log.debug('Forcing provisioner to reduce cluster size to zero.')
-        totalNodes = self.setNodeCount(numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes != 0:
-            raise RuntimeError('Provisioner was not able to reduce cluster size to zero.')
-
-    def _shutDownStats(self):
-        def getFileName():
-            extension = '.json'
-            file = '%s-stats' % self.config.jobStore
-            counter = 0
-            while True:
-                suffix = str(counter).zfill(3) + extension
-                fullName = os.path.join(self.statsPath, file + suffix)
-                if not os.path.exists(fullName):
-                    return fullName
-                counter += 1
-        if self.config.clusterStats and self.scaleable:
-            self.stop = True
-            for thread in self.statsThreads:
-                thread.join()
-            fileName = getFileName()
-            with open(fileName, 'w') as f:
-                json.dump(self.stats, f)
-
-    def startStats(self, preemptable):
-        thread = ExceptionalThread(target=self._gatherStats, args=[preemptable])
-        thread.start()
-        self.statsThreads.append(thread)
-
-    def checkStats(self):
-        for thread in self.statsThreads:
-            # propagate any errors raised in the threads execution
-            thread.join(timeout=0)
-
-    def _gatherStats(self, preemptable):
-        def toDict(nodeInfo):
-            # convert NodeInfo object to dict to improve JSON output
-            return dict(memory=nodeInfo.memoryUsed,
-                        cores=nodeInfo.coresUsed,
-                        memoryTotal=nodeInfo.memoryTotal,
-                        coresTotal=nodeInfo.coresTotal,
-                        requestedCores=nodeInfo.requestedCores,
-                        requestedMemory=nodeInfo.requestedMemory,
-                        workers=nodeInfo.workers,
-                        time=time.time()  # add time stamp
-                        )
-        if self.scaleable:
-            stats = {}
-            try:
-                while not self.stop:
-                    nodeInfo = self.batchSystem.getNodes(preemptable)
-                    for nodeIP in nodeInfo.keys():
-                        nodeStats = nodeInfo[nodeIP]
-                        if nodeStats is not None:
-                            nodeStats = toDict(nodeStats)
-                            try:
-                                # if the node is already registered update the dictionary with
-                                # the newly reported stats
-                                stats[nodeIP].append(nodeStats)
-                            except KeyError:
-                                # create a new entry for the node
-                                stats[nodeIP] = [nodeStats]
-                    time.sleep(60)
-            finally:
-                threadName = 'Preemptable' if preemptable else 'Non-preemptable'
-                log.debug('%s provisioner stats thread shut down successfully.', threadName)
-                self.stats[threadName] = stats
-        else:
-            pass
-
-    def setNodeCount(self, numNodes, preemptable=False, force=False):
+    def setStaticNodes(self, nodes, preemptable):
         """
-        Attempt to grow or shrink the number of prepemptable or non-preemptable worker nodes in
-        the cluster to the given value, or as close a value as possible, and, after performing
-        the necessary additions or removals of worker nodes, return the resulting number of
-        preemptable or non-preemptable nodes currently in the cluster.
+        Used to track statically provisioned nodes. These nodes are
+        treated differently than autoscaled nodes in that they should not
+        be automatically terminated.
 
-        :param int numNodes: Desired size of the cluster
-
-        :param bool preemptable: whether the added nodes will be preemptable, i.e. whether they
-               may be removed spontaneously by the underlying platform at any time.
-
-        :param bool force: If False, the provisioner is allowed to deviate from the given number
-               of nodes. For example, when downsizing a cluster, a provisioner might leave nodes
-               running if they have active jobs running on them.
-
-        :rtype: int :return: the number of nodes in the cluster after making the necessary
-                adjustments. This value should be, but is not guaranteed to be, close or equal to
-                the `numNodes` argument. It represents the closest possible approximation of the
-                actual cluster size at the time this method returns.
+        :param nodes: list of Node objects
         """
-        for attempt in retry(predicate=self.retryPredicate):
-            with attempt:
-                workerInstances = self._getWorkersInCluster(preemptable)
-                numCurrentNodes = len(workerInstances)
-                delta = numNodes - numCurrentNodes
-                if delta > 0:
-                    log.info('Adding %i %s nodes to get to desired cluster size of %i.', delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-                    numNodes = numCurrentNodes + self._addNodes(workerInstances,
-                                                                numNodes=delta,
-                                                                preemptable=preemptable)
-                elif delta < 0:
-                    log.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-                    numNodes = numCurrentNodes - self._removeNodes(workerInstances,
-                                                                   numNodes=-delta,
-                                                                   preemptable=preemptable,
-                                                                   force=force)
-                else:
-                    log.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
-        return numNodes
-
-    def _removeNodes(self, instances, numNodes, preemptable=False, force=False):
-        # If the batch system is scalable, we can use the number of currently running workers on
-        # each node as the primary criterion to select which nodes to terminate.
-        if isinstance(self.batchSystem, AbstractScalableBatchSystem):
-            nodes = self.batchSystem.getNodes(preemptable)
-            # Join nodes and instances on private IP address.
-            nodes = [(instance, nodes.get(instance.private_ip_address)) for instance in instances]
-            log.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
-            # Unless forced, exclude nodes with runnning workers. Note that it is possible for
-            # the batch system to report stale nodes for which the corresponding instance was
-            # terminated already. There can also be instances that the batch system doesn't have
-            # nodes for yet. We'll ignore those, too, unless forced.
-            nodesToTerminate = []
-            for instance, nodeInfo in nodes:
-                if force:
-                    nodesToTerminate.append((instance, nodeInfo))
-                elif nodeInfo is not None and nodeInfo.workers < 1:
-                    nodesToTerminate.append((instance, nodeInfo))
-                else:
-                    log.debug('Not terminating instances %s. Node info: %s', instance, nodeInfo)
-            # Sort nodes by number of workers and time left in billing cycle
-            nodesToTerminate.sort(key=lambda (instance, nodeInfo): (
-                nodeInfo.workers if nodeInfo else 1,
-                self._remainingBillingInterval(instance)))
-            if not force:
-                # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-                nodesToTerminate = [nodeTuple for nodeTuple in nodesToTerminate if self._remainingBillingInterval(nodeTuple[0]) <= 0.15]
-            nodesToTerminate = nodesToTerminate[:numNodes]
-            if log.isEnabledFor(logging.DEBUG):
-                for instance, nodeInfo in nodesToTerminate:
-                    log.debug("Instance %s is about to be terminated. Its node info is %r. It "
-                              "would be billed again in %s minutes.", instance.id, nodeInfo,
-                              60 * self._remainingBillingInterval(instance))
-            instances = [instance for instance, nodeInfo in nodesToTerminate]
-        else:
-            # Without load info all we can do is sort instances by time left in billing cycle.
-            instances = sorted(instances, key=self._remainingBillingInterval)
-            instances = [instance for instance in islice(instances, numNodes)]
-        log.info('Terminating %i instance(s).', len(instances))
-        if instances:
-            self._logAndTerminate(instances)
-        return len(instances)
+        prefix = 'non-' if not preemptable else ''
+        log.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
+        if nodes is not None:
+            self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
-    def _addNodes(self, instances, numNodes, preemptable):
+    def addNodes(self, numNodes, preemptable):
+        """
+        Used to add worker nodes to the cluster
+
+        :param numNodes: The number of nodes to add
+        :param preemptable: whether or not the nodes will be preemptable
+        :return: number of nodes successfully added
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def _logAndTerminate(self, instances):
+    def terminateNodes(self, nodes):
+        """
+        Terminate the nodes represented by given Node objects
+
+        :param nodes: list of Node objects
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def _getWorkersInCluster(self, preemptable):
+    def getProvisionedWorkers(self, preemptable):
+        """
+        Gets all nodes of the given preemptability from the provisioner.
+        Includes both static and autoscaled nodes.
+
+        :param preemptable: Boolean value indicating whether to return preemptable nodes or
+           non-preemptable nodes
+        :return: list of Node objects
+        """
         raise NotImplementedError
 
     @abstractmethod
-    def _remainingBillingInterval(self, instance):
+    def remainingBillingInterval(self, node):
+        """
+        Calculate how much of a node's allocated billing interval is
+        left in this cycle.
+
+        :param node: Node object
+        :return: float from 0 -> 1.0 representing percentage of pre-paid time left in cycle
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -260,20 +146,53 @@ class AbstractProvisioner(object):
 
     @classmethod
     @abstractmethod
-    def rsyncLeader(cls, clusterName, src, dst):
+    def rsyncLeader(cls, clusterName, args, **kwargs):
+        """
+        Rsyncs to the leader of the cluster with the specified name. The arguments are passed directly to
+        Rsync.
+
+        :param clusterName: name of the cluster to target
+        :param args: list of string arguments to rsync. Identical to the normal arguments to rsync, but the
+           host name of the remote host can be omitted. ex) ['/localfile', ':/remotedest']
+        :param \**kwargs:
+           See below
+
+        :Keyword Arguments:
+            * *strict*: if False, strict host key checking is disabled. (Enabled by default.)
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
+        """
+        Launches a cluster with the specified instance type for the leader with the specified name.
+
+        :param instanceType: desired type of the leader instance
+        :param keyName: name of the ssh key pair to launch the instance with
+        :param clusterName: desired identifier of the cluster
+        :param spotBid: how much to bid for the leader instance. If none, use on demand pricing.
+        :return:
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
-    def sshLeader(cls, clusterName, args):
+    def sshLeader(cls, clusterName, args, **kwargs):
+        """
+        SSH into the leader instance of the specified cluster with the specified arguments to SSH.
+        :param clusterName: name of the cluster to target
+        :param args: list of string arguments to ssh.
+        :param strict: If False, strict host key checking is disabled. (Enabled by default.)
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def destroyCluster(cls, clusterName):
+        """
+        Terminates all nodes in the specified cluster and cleans up all resources associated with the
+        cluser.
+        :param clusterName: identifier of the cluster to terminate.
+        """
         raise NotImplementedError

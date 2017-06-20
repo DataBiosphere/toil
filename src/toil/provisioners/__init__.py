@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def awsRemainingBillingInterval(instance):
+    """
+    Takes a node object and determines how far into it's billing cycle it is.
+
+    :param instance:
+    :return:
+    """
     def partialBillingInterval(instance):
         """
         Returns a floating point value between 0 and 1.0 representing how far we are into the
@@ -30,7 +36,7 @@ def awsRemainingBillingInterval(instance):
         quarter into the billing cycle, with three quarters remaining before we will be charged
         again for that instance.
         """
-        launch_time = parse_iso_utc(instance.launch_time)
+        launch_time = parse_iso_utc(instance.launchTime)
         now = datetime.datetime.utcnow()
         delta = now - launch_time
         return delta.total_seconds() / 3600.0 % 1.0
@@ -64,11 +70,41 @@ class Cluster(object):
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 
-    def sshCluster(self, args):
-        self.provisioner.sshLeader(self.clusterName, args, self.zone)
+    def sshCluster(self, args, **kwargs):
+        self.provisioner.sshLeader(self.clusterName, args, self.zone, **kwargs)
 
-    def rsyncCluster(self, args):
-        self.provisioner.rsyncLeader(self.clusterName, args, self.zone)
+    def rsyncCluster(self, args, **kwargs):
+        self.provisioner.rsyncLeader(self.clusterName, args, self.zone, **kwargs)
+        ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
+        instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
+        workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
+        for instance in workers:
+            self.provisioner._waitForNode(instance, 'toil_worker')
+            self.provisioner._rsyncNode(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
+
+
+class Node(object):
+    def __init__(self, publicIP, privateIP, name, launchTime):
+        self.publicIP = publicIP
+        self.privateIP = privateIP
+        self.name = name
+        self.launchTime = launchTime
+
+    def __str__(self):
+        return "%s at %s" % (self.name, self.publicIP)
+
+    def __repr__(self):
+        return str(self)
+
+    def __hash__(self):
+        return hash(self.publicIP)
+
+
+class NoSuchClusterException(Exception):
+    """Indicates that the specified cluster does not exist."""
+    def __init__(self, clusterName):
+        super(NoSuchClusterException, self).__init__("The cluster '%s' could not be found" % clusterName)

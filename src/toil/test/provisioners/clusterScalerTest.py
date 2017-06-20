@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 import time
+from contextlib import contextmanager
 from threading import Thread, Event
 import logging
 import random
@@ -26,6 +27,7 @@ from six import iteritems
 from bd2k.util.objects import InnerClass
 
 from toil.job import JobNode
+from toil.provisioners import Node
 from toil.test import ToilTest
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
@@ -196,13 +198,15 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     """
 
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__(config=config, batchSystem=None)
+        super(MockBatchSystemAndProvisioner, self).__init__(config=config)
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
         self.secondsPerJob = secondsPerJob
-        self.delegates = [self.Delegate(), self.Delegate()]
+        self.delegates = [self.Delegate(preemptable=False), self.Delegate(preemptable=True)]
+        self.provisioner = self
         self.batchSystem = self
+
 
     def _pick(self, preemptable=False):
         """
@@ -231,27 +235,40 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     # AbstractScalableBatchSystem methods
 
-    def getNodes(self, preemptable=False):
+    def getNodes(self, preemptable=False, timeout=None):
         return self._pick(preemptable).getNodes()
+
+    def nodeInUse(self, nodeIP):
+        return False
+
+    @contextmanager
+    def nodeFiltering(self, filter):
+        nodes = self.getProvisionedWorkers(True) + self.getProvisionedWorkers(False)
+        yield nodes
 
     # AbstractProvisioner methods
 
     def getNodeShape(self, preemptable=False):
         return self.config.preemptableNodeType if preemptable else self.config.nodeType
 
-    def setNodeCount(self, numNodes, preemptable=False, force=False):
-        return self._pick(preemptable).setNodeCount(numNodes=numNodes)
+    def addNodes(self, numNodes, preemptable):
+        self._pick(preemptable)._addNodes(numNodes=numNodes)
+        return self.getNumberOfNodes(preemptable)
 
-    def _addNodes(self, instances, numNodes, preemptable):
-        pass
+    def getProvisionedWorkers(self, preemptable):
+        """
+        Returns a list of Node objects, each representing a worker node in the cluster
 
-    def _getWorkersInCluster(self, preemptable):
-        pass
+        :param preemptable: If True only return preemptable nodes else return non-preemptable nodes
+        :return: list of Node
+        """
+        return self._pick(preemptable).nodesToWorker.keys()
 
-    def _logAndTerminate(self, instanceIDs):
-        pass
+    def terminateNodes(self, nodes):
+        for preemptable in (True, False):
+            self._pick(preemptable)._removeNodes(nodes)
 
-    def _remainingBillingInterval(self, instance):
+    def remainingBillingInterval(self, node):
         pass
 
     # FIXME: Not part of AbstractScalableBatchSystem but used by the tests
@@ -263,16 +280,17 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     class Delegate(object):
         """
         Implements the methods of the Provisioner and JobBatcher class needed for the
-        ClusterScaler class, but omits the preemptable argument.
+        ClusterScaler class.
         """
 
-        def __init__(self):
+        def __init__(self, preemptable):
             super(MockBatchSystemAndProvisioner.Delegate, self).__init__()
             self.jobQueue = Queue()
             self.totalJobs = 0  # Count of total jobs processed
             self.totalWorkerTime = 0.0  # Total time spent in worker threads
-            self.workers = []  # Instances of the Worker class
+            self.nodesToWorker = {}  # Map from Node to instances of the Worker class
             self.maxWorkers = 0  # Maximum number of workers
+            self.preemptable = preemptable
 
         def addJob(self):
             """
@@ -289,21 +307,12 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         # AbstractScalableBatchSystem functionality
 
         def getNodes(self):
-            return {address: NodeInfo(coresTotal=0, coresUsed=0,
-                                      memoryTotal=0, memoryUsed=0,
-                                      workers=1 if w.busyEvent.is_set() else 0)
-                    for address, w in enumerate(self.workers)}
-
-        # AbstractProvisioner functionality
-
-        def setNodeCount(self, numNodes):
-            delta = numNodes - len(self.workers)
-            if delta > 0:
-                self._addNodes(numNodes=delta)
-            elif delta < 0:
-                self._removeNodes(numNodes=-delta)
-            assert len(self.workers) == numNodes
-            return numNodes
+            nodes = dict()
+            for i, worker in enumerate(self.nodesToWorker.values()):
+                nodes[(i, self.preemptable)] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=1,
+                                                        memoryTotal=0, memoryUsed=0, requestedMemory=1,
+                                                        workers=1 if worker.busyEvent.is_set() else 0)
+            return nodes
 
         def _addNodes(self, numNodes):
             class Worker(object):
@@ -333,15 +342,20 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                     return time.time() - self.startTime
 
             for i in xrange(numNodes):
-                self.workers.append(Worker(self.jobQueue, self.outer.secondsPerJob))
-            if len(self.workers) > self.maxWorkers:
-                self.maxWorkers = len(self.workers)
+                node = Node('127.0.0.1', '127.0.0.1', 'testNode', time.time())
+                self.nodesToWorker[node] = Worker(self.jobQueue, self.outer.secondsPerJob)
+            self.maxWorkers = max(self.maxWorkers, len(self.nodesToWorker))
 
-        def _removeNodes(self, numNodes):
-            while len(self.workers) > 0 and numNodes > 0:
-                worker = self.workers.pop()
-                self.totalWorkerTime += worker.stop()
-                numNodes -= 1
+        def _removeNodes(self, nodes):
+            logger.info("removing nodes. %s workers and %s to terminate", len(self.nodesToWorker), len(nodes))
+            for node in nodes:
+                logger.info("removed node")
+                try:
+                    worker = self.nodesToWorker.pop(node)
+                    self.totalWorkerTime += worker.stop()
+                except KeyError:
+                    # Node isn't our responsibility
+                    pass
 
         def getNumberOfNodes(self):
-            return len(self.workers)
+            return len(self.nodesToWorker)

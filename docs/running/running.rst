@@ -65,6 +65,9 @@ support for the stable v1.0 specification, only lacking the following features:
   be enumerated as Files.
 - `File literals`_ that specify only ``contents`` to a File without an explicit
   file name.
+- Writable `InitialWorkDirRequirement
+  <http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement>`
+  objects. Standard readable inputs do work.
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
 
