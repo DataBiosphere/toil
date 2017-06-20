@@ -121,6 +121,14 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None and math.ceil(cpu) > 1:
                 qsubline.extend(['-l ncpus=' + str(int(math.ceil(cpu)))])
 
+            # "Native extensions" for TORQUE (see DRMAA or SAGA)
+            nativeConfig = os.getenv('TOIL_TORQUE_ARGS')
+            if nativeConfig is not None:
+                logger.debug("Native TORQUE options appended to qsub from TOIL_TORQUE_RESOURCES env. variable: {}".format(nativeConfig))
+                if ("mem=" in nativeConfig) or ("nodes=" in nativeConfig) or ("ppn=" in nativeConfig):
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(nativeConfig))
+            qsubline.extend(nativeConfig.split())
+            
             return qsubline
 
         def generateTorqueWrapper(self, command):
