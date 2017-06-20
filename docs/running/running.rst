@@ -193,6 +193,11 @@ There are several environment variables that affect the way Toil runs.
 |                        | Instead, define resource requirements for the job. |
 |                        | There is no default value for this variable.       |
 +------------------------+----------------------------------------------------+
+| TOIL_TORQUE_ARGS       | Arguments for qsub for the torque batch system.   |
+|                        | Do not pass CPU or memory specifications here.     |
+|                        | Instead, define resource requirements for the job. |
+|                        | There is no default value for this variable.       |
++------------------------+----------------------------------------------------+
 | TOIL_GRIDENGINE_ARGS   | Arguments for qsub for the gridengine batch        |
 |                        | system. Do not pass CPU or memory specifications   |
 |                        | here. Instead, define resource requirements for    |
