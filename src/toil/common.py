@@ -20,7 +20,6 @@ import re
 import sys
 import tempfile
 import time
-import socket
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -34,7 +33,6 @@ from bd2k.util.humanize import bytes2human
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +71,7 @@ class Config(object):
         self.batchSystem = "singleMachine"
         self.disableHotDeployment = False
         self.scale = 1
-        # may return localhost on some systems (not osx and coreos) https://stackoverflow.com/a/166520
-        self.mesosMasterAddress = '%s:5050' % 'localhost' # socket.gethostbyname(socket.gethostname())
+        self.mesosMasterAddress = 'localhost:5050'
         self.parasolCommand = "parasol"
         self.parasolMaxBatches = 10000
         self.environment = {}
@@ -1090,5 +1087,3 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
-
-
