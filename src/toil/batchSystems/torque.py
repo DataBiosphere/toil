@@ -134,6 +134,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             if reqlineEnv is not None:
                 logger.debug("Additional Torque resource requirements appended to qsub from "\
                         "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+                if ("mem=" in reqlineEnv) or ("nodes=" in reqlineEnv) or ("ppn=" in reqlineEnv):
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
 
                 reqline.append(reqlineEnv)
             
@@ -145,18 +147,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # with those that we already constructed above
             arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
             if arglineEnv is not None:
-                logger.debug("Additional Torque arguments appended to qsub from "\
-                        "TOIL_TORQUE_ARGS env. variable: {}".format(arglineEnv))
+                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}".\
+                        format(arglineEnv))
+                if ("mem=" in arglineEnv) or ("nodes=" in arglineEnv) or ("ppn=" in arglineEnv):
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(arglineEnv))
                 qsubline += shlex.split(arglineEnv)
 
-            # "Native extensions" for TORQUE (see DRMAA or SAGA)
-            nativeConfig = os.getenv('TOIL_TORQUE_ARGS')
-            if nativeConfig is not None:
-                logger.debug("Native TORQUE options appended to qsub from TOIL_TORQUE_RESOURCES env. variable: {}".format(nativeConfig))
-                if ("mem=" in nativeConfig) or ("nodes=" in nativeConfig) or ("ppn=" in nativeConfig):
-                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(nativeConfig))
-            qsubline.extend(nativeConfig.split())
-            
             return qsubline
 
         def generateTorqueWrapper(self, command):
