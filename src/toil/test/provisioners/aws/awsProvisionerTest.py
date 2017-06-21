@@ -234,12 +234,10 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super(AWSAutoscaleTest, self).getRootVolID()
-        """
         ctx = AWSProvisioner._buildContext(self.clusterName)
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
-        """
         return volumeID
 
     @integrative
@@ -256,11 +254,25 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
     """
+    def __init__(self, name):
+        super(AWSStaticAutoscaleTest, self).__init__(name)
+        self.requestedNodeStorage = 20
+
     def launchCluster(self):
-        self.createClusterUtil(args=['-w', '2', '--nodeStorage', '20'])
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
+                                     '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+        nodes = set(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True))
+        leader = AWSProvisioner._getLeader(self.clusterName)
+        workers = nodes.difference(leader).difference(leader)
+        # test that two worker nodes were created
+        self.assertEqual(2, len(workers))
+        # test that workers have expected storage size
+        # just use the first worker
+        rootBlockDevice = self.workers[0].block_device_mapping["/dev/xvda"]
+        self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
