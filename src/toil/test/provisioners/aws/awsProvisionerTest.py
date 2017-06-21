@@ -262,9 +262,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        nodes = set(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True))
-        leader = AWSProvisioner._getLeader(self.clusterName)
-        workers = nodes.difference(nodes).difference({leader})
+        nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        nodes.sort(key=lambda x: x.launch_time)
+        # assuming that leader is first
+        workers = nodes[1:]
         # test that two worker nodes were created
         self.assertEqual(2, len(workers))
         # test that workers have expected storage size
