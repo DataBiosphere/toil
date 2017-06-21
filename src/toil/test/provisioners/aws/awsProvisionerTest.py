@@ -264,7 +264,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         ctx = AWSProvisioner._buildContext(self.clusterName)
         nodes = set(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True))
         leader = AWSProvisioner._getLeader(self.clusterName)
-        workers = nodes.difference(leader).difference(leader)
+        workers = nodes.difference(nodes).difference(set(leader))
         # test that two worker nodes were created
         self.assertEqual(2, len(workers))
         # test that workers have expected storage size
