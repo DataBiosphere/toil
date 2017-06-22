@@ -270,7 +270,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.assertEqual(2, len(workers))
         # test that workers have expected storage size
         # just use the first worker
-        rootBlockDevice = self.workers[0].block_device_mapping["/dev/xvda"]
+        rootBlockDevice = workers[0].block_device_mapping["/dev/xvda"]
         self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
