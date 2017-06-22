@@ -22,6 +22,8 @@ import uuid
 import base64
 import hashlib
 import itertools
+import urlparse
+import urllib
 
 # Python 3 compatibility imports
 from six.moves import xrange, cPickle, StringIO, reprlib
@@ -30,15 +32,9 @@ from six import iteritems
 from bd2k.util import strict_bool
 from bd2k.util.exceptions import panic
 from bd2k.util.objects import InnerClass
-from boto.sdb.domain import Domain
-from boto.s3.bucket import Bucket
-from boto.s3.connection import S3Connection
-from boto.sdb.connection import SDBConnection
-from boto.sdb.item import Item
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
-from boto.s3.key import Key
 from boto.exception import SDBResponseError, S3ResponseError
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -592,7 +588,20 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_s3():
             with attempt:
                 key = self.filesBucket.get_key(key_name=jobStoreFileID, version_id=info.version)
-                return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
+                key.set_canned_acl('public-read')
+                url = key.generate_url(query_auth=False,
+                                       expires_in=self.publicUrlExpiration.total_seconds())
+                # boto doesn't properly remove the x-amz-security-token parameter when
+                # query_auth is False when using an IAM role (see issue #2043). Including the
+                # x-amz-security-token parameter without the access key results in a 403,
+                # even if the resource is public, so we need to remove it.
+                scheme, netloc, path, query, fragment = urlparse.urlsplit(url)
+                params = urlparse.parse_qs(query)
+                if 'x-amz-security-token' in params:
+                    del params['x-amz-security-token']
+                query = urllib.urlencode(params, doseq=True)
+                url = urlparse.urlunsplit((scheme, netloc, path, query, fragment))
+                return url
 
     def getSharedPublicUrl(self, sharedFileName):
         assert self._validateSharedFileName(sharedFileName)

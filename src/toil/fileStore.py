@@ -1628,7 +1628,7 @@ class NonCachingFileStore(FileStore):
                                            requestedDisk=jobReqs))
             self.logToMaster(logString, level=logging.DEBUG)
             if diskUsed > jobReqs:
-                self.logToMaster("Job used more disk than requested. Cconsider modifying the user "
+                self.logToMaster("Job used more disk than requested. Consider modifying the user "
                                  "script to avoid the chance of failure due to incorrectly "
                                  "requested resources. " + logString, level=logging.WARNING)
             os.chdir(startingDir)

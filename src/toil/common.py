@@ -20,6 +20,7 @@ import re
 import sys
 import tempfile
 import time
+import socket
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -36,6 +37,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+
 
 logger = logging.getLogger(__name__)
 
@@ -816,33 +818,6 @@ class Toil(object):
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
-            thread = Thread(target=self._refreshUserScript,
-                            name='refreshUserScript',
-                            kwargs=dict(userScriptResource=userScriptResource))
-            thread.daemon = True
-            thread.start()
-
-    def _refreshUserScript(self, userScriptResource):
-        """
-        Periodically refresh the user script in the job store to prevent credential
-        expiration from causing the public URL to the user script to expire.
-        """
-        while True:
-            # Boto refreshes IAM credentials if they will be expiring within the next five
-            # minutes, but it will only check the expiry if and when credentials are needed to
-            # sign an actual AWS request. This means that we should be refreshing the user script
-            # at least every 5 minutes. Note that refreshing the user script in the job store
-            # involves an S3 request requiring credentials and therefore also triggers refreshing
-            # the IAM role credentials. In the worst case, refresh() is called 5 minutes plus
-            # epsilon before IAM credential expiration. The resource is refreshed three minutes
-            # after that, leaving two minutes plus epsilon generating a new signed URL, this time
-            # with refreshed IAM role credentials. This consideration only applies to AWS and
-            # Boto2, of course. See https://github.com/BD2KGenomics/toil/issues/1372.
-            time.sleep(3 * 60)
-            logger.debug('Refreshing user script resource %s.', userScriptResource)
-            userScriptResource = userScriptResource.refresh(self._jobStore)
-            logger.debug('Injecting refreshed user script %s into batch system.', userScriptResource)
-            self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
         self._assertContextManagerUsed()
@@ -1071,3 +1046,5 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
+

@@ -422,7 +422,7 @@ class MesosBatchSystem(BatchSystemSupport,
                               '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
                               'and %(disk)s of disk on a %(non)spreemptable slave.',
                               dict(offer=offer.id.value,
-                                   requirements=jobType,
+                                   requirements=jobType.__dict__,
                                    non='' if offerPreemptable else 'non-',
                                    memory=fromMiB(offerMemory),
                                    cores=offerCores,

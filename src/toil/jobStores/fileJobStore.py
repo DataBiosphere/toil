@@ -85,7 +85,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
-    ########################################## 
+    ##########################################
 
     def create(self, jobNode):
         # The absolute path to the job directory.
@@ -294,7 +294,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with shared files, i.e. files not associated
     # with specific jobs.
-    ##########################################  
+    ##########################################
 
     def _getSharedFilePath(self, sharedFileName):
         return os.path.join(self.jobStoreDir, sharedFileName)
@@ -344,7 +344,7 @@ class FileJobStore(AbstractJobStore):
 
     ##########################################
     # Private methods
-    ##########################################   
+    ##########################################
 
     def _getAbsPath(self, relativePath):
         """
@@ -356,10 +356,10 @@ class FileJobStore(AbstractJobStore):
     def _getRelativePath(self, absPath):
         """
         absPath  is the absolute path to a file in the store,.
-        
-        :rtype : string, string is the path to the absPath file relative to the 
+
+        :rtype : string, string is the path to the absPath file relative to the
         self.tempFilesDir
-        
+
         """
         return absPath[len(self.tempFilesDir)+1:]
 
@@ -384,13 +384,13 @@ class FileJobStore(AbstractJobStore):
         :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
         """
         if not self.fileExists(jobStoreFileID):
-            raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
+            raise NoSuchFileException(jobStoreFileID)
 
     def _getTempSharedDir(self):
         """
         Gets a temporary directory in the hierarchy of directories in self.tempFilesDir.
         This directory may contain multiple shared jobs/files.
-        
+
         :rtype : string, path to temporary directory in which to place files/directories.
         """
         tempDir = self.tempFilesDir

@@ -17,18 +17,19 @@ SSHs into the toil appliance container running on the leader of the cluster
 import argparse
 import logging
 from toil.provisioners import Cluster
-from toil.lib.bioio import parseBasicOptions, setLoggingFromOptions, getBasicOptionParser
+from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
+                        help="Temporarily disable strict host key checking.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
-    setLoggingFromOptions(config)
     cluster = Cluster(provisioner=config.provisioner,
                       clusterName=config.clusterName, zone=config.zone)
-    cluster.sshCluster(args=config.args)
+    cluster.sshCluster(args=config.args, strict=not config.insecure)
