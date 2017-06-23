@@ -569,8 +569,8 @@ def addOptions(parser, config=Config()):
                            "argparse.ArgumentParser" % parser.__class__)
 
 
-def getNodeID(extraIDFiles=[]):
     """Return unique ID of the current node (host).
+def getNodeID(extraIDFiles=None):
     Tries several methods until success. The returned ID should be identical across calls from different processes on 
     the same node at least until the next OS reboot.
 
@@ -583,6 +583,8 @@ def getNodeID(extraIDFiles=[]):
     methods. ID should be a single word (no spaces) on the first line of the file.
 
     """
+    if extraIDFiles is None:
+        extraIDFiles = []
     idSourceFiles = extraIDFiles + ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]
     for idSourceFile in idSourceFiles:
         if os.path.exists(idSourceFile):
