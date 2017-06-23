@@ -568,9 +568,9 @@ def addOptions(parser, config=Config()):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
 
-
-    """Return unique ID of the current node (host).
 def getNodeID(extraIDFiles=None):
+    """
+    Return unique ID of the current node (host).
     Tries several methods until success. The returned ID should be identical across calls from different processes on 
     the same node at least until the next OS reboot.
 
@@ -581,7 +581,6 @@ def getNodeID(extraIDFiles=None):
 
     :param list extraIDFiles: Optional list of additional file names to try reading node ID before trying default 
     methods. ID should be a single word (no spaces) on the first line of the file.
-
     """
     if extraIDFiles is None:
         extraIDFiles = []
@@ -589,7 +588,7 @@ def getNodeID(extraIDFiles=None):
     for idSourceFile in idSourceFiles:
         if os.path.exists(idSourceFile):
             try:
-                with open(idSourceFile,"r") as inp:
+                with open(idSourceFile, "r") as inp:
                     nodeID = inp.readline().strip()
             except EnvironmentError:
                 logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID").\
@@ -600,18 +599,18 @@ def getNodeID(extraIDFiles=None):
                     break
                 else:
                     logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID").\
-                            format(nodeID,idSourceFile))
+                            format(nodeID, idSourceFile))
     else:
         nodeIDs = []
         for i_call in range(2):
             nodeID = str(uuid.getnode()).strip()
-            if len(nodeID.split())==1: 
+            if len(nodeID.split()) == 1:
                 nodeIDs.append(nodeID)
             else:
                 logger.warning("Node ID {} from uuid.getnode() contains spaces".format(nodeID))
         nodeID = ""
-        if (len(nodeIDs) == 2):
-            if (nodeIDs[0] == nodeIDs[1]):
+        if len(nodeIDs) == 2:
+            if nodeIDs[0] == nodeIDs[1]:
                 nodeID = nodeIDs[0]
             else:
                 logger.warning("Different node IDs {} received from repeated calls to uuid.getnode(). You should use "\

@@ -27,7 +27,7 @@ class GetNodeIDTest(ToilTest):
     def testSkipNonExistingFile(self):
         import uuid, os
         no_file = "/etc/totally_non_existing_"+str(uuid.uuid4())
-        assert not os.path.exists(no_file), "Could not make up a missing file name"
+        self.assertFalse(os.path.exists(no_file), "Could not make up a missing file name")
         nodeID1 = getNodeID([no_file])
         nodeID2 = getNodeID()
         self.assertEquals(nodeID1,nodeID2)
