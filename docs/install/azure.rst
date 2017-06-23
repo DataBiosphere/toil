@@ -1,9 +1,9 @@
-.. _azure-walkthrough:
+:orphan:
 
-Using Azure with Toil
----------------------
+.. orphan tag prevents warning while file is included in install/clout.rst
+   see http://www.sphinx-doc.org/en/stable/markup/misc.html
 
-.. image:: https://azuredeploy.net/deploybutton.png
+.. image:: azuredeploy.png
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
    :alt: Microsoft Azure deploy button
 
