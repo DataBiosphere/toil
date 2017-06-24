@@ -361,7 +361,19 @@ class AbstractJobStoreTest:
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
 
-
+        def testBatchCreate(self):
+            master = self.master
+            masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobGraphs = []
+            for i in range(10):
+                overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
+                                    requirements=masterRequirements,
+                                    jobName='test-overlarge', unitName='onMaster',
+                                    jobStoreID=None, predecessorNumber=0)
+                jobGraphs.append(master.getJobGraph(overlargeJobNodeOnMaster))
+            master.batchCreate(jobGraphs)
+            for jobGraph in jobGraphs:
+                self.assertTrue(master.exists(jobGraph.jobStoreID))
 
         def _prepareTestFile(self, store, size=None):
             """

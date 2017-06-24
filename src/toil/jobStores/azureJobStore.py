@@ -225,13 +225,24 @@ class AzureJobStore(AbstractJobStore):
 
         logger.debug("Processed %d total jobs" % total_processed)
 
-    def create(self, jobNode):
+    def getJobGraph(self, jobNode):
         jobStoreID = self._newJobID()
         job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
+        return job
+
+    def create(self, jobNode):
+        job = self.getJobGraph(jobNode)
         entity = job.toItem(chunkSize=self.jobChunkSize)
-        entity['RowKey'] = jobStoreID
+        entity['RowKey'] = job.jobStoreID
         self.jobItems.insert_entity(entity=entity)
         return job
+
+    def batchCreate(self, jobGraphs):
+        with self.jobItems.batch() as batch:
+            for job in jobGraphs:
+                entity = job.toItem(chunkSize=self.jobChunkSize)
+                entity['RowKey'] = job.jobStoreID
+                batch.insert_entity(entity)
 
     def exists(self, jobStoreID):
         if self.jobItems.get_entity(row_key=jobStoreID) is None:

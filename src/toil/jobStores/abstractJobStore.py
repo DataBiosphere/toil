@@ -629,6 +629,24 @@ class AbstractJobStore(object):
         raise NotImplementedError()
 
     @abstractmethod
+    def getJobGraph(self, jobNode):
+        """
+        Creates a job graph from the given job node without writing it to the job store.
+
+        :rtype: toil.jobGraph.JobGraph
+        """
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def batchCreate(self, jobGraphs):
+        """
+        Writes several job graphs to the jobstore with one query.
+
+        :rtype: None
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     def exists(self, jobStoreID):
         """
         Indicates whether the job with the specified jobStoreID exists in the job store

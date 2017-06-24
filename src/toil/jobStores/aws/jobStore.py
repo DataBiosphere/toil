@@ -248,17 +248,26 @@ class AWSJobStore(AbstractJobStore):
             item = SDBHelper.binaryToAttributes(binary)
         return item
 
-    def create(self, jobNode):
+    def getJobGraph(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
         job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+        return job
 
-        item = self._awsJobToItem(job)
+    def create(self, jobNode):
+        jobGraph = self.getJobGraph(jobNode)
+        item = self._awsJobToItem(jobGraph)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(job.jobStoreID, item)
-        return job
+                assert self.jobsDomain.put_attributes(jobGraph.jobStoreID, item)
+        return jobGraph
+
+    def batchCreate(self, jobGraphs):
+        items = {job.jobStoreID:self._awsJobToItem(job) for job in jobGraphs}
+        for attempt in retry_sdb():
+            with attempt:
+                assert self.jobsDomain.batch_put_attributes(items)
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():

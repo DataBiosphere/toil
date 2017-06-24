@@ -993,7 +993,7 @@ class Job(JobLikeObject):
         """
         # set _config to determine user determined default values for resource requirements
         self._config = jobStore.config
-        return jobStore.create(JobNode.fromJob(self, command=command,
+        return jobStore.getJobGraph(JobNode.fromJob(self, command=command,
                                                predecessorNumber=predecessorNumber))
 
     def _makeJobGraphs(self, jobGraph, jobStore):
@@ -1005,6 +1005,9 @@ class Job(JobLikeObject):
             jobs = map(lambda successor:
                 successor._makeJobGraphs2(jobStore, jobsToJobGraphs), successors)
             jobGraph.stack.append(jobs)
+
+        #Write the jobs to the jobStore all at once
+        jobStore.batchCreate(jobsToJobGraphs.values())
         return jobsToJobGraphs
 
     def _makeJobGraphs2(self, jobStore, jobsToJobGraphs):
