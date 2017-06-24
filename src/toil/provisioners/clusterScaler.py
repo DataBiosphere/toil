@@ -553,9 +553,9 @@ class ScalerThread(ExceptionalThread):
                               )
         if not force:
             # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-            nodesToTerminate = [node for node in nodesToTerminate if
+            nodesToTerminate = [(node, i) for node, i in nodesToTerminate if
                                 self.scaler.provisioner.remainingBillingInterval(node) <= 0.15]
-        return [node for node,_ in nodesToTerminate]
+        return [node for node, _ in nodesToTerminate]
 
     def getNodes(self, preemptable):
         """
