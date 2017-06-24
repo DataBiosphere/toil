@@ -616,7 +616,7 @@ class ScalerThread(ExceptionalThread):
         for node, ip in ((node, node.privateIP) for node in provisionerNodes):
             info = None
             if ip not in recentMesosNodes:
-                logger.debug("Worker node at %s is not reporting executor information")
+                logger.debug("Worker node at %s is not reporting executor information", ip)
                 # we don't have up to date information about the node
                 info = _getInfo(allMesosNodes, ip)
             else:
