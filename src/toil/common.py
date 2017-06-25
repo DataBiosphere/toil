@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import socket
+import uuid
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -567,6 +568,60 @@ def addOptions(parser, config=Config()):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
 
+def getNodeID(extraIDFiles=None):
+    """
+    Return unique ID of the current node (host).
+    Tries several methods until success. The returned ID should be identical across calls from different processes on 
+    the same node at least until the next OS reboot.
+
+    The last resort method is uuid.getnode() that in some rare OS configurations may return a random ID each time it is
+    called. However, this method should never be reached on a Linux system, because reading from 
+    /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
+    and exception raised if the values are not identical.
+
+    :param list extraIDFiles: Optional list of additional file names to try reading node ID before trying default 
+    methods. ID should be a single word (no spaces) on the first line of the file.
+    """
+    if extraIDFiles is None:
+        extraIDFiles = []
+    idSourceFiles = extraIDFiles + ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]
+    for idSourceFile in idSourceFiles:
+        if os.path.exists(idSourceFile):
+            try:
+                with open(idSourceFile, "r") as inp:
+                    nodeID = inp.readline().strip()
+            except EnvironmentError:
+                logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID").\
+                        format(idSourceFile), exc_info=True)
+            else:
+                if len(nodeID.split()) == 1:
+                    logger.debug("Obtained node ID {} from file {}".format(nodeID,idSourceFile))
+                    break
+                else:
+                    logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID").\
+                            format(nodeID, idSourceFile))
+    else:
+        nodeIDs = []
+        for i_call in range(2):
+            nodeID = str(uuid.getnode()).strip()
+            if len(nodeID.split()) == 1:
+                nodeIDs.append(nodeID)
+            else:
+                logger.warning("Node ID {} from uuid.getnode() contains spaces".format(nodeID))
+        nodeID = ""
+        if len(nodeIDs) == 2:
+            if nodeIDs[0] == nodeIDs[1]:
+                nodeID = nodeIDs[0]
+            else:
+                logger.warning("Different node IDs {} received from repeated calls to uuid.getnode(). You should use "\
+                        "another method to generate node ID.".format(nodeIDs))
+
+            logger.debug("Obtained node ID {} from uuid.getnode()".format(nodeID))
+    if not nodeID:
+        logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "\
+                "work dir on a shared file system when using workers running on multiple nodes, you might experience "\
+                "cryptic job failures")
+    return nodeID
 
 class Toil(object):
     """
@@ -934,8 +989,9 @@ class Toil(object):
         if not os.path.exists(workDir):
             raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
                                "exist." % workDir)
-        # Create the workflow dir
-        workflowDir = os.path.join(workDir, 'toil-%s' % workflowID)
+        # Create the workflow dir, make it unique to each host in case workDir is on a shared FS.
+        # This prevents workers on different nodes from erasing each other's directories.
+        workflowDir = os.path.join(workDir, 'toil-%s-%s' % (workflowID, getNodeID()))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -981,7 +1037,6 @@ class Toil(object):
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
             raise ToilContextManagerException()
-
 
 class ToilRestartException(Exception):
     def __init__(self, message):
