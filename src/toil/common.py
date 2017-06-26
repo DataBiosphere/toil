@@ -90,9 +90,9 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
-        
+
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxint 
+        self.maxPreemptableServiceJobs = sys.maxint
         self.maxServiceJobs = sys.maxint
         self.deadlockWait = 60 # Wait one minute before declaring a deadlock
 
@@ -226,7 +226,7 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
-        
+
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
         setOption("maxPreemptableServiceJobs", int)
@@ -419,8 +419,8 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
-    
-    #        
+
+    #
     # Parameters to limit service jobs / detect service deadlocks
     #
     addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
@@ -746,6 +746,9 @@ class Toil(object):
             from toil.jobStores.googleJobStore import GoogleJobStore
             projectID, namePrefix = rest.split(':', 1)
             return GoogleJobStore(namePrefix, projectID)
+        elif name == 'postgresql':
+            from toil.jobStores.pgJobStore import PGJobStore
+            return PGJobStore(locator)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
