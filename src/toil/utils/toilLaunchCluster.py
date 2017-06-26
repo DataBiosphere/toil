@@ -58,7 +58,7 @@ def main():
                              "auto-scaling but with need of more hardware support")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for the leader instance. "
-                             "This is an EBS volume. ")
+                             "This is an EBS volume.")
     parser.add_argument("--nodeStorage", dest='nodeStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for any worker instances "
                              "created when using the -w flag. This is an EBS volume.")
