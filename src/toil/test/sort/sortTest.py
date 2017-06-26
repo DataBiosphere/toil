@@ -59,7 +59,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         super(SortTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
 
-    def _toilSort(self, jobStoreLocator, batchSystem,
+    def _toilSort(self, jobStoreLocator, batchSystem, sse=False,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
                   retryCount=2, badWorker=0.5, downCheckpoints=False, disableCaching=False):
         """
@@ -91,6 +91,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
                 options.disableCaching = disableCaching
+                if sse:
+                    options.sse = True
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
@@ -168,6 +170,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     @needs_aws
     def testAwsSingle(self):
         self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine')
+
+    @needs_aws
+    def testAWSSSE(self):
+        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine', sse=True)
 
     @needs_aws
     @needs_mesos

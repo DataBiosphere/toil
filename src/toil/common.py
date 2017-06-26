@@ -94,9 +94,9 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
-        
+
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxint 
+        self.maxPreemptableServiceJobs = sys.maxint
         self.maxServiceJobs = sys.maxint
         self.deadlockWait = 60 # Wait one minute before declaring a deadlock
 
@@ -120,6 +120,7 @@ class Config(object):
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
+        self.sse = False
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -230,7 +231,7 @@ class Config(object):
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
-        
+
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
         setOption("maxPreemptableServiceJobs", int)
@@ -257,6 +258,7 @@ class Config(object):
         setOption("writeLogs")
         setOption("writeLogsGzip")
 
+        setOption("sse", parsingFn=lambda x: True if getattr(options, "sseKey", False) else x)
         def checkSse(sseKey):
             with open(sseKey) as f:
                 assert(len(f.readline().rstrip()) == 32)
@@ -423,8 +425,8 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
-    
-    #        
+
+    #
     # Parameters to limit service jobs / detect service deadlocks
     #
     addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
@@ -527,9 +529,15 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 
+    addOptionFn("--sse", dest="sse", default=False,
+                help="Enables AWS-managed server side encryption (i.e. SSE-S3) with the AWS job "
+                     "store. To use SSE-C, set this flag in conjunction with the --sseKey flag.")
     addOptionFn("--sseKey", dest="sseKey", default=None,
-            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
-                 "not be used if this flag is not passed.")
+                help="Path to file containing the 32-character key to be used for server-side "
+                     "encryption on the AWS job store (i.e. SSE-C). Passing this flag will "
+                     "disable SSE-S3 in favor of SSE-C. Should be called in conjunction with "
+                     "the --sse flag but will work independently for the purpose of backwards "
+                     "compatibility.")
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
