@@ -21,6 +21,8 @@ import shutil
 from subprocess import CalledProcessError, check_call
 import tempfile
 
+import pytest
+
 import toil
 import logging
 import toil.test.sort.sort
@@ -80,6 +82,7 @@ class UtilsTest(ToilTest):
             commandTokens.append('--failIfNotComplete')
         return commandTokens
 
+    @pytest.mark.timeout(1200)
     @needs_aws
     @integrative
     def testAWSProvisionerUtils(self):
