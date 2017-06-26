@@ -82,6 +82,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
+            self.nodeStorage = config.nodeStorage
             assert config.preemptableNodeType or config.nodeType
             if config.preemptableNodeType is not None:
                 nodeBidTuple = config.preemptableNodeType.split(':', 1)
@@ -99,17 +100,21 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = None
             self.tags = None
             self.masterPublicKey = None
+            self.nodeStorage = None
         self.subnetID = None
 
     def launchCluster(self, instanceType, keyName, clusterName, workers=0,
-                      spotBid=None, userTags=None, zone=None, vpcSubnet=None):
+                      spotBid=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
+        # only use this node storage value if launchCluster is called from cluster utility
+        if self.config is None:
+            self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=leaderStorage)
         self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
@@ -234,7 +239,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, numNodes, preemptable):
         instanceType = self._getInstanceType(preemptable)
-        bdm = self._getBlockDeviceMapping(instanceType)
+        bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
         entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
@@ -696,13 +701,13 @@ class AWSProvisioner(AbstractProvisioner):
                     self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
-    def _getBlockDeviceMapping(cls, instanceType):
+    def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib
         bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
-        root_vol.size = 50
+        root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
         for disk in xrange(1, instanceType.disks + 1):

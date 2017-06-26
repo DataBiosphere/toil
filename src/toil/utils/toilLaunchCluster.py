@@ -50,12 +50,18 @@ def main():
                              "      \"Owner\": IAM username\n"
                              " }. ")
     parser.add_argument("--vpcSubnet",
-                        help="VPC subnet ID to launch cluster in. Uses default subnet if not specified."
+                        help="VPC subnet ID to launch cluster in. Uses default subnet if not specified. "
                         "This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("-w", "--workers", dest='workers', default=0, type=int,
                         help="Specify a number of workers to launch alongside the leader when the "
                              "cluster is created. This can be useful if running toil without "
                              "auto-scaling but with need of more hardware support")
+    parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
+                        help="Specify the size (in gigabytes) of the root volume for the leader instance. "
+                             "This is an EBS volume.")
+    parser.add_argument("--nodeStorage", dest='nodeStorage', type=int, default=50,
+                        help="Specify the size (in gigabytes) of the root volume for any worker instances "
+                             "created when using the -w flag. This is an EBS volume.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
@@ -82,4 +88,6 @@ def main():
                               spotBid=spotBid,
                               userTags=tagsDict,
                               zone=config.zone,
+                              leaderStorage=config.leaderStorage,
+                              nodeStorage=config.nodeStorage,
                               vpcSubnet=config.vpcSubnet)
