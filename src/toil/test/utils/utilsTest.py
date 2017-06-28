@@ -85,8 +85,6 @@ class UtilsTest(ToilTest):
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
-        if not keyName:
-            self.fail("TOIL_AWS_KEYNAME not set.")
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here

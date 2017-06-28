@@ -67,8 +67,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.instanceType = 'm3.large'
         self.keyName = os.getenv('TOIL_AWS_KEYNAME')
-        if not self.keyName:
-            self.fail("TOIL_AWS_KEYNAME not set.")
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = 2
         self.numSamples = 2

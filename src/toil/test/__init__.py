@@ -250,11 +250,17 @@ def needs_aws(test_item):
     Use as a decorator before test classes or methods to only run them if AWS usable.
     """
     test_item = _mark_test('aws', test_item)
+    keyName = os.getenv('TOIL_AWS_KEYNAME')
+    log.info('Checking keyname: %s', keyName)
+    if not keyName or keyName is None:
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    log.info("NOPE %s" % keyName)
+
     try:
         # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
-        return unittest.skip("Install toil with the 'aws' extra to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
     except:
         raise
     else:
