@@ -20,6 +20,7 @@ import subprocess
 import time
 import math
 import sys
+import shlex
 import xml.etree.ElementTree as ET
 import tempfile
 
@@ -90,6 +91,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     status = line.split(' = ')[1]
                     logger.debug('Exit Status: ' + status)
                     return int(status)
+                if 'unknown job id' in line.lower():
+                    # some clusters configure Torque to forget everything about just
+                    # finished jobs instantly, apparently for performance reasons
+                    logger.debug('Batch system no longer remembers about job {}'.format(torqueJobID))
+                    # return assumed success; status files should reveal failure
+                    return 0
+            return None
 
         """
         Implementation-specific helper methods
@@ -106,7 +114,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # qsubline = ['qsub', '-V', '-j', 'oe', '-o', '/dev/null',
             #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
-            qsubline = ['qsub', '-V', '-N', 'toil_job_{}'.format(jobID)]
+            qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
             if self.boss.environment:
                 qsubline.append('-v')
@@ -116,10 +124,34 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             reqline = list()
             if mem is not None:
                 memStr = str(mem / 1024) + 'K'
-                reqline += ['-l mem=' + memStr]
+                reqline.append('mem=' + memStr)
 
             if cpu is not None and math.ceil(cpu) > 1:
-                qsubline.extend(['-l ncpus=' + str(int(math.ceil(cpu)))])
+                reqline.append('ncpus=' + str(int(math.ceil(cpu))))
+
+            # Other resource requirements can be passed through the environment (see man qsub)
+            reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
+            if reqlineEnv is not None:
+                logger.debug("Additional Torque resource requirements appended to qsub from "\
+                        "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+                if ("mem=" in reqlineEnv) or ("nodes=" in reqlineEnv) or ("ppn=" in reqlineEnv):
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
+
+                reqline.append(reqlineEnv)
+            
+            if reqline:
+                qsubline += ['-l',','.join(reqline)]
+            
+            # All other qsub parameters can be passed through the environment (see man qsub).
+            # No attempt is made to parse them out here and check that they do not conflict
+            # with those that we already constructed above
+            arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
+            if arglineEnv is not None:
+                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}".\
+                        format(arglineEnv))
+                if ("mem=" in arglineEnv) or ("nodes=" in arglineEnv) or ("ppn=" in arglineEnv):
+                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(arglineEnv))
+                qsubline += shlex.split(arglineEnv)
 
             return qsubline
 
@@ -130,7 +162,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             fh = open(tmpFile , 'w')
-            fh.write("$!/bin/bash\n\n")
+            fh.write("$!/bin/sh\n\n")
             fh.write("cd $PBS_O_WORKDIR\n\n")
             fh.write(command + "\n")
             fh.close

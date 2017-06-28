@@ -167,8 +167,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                         self.outputQueue.put((jobID, statusCode,
                                                               time.time() - startTime))
                 except ResourcePool.AcquisitionTimeoutException as e:
-                    log.debug('Could not acquire enough (%s) to run job. Requested: (%s), '
-                              'Avaliable: %s. Sleeping for 10s.', e.resource, e.requested,
+                    log.debug('Could not acquire enough (%s) to run job (%s). Requested: (%s), '
+                              'Avaliable: %s. Sleeping for 10s.', e.resource, jobID, e.requested,
                               e.available)
                     with self.aquisitionCondition:
                         # Make threads sleep for the given delay, or until another job finishes.

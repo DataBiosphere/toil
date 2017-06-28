@@ -20,6 +20,8 @@ import re
 import sys
 import tempfile
 import time
+import socket
+import uuid
 from argparse import ArgumentParser
 from threading import Thread
 
@@ -36,6 +38,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +90,8 @@ class Config(object):
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
-
+        self.nodeStorage = 50
+        
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxint
         self.maxServiceJobs = sys.maxint
@@ -207,11 +211,11 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-
         setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
+        setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -386,8 +390,12 @@ def _addOptions(addGroupFn, config):
                       "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
                       "replaces every missing pre-emptable node with a non-preemptable one." %
                       config.preemptableCompensation))
-
-    #
+    addOptionFn("--nodeStorage", dest="nodeStorage", default=50,
+                help=("Specify the size of the root volume of worker nodes when they are launched "
+                      "in gigabytes. You may want to set this if your jobs require a lot of disk "
+                      "space. The default value is 50."))
+    
+    #        
     # Parameters to limit service jobs / detect service deadlocks
     #
     addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
@@ -531,6 +539,60 @@ def addOptions(parser, config=Config()):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
 
+def getNodeID(extraIDFiles=None):
+    """
+    Return unique ID of the current node (host).
+    Tries several methods until success. The returned ID should be identical across calls from different processes on 
+    the same node at least until the next OS reboot.
+
+    The last resort method is uuid.getnode() that in some rare OS configurations may return a random ID each time it is
+    called. However, this method should never be reached on a Linux system, because reading from 
+    /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
+    and exception raised if the values are not identical.
+
+    :param list extraIDFiles: Optional list of additional file names to try reading node ID before trying default 
+    methods. ID should be a single word (no spaces) on the first line of the file.
+    """
+    if extraIDFiles is None:
+        extraIDFiles = []
+    idSourceFiles = extraIDFiles + ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]
+    for idSourceFile in idSourceFiles:
+        if os.path.exists(idSourceFile):
+            try:
+                with open(idSourceFile, "r") as inp:
+                    nodeID = inp.readline().strip()
+            except EnvironmentError:
+                logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID").\
+                        format(idSourceFile), exc_info=True)
+            else:
+                if len(nodeID.split()) == 1:
+                    logger.debug("Obtained node ID {} from file {}".format(nodeID,idSourceFile))
+                    break
+                else:
+                    logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID").\
+                            format(nodeID, idSourceFile))
+    else:
+        nodeIDs = []
+        for i_call in range(2):
+            nodeID = str(uuid.getnode()).strip()
+            if len(nodeID.split()) == 1:
+                nodeIDs.append(nodeID)
+            else:
+                logger.warning("Node ID {} from uuid.getnode() contains spaces".format(nodeID))
+        nodeID = ""
+        if len(nodeIDs) == 2:
+            if nodeIDs[0] == nodeIDs[1]:
+                nodeID = nodeIDs[0]
+            else:
+                logger.warning("Different node IDs {} received from repeated calls to uuid.getnode(). You should use "\
+                        "another method to generate node ID.".format(nodeIDs))
+
+            logger.debug("Obtained node ID {} from uuid.getnode()".format(nodeID))
+    if not nodeID:
+        logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "\
+                "work dir on a shared file system when using workers running on multiple nodes, you might experience "\
+                "cryptic job failures")
+    return nodeID
 
 class Toil(object):
     """
@@ -816,33 +878,6 @@ class Toil(object):
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
-            thread = Thread(target=self._refreshUserScript,
-                            name='refreshUserScript',
-                            kwargs=dict(userScriptResource=userScriptResource))
-            thread.daemon = True
-            thread.start()
-
-    def _refreshUserScript(self, userScriptResource):
-        """
-        Periodically refresh the user script in the job store to prevent credential
-        expiration from causing the public URL to the user script to expire.
-        """
-        while True:
-            # Boto refreshes IAM credentials if they will be expiring within the next five
-            # minutes, but it will only check the expiry if and when credentials are needed to
-            # sign an actual AWS request. This means that we should be refreshing the user script
-            # at least every 5 minutes. Note that refreshing the user script in the job store
-            # involves an S3 request requiring credentials and therefore also triggers refreshing
-            # the IAM role credentials. In the worst case, refresh() is called 5 minutes plus
-            # epsilon before IAM credential expiration. The resource is refreshed three minutes
-            # after that, leaving two minutes plus epsilon generating a new signed URL, this time
-            # with refreshed IAM role credentials. This consideration only applies to AWS and
-            # Boto2, of course. See https://github.com/BD2KGenomics/toil/issues/1372.
-            time.sleep(3 * 60)
-            logger.debug('Refreshing user script resource %s.', userScriptResource)
-            userScriptResource = userScriptResource.refresh(self._jobStore)
-            logger.debug('Injecting refreshed user script %s into batch system.', userScriptResource)
-            self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
         self._assertContextManagerUsed()
@@ -900,8 +935,9 @@ class Toil(object):
         if not os.path.exists(workDir):
             raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
                                "exist." % workDir)
-        # Create the workflow dir
-        workflowDir = os.path.join(workDir, 'toil-%s' % workflowID)
+        # Create the workflow dir, make it unique to each host in case workDir is on a shared FS.
+        # This prevents workers on different nodes from erasing each other's directories.
+        workflowDir = os.path.join(workDir, 'toil-%s-%s' % (workflowID, getNodeID()))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -947,7 +983,6 @@ class Toil(object):
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
             raise ToilContextManagerException()
-
 
 class ToilRestartException(Exception):
     def __init__(self, message):
@@ -1071,3 +1106,5 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
+

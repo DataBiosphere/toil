@@ -38,12 +38,12 @@ log = logging.getLogger(__name__)
 class AbstractAWSAutoscaleTest(ToilTest):
 
     def sshUtil(self, command):
-        baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + command
         subprocess.check_call(callCommand)
 
     def rsyncUtil(self, src, dest):
-        baseCommand = ['toil', 'rsync-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + [src, dest]
         subprocess.check_call(callCommand)
 
@@ -89,6 +89,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def launchCluster(self):
         self.createClusterUtil()
 
+    def getRootVolID(self):
+        rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
+        assert isinstance(rootBlockDevice, BlockDeviceType)
+        return rootBlockDevice.volume_id
+
     @abstractmethod
     def _getScript(self):
         """
@@ -108,6 +113,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
         raise NotImplementedError()
 
     def _test(self, spotInstances=False, fulfillableBid=True):
+        """
+        Does the work of the testing. Many features' test are thrown in here is no particular
+        order
+
+        :param spotInstances: Specify if you want to use spotInstances
+        :param fulfillableBid: If false, the bid will never succeed. Used to test bid failure
+        """
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -165,9 +177,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
-        assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
-        volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
-        ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+        volumeID = self.getRootVolID()
+        ctx = AWSProvisioner._buildContext(self.clusterName)
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
         for attempt in range(6):
@@ -192,6 +203,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
+        self.requestedLeaderStorage = 80
 
     def setUp(self):
         super(AWSAutoscaleTest, self).setUp()
@@ -212,7 +224,21 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.sshUtil(runCommand)
 
     def launchCluster(self):
-        self.createClusterUtil()
+        # add arguments to test that we can specify leader storage
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
+
+    def getRootVolID(self):
+        """
+        Adds in test to check that EBS volume is build with adequate size.
+        Otherwise is functionally equivalent to parent.
+        :return: volumeID
+        """
+        volumeID = super(AWSAutoscaleTest, self).getRootVolID()
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        # test that the leader is given adequate storage
+        self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
+        return volumeID
 
     @integrative
     @needs_aws
@@ -228,11 +254,26 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
     """
+    def __init__(self, name):
+        super(AWSStaticAutoscaleTest, self).__init__(name)
+        self.requestedNodeStorage = 20
+
     def launchCluster(self):
-        self.createClusterUtil(args=['-w', '2'])
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
+                                     '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        # test that two worker nodes were created + 1 for leader
-        self.assertEqual(2 + 1, len(AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)))
+        nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        nodes.sort(key=lambda x: x.launch_time)
+        # assuming that leader is first
+        workers = nodes[1:]
+        # test that two worker nodes were created
+        self.assertEqual(2, len(workers))
+        # test that workers have expected storage size
+        # just use the first worker
+        rootBlockDevice = workers[0].block_device_mapping["/dev/xvda"]
+        self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']

@@ -40,7 +40,8 @@ from toil.provisioners.aws import *
 from cgcloud.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
-from toil.provisioners import awsRemainingBillingInterval, awsFilterImpairedNodes, Node
+from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
+                               Node, NoSuchClusterException)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = self.instanceMetaData['public-keys'].keys()[0]
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
+            self.nodeStorage = config.nodeStorage
             assert config.preemptableNodeType or config.nodeType
             if config.preemptableNodeType is not None:
                 nodeBidTuple = config.preemptableNodeType.split(':', 1)
@@ -98,17 +100,21 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = None
             self.tags = None
             self.masterPublicKey = None
+            self.nodeStorage = None
         self.subnetID = None
 
     def launchCluster(self, instanceType, keyName, clusterName, workers=0,
-                      spotBid=None, userTags=None, zone=None, vpcSubnet=None):
+                      spotBid=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
+        # only use this node storage value if launchCluster is called from cluster utility
+        if self.config is None:
+            self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType])
+        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=leaderStorage)
         self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
@@ -221,9 +227,9 @@ class AWSProvisioner(AbstractProvisioner):
         cls._sshAppliance(leader.public_dns_name, *command, **kwargs)
 
     @classmethod
-    def rsyncLeader(cls, clusterName, args, zone=None):
+    def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
         leader = cls._getLeader(clusterName, zone=zone)
-        cls._rsyncNode(leader.public_dns_name, args)
+        cls._rsyncNode(leader.public_dns_name, args, **kwargs)
 
     def remainingBillingInterval(self, node):
         return awsRemainingBillingInterval(node)
@@ -233,7 +239,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, numNodes, preemptable):
         instanceType = self._getInstanceType(preemptable)
-        bdm = self._getBlockDeviceMapping(instanceType)
+        bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
         entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
@@ -326,7 +332,6 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
-
     @staticmethod
     def _throttlePredicate(e):
         if not isinstance(e, BotoServerError):
@@ -363,7 +368,6 @@ class AWSProvisioner(AbstractProvisioner):
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
         return Context(availability_zone=zone, namespace=cls._toNameSpace(clusterName))
-
 
     @classmethod
     @memoize
@@ -408,7 +412,6 @@ class AWSProvisioner(AbstractProvisioner):
         kwargs['appliance'] = True
         return cls._coreSSH(leaderIP, *args, **kwargs)
 
-
     @classmethod
     def _sshInstance(cls, nodeIP, *args, **kwargs):
         # returns the output from the command
@@ -418,9 +421,18 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
         """
-        kwargs: input, tty, appliance, collectStdout, sshOptions
+        If strict=False, strict host key checking will be temporarily disabled.
+        This is provided as a convenience for internal/automated functions and
+        ought to be set to True whenever feasible, or whenever the user is directly
+        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
+        to be False by default.
+
+        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
         """
-        commandTokens = ['ssh', '-o', "StrictHostKeyChecking=no", '-t']
+        commandTokens = ['ssh', '-t']
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         if sshOptions:
             # add specified options to ssh command
@@ -454,12 +466,14 @@ class AWSProvisioner(AbstractProvisioner):
         assert stderr is None
         return stdout
 
-
     @classmethod
-    def _rsyncNode(cls, ip, args, applianceName='toil_leader'):
-        sshCommand = 'ssh -o "StrictHostKeyChecking=no"'  # Skip host key checking
+    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
         remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
         parsedArgs = []
+        sshCommand = "ssh"
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
         hostInserted = False
         # Insert remote host address
         for i in args:
@@ -484,15 +498,18 @@ class AWSProvisioner(AbstractProvisioner):
                                "character.")
         namespace = clusterName
         if not namespace.startswith('/'):
-            namespace = '/'+namespace+'/'
-        return namespace.replace('-','/')
+            namespace = '/' + namespace + '/'
+        return namespace.replace('-', '/')
 
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
         instances = cls._getNodesInCluster(ctx, clusterName, both=True)
         instances.sort(key=lambda x: x.launch_time)
-        leader = instances[0]  # assume leader was launched first
+        try:
+            leader = instances[0]  # assume leader was launched first
+        except IndexError:
+            raise NoSuchClusterException(clusterName)
         if wait:
             logger.info("Waiting for toil_leader to enter 'running' state...")
             wait_instances_running(ctx.ec2, [leader])
@@ -535,7 +552,6 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.info('...SSH connection established.')
                 # ssh succeeded
                 return
-
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address):
@@ -598,17 +614,14 @@ class AWSProvisioner(AbstractProvisioner):
             finally:
                 s.close()
 
-
     @classmethod
     def _terminateNodes(cls, nodes, ctx):
         instanceIDs = [x.name for x in nodes]
-        logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
 
     @classmethod
     def _terminateInstances(cls, instances, ctx):
         instanceIDs = [x.id for x in instances]
-        logger.info('Terminating instance(s): %s', instanceIDs)
         cls._terminateIDs(instanceIDs, ctx)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
@@ -688,13 +701,13 @@ class AWSProvisioner(AbstractProvisioner):
                     self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
-    def _getBlockDeviceMapping(cls, instanceType):
+    def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib
         bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
-        root_vol.size = 50
+        root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
         for disk in xrange(1, instanceType.disks + 1):

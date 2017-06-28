@@ -16,6 +16,7 @@ from __future__ import absolute_import
 import os
 import random
 import socket
+import signal
 import sys
 import threading
 import pickle
@@ -78,12 +79,16 @@ class MesosExecutor(mesos.interface.Executor):
         log.critical("Disconnected from slave")
 
     def killTask(self, driver, taskId):
+        """
+        Kill parent task process and all its spawned children
+        """
         try:
             pid = self.runningTasks[taskId]
+            pgid = os.getpgid(pid)
         except KeyError:
             pass
         else:
-            os.kill(pid, 9)
+            os.killpg(pgid, signal.SIGKILL)
 
     def shutdown(self, driver):
         log.critical('Shutting down executor ...')
@@ -176,6 +181,7 @@ class MesosExecutor(mesos.interface.Executor):
             log.debug("Invoking command: '%s'", job.command)
             with self.popenLock:
                 return subprocess.Popen(job.command,
+                                        preexec_fn=lambda: os.setpgrp(),
                                         shell=True, env=dict(os.environ, **job.environment))
 
         def sendUpdate(taskState, wallTime=None, message=''):
