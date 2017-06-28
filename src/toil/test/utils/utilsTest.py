@@ -85,6 +85,7 @@ class UtilsTest(ToilTest):
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
+
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
@@ -108,14 +109,15 @@ class UtilsTest(ToilTest):
             leaderTags = AWSProvisioner._getLeader(clusterName).tags
             self.assertEqual(tags, leaderTags)
 
-            # Doesn't work when run locally.
             # Test strict host key checking
-            #try:
-            #    AWSProvisioner.sshLeader(clusterName=clusterName, strict=True)
-            #except RuntimeError:
-            #    pass
-            #else:
-            #    self.fail("Host key verification passed where it should have failed")
+            # Doesn't work when run locally.
+            if(keyName == 'jenkins@jenkins-master'):
+                try:
+                    AWSProvisioner.sshLeader(clusterName=clusterName, strict=True)
+                except RuntimeError:
+                    pass
+                else:
+                    self.fail("Host key verification passed where it should have failed")
 
             # Add the host key to known_hosts so that the rest of the tests can
             # pass without choking on the verification prompt.
@@ -183,6 +185,7 @@ class UtilsTest(ToilTest):
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
+
         # Get the sort command to run
         toilCommand = [sys.executable,
                        '-m', toil.test.sort.sort.__name__,

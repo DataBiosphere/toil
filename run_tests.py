@@ -39,6 +39,12 @@ test_suites = {
         'AWSStaticAutoscaleTest'
     ]}
 
+pytest_errors = ['All tests were collected and passed successfully.',
+                'Tests were collected and run but some of the tests failed.',
+                'Test execution was interrupted by the user.',
+                'Internal error happened while executing tests.',
+                'pytest command line usage error.',
+                'No tests were collected.']
 
 def run_tests(keywords, index, args):
     args = [sys.executable, '-m', 'pytest', '-vv',
@@ -69,11 +75,13 @@ def main(suite, args):
                 status = os.WEXITSTATUS(status)
                 if status:
                     num_failures += 1
-                    log.info('Test keyword %s failed', pidsToKeyword[pid])
+                    log.info('Test keyword %s failed: %s', pidsToKeyword[pid], pytest_errors[status])
+                else:
+                    log.info('Test keyword %s passed successfully', pidsToKeyword[pid])
             else:
                 num_failures += 1
-                log.info('Test keyword %s failed', pidsToKeyword[pid])
-            log.info('Test keyword %s passed successfully', pidsToKeyword[pid])
+                log.info('Test keyword %s failed: abnormal exit', pidsToKeyword[pid])
+
             del pidsToKeyword[pid]
     except:
         for pid in pids:
