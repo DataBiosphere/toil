@@ -29,7 +29,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, integrative
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -82,6 +82,7 @@ class UtilsTest(ToilTest):
             commandTokens.append('--failIfNotComplete')
         return commandTokens
 
+    @needs_rsync3
     @pytest.mark.timeout(1200)
     @needs_aws
     @integrative

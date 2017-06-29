@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import tempfile
 import threading
 import time
@@ -243,6 +244,27 @@ except ImportError:
 else:
     def _mark_test(name, test_item):
         return MarkDecorator(name)(test_item)
+
+
+def needs_rsync3(test_item):
+    """
+    Use as a decorator before test classes or methods that depend on any features used in rsync
+    version 3.0.0+
+
+    Necessary because :meth:`utilsTest.testAWSProvisionerUtils` uses option `--protect-args` which is only
+    available in rsync 3
+    """
+    test_item = _mark_test('rsync', test_item)
+    try:
+        versionInfo = subprocess.check_output(['rsync', '--version'])
+    except CalledProcessError:
+        return unittest.skip('rsync needs to be installed to run this test.')(test_item)
+    else:
+        # version output looks like: 'rsync  version 2.6.9 ...'
+        versionNum = int(versionInfo.split()[2].split('.')[0])
+        if versionNum < 3:
+            return unittest.skip('This test depends on rsync version 3.0.0+.')
+        return test_item
 
 
 def needs_aws(test_item):
