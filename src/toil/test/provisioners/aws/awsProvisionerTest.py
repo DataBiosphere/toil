@@ -23,6 +23,7 @@ import time
 import pytest
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
+from cgcloud.lib.ec2 import wait_instances_running
 
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
@@ -275,7 +276,9 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.assertEqual(2, len(workers))
         # test that workers have expected storage size
         # just use the first worker
-        rootBlockDevice = workers[0].block_device_mapping["/dev/xvda"]
+        worker = workers[0]
+        wait_instances_running(ctx.ec2, [worker])
+        rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
         self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
         rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
