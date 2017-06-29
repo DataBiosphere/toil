@@ -246,10 +246,13 @@ else:
         return MarkDecorator(name)(test_item)
 
 
-def needs_rsync(test_item):
+def needs_rsync3(test_item):
     """
     Use as a decorator before test classes or methods that depend on any features used in rsync
     version 3.0.0+
+
+    Necessary because :meth:`utilsTest.testAWSProvisionerUtils` uses option `--protect-args` which is only
+    available in rsync 3
     """
     test_item = _mark_test('rsync', test_item)
     try:
