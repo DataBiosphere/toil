@@ -63,7 +63,7 @@ To invoke all integration tests, including AWS tests, use
 
 ::
 
-    $ export TOIL_AWS_KEYNAME=<aws_keyname> make integration_test
+    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
 
 
 .. topic:: Installing Docker with Quay
