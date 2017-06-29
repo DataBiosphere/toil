@@ -19,6 +19,8 @@ from inspect import getsource
 from textwrap import dedent
 
 import time
+
+import pytest
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
 
@@ -198,6 +200,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles(self.clusterName)) == 0
 
 
+@pytest.mark.timeout(1200)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
@@ -250,6 +253,8 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self._test(spotInstances=True)
 
+
+@pytest.mark.timeout(1200)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
@@ -280,6 +285,8 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
+
+@pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
     This test insures autoscaling works on a restarted Toil run
@@ -339,6 +346,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         self._test()
 
 
+@pytest.mark.timeout(1200)
 class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):

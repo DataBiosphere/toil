@@ -214,7 +214,7 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 pytest-timeout==1.2.0
 
 
 check_venv:

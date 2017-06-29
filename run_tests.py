@@ -41,7 +41,7 @@ test_suites = {
 
 
 def run_tests(keywords, index, args):
-    args = [sys.executable, '-m', 'pytest', '-vv',
+    args = [sys.executable, '-m', 'pytest', '-vv', '--timeout=600',
             '--junitxml', 'test-report-%s.xml' % index,
             '-k', keywords] + args
     log.info('Running %r', args)
