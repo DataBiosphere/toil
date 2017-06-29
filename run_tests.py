@@ -41,7 +41,7 @@ test_suites = {
 
 
 def run_tests(keywords, index, args):
-    args = [sys.executable, '-m', 'pytest', '-vv',
+    args = [sys.executable, '-m', 'pytest', '-vv', '--timeout=600',
             '--junitxml', 'test-report-%s.xml' % index,
             '-k', keywords] + args
     log.info('Running %r', args)
@@ -55,11 +55,13 @@ def main(suite, args):
     num_failures = 0
     index = itertools.count()
     pids = set()
+    pidsToKeyword = {}
     try:
         for keyword in suite:
             if keyword:
                 process = run_tests(keyword, str(next(index)), args)
                 pids.add(process.pid)
+                pidsToKeyword[process.pid] = keyword
         while pids:
             pid, status = os.wait()
             pids.remove(pid)
@@ -67,8 +69,12 @@ def main(suite, args):
                 status = os.WEXITSTATUS(status)
                 if status:
                     num_failures += 1
+                    log.info('Test keyword %s failed', pidsToKeyword[pid])
             else:
                 num_failures += 1
+                log.info('Test keyword %s failed', pidsToKeyword[pid])
+            log.info('Test keyword %s passed successfully', pidsToKeyword[pid])
+            del pidsToKeyword[pid]
     except:
         for pid in pids:
             os.kill(pid, 15)
@@ -80,6 +86,7 @@ def main(suite, args):
         process = run_tests(everything_else, str(next(index)), args)
         if process.wait():
             num_failures += 1
+            log.info('Test keyword %s failed which was running in series', everything_else)
 
     import xml.etree.ElementTree as ET
     testsuites = ET.Element('testsuites')

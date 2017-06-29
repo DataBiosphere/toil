@@ -16,9 +16,11 @@ For SLURM::
 
     export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
 
-For TORQUE::
+For TORQUE there are two environment variables - one for everything but the resource
+requirements, and another - for resources requirements (without the `-l` prefix)::
 
-    export TOIL_TORQUE_ARGS="-l walltime=1:00:00 -q fatq"
+    export TOIL_TORQUE_ARGS="-q fatq"
+    export TOIL_TORQUE_REQS="walltime=1:00:00"
 
 For GridEngine (SGE, UGE), there is an additional environmental variable to define the
 `parallel environment <https://blogs.oracle.com/templedf/entry/configuring_a_new_parallel_environment>`_

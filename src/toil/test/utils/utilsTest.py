@@ -21,6 +21,8 @@ import shutil
 from subprocess import CalledProcessError, check_call
 import tempfile
 
+import pytest
+
 import toil
 import logging
 import toil.test.sort.sort
@@ -81,6 +83,7 @@ class UtilsTest(ToilTest):
         return commandTokens
 
     @needs_rsync
+    @pytest.mark.timeout(1200)
     @needs_aws
     @integrative
     def testAWSProvisionerUtils(self):
