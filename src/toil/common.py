@@ -747,7 +747,7 @@ class Toil(object):
             projectID, namePrefix = rest.split(':', 1)
             return GoogleJobStore(namePrefix, projectID)
         elif name == 'postgresql':
-            from toil.jobStores.pgJobStore import PGJobStore
+            from toil.jobStores.pg import JobStore as PGJobStore
             return PGJobStore(locator)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)

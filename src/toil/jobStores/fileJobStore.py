@@ -70,12 +70,14 @@ class FileJobStore(AbstractJobStore):
             else:
                 raise
         os.mkdir(self.tempFilesDir)
+        logger.debug('initialized')
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
         if not os.path.exists(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
         require( os.path.isdir, "'%s' is not a directory", self.jobStoreDir)
+        logger.debug("Resuming...")
         super(FileJobStore, self).resume()
 
     def destroy(self):
@@ -85,7 +87,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
-    ########################################## 
+    ##########################################
 
     def create(self, jobNode):
         # The absolute path to the job directory.
@@ -288,7 +290,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
     # The following methods deal with shared files, i.e. files not associated
     # with specific jobs.
-    ##########################################  
+    ##########################################
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
@@ -335,7 +337,7 @@ class FileJobStore(AbstractJobStore):
 
     ##########################################
     # Private methods
-    ##########################################   
+    ##########################################
 
     def _getAbsPath(self, relativePath):
         """
@@ -347,10 +349,10 @@ class FileJobStore(AbstractJobStore):
     def _getRelativePath(self, absPath):
         """
         absPath  is the absolute path to a file in the store,.
-        
-        :rtype : string, string is the path to the absPath file relative to the 
+
+        :rtype : string, string is the path to the absPath file relative to the
         self.tempFilesDir
-        
+
         """
         return absPath[len(self.tempFilesDir)+1:]
 
@@ -381,7 +383,7 @@ class FileJobStore(AbstractJobStore):
         """
         Gets a temporary directory in the hierarchy of directories in self.tempFilesDir.
         This directory may contain multiple shared jobs/files.
-        
+
         :rtype : string, path to temporary directory in which to place files/directories.
         """
         tempDir = self.tempFilesDir
@@ -420,7 +422,6 @@ class FileJobStore(AbstractJobStore):
         """
         if jobStoreID != None:
             # Make a temporary file within the job's directory
-            self._checkJobStoreId(jobStoreID)
             return tempfile.mkstemp(suffix=".tmp",
                                 dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
         else:
