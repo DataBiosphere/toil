@@ -90,7 +90,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.jobQueues = JobQueue()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
-        self.masterAddress = config.mesosMasterAddress
+        self.masterAddress = config.masterAddress
 
         # Written to when Mesos kills tasks, as directed by Toil
         self.killedJobIds = set()
