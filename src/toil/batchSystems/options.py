@@ -81,7 +81,7 @@ def setDefaultOptions(config):
     config.scale = 1
 
     # mesos
-    config.masterAddress = 'localhost:5050'
+    config.mesosMasterAddress = 'localhost:5050'
 
     # parasol
     config.parasolCommand = 'parasol'
