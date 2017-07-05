@@ -193,6 +193,18 @@ class AbstractBatchSystem(object):
         raise NotImplementedError()
 
 
+    @classmethod
+    def setOptions(cls, setOption):
+        """
+        Process command line or configuration options relevant to this batch system.
+        The 
+        
+        :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
+           used to update run configuration
+        """
+        pass
+        
+    
 class BatchSystemSupport(AbstractBatchSystem):
     """
     Partial implementation of AbstractBatchSystem, support methods.
