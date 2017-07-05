@@ -90,7 +90,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.jobQueues = JobQueue()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
-        self.masterAddress = config.masterAddress
+        self.mesosMasterAddress = config.mesosMasterAddress
 
         # Written to when Mesos kills tasks, as directed by Toil
         self.killedJobIds = set()
@@ -272,7 +272,7 @@ class MesosBatchSystem(BatchSystemSupport,
         framework.principal = framework.name
         self.driver = mesos.native.MesosSchedulerDriver(self,
                                                         framework,
-                                                        self._resolveAddress(self.masterAddress),
+                                                        self._resolveAddress(self.mesosMasterAddress),
                                                         True)  # enable implicit acknowledgements
         assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
 
