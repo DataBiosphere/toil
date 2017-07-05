@@ -189,7 +189,9 @@ class JobStore(AbstractJobStore):
     # Functions that deal with files
     ##########################################
 
-    @classmethod
+    # These set of functions are being used in exportFile and importFile
+    # functionality. They need to be delegated to pg fileStores. Still
+    # no clarity on the potential overlap with toil filestore
     def _readFromUrl(self, *args, **kwargs):
         raise
 
@@ -197,6 +199,28 @@ class JobStore(AbstractJobStore):
         raise
 
     def _writeToUrl(self, *args, **kwargs):
+        raise
+
+    # Seems to be called only from implementations of getSharedPublicUrl
+    def getPublicUrl(self, *args, **kwargs):
+        raise
+
+    # This is interesting. This is used in Resource.create, which apparently
+    # distributes files to all nodes of a cluster.
+    # TODO: Test and see if this can be used to our advantage.
+    def getSharedPublicUrl(self, *args, **kwargs):
+        raise
+
+    # Being used to create FileID
+    # TODO: Investigate whether and how filestore is overlapping with jobstore
+    @classmethod
+    def getSize(cls, *args, **kwargs):
+        raise
+
+    # The Only place this seems to be used is in Azure store
+    # and jobstore tests
+    # $ git grep updateFile | grep -v def | grep -v updateFileStream
+    def updateFile(self, *args, **kwargs):
         raise
 
     def deleteFile(self, jobStoreFileID, force=False):
@@ -229,15 +253,6 @@ class JobStore(AbstractJobStore):
         with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
-    def getPublicUrl(self, *args, **kwargs):
-        raise
-
-    def getSharedPublicUrl(self, *args, **kwargs):
-        raise
-
-    def getSize(self, *args, **kwargs):
-        raise
-
     def readFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
         self.fileStore.readFile(jobStoreFileID, localFilePath)
@@ -261,7 +276,7 @@ class JobStore(AbstractJobStore):
 
         except RuntimeError as e:
             # Handle known erros
-            raise
+            raise e
         self.conn.commit()
 
     def readStatsAndLogging(self, callback, readAll=False):
@@ -282,10 +297,7 @@ class JobStore(AbstractJobStore):
         except RuntimeError as e:
             # Handle known erros
             self.conn.rollback()
-            raise
-
-    def updateFile(self, *args, **kwargs):
-        raise
+            raise e
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -369,7 +381,7 @@ class JobStore(AbstractJobStore):
                 """)
         except RuntimeError as e:
             # Handle known erros
-            raise
+            raise e
 
     def _create_jobstore_table(self):
         try:
@@ -404,7 +416,7 @@ class JobStore(AbstractJobStore):
                 """)
         except RuntimeError as e:
             # Handle known erros
-            raise
+            raise e
 
     def _create_filestore_table(self):
         try:
@@ -424,7 +436,7 @@ class JobStore(AbstractJobStore):
                 """)
         except RuntimeError as e:
             # Handle known erros
-            raise
+            raise e
 
     def _insert_row(self, tableName, **fields):
         placeholderList = ','.join("%%(%s)s" % key for key in fields.keys())
@@ -436,7 +448,7 @@ class JobStore(AbstractJobStore):
                 cur.execute(sqlQuery, fields)
         except RuntimeError as e:
             # Handle known erros
-            raise
+            raise e
 
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
