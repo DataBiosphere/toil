@@ -31,6 +31,7 @@ import cwltool.resolver
 import cwltool.stdfsaccess
 from cwltool.pathmapper import adjustFiles
 from cwltool.process import shortname, adjustFilesWithSecondary, fillInDefaults, compute_checksums
+from cwltool.software_requirements import DependenciesConfiguration, get_container_from_software_requirements
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -657,6 +658,14 @@ def main(args=None, stdout=sys.stdout):
                     metavar=("VAR1 VAR2"),
                     default=("PATH",),
                     dest="preserve_environment")
+    # help="Dependency resolver configuration file describing how to adapt 'SoftwareRequirement' packages to current system."
+    parser.add_argument("--beta-dependency-resolvers-configuration", default=None)
+    # help="Defaut root directory used by dependency resolvers configuration."
+    parser.add_argument("--beta-dependencies-directory", default=None)
+    # help="Use biocontainers for tools without an explicitly annotated Docker container."
+    parser.add_argument("--beta-use-biocontainers", default=None, action="store_true")
+    # help="Short cut to use Conda to resolve 'SoftwareRequirement' packages."
+    parser.add_argument("--beta-conda-dependencies", default=None, action="store_true")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -677,9 +686,22 @@ def main(args=None, stdout=sys.stdout):
         cwllogger.setLevel(options.logLevel)
 
     useStrict = not options.not_strict
+
+    conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)  # Text
+    use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)  # Text
+
+    make_tool_kwds = {}
+
+    if conf_file or use_conda_dependencies:
+        dependencies_configuration = DependenciesConfiguration(options)  # type: DependenciesConfiguration
+        make_tool_kwds["job_script_provider"] = dependencies_configuration
+
+    options.default_container = None
+    make_tool_kwds["find_default_container"] = functools.partial(find_default_container, options)
+
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
-                                        resolver=cwltool.resolver.tool_resolver, strict=useStrict)
+                                        resolver=cwltool.resolver.tool_resolver, strict=useStrict, kwargs=make_tool_kwds)
         unsupportedRequirementsCheck(t.requirements)
     except cwltool.process.UnsupportedRequirement as e:
         logging.error(e)
@@ -740,7 +762,8 @@ def main(args=None, stdout=sys.stdout):
             outobj = toil.restart()
         else:
             basedir = os.path.dirname(os.path.abspath(options.cwljob or options.cwltool))
-            builder = t._init_job(job, basedir=basedir, use_container=use_container)
+            builder = t._init_job(job, basedir=basedir, use_container=use_container,
+                                  job_script_provider=make_tool_kwds.get("job_script_provider", None))
             (wf1, wf2) = makeJob(t, {}, use_container=use_container,
                     preserve_environment=options.preserve_environment,
                     tmpdir=os.path.realpath(outdir), builder=builder)
@@ -775,3 +798,13 @@ def main(args=None, stdout=sys.stdout):
         stdout.write(json.dumps(outobj, indent=4))
 
     return 0
+
+
+def find_default_container(args, builder):
+    default_container = None
+    if args.default_container:
+        default_container = args.default_container
+    elif args.beta_use_biocontainers:
+        default_container = get_container_from_software_requirements(args, builder)
+
+    return default_container
