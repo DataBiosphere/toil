@@ -266,6 +266,7 @@ class Leader:
                         # unless it has more than 1 try.
                         elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 1:
                             jobGraph.setupJobAfterFailure(self.config)
+                            self.jobStore.update(jobGraph)
                             logger.warn('Job: %s is being restarted as a checkpoint after the total '
                                         'failure of jobs in its subtree.', jobGraph.jobStoreID)
                             self.issueJob(JobNode.fromJobGraph(jobGraph))
@@ -910,8 +911,9 @@ class Leader:
                     # Remove it from the set of jobs with active successors
                     self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
 
-                    # Pop stack at this point, as we can get rid of its successors
-                    predecessorJob.stack.pop()
+                    if predecessorJob.jobStoreID not in self.toilState.hasFailedSuccessors:
+                        # Pop stack at this point, as we can get rid of its successors
+                        predecessorJob.stack.pop()
 
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessorJob not in self.toilState.updatedJobs
