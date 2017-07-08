@@ -3,6 +3,13 @@ Toil Documentation
 
 Everything you need to know about Toil.
 
+* Toil is a scalable, efficient, cross-platform pipeline management system.
+* Run it on Amazon Web Services and Toil can automatically manage the number of workers.
+* Write your workflows with an easy to use Python API (Turing complete!) or CWL.
+* Share worker output and state in the cloud using the Toil jobStore.
+* Toil will also run in existing high-performance computing environments like GridEngine, LSF, Slurm, Torque.
+
+
 Check out our `website`_ for a comprehensive list of Toil's features, and read our `paper`_ to learn what Toil can do in the real world.  Feel free to also join us on `GitHub`_ and `Gitter`_.
 
 .. _website: http://toil.ucsc-cgl.org/
