@@ -1,3 +1,7 @@
+.. _runningAzure:
+
+Running in Azure
+================
 :orphan:
 
 .. orphan tag prevents warning while file is included in install/clout.rst

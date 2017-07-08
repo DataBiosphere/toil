@@ -5,15 +5,36 @@
 Installation
 ============
 
+This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil commands inside a Python virtual environment.  Instructions for installing and creating a Python virtual environment are provided below.
+
+Preparation
+-----------
+
+Toil supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create an alternate Python 2.7 installation.
+
+.. _anaconda: https://conda.io/docs/py2or3.html 
+
+Install Python ``virtualenv`` using pip_. 
+::
+    $ sudo pip install virtualenv
+.. _pip: https://pip.readthedocs.io/en/latest/installing/
+
+Create a virtual environment called ``venv`` in your home directory.
+::
+    $ virtualenv ~/venv
+
+Activate your virtual environment.
+::
+    $ source ~/venv/bin/activate
+   
+
 Basic installation
 ------------------
 
-At this time, Toil supports only Python 2.7.x. If that requirement is satisfied
-then Toil can be easily installed using pip_::
+Toil can be easily installed using pip::
 
     $ pip install toil
 
-.. _pip: https://pip.readthedocs.io/en/latest/installing/
 
 .. _extras:
 

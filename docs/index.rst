@@ -1,26 +1,9 @@
-Toil
-====
+Toil Documentation
+==================
 
-Toil is an open-source pure-Python workflow engine that lets people write better
-pipelines. You can:
+Everything you need to know about Toil.
 
-* Write your workflows in `Common Workflow Language`_ (CWL)
-* Run workflows on your laptop or on huge commercial clouds such as
-  `Amazon Web Services`_ (including the `spot market`_), `Microsoft Azure`_,
-  `OpenStack`_, and `Google Compute Engine`_
-* Take advantage of high-performance computing environments with batch systems
-  like `GridEngine`_, `Apache Mesos`_, and `Parasol`_
-* Run workflows concurrently at scale using thousands of nodes, managed by Toil's :ref:`Autoscaling` capabilities
-* Execute workflows efficiently with caching and resource requirement specifications
-* Easily link databases and services
-
-Toil is, admittedly, not quite as good as sliced bread, but it's about as close
-to it as you're gonna get.
-
-Check out our `website`_ for a more comprehensive list of Toil's features, read
-our `paper`_ to learn more about what Toil can do in the real world, or jump in
-and start with the :ref:`installation-ref` section. (Feel free to also join us
-on `GitHub`_ and `Gitter`_.)
+Check out our `website`_ for a comprehensive list of Toil's features, and read our `paper`_ to learn what Toil can do in the real world.  Feel free to also join us on `GitHub`_ and `Gitter`_.
 
 .. _website: http://toil.ucsc-cgl.org/
 .. _GridEngine: http://gridscheduler.sourceforge.net/
@@ -43,8 +26,18 @@ Getting Started
 
    install/basic
    running/running
-   install/cloud
-   running/cloud
+
+Toil in the Cloud
+~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 2
+
+   running/cloud 
+   running/amazon 
+   running/azure 
+   running/openstack
+   running/gce
 
 User Guide
 ~~~~~~~~~~
@@ -74,6 +67,14 @@ Contributor's Guide
    :maxdepth: 2
 
    contributing/contributing
+
+Appendices
+~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 2
+
+   appendices/environment_vars
 
 Indices and tables
 ~~~~~~~~~~~~~~~~~~
