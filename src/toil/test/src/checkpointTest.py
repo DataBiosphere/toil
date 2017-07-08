@@ -30,42 +30,70 @@ class CheckpointTest(ToilTest):
         # to check that the job wasn't retried short of parsing the
         # log.
         with self.assertRaises(FailedJobsException):
-            Job.Runner.startToil(Checkpointed(succeedOnRetry=True), options)
+            Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=1), options)
 
-    def testCheckpointedRestart(self):
+    def testCheckpointRetriedOnce(self):
+        """A checkpoint job with a retryCount of 1 should be retried exactly once."""
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.retryCount = 1
+
+        # This should succeed (the checkpoint should be retried once, then succeed)
+        try:
+            Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=1), options)
+        except FailedJobsException:
+            self.fail("The checkpoint job wasn't retried enough times.")
+
+        # This should fail (the checkpoint should be retried once, then fail again)
+        with self.assertRaises(FailedJobsException):
+            Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=2), options)
+
+    def testCheckpointedRestartSucceeds(self):
         """A checkpointed job should succeed on restart of a failed run if its child job succeeds."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         # The child job should fail the first time
         with self.assertRaises(FailedJobsException):
-            Job.Runner.startToil(Checkpointed(), options)
+            Job.Runner.startToil(CheckpointFailsFirstTime(), options)
 
         # The second time, everything should work
         options.restart = True
         try:
-            Job.Runner.startToil(Checkpointed(), options)
+            Job.Runner.startToil(CheckpointFailsFirstTime(), options)
         except FailedJobsException:
-            self.fail("Checkpointed restart is broken.")
+            self.fail("Checkpointed workflow restart doesn't clean failures.")
 
-class Checkpointed(Job):
-    def __init__(self, succeedOnRetry=False):
-        super(Checkpointed, self).__init__(checkpoint=True)
-        self.succeedOnRetry = succeedOnRetry
+class CheckRetryCount(Job):
+    """Fail N times, succeed on the next try."""
+    def __init__(self, numFailuresBeforeSuccess):
+        super(CheckRetryCount, self).__init__(checkpoint=True)
+        self.numFailuresBeforeSuccess = numFailuresBeforeSuccess
 
-    def checkForRetry(self, fileStore):
+    def getNumRetries(self, fileStore):
+        """Mark a retry in the fileStore, and return the number of retries so far."""
         try:
             with fileStore.jobStore.readSharedFileStream("checkpointRun") as f:
-                # Read to avoid the other thread blocking.
-                f.read()
-                # We only get here if the file exists--bad news.
-                return True
+                timesRun = int(f.read())
         except NoSuchFileException:
-            with fileStore.jobStore.writeSharedFileStream("checkpointRun") as f:
-                f.write("")
-            return False
+            timesRun = 0
+        with fileStore.jobStore.writeSharedFileStream("checkpointRun") as f:
+            f.write(str(timesRun + 1))
+        return timesRun
 
     def run(self, fileStore):
-        if not (self.succeedOnRetry and self.checkForRetry(fileStore)):
-            self.addChild(FailOnce())
+        retryCount = self.getNumRetries(fileStore)
+        fileStore.logToMaster(str(retryCount))
+        if retryCount < self.numFailuresBeforeSuccess:
+            self.addChild(AlwaysFail())
+
+class AlwaysFail(Job):
+    def run(self, fileStore):
+        raise RuntimeError(":(")
+
+class CheckpointFailsFirstTime(Job):
+    def __init__(self):
+        super(CheckpointFailsFirstTime, self).__init__(checkpoint=True)
+
+    def run(self, fileStore):
+        self.addChild(FailOnce())
 
 class FailOnce(Job):
     """Fail the first time the workflow is run, but succeed thereafter."""
