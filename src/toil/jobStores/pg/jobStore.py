@@ -63,6 +63,7 @@ class JobStore(AbstractJobStore):
                 cur.execute('DROP TABLE IF EXISTS "file_store"')
             self.fileStore.destroy()
             self.conn.commit()
+            logger.debug('Successfully deleted jobStore:%s' % self.db_url)
         except RuntimeError as e:
             # Handle known erros
             self.conn.rollback()
@@ -302,7 +303,7 @@ class JobStore(AbstractJobStore):
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        with self.fileStore.updateFileStream(jobStoreFileID) as f:
+        with self.fileStore.writeFileStream(jobStoreFileID) as f:
             yield f
 
     def writeFile(self, localFilePath, jobStoreID=None):

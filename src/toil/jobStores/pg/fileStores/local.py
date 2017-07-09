@@ -85,15 +85,7 @@ class FileStore(object):
             yield f
 
     @contextmanager
-    def updateFileStream(self, fileID):
-        # File objects are context managers (CM) so we could simply return what open returns.
-        # However, it is better to wrap it in another CM so as to prevent users from accessing
-        # the file object directly, without a with statement.
-        with open(self._getAbsPath(fileID), 'w') as f:
-            yield f
-
-    @contextmanager
-    def writeFileStream(self, fileID=None):
+    def writeFileStream(self, fileID):
         absPath = self._getAbsPath(fileID)
         self.__check_and_mkdir(os.path.dirname(absPath))
         with open(absPath, 'w') as f:
