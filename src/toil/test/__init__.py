@@ -448,6 +448,8 @@ def needs_cwl(test_item):
 def needs_appliance(test_item):
     import json
     test_item = _mark_test('appliance', test_item)
+    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+        return unittest.skip('Skipping docker test.')(test_item)
     if next(which('docker'), None):
         image = applianceSelf()
         try:
@@ -457,7 +459,8 @@ def needs_appliance(test_item):
         else:
             images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
         if len(images) == 0:
-            return unittest.skip("Cannot find appliance image %s. Be sure to run 'make docker' "
+            return unittest.skip("Cannot find appliance image %s. Use 'make test' target to "
+                                 "automatically build appliance, or just run 'make docker' "
                                  "prior to running this test." % image)(test_item)
         elif len(images) == 1:
             return test_item
