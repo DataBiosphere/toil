@@ -134,11 +134,11 @@ test: check_venv check_build_reqs docker
 
 
 test_parallel: check_venv check_build_reqs docker
-	$(python) run_tests.py test $(tests)
+	#$(python) run_tests.py test $(tests)
 
 
 integration_test: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
+	#TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
@@ -214,7 +214,7 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 pytest-timeout==1.2.0
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1
 
 
 check_venv:
