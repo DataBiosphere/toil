@@ -65,9 +65,7 @@ support for the stable v1.0 specification, only lacking the following features:
   be enumerated as Files.
 - `File literals`_ that specify only ``contents`` to a File without an explicit
   file name.
-- Writable `InitialWorkDirRequirement
-  <http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement>`
-  objects. Standard readable inputs do work.
+- Writable `InitialWorkDirRequirement`_ objects. Standard readable inputs do work.
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
 
@@ -82,6 +80,7 @@ command line parameters to select and configure the batch system to use.
 .. _Directory: http://www.commonwl.org/v1.0/CommandLineTool.html#Directory
 .. _secondaryFiles: http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter
 .. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
+.. _InitialWorkDirRequirement: http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement
 
 
 .. _runningDetail:
