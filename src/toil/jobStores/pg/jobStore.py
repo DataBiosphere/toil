@@ -187,36 +187,70 @@ class JobStore(AbstractJobStore):
         self.conn.commit()
 
     ##########################################
-    # Functions that deal with files
+    # Functions that deal with file urls
     ##########################################
 
     # These set of functions are being used in exportFile and importFile
     # functionality. They need to be delegated to pg fileStores. Still
     # no clarity on the potential overlap with toil filestore
-    def _readFromUrl(self, *args, **kwargs):
-        raise
+    @classmethod
+    def _supportsUrl(cls, url, export=False):
+        try:
+            return fileStores.getStore(url).supportsUrl(url, export)
+        except NoSupportedFileStoreException:
+            return False
 
-    def _supportsUrl(self, *args, **kwargs):
-        raise
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        fileStores.getStore(url).readFromUrl(url, writable)
 
-    def _writeToUrl(self, *args, **kwargs):
-        raise
+    @classmethod
+    def _writeToUrl(cls, readable, url):
+        fileStores.getStore(url).writeToUrl(readable, url)
 
-    # Seems to be called only from implementations of getSharedPublicUrl
-    def getPublicUrl(self, *args, **kwargs):
+    # Being used to create FileID
+    # TODO: Investigate whether and how filestore is overlapping with jobstore
+    @classmethod
+    def getSize(cls, url):
         raise
 
     # This is interesting. This is used in Resource.create, which apparently
     # distributes files to all nodes of a cluster.
     # TODO: Test and see if this can be used to our advantage.
-    def getSharedPublicUrl(self, *args, **kwargs):
-        raise
+    def getSharedPublicUrl(self, sharedFileName):
+        fileID = self._getSharedFileID(sharedFileName)
+        return self.getPublicUrl(fileID)
 
-    # Being used to create FileID
-    # TODO: Investigate whether and how filestore is overlapping with jobstore
-    @classmethod
-    def getSize(cls, *args, **kwargs):
-        raise
+    # Seems to be called only from implementations of getSharedPublicUrl
+    def getPublicUrl(self, jobStoreFileID):
+        self._checkJobStoreFileID(jobStoreFileID)
+        self.fileStore.getPublicUrl(jobStoreFileID)
+
+    ##########################################
+    # Functions that deal with files
+    ##########################################
+
+    def fileExists(self, jobStoreFileID):
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT id FROM file_store WHERE id = %s AND _deleted_at IS NULL;", (jobStoreFileID, ))
+                exists = bool(cur.rowcount)
+
+        except RuntimeError as e:
+            # Handle known erros
+            raise e
+
+        self.conn.commit()
+        return exists
+
+    def readFile(self, jobStoreFileID, localFilePath):
+        self._checkJobStoreFileID(jobStoreFileID)
+        self.fileStore.readFile(jobStoreFileID, localFilePath)
+
+    def writeFile(self, localFilePath, jobStoreID=None):
+        with self._createJobStoreFileID(jobStoreID=jobStoreID) as fileID:
+            self.fileStore.writeFile(localFilePath, fileID)
+            return fileID
 
     # The Only place this seems to be used is in Azure store
     # and jobstore tests
@@ -237,26 +271,9 @@ class JobStore(AbstractJobStore):
             self.conn.rollback()
             raise e
 
-    def fileExists(self, jobStoreFileID):
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT id FROM file_store WHERE id = %s AND _deleted_at IS NULL;", (jobStoreFileID, ))
-                exists = bool(cur.rowcount)
-
-        except RuntimeError as e:
-            # Handle known erros
-            raise e
-
-        self.conn.commit()
-        return exists
-
-    def getEmptyFileStoreID(self, jobStoreID=None):
-        with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
-            return jobStoreFileID
-
-    def readFile(self, jobStoreFileID, localFilePath):
-        self._checkJobStoreFileID(jobStoreFileID)
-        self.fileStore.readFile(jobStoreFileID, localFilePath)
+    ##########################################
+    # Functions that deal with file streams
+    ##########################################
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -264,21 +281,46 @@ class JobStore(AbstractJobStore):
             yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT id FROM file_store WHERE shared IS TRUE AND name = %s AND _deleted_at IS NULL;", (sharedFileName, ))
-                record = cur.fetchone()
-                if record is None:
-                    raise NoSuchFileException(sharedFileName,sharedFileName)
-                else:
-                    with self.fileStore.readFileStream(record['id']) as f:
-                        yield f
+    def writeFileStream(self, *args, **kwargs):
+        with self._createJobStoreFileID(*args, **kwargs) as fileID:
+            with self.fileStore.writeFileStream(fileID) as (fd):
+                yield fd, fileID
 
-        except RuntimeError as e:
-            # Handle known erros
-            raise e
-        self.conn.commit()
+    @contextmanager
+    def updateFileStream(self, jobStoreFileID):
+        self._checkJobStoreFileID(jobStoreFileID)
+        with self.fileStore.writeFileStream(jobStoreFileID) as f:
+            yield f
+
+    ##########################################
+    # Utility functions that deal with file store
+    ##########################################
+
+    def getEmptyFileStoreID(self, jobStoreID=None):
+        with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
+            return jobStoreFileID
+
+    ##########################################
+    # Functions that deal with shared file streams
+    ##########################################
+
+    @contextmanager
+    def readSharedFileStream(self, sharedFileName):
+        fileID = self._getSharedFileID(sharedFileName)
+        with self.fileStore.readFileStream(fileID) as f:
+            yield f
+
+    @contextmanager
+    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+        assert super(JobStore, self)._validateSharedFileName( sharedFileName )
+        with self.writeFileStream(name=sharedFileName, shared=True, isProtected=isProtected) as (f, fileID):
+            logger.debug("writing shared file %s to %s" % (sharedFileName, fileID))
+            yield f
+
+    ##########################################
+    # Functions that deal with stats and logs
+    # TODO: Move this out to it's own abstraction
+    ##########################################
 
     def readStatsAndLogging(self, callback, readAll=False):
         try:
@@ -300,45 +342,11 @@ class JobStore(AbstractJobStore):
             self.conn.rollback()
             raise e
 
-    @contextmanager
-    def updateFileStream(self, jobStoreFileID):
-        self._checkJobStoreFileID(jobStoreFileID)
-        with self.fileStore.writeFileStream(jobStoreFileID) as f:
-            yield f
-
-    def writeFile(self, localFilePath, jobStoreID=None):
-        with self._createJobStoreFileID(jobStoreID=jobStoreID) as fileID:
-            self.fileStore.writeFile(localFilePath, fileID)
-            return fileID
-
-    @contextmanager
-    def writeFileStream(self, *args, **kwargs):
-        with self._createJobStoreFileID(*args, **kwargs) as fileID:
-            with self.fileStore.writeFileStream(fileID) as (fd):
-                yield fd, fileID
-
-    @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
-        assert super(JobStore, self)._validateSharedFileName( sharedFileName )
-        with self.writeFileStream(name=sharedFileName, shared=True, isProtected=isProtected) as (f, fileID):
-            logger.debug("writing shared file %s to %s" % (sharedFileName, fileID))
-            yield f
-
     def writeStatsAndLogging(self, statsAndLoggingString):
         # TODO: parse and log to collectd
         with self.writeFileStream(logsAndStats=True) as (f, fileID):
             logger.debug("Logging stats to %s" % (fileID))
             f.write(statsAndLoggingString)
-
-    # ##########################################
-    # # Functions that deal with temporary files associated with jobs
-    # ##########################################
-    #
-    # def _importFile(self, otherCls, url, sharedFileName=None):
-    #     return self.fileStore._importFile(otherCls, url, sharedFileName)
-    #
-    # def _exportFile(self, otherCls, jobStoreFileID, url):
-    #     return self.fileStore._exportFile(otherCls, jobStoreFileID, url)
 
     ##########################################
     # Private methods
@@ -347,42 +355,62 @@ class JobStore(AbstractJobStore):
     def _newJobID(self):
         return str(uuid4())
 
-    def _create_sql_triggers(self):
+    def _insert_row(self, tableName, **fields):
+        placeholderList = ','.join("%%(%s)s" % key for key in fields.keys())
+        fieldList = ','.join(inflection.underscore(key.strip('_')) for key in fields.keys())
+        sqlQuery = "INSERT INTO %s (%s) VALUES (%s);" % (tableName, fieldList, placeholderList)
         try:
             with self.conn.cursor() as cur:
-                cur.execute("""
-                    CREATE OR REPLACE FUNCTION update_updated_at_column()
-                        RETURNS TRIGGER AS $$
-                        BEGIN
-                            NEW._updated_at = now();
-                            RETURN NEW;
-                        END;
-                        $$ language 'plpgsql';
-                """)
-                cur.execute("""
-                    do
-                    $$
-                    declare
-                      l_rec record;
-                    begin
-                      for l_rec in (select table_schema, table_name, column_name
-                                    from information_schema.columns
-                                    where table_schema = 'public'
-                                      and column_name = '_updated_at') loop
-                         execute format ('
-                            CREATE TRIGGER tg_%I_updated_at
-                                BEFORE UPDATE
-                                ON %I.%I
-                                FOR EACH ROW
-                                EXECUTE PROCEDURE update_updated_at_column();
-                            ', l_rec.table_name, l_rec.table_schema, l_rec.table_name);
-                      end loop;
-                    end;
-                    $$
-                """)
+                logger.debug('inserting %s into %s', fields, tableName)
+                cur.execute(sqlQuery, fields)
         except RuntimeError as e:
             # Handle known erros
             raise e
+
+    def _checkJobStoreFileID(self, jobStoreFileID):
+        """
+        :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
+        """
+        if not self.fileExists(jobStoreFileID):
+            raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
+
+    def _getSharedFileID(self, sharedFileName):
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT id FROM file_store WHERE shared IS TRUE AND name = %s AND _deleted_at IS NULL;", (sharedFileName, ))
+                record = cur.fetchone()
+                if record is None:
+                    raise NoSuchFileException(sharedFileName, sharedFileName)
+                else:
+                    return record['id']
+
+        except RuntimeError as e:
+            # Handle known erros
+            raise e
+        self.conn.commit()
+
+
+    @contextmanager
+    def _createJobStoreFileID(self, jobStoreID=None, jobStoreFileID=None, name=None, shared=None, logsAndStats=None, isProtected=None):
+        fileID = jobStoreFileID or str(uuid4())
+        self._insert_row('file_store', id=fileID, jobStoreID=jobStoreID, name=name, shared=shared, logsAndStats=logsAndStats, isProtected=isProtected)
+        yield fileID
+        self.conn.commit()
+
+    def __camelize_keys(self, record):
+        return dict((inflection.camelize(k.replace('_id', '_iD'), False), v) for k, v in record.iteritems())
+
+    def __jobGraphFromRecord(self, record):
+        attrs = self.__camelize_keys(record)
+        attrs['predecessorsFinished'] = set(attrs['predecessorsFinished'])
+        attrs['memory'] = int(attrs['memory'])
+        attrs['disk'] = int(attrs['disk'])
+        attrs['stack'] = cPickle.loads(attrs['stack'])
+        attrs['chainedJobs'] = cPickle.loads(attrs['chainedJobs'])
+        attrs.pop('_createdAt')
+        attrs.pop('_updatedAt')
+        attrs.pop('_deletedAt')
+        return JobGraph(**attrs)
 
     def _create_jobstore_table(self):
         try:
@@ -439,43 +467,41 @@ class JobStore(AbstractJobStore):
             # Handle known erros
             raise e
 
-    def _insert_row(self, tableName, **fields):
-        placeholderList = ','.join("%%(%s)s" % key for key in fields.keys())
-        fieldList = ','.join(inflection.underscore(key.strip('_')) for key in fields.keys())
-        sqlQuery = "INSERT INTO %s (%s) VALUES (%s);" % (tableName, fieldList, placeholderList)
+    # NOTE: The embedded PL/pgSQL script is playing havoc with atom syntax highlighter.
+    #       Keep this function at the end to limit the pain.
+    def _create_sql_triggers(self):
         try:
             with self.conn.cursor() as cur:
-                logger.debug('inserting %s into %s', fields, tableName)
-                cur.execute(sqlQuery, fields)
+                cur.execute("""
+                    CREATE OR REPLACE FUNCTION update_updated_at_column()
+                        RETURNS TRIGGER AS $$
+                        BEGIN
+                            NEW._updated_at = now();
+                            RETURN NEW;
+                        END;
+                        $$ language 'plpgsql';
+                """)
+                cur.execute("""
+                    do
+                    $$
+                    declare
+                      l_rec record;
+                    begin
+                      for l_rec in (select table_schema, table_name, column_name
+                                    from information_schema.columns
+                                    where table_schema = 'public'
+                                      and column_name = '_updated_at') loop
+                         execute format ('
+                            CREATE TRIGGER tg_%I_updated_at
+                                BEFORE UPDATE
+                                ON %I.%I
+                                FOR EACH ROW
+                                EXECUTE PROCEDURE update_updated_at_column();
+                            ', l_rec.table_name, l_rec.table_schema, l_rec.table_name);
+                      end loop;
+                    end;
+                    $$
+                """)
         except RuntimeError as e:
             # Handle known erros
             raise e
-
-    def _checkJobStoreFileID(self, jobStoreFileID):
-        """
-        :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
-        """
-        if not self.fileExists(jobStoreFileID):
-            raise NoSuchFileException("File %s does not exist in jobStore" % jobStoreFileID)
-
-    @contextmanager
-    def _createJobStoreFileID(self, jobStoreID=None, jobStoreFileID=None, name=None, shared=None, logsAndStats=None, isProtected=None):
-        fileID = jobStoreFileID or str(uuid4())
-        self._insert_row('file_store', id=fileID, jobStoreID=jobStoreID, name=name, shared=shared, logsAndStats=logsAndStats, isProtected=isProtected)
-        yield fileID
-        self.conn.commit()
-
-    def __camelize_keys(self, record):
-        return dict((inflection.camelize(k.replace('_id', '_iD'), False), v) for k, v in record.iteritems())
-
-    def __jobGraphFromRecord(self, record):
-        attrs = self.__camelize_keys(record)
-        attrs['predecessorsFinished'] = set(attrs['predecessorsFinished'])
-        attrs['memory'] = int(attrs['memory'])
-        attrs['disk'] = int(attrs['disk'])
-        attrs['stack'] = cPickle.loads(attrs['stack'])
-        attrs['chainedJobs'] = cPickle.loads(attrs['chainedJobs'])
-        attrs.pop('_createdAt')
-        attrs.pop('_updatedAt')
-        attrs.pop('_deletedAt')
-        return JobGraph(**attrs)

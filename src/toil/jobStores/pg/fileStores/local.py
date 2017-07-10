@@ -45,7 +45,7 @@ class FileStore(object):
             shutil.rmtree(self.jobStoreDir)
 
     ##########################################
-    # The following methods deal with file streams
+    # Function that deal with files
     ##########################################
 
     def writeFile(self, localFilePath, fileID):
@@ -79,6 +79,10 @@ class FileStore(object):
 
         os.remove(self._getAbsPath(fileID))
 
+    ##########################################
+    # Function that deal with file streams
+    ##########################################
+
     @contextmanager
     def readFileStream(self, fileID):
         with open(self._getAbsPath(fileID), 'r') as f:
@@ -92,6 +96,31 @@ class FileStore(object):
             yield f
 
     ##########################################
+    # Functions that deal with file URLs
+    ##########################################
+
+    @classmethod
+    def _supportsUrl(cls, url, export=False):
+        return url.scheme.lower() == 'file'
+
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        with open(cls._extractPathFromUrl(url), 'r') as f:
+            writable.write(f.read())
+
+    @classmethod
+    def _writeToUrl(cls, readable, url):
+        with open(cls._extractPathFromUrl(url), 'w') as f:
+            f.write(readable.read())
+
+    def getPublicUrl(self, fileID):
+        absPath = self._getAbsPath(fileID)
+        if os.path.exists(absPath):
+            return 'file://' + self._getAbsPath(fileID)
+        else:
+            raise NoSuchFileException(absPath)
+
+    ##########################################
     # Private methods
     ##########################################
 
@@ -101,6 +130,15 @@ class FileStore(object):
         to the self.jobStoreDir.
         """
         return os.path.join(self.jobStoreDir, relativePath)
+
+    @staticmethod
+    def _extractPathFromUrl(url):
+        """
+        :return: local file path of file pointed at by the given URL
+        """
+        if url.netloc != '' and url.netloc != 'localhost':
+            raise RuntimeError("The URL '%s' is invalid" % url.geturl())
+        return url.netloc + url.path
 
     @staticmethod
     def __check_and_mkdir(tempDir):

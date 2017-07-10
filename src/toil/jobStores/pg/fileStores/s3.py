@@ -49,7 +49,7 @@ class FileStore(object):
             pass
 
     ##########################################
-    # The following methods deal with file streams
+    # Function that deal with files
     ##########################################
 
     def writeFile(self, localFilePath, fileID):
@@ -62,6 +62,10 @@ class FileStore(object):
         obj = self.__get_object(fileID)
         obj.delete()
         obj.wait_until_not_exists()
+
+    ##########################################
+    #  Function that deal with file streams
+    ##########################################
 
     @contextmanager
     def writeFileStream(self, fileID):
@@ -76,6 +80,30 @@ class FileStore(object):
             yield readable
 
     ##########################################
+    # Functions that deal with file URLs
+    ##########################################
+
+    @classmethod
+    def _supportsUrl(cls, url, export=False):
+        return url.scheme.lower() == 's3'
+
+    @classmethod
+    def _readFromUrl(cls, url, writable):
+        obj = cls._get_object_from(url)
+        obj.wait_until_exists()
+        obj.download_fileobj(writable)
+
+
+    @classmethod
+    def _writeToUrl(cls, readable, url):
+        obj = cls._get_object_from(url)
+        obj.upload_fileobj(readable)
+        obj.wait_until_exists()
+
+    def getPublicUrl(self, fileID):
+        return 's3://' + self.path + fileID
+
+    ##########################################
     # Private Methods
     ##########################################
 
@@ -84,6 +112,12 @@ class FileStore(object):
 
     def __get_object(self, fileID):
         return self.bucket.Object(self.__get_key(fileID))
+
+    @staticmethod
+    def _get_object_from(url):
+        bucket = url.netloc
+        key = url.path[1:]
+        return boto3.resource('s3').Bucket(bucket).Object(key)
 
     class UploaderPipe(WritablePipe):
         def __init__(self, obj):

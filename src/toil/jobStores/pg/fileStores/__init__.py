@@ -4,14 +4,18 @@ class NoSupportedFileStoreException(Exception):
         super(NoSupportedFileStoreException, self).__init__(
             "The file store '%s' is not supported" % locator)
 
-
-def fromUrl(url):
-    scheme, path = url.split('://', 1)
+def getStore(url):
+    scheme, _ = url.split('://', 1)
     if scheme == 'file':
         from local import FileStore
-        return FileStore(path)
+        return FileStore
     elif scheme == 's3':
         from s3 import FileStore
-        return FileStore(path)
+        return FileStore
     else:
         raise NoSupportedFileStoreException(url)
+
+
+def fromUrl(url):
+    _, path = url.split('://', 1)
+    return getStore(url)(path)
