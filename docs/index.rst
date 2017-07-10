@@ -1,7 +1,7 @@
 Toil Documentation
 ==================
 
-Toil is an open-source pure-Python workflow engine that lets people write better pipelines.
+Toil is an open-source pure-Python workflow engine that lets people write better pipelines. Jenkins
 
 Check out our `website`_ for a comprehensive list of Toil's features, and read our `paper`_ to learn what Toil can do in the real world.  Feel free to also join us on `GitHub`_ and `Gitter`_.
 
