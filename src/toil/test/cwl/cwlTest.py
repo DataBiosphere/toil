@@ -35,38 +35,37 @@ class CWLDirTest(ToilTest):
 
     def test_run_ls(self):
         """Test that we can run a cwl step that lists content of a Directory"""
-        # create a directory (will be the input)
+        # some internal functions for readibility
+        def _write_to_json(content, path):
+            import json
+            jobfile_handle = open (path, 'w')
+            json.dump(content, jobfile_handle)
+            jobfile_handle.close()
+
+        def _populate_input_dir(content, dir):
+            """content is a tuple with strings. dir is the path to the
+            directory to populate"""
+            for f in content:
+                fh = open(os.path.join(tmpdir, f), 'w')
+                fh.write('%s\n' % f)
+                fh.close()
+        
+        # create a temporary directory (will be the input)
         tmpdir = self._createTempDir()
         # create two files in it (file name is the same as file content)
         filenames = ('foo', 'foobar')
-        for f in filenames:
-            fh = open(os.path.join(tmpdir, f), 'w')
-            fh.write('%s\n' % f)
-            fh.close()
+        _populate_input_dir(filenames, tmpdir)
+        # create another temporary directory (for workspace)
+        workdir = self._createTempDir()
         # create another directory (will be the output)
         outdir = self._createTempDir()
-
+        # the cwl file with the description of the step
         cwlfile = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/lsdir.cwl')
-        input = {
-            'input': {
-                'class': 'Directory',
-                'path': tmpdir
-            }
-        }
-        jobfile = os.path.join(tmpdir, 'jobfile.json')
-        jobfile_handle = open (jobfile, 'w')
-        import json
-        json.dump(input, jobfile_handle)
-        jobfile_handle.close()
+        # content of the input file
+        input = {'input': { 'class': 'Directory', 'path': tmpdir }}
+        jobfile = os.path.join(workdir, 'jobfile.json')
+        _write_to_json(input, jobfile)
 
-
-        from toil.cwl import cwltoil
-        st = StringIO()
-        cwltoil.main(['--outdir', outdir, cwlfile, jobfile], stdout=st)
-        try:
-            out = json.loads(st.getvalue())
-        except:
-            out = st.getvalue()
         # set expected output
         expected = {
             u'output': {
@@ -77,20 +76,18 @@ class CWLDirTest(ToilTest):
                 u'checksum': u'sha1$94b960329d7ada6dd271cc8508ae8525566d44e2',
             }
         }
+
+        from toil.cwl import cwltoil
+        st = StringIO()
+        # run the cwl step
+        cwltoil.main(['--outdir', outdir, cwlfile, jobfile], stdout=st)
+        # get the output
+        try:
+            out = json.loads(st.getvalue())
+        except:
+            out = st.getvalue()
+        # check expected output matches observed
         self.assertEquals(out, expected)
-
-
-
-# 
-#         # checking the test ;)
-#         sink = open('/home/sberri/toilsink', 'w')
-#         from os import listdir
-#         files = [f for f in listdir(tmpdir)]
-#         for f in files:
-#             sink.write('%s\n' % f)
-#         sink.write('out = %s\n' % out)
-#         sink.close()
-
 
 
 @needs_cwl
