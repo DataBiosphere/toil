@@ -31,7 +31,66 @@ from toil.test import ToilTest, needs_cwl
 class CWLDirTest(ToilTest):
     """Tests related to the 'Directory' directive"""
     def test_true(self):
-      return (12)
+        return (12)
+
+    def test_run_ls(self):
+        """Test that we can run a cwl step that lists content of a Directory"""
+        # create a directory (will be the input)
+        tmpdir = self._createTempDir()
+        # create two files in it (file name is the same as file content)
+        filenames = ('foo', 'foobar')
+        for f in filenames:
+            fh = open(os.path.join(tmpdir, f), 'w')
+            fh.write('%s\n' % f)
+            fh.close()
+        # create another directory (will be the output)
+        outdir = self._createTempDir()
+
+        cwlfile = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/lsdir.cwl')
+        input = {
+            'input': {
+                'class': 'Directory',
+                'path': tmpdir
+            }
+        }
+        jobfile = os.path.join(tmpdir, 'jobfile.json')
+        jobfile_handle = open (jobfile, 'w')
+        import json
+        json.dump(input, jobfile_handle)
+        jobfile_handle.close()
+
+
+        from toil.cwl import cwltoil
+        st = StringIO()
+        cwltoil.main(['--outdir', outdir, cwlfile, jobfile], stdout=st)
+        try:
+            out = json.loads(st.getvalue())
+        except:
+            out = st.getvalue()
+        # set expected output
+        expected = {
+            u'output': {
+                u'path': unicode(os.path.join(outdir, 'output.txt')),
+                u'basename': unicode("output.txt"),
+                u'size': 151,
+                u'class': u'File',
+                u'checksum': u'sha1$94b960329d7ada6dd271cc8508ae8525566d44e2',
+            }
+        }
+        self.assertEquals(out, expected)
+
+
+
+# 
+#         # checking the test ;)
+#         sink = open('/home/sberri/toilsink', 'w')
+#         from os import listdir
+#         files = [f for f in listdir(tmpdir)]
+#         for f in files:
+#             sink.write('%s\n' % f)
+#         sink.write('out = %s\n' % out)
+#         sink.close()
+
 
 
 @needs_cwl
