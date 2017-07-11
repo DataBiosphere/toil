@@ -98,6 +98,11 @@ There are several environment variables that affect the way Toil runs.
 |                        | walltime=2:00:00,file=50gb                         |
 |                        | There is no default value for this variable.       |
 +------------------------+----------------------------------------------------+
+| TOIL_LSF_ARGS          | Additional arguments for the LSF's bsub command.   |
+|                        | Instead, define extra parameters for the job such  |
+|                        | as queue. Example: -q medium                       |
+|                        | There is no default value for this variable.       |
++------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
 
