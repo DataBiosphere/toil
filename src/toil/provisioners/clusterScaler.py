@@ -553,9 +553,9 @@ class ScalerThread(ExceptionalThread):
                               )
         if not force:
             # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-            nodesToTerminate = [node for node in nodesToTerminate if
+            nodesToTerminate = [(node, i) for node, i in nodesToTerminate if
                                 self.scaler.provisioner.remainingBillingInterval(node) <= 0.15]
-        return [node for node,_ in nodesToTerminate]
+        return [node for node, _ in nodesToTerminate]
 
     def getNodes(self, preemptable):
         """
@@ -616,7 +616,7 @@ class ScalerThread(ExceptionalThread):
         for node, ip in ((node, node.privateIP) for node in provisionerNodes):
             info = None
             if ip not in recentMesosNodes:
-                logger.debug("Worker node at %s is not reporting executor information")
+                logger.debug("Worker node at %s is not reporting executor information", ip)
                 # we don't have up to date information about the node
                 info = _getInfo(allMesosNodes, ip)
             else:

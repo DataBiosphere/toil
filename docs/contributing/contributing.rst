@@ -47,11 +47,24 @@ To build the docs, run ``make develop`` with all extras followed by
 Running tests
 -------------
 
-To invoke all tests (unit and integration) use
+To invoke all unit tests use
 
 ::
 
     $ make test
+
+To invoke all non-AWS integration tests use
+
+::
+
+    $ make integration_test
+
+To invoke all integration tests, including AWS tests, use
+
+::
+
+    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
+
 
 .. topic:: Installing Docker with Quay
 

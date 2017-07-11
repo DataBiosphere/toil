@@ -39,9 +39,15 @@ test_suites = {
         'AWSStaticAutoscaleTest'
     ]}
 
+pytest_errors = ['All tests were collected and passed successfully.',
+                'Tests were collected and run but some of the tests failed.',
+                'Test execution was interrupted by the user.',
+                'Internal error happened while executing tests.',
+                'pytest command line usage error.',
+                'No tests were collected.']
 
 def run_tests(keywords, index, args):
-    args = [sys.executable, '-m', 'pytest', '-vv',
+    args = [sys.executable, '-m', 'pytest', '-vv', '--timeout=600',
             '--junitxml', 'test-report-%s.xml' % index,
             '-k', keywords] + args
     log.info('Running %r', args)
@@ -55,11 +61,13 @@ def main(suite, args):
     num_failures = 0
     index = itertools.count()
     pids = set()
+    pidsToKeyword = {}
     try:
         for keyword in suite:
             if keyword:
                 process = run_tests(keyword, str(next(index)), args)
                 pids.add(process.pid)
+                pidsToKeyword[process.pid] = keyword
         while pids:
             pid, status = os.wait()
             pids.remove(pid)
@@ -67,8 +75,14 @@ def main(suite, args):
                 status = os.WEXITSTATUS(status)
                 if status:
                     num_failures += 1
+                    log.info('Test keyword %s failed: %s', pidsToKeyword[pid], pytest_errors[status])
+                else:
+                    log.info('Test keyword %s passed successfully', pidsToKeyword[pid])
             else:
                 num_failures += 1
+                log.info('Test keyword %s failed: abnormal exit', pidsToKeyword[pid])
+
+            del pidsToKeyword[pid]
     except:
         for pid in pids:
             os.kill(pid, 15)
@@ -80,6 +94,7 @@ def main(suite, args):
         process = run_tests(everything_else, str(next(index)), args)
         if process.wait():
             num_failures += 1
+            log.info('Test keyword %s failed which was running in series', everything_else)
 
     import xml.etree.ElementTree as ET
     testsuites = ET.Element('testsuites')

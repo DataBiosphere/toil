@@ -169,7 +169,7 @@ class FileJobStore(AbstractJobStore):
                 os.close(fd)
                 os.unlink(absPath)
                 try:
-                    os.link(self._extractPathFromUrl(url), absPath)
+                    os.link(os.path.realpath(self._extractPathFromUrl(url)), absPath)
                 except OSError:
                     shutil.copyfile(self._extractPathFromUrl(url), absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
@@ -177,7 +177,7 @@ class FileJobStore(AbstractJobStore):
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
                 try:
-                    os.link(self._extractPathFromUrl(url), path)
+                    os.link(os.path.realpath(self._extractPathFromUrl(url)), path)
                 except:
                     shutil.copyfile(self._extractPathFromUrl(url), path)
                 return None
