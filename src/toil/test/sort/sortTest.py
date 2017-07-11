@@ -323,10 +323,3 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def _loadFile(self, path):
         with open(path, 'r') as f:
             return f.readlines()
-
-
-def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
-    with open(fileName, 'w') as fileHandle:
-        for _ in xrange(lines):
-            line = "".join(random.choice('actgACTGNXYZ') for _ in xrange(lineLen - 1)) + '\n'
-            fileHandle.write(line)
