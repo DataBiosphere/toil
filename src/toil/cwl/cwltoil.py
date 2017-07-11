@@ -611,11 +611,8 @@ cwltool.process.supportedProcessRequirements = ("DockerRequirement",
 def unsupportedInputCheck(p):
     """Check for file inputs we don't current support in Toil:
 
-    - Directories
     - File literals
     """
-    if p.get("class") == "Directory":
-        raise cwltool.process.UnsupportedRequirement("CWL Directory inputs not yet supported in Toil")
     if p.get("contents") and (not p.get("path") and not p.get("location")):
         raise cwltool.process.UnsupportedRequirement("CWL File literals not yet supported in Toil")
 
