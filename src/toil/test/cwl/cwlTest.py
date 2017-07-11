@@ -68,7 +68,7 @@ class CWLDirTest(ToilTest):
 
         # set expected output
         expected = {
-            u'output': {
+            u'lsout': {
                 u'path': unicode(os.path.join(outdir, 'output.txt')),
                 u'basename': unicode("output.txt"),
                 u'size': 151,

@@ -12,5 +12,5 @@ inputs:
       position: 1
 
 outputs:
-  duout:
+  lsout:
     type: stdout
