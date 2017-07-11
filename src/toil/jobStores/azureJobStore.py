@@ -377,6 +377,7 @@ class AzureJobStore(AbstractJobStore):
         jobStoreFileID = self._newFileID()
         with self._uploadStream(jobStoreFileID, self.files) as _:
             pass
+        self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     @contextmanager
