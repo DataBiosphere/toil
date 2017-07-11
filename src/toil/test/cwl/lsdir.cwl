@@ -1,7 +1,7 @@
 cwlVersion: v1.0
 
 class: CommandLineTool
-baseCommand: ["ls", "-lL"]
+baseCommand: ["ls", "-1L"]
 stdout: output.txt
 
 

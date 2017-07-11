@@ -62,18 +62,19 @@ class CWLDirTest(ToilTest):
         # the cwl file with the description of the step
         cwlfile = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/lsdir.cwl')
         # content of the input file
-        input = {'input': { 'class': 'Directory', 'path': tmpdir }}
+        input = {'dir': { 'class': 'Directory', 'path': tmpdir }}
         jobfile = os.path.join(workdir, 'jobfile.json')
         _write_to_json(input, jobfile)
 
         # set expected output
         expected = {
             u'lsout': {
+                u'location': unicode(os.path.join(outdir, 'output.txt')),
                 u'path': unicode(os.path.join(outdir, 'output.txt')),
                 u'basename': unicode("output.txt"),
-                u'size': 151,
+                u'size': 11,
                 u'class': u'File',
-                u'checksum': u'sha1$94b960329d7ada6dd271cc8508ae8525566d44e2',
+                u'checksum': u'sha1$7459c36f90c843dfb3201bfa6299d8921dbbeb08',
             }
         }
 
