@@ -14,17 +14,15 @@ Toil supports only Python 2.7.  If you don't satisfy this requirement, consider 
 
 .. _anaconda: https://conda.io/docs/py2or3.html 
 
-Install Python ``virtualenv`` using pip_. 
-::
+Install Python ``virtualenv`` using pip_.  ::
     $ sudo pip install virtualenv
+
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
-Create a virtual environment called ``venv`` in your home directory.
-::
+Create a virtual environment called ``venv`` in your home directory.  ::
     $ virtualenv ~/venv
 
-Activate your virtual environment.
-::
+Activate your virtual environment.  ::
     $ source ~/venv/bin/activate
    
 
