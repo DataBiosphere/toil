@@ -2,7 +2,7 @@
 
 Running in Google Compute Engine
 ================================
-After setting up Toil on :ref:`installationGoogleComputeEngine`, Toil scripts
+After setting up Toil on :ref:`installation-ref`, Toil scripts
 can be run just by designating a job store location as shown in
 :ref:`quickstart`.
 
