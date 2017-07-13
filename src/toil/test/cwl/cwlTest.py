@@ -32,6 +32,7 @@ class CWLDirTest(ToilTest):
     """Tests related to the 'Directory' directive"""
     @staticmethod
     def _write_to_json(content, path):
+        """Write content to a json file of path"""
         import json
         jobfile_handle = open (path, 'w')
         json.dump(content, jobfile_handle)
@@ -46,24 +47,42 @@ class CWLDirTest(ToilTest):
 
     def test_run_mkdir(self):
         """Test that we can run a cwl step that creates direcotries"""
+        # create temp dirs
+        tmpdir, workdir, outdir = self._create_all_tmpdir()
+        # the cwl file with the description of the step
+        cwlfile = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/mkdir.cwl')
+        input = {'leaf': 'foobaz/bar'}
+        jobfile = os.path.join(workdir, 'input.json')
+        self._write_to_json(input, jobfile)
         expected = {
             "dirout": {
-                "path": "/illumina/scratch/tmp/users/sberri/tmp/foobaz",
+                "path": os.path.join(outdir, "foobaz"),
                 "basename": "foobaz",
                 "listing": [
                     {
-                        "path": "/illumina/scratch/tmp/users/sberri/tmp/foobaz/bar",
+                        "path": os.path.join(outdir, "foobaz/bar"),
                         "basename": "bar",
                         "listing": [],
                         "class": "Directory",
-                        "location": "file:///illumina/scratch/tmp/users/sberri/tmp/foobaz/bar"
+                        "location": os.path.join(outdir, "foobaz/bar")
                     }
                 ],
-                "location": "file:///illumina/scratch/tmp/users/sberri/tmp/foobaz",
+                "location": "file://" + os.path.join(outdir, "/foobaz"),
                 "class": "Directory"
             }
         }
-        return(3)
+
+        from toil.cwl import cwltoil
+        st = StringIO()
+        # run the cwl step
+        cwltoil.main(['--outdir', outdir, cwlfile, jobfile], stdout=st)
+        # get the output
+        try:
+            out = json.loads(st.getvalue())
+        except:
+            out = st.getvalue()
+        # check expected output matches observed
+        self.assertEquals(out, expected)
     
     def test_run_ls(self):
         """Test that we can run a cwl step that lists content of a Directory"""
