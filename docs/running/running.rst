@@ -131,7 +131,7 @@ in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
 messages to the screen::
 
-   $ python toil-sort-examply.py file:jobStore --logLevel=critical
+   $ python toil-sort-example.py file:jobStore --logLevel=critical
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
