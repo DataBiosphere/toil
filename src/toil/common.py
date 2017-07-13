@@ -435,11 +435,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
     addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
                 action='store_true', default=None, help='Toil disallows modification of read '
-                                                        'global files by default. This flag makes '
-                                                        'it makes read file mutable by default, '
-                                                        'however it also defeats the purpose of '
-                                                        'shared caching via hard links to save '
-                                                        'space. Default is False')
+                                                        'global files. Setting this flag causes '
+                                                        'them to be mutable. Unfortunately, this '
+                                                        'prevents saving space by caching files '
+                                                        'with hardlinks.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
