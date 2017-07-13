@@ -30,18 +30,44 @@ from toil.test import ToilTest, needs_cwl
 @needs_cwl
 class CWLDirTest(ToilTest):
     """Tests related to the 'Directory' directive"""
-    def test_true(self):
-        return (12)
+    @staticmethod
+    def _write_to_json(content, path):
+        import json
+        jobfile_handle = open (path, 'w')
+        json.dump(content, jobfile_handle)
+        jobfile_handle.close()
 
+    def _create_all_tmpdir(self):
+        """create temporary directories and return their paths"""
+        tmpdir = self._createTempDir()
+        workdir = self._createTempDir()
+        outdir = self._createTempDir()
+        return (tmpdir, workdir, outdir)
+
+    def test_run_mkdir(self):
+        """Test that we can run a cwl step that creates direcotries"""
+        expected = {
+            "dirout": {
+                "path": "/illumina/scratch/tmp/users/sberri/tmp/foobaz",
+                "basename": "foobaz",
+                "listing": [
+                    {
+                        "path": "/illumina/scratch/tmp/users/sberri/tmp/foobaz/bar",
+                        "basename": "bar",
+                        "listing": [],
+                        "class": "Directory",
+                        "location": "file:///illumina/scratch/tmp/users/sberri/tmp/foobaz/bar"
+                    }
+                ],
+                "location": "file:///illumina/scratch/tmp/users/sberri/tmp/foobaz",
+                "class": "Directory"
+            }
+        }
+        return(3)
+    
     def test_run_ls(self):
         """Test that we can run a cwl step that lists content of a Directory"""
         # some internal functions for readibility
-        def _write_to_json(content, path):
-            import json
-            jobfile_handle = open (path, 'w')
-            json.dump(content, jobfile_handle)
-            jobfile_handle.close()
-
         def _populate_input_dir(content, dir):
             """content is a tuple with strings. dir is the path to the
             directory to populate"""
@@ -50,21 +76,15 @@ class CWLDirTest(ToilTest):
                 fh.write('%s\n' % f)
                 fh.close()
         
-        # create a temporary directory (will be the input)
-        tmpdir = self._createTempDir()
-        # create two files in it (file name is the same as file content)
+        tmpdir, workdir, outdir = self._create_all_tmpdir()
         filenames = ('foo', 'foobar')
         _populate_input_dir(filenames, tmpdir)
-        # create another temporary directory (for workspace)
-        workdir = self._createTempDir()
-        # create another directory (will be the output)
-        outdir = self._createTempDir()
         # the cwl file with the description of the step
         cwlfile = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/lsdir.cwl')
         # content of the input file
         input = {'dir': { 'class': 'Directory', 'path': tmpdir }}
         jobfile = os.path.join(workdir, 'jobfile.json')
-        _write_to_json(input, jobfile)
+        self._write_to_json(input, jobfile)
 
         # set expected output
         expected = {
