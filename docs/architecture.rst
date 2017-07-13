@@ -1,4 +1,4 @@
-Toil architecture
+Toil Architecture
 *****************
 
 The following diagram layouts out the software architecture of Toil.

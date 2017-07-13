@@ -1,6 +1,8 @@
 Toil API
 ********
 
+This section describes the API for writing Toil workflows in Python.
+
 Job methods
 -----------
 Jobs are the units of work in Toil which are composed into workflows.

@@ -1,6 +1,6 @@
 .. _Cloud_Running:
 
-Running in the cloud
+Running in the Cloud
 ====================
 
 Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web

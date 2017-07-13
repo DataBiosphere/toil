@@ -1,6 +1,6 @@
 .. _tutorial-ref:
 
-Developing a workflow
+Developing a Workflow
 =====================
 
 This tutorial walks through the features of Toil necessary for developing a

@@ -1,9 +1,7 @@
 .. _running:
 
-Running Toil workflows
+Example Toil Workflows
 ======================
-
-This section describes how to run Toil workflows.
 
 .. _quickstart:
 
@@ -30,16 +28,22 @@ A Toil workflow can be run with just three steps.
           options = parser.parse_args()
           print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
 
+.. todo:: This example needs to be written in a simpler style per the Toil meeting discusssion on July 12th.
+
 3. Specify a job store and run the workflow like so::
 
        $ python HelloWorld.py file:my-job-store
 
 Now you have run Toil on the ``singleMachine`` batch system (the default) using
-the ``file`` job store. The job store is a place where intermediate files are
-written to during the workflow's execution. The ``file`` job store is a job
-store that uses the files and directories on a locally-attached filesystem - in
-this case, a directory called ``my-job-store`` in the directory that
-``HelloWorld.py`` is run from. (Read more about :ref:`jobStoreInterface`.)
+the ``file`` job store.
+
+Intermediate files are written to the job store during the workflow's execution. The ``file`` job store is a job
+store that uses the files and directories on a locally-attached filesystem. In
+this case, any intermediate files are written to a directory called ``my-job-store`` in the directory where
+``HelloWorld.py`` is run. (Read more about :ref:`jobStoreInterface`.)
+
+The ``singleMachine`` batch system is primarily used to prepare and debug workflows on the
+local machine. Once they are ready, they will be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
 
 Run ``python HelloWorld.py --help`` to see a complete list of available options.
 
@@ -63,8 +67,7 @@ support for the stable v1.0 specification, only lacking the following features:
   be enumerated as Files.
 - `File literals`_ that specify only ``contents`` to a File without an explicit
   file name.
-- Writable `InitialWorkDirRequirement
-  <http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement>`
+- Writable `InitialWorkDirRequirement`_
   objects. Standard readable inputs do work.
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
@@ -80,7 +83,7 @@ command line parameters to select and configure the batch system to use.
 .. _Directory: http://www.commonwl.org/v1.0/CommandLineTool.html#Directory
 .. _secondaryFiles: http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter
 .. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
-
+.. _InitialWorkDirRequirement: http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement
 
 .. _runningDetail:
 
@@ -116,6 +119,9 @@ Typing ``python toil-sort-example.py --help`` will show the complete list of
 arguments for the workflow which includes both Toil's and ones defined inside
 ``toil-sort-example.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
+
+
+.. todo:: The following sections are duplicated in :ref:`commandRef`. Merge them?
 
 Logging
 ~~~~~~~

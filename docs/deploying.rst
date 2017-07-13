@@ -1,6 +1,6 @@
 .. highlight:: console
 
-Deploying a workflow
+Deploying a Workflow
 ====================
 
 If a Toil workflow is run on a single machine (that is, single machine mode),

@@ -58,7 +58,7 @@ def addOptions(addOptionFn):
 
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
               help=("The type of batch system to run the job(s) with, currently can be one "
-                    "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
+                    "of %s. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
     addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
                 help=("Should hot-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
