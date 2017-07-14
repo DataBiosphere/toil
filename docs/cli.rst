@@ -220,3 +220,15 @@ Here is an example of its usage::
 
     $ toil rsync-cluster CLUSTER-NAME-HERE \
        ~/localFile :/remoteDestination
+
+.. _destroyCluster:
+
+destroy-cluster
+^^^^^^^^^^^^^^^
+
+The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
+launched using the :ref:`launchCluster` command. It ensures that all attached node, volumes, and
+security groups etc. are deleted. If a node or cluster in shut down using Amazon's online portal
+residual resources may still be in use in the background. To delete a cluster run ::
+
+    $ toil destroy-cluster CLUSTER-NAME-HERE
