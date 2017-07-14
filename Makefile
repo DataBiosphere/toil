@@ -162,7 +162,7 @@ integration_test_local: check_venv check_build_reqs sdist push_docker
 # FIXME when they are removed add check_running_on_jenkins to the jenkins targets
 test_parallel: jenkins_test_parallel
 
-test_integration: jenkins_test_integration
+integration_test: jenkins_test_integration
 
 # This target is designed only for use on Jenkins
 jenkins_test_parallel: check_venv check_build_reqs docker
@@ -288,7 +288,7 @@ check_cpickle:
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test test_all test_appliance test_parallel integration_test \
+		test test_offline test_parallel integration_test \
 		jenkins_test_parallel jenkins_test_integration \
 		pypi clean_pypi \
 		docs clean_docs \
