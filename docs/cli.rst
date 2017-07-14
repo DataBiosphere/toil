@@ -173,7 +173,7 @@ launch-cluster
 
 Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
 added to the initial cluster by specifying the ``-w`` option. For an example usage see
-:ref:`launchingCluster`. More information can be found using the ``--help`` option.
+:ref:`launchCluster`. More information can be found using the ``--help`` option.
 
 .. _sshCluster:
 
