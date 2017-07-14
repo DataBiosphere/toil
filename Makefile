@@ -47,9 +47,9 @@ particular test, e.g.
 The 'test_local' target is similar to 'test' but it skips the docker dependent tests and their
 setup.
 
-The 'integration_test_local' target runs toil's integration tests. This are more thorough but also
+The 'integration_test_local' target runs toil's integration tests. These are more thorough but also
 more costly than the regular unit tests. For the AWS integration tests to run, the environment
-variable 'TOIL_AWS_KEYNAME' must be set. This user will be chargedfor expenses acrued during the
+variable 'TOIL_AWS_KEYNAME' must be set. This user will be charged for expenses acrued during the
 test. This test does not capture terminal output.
 
 The 'integration_test' target is the same as the previous except that it does capture output.
@@ -143,28 +143,33 @@ clean_sdist:
 
 
 # This target will skip building docker and all docker based tests
-test_local: check_venv check_build_reqs
+test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 		$(python) -m pytest $(pytest_args_local) $(tests)
-
-# For running integration tests locally (uses the -s argument for pyTest)
-# probably should do this not in parallel...
-integration_test_local: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests) -s
 
 # The hot deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
 	    $(python) -m pytest $(pytest_args_local) $(tests)
 
+# For running integration tests locally in series (uses the -s argument for pyTest)
+integration_test_local: check_venv check_build_reqs sdist push_docker
+	TOIL_TEST_INTEGRATIVE=True \
+		$(python) run_tests.py --local integration-test $(tests)
+
+# These two targets are for backwards compatibility but will be removed shortly
+# FIXME when they are removed add check_running_on_jenkins to the jenkins targets
+test_parallel: jenkins_test_parallel
+
+test_integration: jenkins_test_integration
 
 # This target is designed only for use on Jenkins
-test_parallel: check_venv check_build_reqs docker
+jenkins_test_parallel: check_venv check_build_reqs docker
 	$(python) run_tests.py test $(tests)
 
 # This target is designed only for use on Jenkins
-integration_test: check_venv check_build_reqs sdist push_docker
+jenkins_test_integration: check_venv check_build_reqs sdist push_docker
 	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
@@ -284,6 +289,7 @@ check_cpickle:
 		develop clean_develop \
 		sdist clean_sdist \
 		test test_all test_appliance test_parallel integration_test \
+		jenkins_test_parallel jenkins_test_integration \
 		pypi clean_pypi \
 		docs clean_docs \
 		clean \
