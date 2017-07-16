@@ -1,4 +1,4 @@
-.. _Cloud_Running:
+.. _CloudRunning:
 
 Running in the Cloud
 ====================

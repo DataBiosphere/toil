@@ -34,48 +34,98 @@ Prepare your AWS environment
 
 .. note::
 
-   Instead of typing the above ``ssh-add`` and ``export`` commands every time you wish to access AWS, you could instead put them in your shell initialization file (e.g. ``~/.bash_profile``).
+   Instead of typing the above ``ssh-add`` and ``export`` commands every time you wish to access AWS, you could instead put them in your shell initialization file (e.g. ``~/.bash_profile``).  As an alternative to setting those environment variables, you can create an AWS credentials file as described here_.
+
+.. _here: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
 
 
 Launch a Toil workflow in AWS
 -----------------------------
-The user can run the same ``HelloWorld.py`` script on a distributed cluster just by modifying the run command. Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible if we were to use the ``file`` job store with a locally mounted file system on the leader.
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same ``HelloWorld.py`` script on a distributed cluster just by modifying the run command. Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible if we were to use the ``file`` job store with a locally mounted file system on the leader.
 
-1. Launch a mesos cluster in AWS.
+1. Launch a cluster in AWS.
 ::
 
    $ (venv) toil launch-cluster <cluster-name> \
    --keyPairName <AWS-key-pair-name> \
-   --nodeType t2.micro \
-   --zone us-west-2a 
+   --nodeType t2.medium \
+   --zone us-west-2a \
+   --provisisoner aws
 
 2. Copy ``HelloWorld.py`` to the leader node.  
 :: 
 
-$ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
+  $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
 
-3. Run the Toil script in the cluster.  
+3. Login to the cluster leader node.
 ::
 
-   $ python HelloWorld.py \
-   --batchSystem mesos \
-   --mesosMaster master-private-ip:5050 \
-   aws:us-west-2:my-aws-jobstore
+  $ (venv) toil ssh-cluster <cluster-name>
 
-Run a CWL workflow
-------------------
-
+4. Run the Toil script in the cluster 
 ::
 
-   $ cwltoil --batchSystem=mesos  \
-   --mesosMaster master-private-ip:5050 \
-   --jobStore aws:us-west-2:my-aws-jobstore \
-   example.cwl \
-   example-job.yml
+  $ python /tmp/HelloWorld.py \
+  aws:us-west-2:my-aws-jobstore
+
+.. note::
+
+   Toil can save output from a job in various output locations including files and, as in the example above, an S3 bucket called ``my-aws-jobstore``.  See the :ref:`jobStoreInterface` for more information.
+
+6. Exit from the SSH connection.
+::
+
+  $ exit
+
+7. Remove the S3 bucket created in the ``HelloWorld.py`` workflow.
+::
+
+  $ (venv) toil clean <cluster-name>
+
+8. Destroy the cluster.
+::
+
+  $ (venv) toil destroy-cluster <cluster-name>
+
+.. _Toil development guide: jobStoreInterface
+
+
+Run a CWL workflow on AWS
+-------------------------
+In this section, we describe how to run a CWL workflow with Toil on AWS.
+
+
+1. Launch the workflow in AWS.
+::
+
+   $ (venv) toil launch-cluster <cluster-name> \
+   --keyPairName <AWS-key-pair-name> \
+   --nodeType t2.medium \
+   --zone us-west-2a \
+   --provisisoner aws
+
+2. Copy the example.cwl workflow and associated YML file to the cluster. 
+::
+
+  $ (venv) toil rsync-cluster <cluster-name> example.cwl :/tmp
+  $ (venv) toil rsync-cluster <cluster-name> example-job.yml :/tmp
+
+3. Launch the CWL workflow.
+::
+
+  $ (venv) toil ssh-cluster <cluster-name> \
+   cwltoil \
+   /tmp/example.cwl \
+   /tmp/example-job.yml
 
 When running a CWL workflow on AWS, input files can be provided either on the
 local file system or in S3 buckets using ``s3://`` URL references. Final output
 files will be copied to the local file system of the leader node.
+
+4. Destroy the cluster. 
+::
+
+  $ toil destroy-cluster <cluster-name>
 
 Details about Launching a Cluster in AWS
 ----------------------------------------
@@ -83,7 +133,7 @@ Details about Launching a Cluster in AWS
 Using the provisioner to launch a Toil leader instance is simple using the launch-cluster command.
 ::
 
-    $ toil launch-cluster my-cluster --nodeType=t2.micro \
+    $ toil launch-cluster my-cluster --nodeType=t2.medium \
        --zone us-west-2a --keyPairName=your-AWS-key-pair-name
 
 The cluster name is used to uniquely identify your cluster and will be used to

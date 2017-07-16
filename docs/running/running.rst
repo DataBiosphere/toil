@@ -18,7 +18,7 @@ A Toil workflow can be run with just three steps.
 
       from toil.job import Job
 
-      def helloWorld(message, memory="2G", cores=2, disk="3G"):
+      def helloWorld(message, memory="1G", cores=1, disk="1G"):
           return "Hello, world!, here's a message: %s" % message
 
       j = Job.wrapFn(helloWorld, "You did it!")
