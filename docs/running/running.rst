@@ -32,13 +32,18 @@ A Toil workflow can be run with just three steps.
 
 3. Specify a job store and run the workflow like so::
 
-       $ python HelloWorld.py file:my-job-store
+       (venv) $ python HelloWorld.py file:my-job-store
+
+.. note::
+
+    don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that they
+    should have their :ref: `virtual environment <venvPrep>` running.
 
 Now you have run Toil on the ``singleMachine`` batch system (the default) using
 the ``file`` job store.
 
-Intermediate files are written to the job store during the workflow's execution. The ``file`` job store is a job
-store that uses the files and directories on a locally-attached filesystem. In
+The job store is where intermediate files are written during the workflow's execution. The ``file`` job store
+uses the files and directories on a locally-attached filesystem. In
 this case, any intermediate files are written to a directory called ``my-job-store`` in the directory where
 ``HelloWorld.py`` is run. (Read more about :ref:`jobStoreInterface`.)
 
@@ -49,47 +54,68 @@ Run ``python HelloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
+.. _cwlquickstart:
 
 CWL Quickstart
 --------------
 
 The `Common Workflow Language`_ (CWL) is an emerging standard for writing
-workflows that are portable across multiple workflow engines and platforms. To
-run workflows written using CWL, first ensure that Toil is installed with the
-``cwl`` extra (see :ref:`extras`). This will install the ``cwl-runner`` and
-``cwltoil`` executables (these are identical - ``cwl-runner`` is the portable
-name for the default system CWL runner).
+workflows that are portable across multiple workflow engines and platforms.
+Running CWL workflows using Toil is easy.
 
-To learn more about CWL, see the `CWL User Guide`_. Toil has nearly full
-support for the stable v1.0 specification, only lacking the following features:
+#. First ensure that Toil is installed with the
+   ``cwl`` extra (see :ref:`extras`).  ::
 
-- `Directory`_ inputs and outputs in pipelines. Currently, directory inputs must
-  be enumerated as Files.
-- `File literals`_ that specify only ``contents`` to a File without an explicit
-  file name.
-- Writable `InitialWorkDirRequirement`_
-  objects. Standard readable inputs do work.
-- Complex file inputs – from ExpressionTool or a default value, both of which do
-  not yet get cleanly staged into Toil file management.
+       (venv) $ pip install toil[cwl]
 
-To run in local batch mode, provide the CWL file and the input object file::
+   This installs the ``cwltoil`` and ``cwl-runner`` executables. These are identical -
+   ``cwl-runner`` is the portable name for the default system CWL runner.
 
-    $ cwltoil example.cwl example-job.yml
+#. Copy and paste the following code block into ``example.cwl``:
 
-To run in cloud and HPC configurations, you may need to provide additional
-command line parameters to select and configure the batch system to use.
+   .. code-block:: yaml
 
-.. _File literals: http://www.commonwl.org/v1.0/CommandLineTool.html#File
-.. _Directory: http://www.commonwl.org/v1.0/CommandLineTool.html#Directory
-.. _secondaryFiles: http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter
+       cwlVersion: v1.0
+       class: CommandLineTool
+       baseCommand: echo
+       stdout: output.txt
+       inputs:
+         message:
+           type: string
+           inputBinding:
+             position: 1
+       outputs:
+         output:
+           type: stdout
+
+   and this code into ``example-job.yaml``:
+
+   .. code-block:: yaml
+
+        message: Hello world!
+
+#. To run the workflow simply enter ::
+
+        (venv) $ cwltoil example.cwl example-job.yaml
+
+   Your output will be in ``output.txt`` ::
+
+        (venv) $ cat output.txt
+        Hello world!
+
+To learn more about CWL, see the `CWL User Guide`_ (from where this example was
+shamelessly borrowed).
+
+To run this workflow on an AWS cluster have a look at :ref:`awscwl`.
+
+For information on using CWL with Toil see the section :ref:`cwl`
+
 .. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
-.. _InitialWorkDirRequirement: http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement
 
 .. _runningDetail:
 
-
 Real-World Example
---------------------
+------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file.

@@ -41,6 +41,7 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    :caption: User Guide
    :maxdepth: 2
 
+   cwl
    cli
    developing
    deploying
