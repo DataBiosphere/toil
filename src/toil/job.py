@@ -1483,6 +1483,9 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
+        if job._directPredecessors:
+            for job_ in job._directPredecessors:
+                job_.addChild(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.

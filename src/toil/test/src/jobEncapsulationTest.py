@@ -50,7 +50,22 @@ class JobEncapsulationTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
-            
+
+    def testAddChildEncapsulate(self):
+        """
+        Make sure that the encapsulate child does not have two pareents
+        with unique roots.
+        """
+        # Temporary file
+        a = T.wrapFn(noOp)
+        b = T.wrapFn(noOp)
+        a.addChild(b).encapsulate()
+        self.assertEquals(len(a.getRootJobs()), 1)
+
+
+def noOp():
+    pass
+
 def encapsulatedJobFn(job, string, outFile):
     a = job.addChildFn(f, string, outFile)
     b = a.addFollowOnFn(f, a.rv(), outFile)
