@@ -318,14 +318,16 @@ def _addOptions(addGroupFn, config):
                              "Allows the restart of an existing workflow")
     addOptionFn("--restart", dest="restart", default=None, action="store_true",
                 help="If --restart is specified then will attempt to restart existing workflow "
-                "at the location pointed to by the --jobStore option. Will raise an exception if the workflow does not exist")
+                     "at the location pointed to by the --jobStore option. Will raise an exception "
+                     "if the workflow does not exist")
 
     #
     #Batch system options
     #
 
     addOptionFn = addGroupFn("toil options for specifying the batch system",
-                             "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
+                             "Allows the specification of the batch system, and arguments to the "
+                             "batch system/big batch system (see below).")
     addBatchOptions(addOptionFn)
 
     #
@@ -467,7 +469,8 @@ def _addOptions(addGroupFn, config):
                             "the job may be longer). default=%s" % config.maxJobDuration))
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
                       help=("Period of time to wait (in seconds) between checking for "
-                            "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. default=%s" % config.rescueJobsFrequency))
+                            "missing/overlong jobs, that is jobs which get lost by the batch "
+                            "system. Expert parameter. default=%s" % config.rescueJobsFrequency))
 
     #
     #Misc options
