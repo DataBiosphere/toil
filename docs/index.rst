@@ -20,20 +20,15 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
 
 .. todolist::
 
-
-Getting Started
-~~~~~~~~~~~~~~~
-
 .. toctree::
+   :caption: Getting Started
    :maxdepth: 2
 
    install/basic
    running/running
 
-Toil in the Cloud
-~~~~~~~~~~~~~~~~~
-
 .. toctree::
+   :caption: Toil in the Cloud
    :maxdepth: 2
 
    running/cloud 
@@ -42,20 +37,16 @@ Toil in the Cloud
    running/openstack
    running/gce
 
-User Guide
-~~~~~~~~~~
-
 .. toctree::
+   :caption: User Guide
    :maxdepth: 2
 
    cli
    developing
    deploying
 
-API and Architecture
-~~~~~~~~~~~~~~~~~~~~
-
 .. toctree::
+   :caption: API and Architecture
    :maxdepth: 2
 
    toilAPI
@@ -63,24 +54,17 @@ API and Architecture
    batchSystem
    jobStore
 
-Contributor's Guide
-~~~~~~~~~~~~~~~~~~~
-
 .. toctree::
+   :caption: Contributor's Guide
    :maxdepth: 2
 
    contributing/contributing
 
-Appendices
-~~~~~~~~~~
-
 .. toctree::
+   :caption: Appendices
    :maxdepth: 2
 
    appendices/environment_vars
-
-Indices and tables
-~~~~~~~~~~~~~~~~~~
 
 * :ref:`genindex`
 * :ref:`search`
