@@ -5,127 +5,126 @@ Running in AWS
 
 Prepare your AWS environment
 ----------------------------
-1. If necessary, create and activate an `AWS account`_
+#. If necessary, create and activate an `AWS account`_
 
-.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/ 
+#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
 
+#. Follow `Amazon's instructions`_ to create an ssh key and import it into EC2.
 
-2. Create a `key pair`_ in the ``us-west-2a`` availability zone. 
+#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
 
-.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#having-ec2-create-your-key-pair 
-.. important::
-
-   This will automatically download a PEM file from your Web browser to your local machine.  Put this file in your home directory or somewhere memorable.
-
-3. Add the AWS private key to the authentication agent.  
-::
-
-   $ (venv) ssh-add <path-to-aws-pem-file>
-
-4. Create an `AWS access key`_
-
-.. _AWS access key: http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html 
-
-5. Export AWS access key environment variables in shell.  
-::
-
-   $ (venv) export AWS_ACCESS_KEY_ID=<access-key-string>
-   $ (venv) export AWS_SECRET_ACCESS_KEY=<secret-access-key-string>
-
-.. note::
-
-   Instead of typing the above ``ssh-add`` and ``export`` commands every time you wish to access AWS, you could instead put them in your shell initialization file (e.g. ``~/.bash_profile``).  As an alternative to setting those environment variables, you can create an AWS credentials file as described here_.
-
-.. _here: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
+.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
+.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
 
 
 Launch a Toil workflow in AWS
 -----------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same ``HelloWorld.py`` script on a distributed cluster just by modifying the run command. Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible if we were to use the ``file`` job store with a locally mounted file system on the leader.
 
-1. Launch a cluster in AWS.
-::
+The user easily can run the :ref:`quickstart` example on an aws instance using the :ref:`clusterRef`.
 
-   $ (venv) toil launch-cluster <cluster-name> \
-   --keyPairName <AWS-key-pair-name> \
-   --nodeType t2.medium \
-   --zone us-west-2a \
-   --provisisoner aws
+#. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-2. Copy ``HelloWorld.py`` to the leader node.  
-:: 
+        (venv) $ toil launch-cluster <cluster-name> \
+        --keyPairName <AWS-key-pair-name> \
+        --nodeType t2.micro \
+        --zone us-west-2a
 
-  $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
+#. Copy ``HelloWorld.py`` from the :ref:`quickstart example <quickstart>`. to the node using the :ref:`rsyncCluster`
+   command. ::
 
-3. Login to the cluster leader node.
-::
+    $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
 
-  $ (venv) toil ssh-cluster <cluster-name>
+.. tip::
 
-4. Run the Toil script in the cluster 
-::
+    Launching a Toil script from the root directory is currently not supported. Make sure when you copy over your script
+    you put it in some sub-directory such as ``/tmp`` in this case.
 
-  $ python /tmp/HelloWorld.py \
-  aws:us-west-2:my-aws-jobstore
+Launch a Toil workflow in AWS
+-----------------------------
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same
+``HelloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
 
-.. note::
+Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a
+couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible
+if we were to use the ``file`` job store with a locally mounted file system on the leader.
 
-   Toil can save output from a job in various output locations including files and, as in the example above, an S3 bucket called ``my-aws-jobstore``.  See the :ref:`jobStoreInterface` for more information.
+#. Launch a cluster in AWS. ::
 
-6. Exit from the SSH connection.
-::
+       $ (venv) toil launch-cluster <cluster-name> \
+       --keyPairName <AWS-key-pair-name> \
+       --nodeType t2.medium \
+       --zone us-west-2a \
 
-  $ exit
+   Notice that jobStore option is prefixed by `aws:us-west-2`. This indicates that you are using a jobStore on aws and
+   that your region is `us-west-2`.
 
-7. Remove the S3 bucket created in the ``HelloWorld.py`` workflow.
-::
+#. Copy ``HelloWorld.py`` to the leader node. ::
 
-  $ (venv) toil clean <cluster-name>
+      $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
 
-8. Destroy the cluster.
-::
+#. Login to the cluster leader node. ::
 
-  $ (venv) toil destroy-cluster <cluster-name>
+      $ (venv) toil ssh-cluster <cluster-name>
 
-.. _Toil development guide: jobStoreInterface
+#. Run the Toil script in the cluster ::
 
+      $ python /tmp/HelloWorld.py \
+      aws:us-west-2:my-aws-jobstore
+
+   .. note::
+
+      Toil can save output from a job in various output locations including files and, as in the example above, an S3
+      bucket called ``my-aws-jobstore``.  See the :ref:`jobStoreInterface` for more information.
+
+#. Exit from the SSH connection. ::
+
+      $ exit
+
+#. Remove the S3 bucket created in the ``HelloWorld.py`` workflow. ::
+
+      $ (venv) toil clean <cluster-name>
+
+#. Destroy the cluster. ::
+
+      $ (venv) toil destroy-cluster <cluster-name>
+
+.. _awscwl:
 
 Run a CWL workflow on AWS
 -------------------------
 In this section, we describe how to run a CWL workflow with Toil on AWS.
 
+#. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-1. Launch the workflow in AWS.
-::
+    (venv) $ toil launch-cluster <cluster-name> \
+    --keyPairName <AWS-key-pair-name> \
+    --nodeType t2.micro \
+    --zone us-west-2a
 
-   $ (venv) toil launch-cluster <cluster-name> \
-   --keyPairName <AWS-key-pair-name> \
-   --nodeType t2.medium \
-   --zone us-west-2a \
-   --provisisoner aws
+#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the
+   :ref:`rsyncCluster` command. ::
 
-2. Copy the example.cwl workflow and associated YML file to the cluster. 
-::
+        $ (venv) toil rsync-cluster <cluster-name> example.cwl example-job.cwl :/tmp
 
-  $ (venv) toil rsync-cluster <cluster-name> example.cwl :/tmp
-  $ (venv) toil rsync-cluster <cluster-name> example-job.yml :/tmp
+#. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
 
-3. Launch the CWL workflow.
-::
+      $ (venv) toil ssh-cluster <cluster-name> \
+      cwltoil \
+      /tmp/example.cwl \
+      /tmp/example-job.yml
 
-  $ (venv) toil ssh-cluster <cluster-name> \
-   cwltoil \
-   /tmp/example.cwl \
-   /tmp/example-job.yml
+   ..  tip::
 
-When running a CWL workflow on AWS, input files can be provided either on the
-local file system or in S3 buckets using ``s3://`` URL references. Final output
-files will be copied to the local file system of the leader node.
+      When running a CWL workflow on AWS, input files can be provided either on the
+      local file system or in S3 buckets using ``s3://`` URL references. Final output
+      files will be copied to the local file system of the leader node.
 
-4. Destroy the cluster. 
-::
+#. Destroy the cluster. ::
 
-  $ toil destroy-cluster <cluster-name>
+      $ toil destroy-cluster <cluster-name>
 
 Details about Launching a Cluster in AWS
 ----------------------------------------
