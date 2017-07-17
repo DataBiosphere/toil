@@ -88,7 +88,7 @@ command line parameters to select and configure the batch system to use.
 .. _runningDetail:
 
 
-A real-world example
+Real-World Example
 --------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline

@@ -53,7 +53,9 @@ Extras
 ------
 
 Some optional features, called *extras*, are not included in the basic
-installation of Toil. To install Toil with all its bells and whistles, run
+installation of Toil. To install Toil with all its bells and whistles, first
+install any necessary headers and libraries if using the mesos or encryption
+extras (`python-dev`_, `libffi-dev`_). Then run
 
 ::
 
@@ -119,7 +121,9 @@ Here's what each extra provides:
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Only needed for the ``mesos`` and ``encryption`` extras. On Ubuntu::
+   Only needed for the ``mesos`` and ``encryption`` extras.
+
+   On Ubuntu::
 
       $ sudo apt-get install build-essential python-dev
 
@@ -128,16 +132,20 @@ Here's what each extra provides:
       $ xcode-select --install
 
 .. _libffi-dev:
-.. topic:: libffi headers and library
+.. topic:: Encryption specific headers and library
 
-   Only needed for the ``encryption`` extra. On Ubuntu::
+   Only needed for the ``encryption`` extra.
 
-      $ sudo apt-get install libffi-dev
+   On Ubuntu::
+
+      $ sudo apt-get install libssl-dev libffi-dev
 
    On macOS::
 
-      $ brew install libffi
+      $ brew install libssl libffi
 
+   Or see `Cryptography`_ for other systems.
 
+.. _Cryptography: https://cryptography.io/en/latest/installation/
 
 .. _Homebrew: http://brew.sh/
