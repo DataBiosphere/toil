@@ -156,7 +156,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 except JobException:
                     pass
                 else:
-                    self.fail('Expected %s to be raised' % JobException )
+                    self.fail('Expected %s to be raised' % JobException)
 
                 # Now check the file is properly sorted..
                 with open(tempSortFile, 'r') as fileHandle:

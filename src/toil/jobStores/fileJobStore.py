@@ -164,15 +164,19 @@ class FileJobStore(AbstractJobStore):
     # Functions that deal with temporary files associated with jobs
     ##########################################
 
-    def _copyOrLink(self, url, path):
+    def _copyOrLink(self, srcURL, destPath):
         # linking is not done be default because of issue #1755
+        srcPath = self._extractPathFromUrl(srcURL)
         if self.linkImports:
             try:
-                os.link(os.path.realpath(self._extractPathFromUrl(url)), path)
+                os.link(os.path.realpath(srcPath), destPath)
             except OSError:
-                shutil.copyfile(self._extractPathFromUrl(url), path)
+                shutil.copyfile(srcPath, destPath)
+            else:
+                # make imported files read-only if they're linked for protection
+                os.chmod(destPath, 0o444)
         else:
-            shutil.copyfile(self._extractPathFromUrl(url), path)
+            shutil.copyfile(srcPath, destPath)
 
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
