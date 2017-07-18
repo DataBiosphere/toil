@@ -100,7 +100,7 @@ def resolve_indirect_inner(d):
             if isinstance(v, MergeInputs):
                 r[k] = v.resolve()
             else:
-                r[k] = v[1][v[0]]
+                r[k] = v[1].get(v[0])
         return r
     else:
         return d
