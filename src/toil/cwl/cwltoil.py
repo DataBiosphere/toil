@@ -93,7 +93,7 @@ class StepValueFrom(object):
         return cwltool.expression.do_eval(self.expr, inputs, self.req,
                                           None, None, {}, context=ctx)
 
-def resolve_indirect_inner(d):
+def _resolve_indirect_inner(d):
     if isinstance(d, IndirectDict):
         r = {}
         for k, v in d.items():
@@ -114,7 +114,7 @@ def resolve_indirect(d):
             needEval = True
         else:
             inner[k] = v
-    res = resolve_indirect_inner(inner)
+    res = _resolve_indirect_inner(inner)
     if needEval:
         ev = {}
         for k, v in iteritems(d):
