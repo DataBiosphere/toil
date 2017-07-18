@@ -142,6 +142,7 @@ integration_test: check_venv check_build_reqs sdist push_docker
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
+	$(pip) install setuptools --upgrade
 	$(python) setup.py egg_info sdist bdist_egg upload
 clean_pypi:
 	- rm -rf build/
