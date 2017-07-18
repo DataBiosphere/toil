@@ -171,29 +171,27 @@ def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
             fileHandle.write(line)
 
 
-def main():
-    parser = ArgumentParser()
-    Job.Runner.addToilOptions(parser)
-
-    parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
-    parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
-    parser.add_argument("--fileToSort", dest="fileToSort", help="The file you wish to sort")
-    parser.add_argument("--N", dest="N",
-                        help="The threshold below which a serial sort function is used to sort file. "
-                             "All lines must of length less than or equal to N or program will fail",
-                        default=10000)
-
-    options = parser.parse_args()
+def main(options=None):
+    if not options:
+        parser = ArgumentParser()
+        Job.Runner.addToilOptions(parser)
+        parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
+        parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
+        parser.add_argument("--fileToSort", dest="fileToSort", help="The file you wish to sort")
+        parser.add_argument("--N", dest="N",
+                            help="The threshold below which a serial sort function is used to sort file. "
+                                 "All lines must of length less than or equal to N or program will fail",
+                            default=10000)
+        options = parser.parse_args()
 
     fileName = options.fileToSort
 
     if options.fileToSort is None:
-        fileName = 'file_to_sort.txt'
+        # make the file ourselves
+        fileName = 'fileToSort.txt'
         print 'No sort file specified. Generating one automatically called %s.' % fileName
         makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
-        if options.numLines != defaultLines or options.lineLength != defaultLineLen:
-            raise RuntimeError("Cannot set options '--numLines' or '--lineLength' with option '--fileToSort'.")
         if not os.path.exists(options.fileToSort):
             raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
 
