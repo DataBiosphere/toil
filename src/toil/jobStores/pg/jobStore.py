@@ -34,22 +34,27 @@ class JobStore(AbstractJobStore):
         super(JobStore, self).__init__()
         self.db_url, filestore_url = url.split('+')
         logger.debug("Connecting to '%s'", self.db_url)
+        if '#' in self.db_url:
+            self.db_url, self.namespace = self.db_url.split('#')
+        else:
+            self.namespace = 'default'
         self.conn = psycopg2.connect(self.db_url, cursor_factory=DictCursor)
         self.fileStore = fileStores.fromUrl(filestore_url)
 
-    def initialize(self, config):
-        self._create_jobstore_table()
-        self._create_filestore_table()
-        self._create_sql_triggers()
-        self.conn.commit()
+        self._setup_db()
 
+
+    def initialize(self, config):
         logger.debug('initialized')
         self.fileStore.initialize(config)
         super(JobStore, self).initialize(config)
 
     def resume(self):
         with self.conn.cursor() as cur:
-            cur.execute("select * from information_schema.tables where table_name=%s", ('job_store',))
+            cur.execute("select * from job_store where namespace=%s", (self.namespace,))
+            if not bool(cur.rowcount):
+                raise NoSuchJobStoreException(self.url)
+            cur.execute("select * from file_store where namespace=%s", (self.namespace,))
             if not bool(cur.rowcount):
                 raise NoSuchJobStoreException(self.url)
         super(JobStore, self).resume()
@@ -59,8 +64,8 @@ class JobStore(AbstractJobStore):
     def destroy(self):
         try:
             with self.conn.cursor() as cur:
-                cur.execute('DROP TABLE IF EXISTS "job_store"')
-                cur.execute('DROP TABLE IF EXISTS "file_store"')
+                cur.execute('DELETE FROM job_store WHERE namespace = %s', (self.namespace, ))
+                cur.execute('DELETE FROM file_store WHERE namespace = %s', (self.namespace, ))
             self.fileStore.destroy()
             self.conn.commit()
             logger.debug('Successfully deleted jobStore:%s' % self.db_url)
@@ -91,14 +96,14 @@ class JobStore(AbstractJobStore):
 
     def exists(self, jobStoreID):
         cur = self.conn.cursor()
-        cur.execute("SELECT job_store_id FROM job_store WHERE job_store_id = %s AND _deleted_at IS NULL;", (jobStoreID,))
+        cur.execute("SELECT job_store_id FROM job_store WHERE namespace = %s AND job_store_id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreID))
         self.conn.commit()
         return bool(cur.rowcount)
 
     def load(self, jobStoreID):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("SELECT * FROM job_store WHERE job_store_id = %s AND _deleted_at IS NULL;", (jobStoreID,))
+                cur.execute("SELECT * FROM job_store WHERE namespace = %s AND job_store_id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreID))
                 record = cur.fetchone()
         except RuntimeError as e:
             # Handle known erros
@@ -134,7 +139,9 @@ class JobStore(AbstractJobStore):
                             checkpoint = %s,
                             checkpoint_files_to_delete = %s,
                             chained_jobs = %s
-                        WHERE job_store_id = %s;
+                        WHERE
+                            namespace = %s AND
+                            job_store_id = %s;
                 """, (
                     job.command,
                     job._memory,
@@ -156,6 +163,7 @@ class JobStore(AbstractJobStore):
                     job.checkpoint,
                     job.checkpointFilesToDelete,
                     cPickle.dumps(job.chainedJobs),
+                    self.namespace,
                     job.jobStoreID,
                 ))
             self.conn.commit()
@@ -167,7 +175,7 @@ class JobStore(AbstractJobStore):
     def delete(self, jobStoreID):
         try:
             with self.conn.cursor() as cur:
-                cur.execute( "UPDATE job_store SET _deleted_at = now() WHERE job_store_id = %s AND _deleted_at IS NULL;", (jobStoreID,))
+                cur.execute( "UPDATE job_store SET _deleted_at = now() WHERE namespace = %s AND job_store_id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreID))
             self.conn.commit()
         except RuntimeError as e:
             # Handle known erros
@@ -177,7 +185,7 @@ class JobStore(AbstractJobStore):
     def jobs(self):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("SELECT * FROM job_store WHERE _deleted_at is NULL;")
+                cur.execute("SELECT * FROM job_store WHERE namespace = %s AND _deleted_at is NULL;", (self.namespace, ))
 
                 for record in cur:
                     yield self.__jobGraphFromRecord(record)
@@ -233,7 +241,7 @@ class JobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("SELECT id FROM file_store WHERE id = %s AND _deleted_at IS NULL;", (jobStoreFileID, ))
+                cur.execute("SELECT id FROM file_store WHERE namespace = %s AND id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreFileID))
                 exists = bool(cur.rowcount)
 
         except RuntimeError as e:
@@ -261,7 +269,7 @@ class JobStore(AbstractJobStore):
     def deleteFile(self, jobStoreFileID, force=False):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("UPDATE file_store SET _deleted_at = now() WHERE id = %s AND _deleted_at IS NULL;", (jobStoreFileID, ))
+                cur.execute("UPDATE file_store SET _deleted_at = now() WHERE namespace = %s AND id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreFileID))
                 if force and cur.rowcount:
                     self.fileStore.deleteFile(jobStoreFileID)
             self.conn.commit()
@@ -325,18 +333,19 @@ class JobStore(AbstractJobStore):
     def readStatsAndLogging(self, callback, readAll=False):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("SELECT id FROM file_store WHERE logs_and_stats IS TRUE AND _deleted_at IS NULL;")
-                for record in cur:
-                    with self.fileStore.readFileStream(record['id']) as f:
+                cur.execute("SELECT id FROM file_store WHERE namespace = %s AND logs_and_stats IS TRUE AND _deleted_at IS NULL;", (self.namespace, ))
+                results = cur.fetchall()
+                for record in results:
+                    with self.fileStore.readFileStream(record[0]) as f:
                         try:
                             callback(f)
                         except ValueError as e:
-                            logger.debug("log record: %s", record)
+                            logger.debug("ValueError for log record: %s", record)
                             raise e
-                cur.execute("UPDATE file_store SET _deleted_at = now() WHERE logs_and_stats IS TRUE;")
+                    cur.execute("UPDATE file_store SET _deleted_at = now() WHERE namespace = %s AND id = %s;", (self.namespace, record[0]))
 
-                return cur.rowcount
             self.conn.commit()
+            return len(results)
         except RuntimeError as e:
             # Handle known erros
             self.conn.rollback()
@@ -356,6 +365,7 @@ class JobStore(AbstractJobStore):
         return str(uuid4())
 
     def _insert_row(self, tableName, **fields):
+        fields['namespace'] = self.namespace
         placeholderList = ','.join("%%(%s)s" % key for key in fields.keys())
         fieldList = ','.join(inflection.underscore(key.strip('_')) for key in fields.keys())
         sqlQuery = "INSERT INTO %s (%s) VALUES (%s);" % (tableName, fieldList, placeholderList)
@@ -377,7 +387,7 @@ class JobStore(AbstractJobStore):
     def _getSharedFileID(self, sharedFileName):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("SELECT id FROM file_store WHERE shared IS TRUE AND name = %s AND _deleted_at IS NULL;", (sharedFileName, ))
+                cur.execute("SELECT id FROM file_store WHERE namespace = %s AND shared IS TRUE AND name = %s AND _deleted_at IS NULL;", (self.namespace, sharedFileName))
                 record = cur.fetchone()
                 if record is None:
                     raise NoSuchFileException(sharedFileName, sharedFileName)
@@ -397,26 +407,39 @@ class JobStore(AbstractJobStore):
         yield fileID
         self.conn.commit()
 
+    def __sanitize_record(self, record):
+        attrs = self.__camelize_keys(record)
+        attrs.pop('_createdAt')
+        attrs.pop('_updatedAt')
+        attrs.pop('_deletedAt')
+        attrs.pop('namespace')
+        return attrs
+
     def __camelize_keys(self, record):
         return dict((inflection.camelize(k.replace('_id', '_iD'), False), v) for k, v in record.iteritems())
 
     def __jobGraphFromRecord(self, record):
-        attrs = self.__camelize_keys(record)
+        attrs = self.__sanitize_record(record)
         attrs['predecessorsFinished'] = set(attrs['predecessorsFinished'])
         attrs['memory'] = int(attrs['memory'])
         attrs['disk'] = int(attrs['disk'])
         attrs['stack'] = cPickle.loads(attrs['stack'])
         attrs['chainedJobs'] = cPickle.loads(attrs['chainedJobs'])
-        attrs.pop('_createdAt')
-        attrs.pop('_updatedAt')
-        attrs.pop('_deletedAt')
         return JobGraph(**attrs)
+
+    def _setup_db(self):
+        self._create_jobstore_table()
+        self._create_filestore_table()
+        self._create_sql_triggers()
+        self.conn.commit()
+        logger.debug('Finished setting up DB')
 
     def _create_jobstore_table(self):
         try:
             with self.conn.cursor() as cur:
                 cur.execute("""
-                    CREATE TABLE job_store (
+                    CREATE TABLE IF NOT EXISTS job_store (
+                        namespace VARCHAR,
                         job_store_id UUID PRIMARY KEY,
                         command VARCHAR,
                         memory BIGINT,
@@ -443,6 +466,7 @@ class JobStore(AbstractJobStore):
                         _deleted_at TIMESTAMP
                     );
                 """)
+            logger.debug('Created job_store table')
         except RuntimeError as e:
             # Handle known erros
             raise e
@@ -451,7 +475,8 @@ class JobStore(AbstractJobStore):
         try:
             with self.conn.cursor() as cur:
                 cur.execute("""
-                    CREATE TABLE file_store (
+                    CREATE TABLE IF NOT EXISTS file_store (
+                        namespace VARCHAR,
                         id UUID PRIMARY KEY,
                         job_store_id UUID,
                         name VARCHAR,
@@ -463,6 +488,7 @@ class JobStore(AbstractJobStore):
                         _deleted_at TIMESTAMP
                     );
                 """)
+            logger.debug('Created file_store table')
         except RuntimeError as e:
             # Handle known erros
             raise e
@@ -472,36 +498,51 @@ class JobStore(AbstractJobStore):
     def _create_sql_triggers(self):
         try:
             with self.conn.cursor() as cur:
-                cur.execute("""
-                    CREATE OR REPLACE FUNCTION update_updated_at_column()
-                        RETURNS TRIGGER AS $$
-                        BEGIN
-                            NEW._updated_at = now();
-                            RETURN NEW;
-                        END;
-                        $$ language 'plpgsql';
-                """)
-                cur.execute("""
-                    do
-                    $$
-                    declare
-                      l_rec record;
-                    begin
-                      for l_rec in (select table_schema, table_name, column_name
-                                    from information_schema.columns
-                                    where table_schema = 'public'
-                                      and column_name = '_updated_at') loop
-                         execute format ('
-                            CREATE TRIGGER tg_%I_updated_at
-                                BEFORE UPDATE
-                                ON %I.%I
-                                FOR EACH ROW
-                                EXECUTE PROCEDURE update_updated_at_column();
-                            ', l_rec.table_name, l_rec.table_schema, l_rec.table_name);
-                      end loop;
-                    end;
-                    $$
-                """)
+                function_plsql = """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'set_updated_at_column') THEN
+                            CREATE FUNCTION set_updated_at_column()
+                                RETURNS TRIGGER AS $func$
+                                BEGIN
+                                    NEW._updated_at = now();
+                                    RETURN NEW;
+                                END;
+                                $func$ language 'plpgsql';
+                        END IF;
+                    END
+                    $$;
+                """
+                trigger_plsql = """
+                    DO
+                    $do$
+                    DECLARE
+                       _tbl text;
+                       _trg text;
+                    BEGIN
+                    FOR _tbl, _trg IN
+                       SELECT c.oid::regclass::text, 'tg_' || relname || '_set_updated_at'
+                       FROM   pg_class        c
+                       JOIN   pg_namespace    n ON n.oid = c.relnamespace
+                       LEFT   JOIN pg_trigger t ON t.tgname = 'tg_' || c.relname || '_set_updated_at'
+                                               AND t.tgrelid = c.oid  -- check only respective table
+                       WHERE  n.nspname = 'public'
+                       AND    c.relkind = 'r'   -- only regular tables
+                       AND    t.tgrelid IS NULL -- trigger does not exist yet
+                    LOOP
+                       EXECUTE format(
+                          'CREATE TRIGGER %I
+                           BEFORE UPDATE ON %s
+                           FOR EACH ROW EXECUTE PROCEDURE set_updated_at_column()'
+                         , _trg, _tbl::text
+                       );
+                    END LOOP;
+                    END
+                    $do$;
+                """
+                cur.execute(function_plsql)
+                cur.execute(trigger_plsql)
+            logger.debug('Created updated_at triggers')
         except RuntimeError as e:
             # Handle known erros
             raise e
