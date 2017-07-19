@@ -58,6 +58,18 @@ def addLoggingFileHandler(fileName, rotatingLogging=False):
     rootLogger.addHandler(handler)
     return handler
 
+def addSyslogHandler(destination):
+    from logging.handlers import SysLogHandler
+
+    if ':' in destination:
+        address, port = destination.split(':')
+        address = address or "localhost"
+        port = int(port or '514')
+        destination = (address, port)
+
+    syslog = SysLogHandler(address=destination)
+    rootLogger.addHandler(syslog)
+    return syslog
 
 def setLogLevel(level, logger=None):
     """
@@ -90,7 +102,7 @@ def logFile(fileName, printFunction=logger.info):
         printFunction("%s:\t%s" % (shortName, line))
         line = fileHandle.readline()
     fileHandle.close()
-    
+
 def logStream(fileHandle, shortName, printFunction=logger.info):
     """Writes out a formatted version of the given log stream.
     """
@@ -138,6 +150,7 @@ def _addLoggingOptions(addOptionFn):
     addOptionFn("--logFile", dest="logFile", help="File to log in")
     addOptionFn("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                 help="Turn on rotating logging, which prevents log files getting too big.")
+    addOptionFn("--syslogDest", dest="syslogDest", help="syslog destination as <IP_OR_HOSTNAME>:<UDP_PORT>. syslog is disabled by default")
 
 def setLoggingFromOptions(options):
     """
@@ -157,6 +170,9 @@ def setLoggingFromOptions(options):
     if options.logFile is not None:
         addLoggingFileHandler(options.logFile, rotatingLogging=options.logRotating)
         logger.info("Logging to file '%s'." % options.logFile)
+    if options.syslogDest is not None:
+        addSyslogHandler(options.syslogDest)
+        logger.info("Logging to syslog '%s'." % options.syslogDest)
 
 
 def system(command):

@@ -128,11 +128,10 @@ class StatsAndLogging( object ):
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
+            jobStore.readStatsAndLogging(callback)
             if stop.is_set():
-                jobStore.readStatsAndLogging(callback)
                 break
-            if jobStore.readStatsAndLogging(callback) == 0:
-                time.sleep(0.5)  # Avoid cycling too fast
+            time.sleep(0.5)  # Avoid cycling too fast
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
