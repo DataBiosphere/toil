@@ -49,10 +49,10 @@ The ``singleMachine`` batch system is primarily used to prepare and debug workfl
 local machine. Once ready, they can be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
 
 Often during a Toil workflow files are generated and Toil
-needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files. The argument
-you passed in to your script ``file:my-job-store`` indicated where. The ``file:`` part just tells Toil you are using
-the ``file`` job store, which means everything is kept in a temporary directory called ``my-job-store``.
-(Read more about :ref:`jobStoreInterface`.)
+needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files shared
+between jobs. The argument you passed in to your script ``file:my-job-store`` indicated where. The ``file:``
+part just tells Toil you are using the ``file`` job store, which means everything is kept in a temporary directory
+called ``my-job-store``. (Read more about :ref:`jobStoreInterface`.)
 
 Toil is totally customizable! run ``python helloWorld.py --help`` to see a complete list of available options.
 
@@ -128,15 +128,47 @@ that merge-sorts a temporary file.
 
 .. todo:: What is the point of this example? It could be used as in introduction to developing a workflow. In that case, the structure of the script should be explained.
 
-1. Download :download:`the example code <toil-sort-example.py>`.
+Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
-2. Run it with the default settings::
+First let's just run it and see what happens.
 
-      $ python toil-sort-example.py file:jobStore
+#. Run it with the default settings::
 
-3. Run with custom options::
+      $ python sort.py file:jobStore
 
-      $ python toil-sort-example.py file:jobStore --num-lines=5000 --line-length=10 --workDir=/tmp/
+   It's created a file called ``fileToSort.txt`` in your current directory.
+   Have a look at it and notice that it contains a whole lot of sorted lines!
+
+#. Run with custom options::
+
+      $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/
+
+   Here we see that we can add our own options to a Toil script. The first two
+   options determine the number of lines and how many characters are in each line.
+   The last option is a built-in Toil option where temporary files unique to a
+   job are kept.
+
+To understand what's going on, let's break it down piece by piece.
+
+First we have the ``main()`` function.
+
+.. literalinclude:: ../../src/toil/test/sort/sort.py
+    :pyobject: main
+
+First we make a parser to process command line arguments using the `argparse`_ module.
+Next, we can launch the script starting with the job ``setup``
+
+.. literalinclude:: ../../src/toil/test/sort/sort.py
+    :pyobject: setup
+
+.. _argparse: https://docs.python.org/2.7/library/argparse.html
+
+``setup`` begins by importing the file into the job store where it can be read by this and all following jobs.
+This is done by calling ``job.fileStore.writeGlobalFile``. For more information check out :ref:`managingFiles`.
+
+.. todo:: WIP. I (jesse) will continue this once we can integrate the sort example #1746
+
+..
 
 The ``if __name__ == '__main__'`` boilerplate is required to enable Toil to
 import the job functions defined in the script into the context of a Toil
@@ -154,8 +186,6 @@ arguments for the workflow which includes both Toil's and ones defined inside
 ``toil-sort-example.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
 
-
-.. todo:: The following sections are duplicated in :ref:`commandRef`. Merge them?
 
 Logging
 ~~~~~~~
