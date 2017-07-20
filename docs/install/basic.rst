@@ -68,9 +68,11 @@ Here's what each extra provides:
 +----------------+------------------------------------------------------------+
 | Extra          | Description                                                |
 +================+============================================================+
-| ``aws``        | Provides support for storing workflow state using Amazon   |
-|                | Web Services (`AWS`_). This extra has no native            |
-|                | dependencies.                                              |
+| ``aws``        | Provides support for managing a cluster on Amazon Web      |
+|                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
+|                | Clusters can scale up and down automatically.              |
+|                | It also supports storing workflow state.                   |
+|                | This extra has no native dependencies.                     |
 +----------------+------------------------------------------------------------+
 | ``google``     | Experimental. Stores workflow state in `Google Cloud       |
 |                | Storage`_. This extra has no native dependencies.          |
@@ -116,9 +118,6 @@ Here's what each extra provides:
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Microsoft Azure: https://azure.microsoft.com/
-
-
-.. todo:: Is the aws extra used for the installation of the AWS provisioner, too?
 
 .. _python-dev:
 .. topic:: Python headers and static libraries
