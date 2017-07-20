@@ -32,10 +32,10 @@ The user easily can run the :ref:`quickstart` example on an aws instance using t
         --nodeType t2.micro \
         --zone us-west-2a
 
-#. Copy ``HelloWorld.py`` from the :ref:`quickstart example <quickstart>`. to the node using the :ref:`rsyncCluster`
+#. Copy ``helloWorld.py`` from the :ref:`quickstart example <quickstart>`. to the node using the :ref:`rsyncCluster`
    command. ::
 
-    $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
+    $ (venv) toil rsync-cluster <cluster-name> helloWorld.py :/tmp
 
 .. tip::
 
@@ -45,7 +45,7 @@ The user easily can run the :ref:`quickstart` example on an aws instance using t
 Launch a Toil workflow in AWS
 -----------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same
-``HelloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
+``helloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
 
 Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a
 couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible
@@ -58,12 +58,12 @@ if we were to use the ``file`` job store with a locally mounted file system on t
        --nodeType t2.medium \
        --zone us-west-2a \
 
-   Notice that jobStore option is prefixed by `aws:us-west-2`. This indicates that you are using a jobStore on aws and
-   that your region is `us-west-2`.
+   Notice that jobStore option is prefixed by ``aws:us-west-2``. This indicates that you are using a jobStore on aws and
+   that your region is ``us-west-2``.
 
-#. Copy ``HelloWorld.py`` to the leader node. ::
+#. Copy ``helloWorld.py`` to the leader node. ::
 
-      $ (venv) toil rsync-cluster <cluster-name> HelloWorld.py :/tmp
+      $ (venv) toil rsync-cluster <cluster-name> helloWorld.py :/tmp
 
 #. Login to the cluster leader node. ::
 
@@ -71,7 +71,7 @@ if we were to use the ``file`` job store with a locally mounted file system on t
 
 #. Run the Toil script in the cluster ::
 
-      $ python /tmp/HelloWorld.py \
+      $ python /tmp/helloWorld.py \
       aws:us-west-2:my-aws-jobstore
 
    .. note::
@@ -83,7 +83,7 @@ if we were to use the ``file`` job store with a locally mounted file system on t
 
       $ exit
 
-#. Remove the S3 bucket created in the ``HelloWorld.py`` workflow. ::
+#. Remove the S3 bucket created in the ``helloWorld.py`` workflow. ::
 
       $ (venv) toil clean <cluster-name>
 

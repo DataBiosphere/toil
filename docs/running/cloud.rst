@@ -25,6 +25,10 @@ look at :ref:`hotDeploying`.
 
 Toil Provisioner
 ----------------
+
+.. todo:: This section doesn't really make a lot of sense to me (jesse) In fact this whole page needs to be
+   redone or deleted, but I can't quite figure out how...
+
 The native Toil provisioner is included in Toil alongside the ``[aws]`` extra and
 allows us to spin up a cluster without any external dependencies.
 
