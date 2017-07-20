@@ -12,10 +12,11 @@ A Toil workflow can be run with just three steps.
  
 1. Install Toil (see :ref:`installation-ref`)
 
-2. Copy and paste the following code block into ``HelloWorld.py``:
+2. Copy and paste the following code block into ``helloWorld.py``:
 
    .. code-block:: python
 
+      from toil.common import Toil
       from toil.job import Job
 
       def helloWorld(message, memory="1G", cores=1, disk="1G"):
@@ -23,36 +24,41 @@ A Toil workflow can be run with just three steps.
 
       j = Job.wrapFn(helloWorld, "You did it!")
 
-      if __name__=="__main__":
+      if __name__ == "__main__":
           parser = Job.Runner.getDefaultArgumentParser()
           options = parser.parse_args()
-          print Job.Runner.startToil(j, options) #Prints Hello, world!, ...
-
-.. todo:: This example needs to be written in a simpler style per the Toil meeting discusssion on July 12th.
+          with Toil(options) as toil:
+              output = toil.start(j)
+          print output
 
 3. Specify a job store and run the workflow like so::
 
-       (venv) $ python HelloWorld.py file:my-job-store
+       (venv) $ python helloWorld.py file:my-job-store
 
 .. note::
 
-    don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that they
-    should have their :ref: `virtual environment <venvPrep>` running.
+   don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
+   they should have their :ref:`virtual environment <venvPrep>` running.
 
-Now you have run Toil on the ``singleMachine`` batch system (the default) using
-the ``file`` job store.
+Congradulations! You've run your first Toil workflow on the ``singleMachine`` batch system (the default) using the
+``file`` job store.
 
-The job store is where intermediate files are written during the workflow's execution. The ``file`` job store
-uses the files and directories on a locally-attached filesystem. In
-this case, any intermediate files are written to a directory called ``my-job-store`` in the directory where
-``HelloWorld.py`` is run. (Read more about :ref:`jobStoreInterface`.)
-
+The batch system is what schedules the jobs Toil creates. Toil supports many different kinds of batch systems
+(such as `Apache Mesos`_ and Grid Engine) which makes it easy to run your workflow in all kinds of places.
 The ``singleMachine`` batch system is primarily used to prepare and debug workflows on the
-local machine. Once they are ready, they will be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
+local machine. Once ready, they can be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
 
-Run ``python HelloWorld.py --help`` to see a complete list of available options.
+Often during a Toil workflow files are generated and Toil
+needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files. The argument
+you passed in to your script ``file:my-job-store`` indicated where. The ``file:`` part just tells Toil you are using
+the ``file`` job store, which means everything is kept in a temporary directory called ``my-job-store``.
+(Read more about :ref:`jobStoreInterface`.)
+
+Toil is totally customizable! run ``python helloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
+
+.. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 
 .. _cwlquickstart:
 

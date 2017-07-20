@@ -48,6 +48,7 @@ Toil can be easily installed using pip::
 
     $ pip install toil
 
+Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
 .. _extras:
 
