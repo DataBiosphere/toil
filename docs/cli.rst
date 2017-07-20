@@ -22,12 +22,15 @@ For most Toil scripts, executing::
 will show this list of options.
 
 It is also possible to set and manipulate the options described when invoking a
-Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOptions`, e.g.::
+Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOptions`, e.g.
+
+.. code-block:: python
 
     options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
     options.logLevel = "INFO" # Set the log level to the info level.
 
-    Job.Runner.startToil(Job(), options) # Run the script
+    with Toil(options) as toil:
+        toil.start(Job())  # Run the script
 
 .. _loggingRef:
 
