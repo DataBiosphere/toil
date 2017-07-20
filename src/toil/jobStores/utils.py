@@ -198,8 +198,8 @@ class ReadablePipe(object):
             with os.fdopen(self.writable_fh, 'w') as writable:
                 self.writeTo(writable)
         except IOError as e:
-            # The file may have been closed by the reading thread,
-            # which is OK.
+            # The other side of the pipe may have been closed by the
+            # reading thread, which is OK.
             if e.strerror != 'Broken pipe':
                 raise
 
@@ -217,7 +217,7 @@ class ReadablePipe(object):
         return self.readable
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Close the write end of the pipe. The writing thread may
+        # Close the read end of the pipe. The writing thread may
         # still be writing to the other end, but this will wake it up
         # if that's the case.
         self.readable.close()
