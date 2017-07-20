@@ -738,6 +738,16 @@ class AbstractJobStoreTest:
             cleaner = self._createJobStore()
             cleaner.destroy()
 
+        def testEmptyFileStoreIDIsReadable(self):
+            """Simply creates an empty fileStoreID and attempts to read from it."""
+            id = self.master.getEmptyFileStoreID()
+            fh, path = tempfile.mkstemp()
+            try:
+                self.master.readFile(id, path)
+                self.assertTrue(os.path.isfile(path))
+            finally:
+                os.unlink(path)
+
         def _largeLogEntrySize(self):
             """
             Sub-classes may want to override these in order to maximize test coverage
