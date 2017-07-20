@@ -301,7 +301,9 @@ class CWLJob(Job):
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
                                                             tmpdir=tmpdir,
+                                                            tmp_outdir_prefix=self.executor_options['tmpdir'] + '/',
                                                             tmpdir_prefix="tmp",
+                                                            move_outputs=None,
                                                             make_fs_access=cwltool.stdfsaccess.StdFsAccess,
                                                             **opts)
         if status != "success":
