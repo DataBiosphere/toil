@@ -47,6 +47,7 @@ class CWLDirTest(ToilTest):
 
     def test_run_mkdir(self):
         """Test that we can run a cwl step that creates direcotries"""
+        self.maxDiff = None
         # create temp dirs
         tmpdir, workdir, outdir = self._create_all_tmpdir()
         # the cwl file with the description of the step
@@ -55,20 +56,20 @@ class CWLDirTest(ToilTest):
         jobfile = os.path.join(workdir, 'input.json')
         self._write_to_json(input, jobfile)
         expected = {
-            "dirout": {
-                "path": os.path.join(outdir, "foobaz"),
-                "basename": "foobaz",
-                "listing": [
+            u'dirout': {
+                u'path': unicode('//' + os.path.join(outdir, 'foobaz')),
+                u'basename': u'foobaz',
+                u'listing': [
                     {
-                        "path": os.path.join(outdir, "foobaz/bar"),
-                        "basename": "bar",
-                        "listing": [],
-                        "class": "Directory",
-                        "location": os.path.join(outdir, "foobaz/bar")
+                        u'path': unicode('//' + os.path.join(outdir, 'foobaz/bar')),
+                        u'basename': u'bar',
+                        u'listing': [],
+                        u'class': u'Directory',
+                        u'location': unicode('file://' + os.path.join(outdir, 'foobaz/bar'))
                     }
                 ],
-                "location": "file://" + os.path.join(outdir, "/foobaz"),
-                "class": "Directory"
+                u'location': unicode('file://' + os.path.join(outdir, '/foobaz')),
+                u'class': u'Directory'
             }
         }
 
@@ -82,11 +83,15 @@ class CWLDirTest(ToilTest):
         except:
             out = st.getvalue()
         # check expected output matches observed
+        for root, subFolder, files in os.walk(outdir):
+            print root
+
         self.assertEquals(out, expected)
     
     def test_run_ls(self):
         """Test that we can run a cwl step that lists content of a Directory"""
         # some internal functions for readibility
+        self.maxDiff = None
         def _populate_input_dir(content, dir):
             """content is a tuple with strings. dir is the path to the
             directory to populate"""
