@@ -50,7 +50,7 @@ def runSetup():
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170721130823',
+                'cwltool==1.0.20170721221557',
                 'schema-salad==2.6.20170712194300',
                 'cwltest>=1.0.20170721135308',
                 ]},
