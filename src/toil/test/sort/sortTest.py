@@ -92,7 +92,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
                 options.disableCaching = disableCaching  # FIXME maybe this line should be deleted
-                options.N = 10000
+                options.downCheckpoints = downCheckpoints
+                options.N = N
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")

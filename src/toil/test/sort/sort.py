@@ -37,7 +37,7 @@ def setup(job, inputFile, N, downCheckpoints):
     job.fileStore.logToMaster("Starting the merge sort")
     return job.addChildJobFn(down,
                              inputFile, N,
-                             downCheckpoints=downCheckpoints,
+                             downCheckpoints,
                              memory='1000M').rv()
 
 
@@ -176,6 +176,9 @@ def main(options=None):
                             help="The threshold below which a serial sort function is used to sort file. "
                                  "All lines must of length less than or equal to N or program will fail",
                             default=10000)
+        parser.add_argument('--downCheckpoints', action='store_true',
+                            help='If this option is set, the workflow will make checkpoints on its way through'
+                                 'the recursive "down" part of the sort')
         options = parser.parse_args()
 
     fileName = options.fileToSort
@@ -197,7 +200,8 @@ def main(options=None):
         if not toil.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
             sortFileID = toil.importFile(sortFileURL)
-            sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), False, memory=sortMemory))
+            sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
+                                                    memory=sortMemory))
             toil.exportFile(sortedFileID, sortFileURL)
         else:
             toil.restart()
