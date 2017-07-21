@@ -34,12 +34,6 @@ def setup(job, inputFile, N, downCheckpoints):
     Sets up the sort.
     Returns the FileID of the sorted file
     """
-    # insure default resource requirements are being set correctly
-    assert job.cores is not None
-    assert job.disk is not None
-    assert job.preemptable is not None
-    # insure user specified resource requirements are being set correctly
-    assert job.memory is not None
     job.fileStore.logToMaster("Starting the merge sort")
     return job.addChildJobFn(down,
                              inputFile, N,
