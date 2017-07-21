@@ -65,6 +65,9 @@ support for the stable v1.0 specification, only lacking the following features:
   be enumerated as Files.
 - `File literals`_ that specify only ``contents`` to a File without an explicit
   file name.
+- Writable `InitialWorkDirRequirement
+  <http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement>`
+  objects. Standard readable inputs do work.
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
 
@@ -199,6 +202,22 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_GRIDENGINE_PE     | Parallel environment arguments for qsub and for    |
 |                        | the gridengine batch system. There is no default   |
 |                        | value for this variable.                           |
++------------------------+----------------------------------------------------+
+| TOIL_TORQUE_ARGS       | Arguments for qsub for the Torque batch system.    |
+|                        | Do not pass CPU or memory specifications here.     |
+|                        | Instead, define extra parameters for the job such  |
+|                        | as queue. Example: -q medium                       |
+|                        | Use TOIL_TORQUE_REQS to pass extra values for the  |
+|                        | -l resource requirements parameter.                |
+|                        | There is no default value for this variable.       |
++------------------------+----------------------------------------------------+
+| TOIL_TORQUE_REQS       | Arguments for the resource requirements for Torque |
+|                        | batch system. Do not pass CPU or memory            |
+|                        | specifications here. Instead, define extra resource| 
+|                        | requirements as a string that goes after the -l    |
+|                        | argument to qsub. Example:                         |
+|                        | walltime=2:00:00,file=50gb                         |
+|                        | There is no default value for this variable.       |
 +------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir

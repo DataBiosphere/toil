@@ -29,6 +29,8 @@ def runSetup():
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
         url="https://github.com/BD2KGenomics/toil",
+        classifiers=["License :: OSI Approved :: Apache Software License"],
+        license="Apache License v2.0",
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.5',

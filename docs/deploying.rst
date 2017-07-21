@@ -46,6 +46,7 @@ cannot be hot-deployed. Lastly we'll deal with the issue of declaring
 :ref:`Toil as a dependency <depending_on_toil>` of a workflow that is packaged
 as a setuptools distribution.
 
+.. _hotDeploying:
 
 Hot-deploying Toil
 ------------------
@@ -113,7 +114,7 @@ We can now run our workflow::
    If workflow's external dependencies contain native code (i.e. are not pure
    Python) then they must be manually installed on each worker.
 
-.. note::
+.. warning::
 
    Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
    this process as, instead of copying the source files, they create ``.egg-link``
@@ -121,9 +122,9 @@ We can now run our workflow::
    doesn't work either as it installs the project as a Python ``.egg`` which is
    also not currently supported by Toil (though it `could be`_ in the future).
 
-   It should also be noted that while using the
+   Also note that using the
    ``--single-version-externally-managed`` flag with ``setup.py`` will
-   prevent the installation of your package as an ``.egg``, it will also disable
+   prevent the installation of your package as an ``.egg``. It will also disable
    the automatic installation of your project's dependencies.
 
 

@@ -21,13 +21,15 @@ import shutil
 from subprocess import CalledProcessError, check_call
 import tempfile
 
+import pytest
+
 import toil
 import logging
 import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, integrative
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -80,21 +82,24 @@ class UtilsTest(ToilTest):
             commandTokens.append('--failIfNotComplete')
         return commandTokens
 
+    @needs_rsync3
+    @pytest.mark.timeout(1200)
     @needs_aws
     @integrative
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
-        keyName = 'jenkins@jenkins-master'
+        keyName = os.getenv('TOIL_AWS_KEYNAME')
+
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
             system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro',
-                    '--keyPairName=jenkins@jenkins-master', clusterName])
+                    '--keyPairName=' + keyName, clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-            
+
             userTags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3'}
             tags = {'Name': clusterName, 'Owner': keyName}
             tags.update(userTags)
@@ -103,11 +108,26 @@ class UtilsTest(ToilTest):
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--nodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
-            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
 
             # test leader tags
             leaderTags = AWSProvisioner._getLeader(clusterName).tags
             self.assertEqual(tags, leaderTags)
+
+            # Test strict host key checking
+            # Doesn't work when run locally.
+            if(keyName == 'jenkins@jenkins-master'):
+                try:
+                    AWSProvisioner.sshLeader(clusterName=clusterName, strict=True)
+                except RuntimeError:
+                    pass
+                else:
+                    self.fail("Host key verification passed where it should have failed")
+
+            # Add the host key to known_hosts so that the rest of the tests can
+            # pass without choking on the verification prompt.
+            AWSProvisioner.sshLeader(clusterName=clusterName, strict=True, sshOptions=['-oStrictHostKeyChecking=no'])
+
+            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
 
             testStrings = ["'foo'",
                            '"foo"',
@@ -142,7 +162,7 @@ class UtilsTest(ToilTest):
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation
             fname = '!"#$%&\'()*+,-.;<=>:\ ?@[\\\\]^_`{|}~'
-            testData = os.urandom(3*(10**6))
+            testData = os.urandom(3 * (10**6))
             with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
                 relpath = os.path.basename(tmpFile.name)
                 tmpFile.write(testData)
@@ -169,6 +189,7 @@ class UtilsTest(ToilTest):
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
+
         # Get the sort command to run
         toilCommand = [sys.executable,
                        '-m', toil.test.sort.sort.__name__,
