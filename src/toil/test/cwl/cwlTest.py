@@ -19,7 +19,6 @@ import re
 import shutil
 import urllib
 import zipfile
-
 # Python 3 compatibility imports
 from six.moves import StringIO
 from six import u as unicode
@@ -55,6 +54,19 @@ class CWLTest(ToilTest):
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+    
+    def test_run_dynamic_resreq(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/dynresreq.cwl',
+                     'src/toil/test/cwl/dynresreq-job.json',
+                     outDir, {
+            u'output': {
+                u'path': unicode(os.path.join(outDir, 'cores.txt')),
+                u'basename': unicode("cores.txt"),
+                u'size': 2,
+                u'class': u'File',
+                u'checksum': u'sha1$a3db5c13ff90a36963278c6a39e4ee3c22e2a436' }})
+
 
     def test_restart(self):
         """Enable restarts with CWLtoil -- run failing test, re-run correct test.
