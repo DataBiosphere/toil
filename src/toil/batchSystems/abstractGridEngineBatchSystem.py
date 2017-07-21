@@ -29,9 +29,8 @@ from bd2k.util.objects import abstractclassmethod
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
+defaultSleepTime = 2*60 # sleeping time in seconds for state-querying functions
 
-# TODO: should this be an attribute?  Used in the worker and the batch system
-sleepSeconds = 10
 
 class AbstractGridEngineBatchSystem(BatchSystemSupport):
     """
@@ -174,7 +173,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                         self.forgetJob(jobID)
                 if len(killList) > 0:
                     logger.warn("Some jobs weren't killed, trying again in %is.", self.boss.sleepSeconds())
-                    time.sleep(self.boss.sleepSeconds())
 
             return True
 
@@ -183,6 +181,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             Check and update status of all running jobs.
             """
             activity = False
+            self.boss.sleepSeconds()
+
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.getJobExitCode(batchJobID)
@@ -211,7 +211,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                 activity |= self.checkOnJobs()
                 if not activity:
                     logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())
-                    time.sleep(self.boss.sleepSeconds())
 
         @abstractmethod
         def prepareSubmission(self, cpu, memory, jobID, command):
@@ -335,10 +334,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             if killedJobId in self.currentJobs:
                 self.currentJobs.remove(killedJobId)
             if jobIDs:
-                sleep = self.sleepSeconds()
                 logger.debug('Some kills (%s) still pending, sleeping %is', len(jobIDs),
-                             sleep)
-                time.sleep(sleep)
+                             self.sleepSeconds())
 
     def getIssuedBatchJobIDs(self):
         """
@@ -383,8 +380,13 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         return 30 * 60 # Half an hour
 
     @classmethod
-    def sleepSeconds(cls):
-        return 1
+    def sleepSeconds(cls, sleeptime=defaultSleepTime):
+        """ Helper function to drop on all state-querying functions to avoid over-querying.
+        """
+        logger.debug('Querying job state, waiting for %s beforehand', sleep)
+        time.sleep(sleeptime)
+        
+        return sleeptime
 
     @abstractclassmethod
     def obtainSystemConstants(cls):
