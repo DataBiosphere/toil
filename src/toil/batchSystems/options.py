@@ -24,14 +24,20 @@ def _parasolOptions(addOptionFn):
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % 1000)
 
+
 def _singleMachineOptions(addOptionFn):
     addOptionFn("--scale", dest="scale", default=None,
-        help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
-              "Used in singleMachine batch system. default=%s" % 1))
+                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
+                      "Used in singleMachine batch system. default=%s" % 1))
+    addOptionFn("--linkImports", dest="linkImports", default=False, action='store_true',
+                help=("When using Toil's importFile function for staging, input files are copied to the job store. "
+                      "Specifying this option saves space by hard-linking imported files. As long as caching is "
+                      "enabled Toil will protect the file automatically by changing the permissions to read-only."))
+
 
 def _mesosOptions(addOptionFn):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
-        help=("The host and port of the Mesos master separated by colon. default=%s" % 'localhost:5050'))
+                help=("The host and port of the Mesos master separated by colon. default=%s" % 'localhost:5050'))
 
 # Built in batch systems that have options
 _OPTIONS = [
@@ -41,6 +47,7 @@ _OPTIONS = [
     ]
 
 _options = list(_OPTIONS)
+
 
 def addOptionsDefinition(optionsDefinition):
     _options.append(optionsDefinition)
@@ -54,11 +61,11 @@ def setOptions(config, setOption):
 
     batchSystem.setOptions(setOption)
 
-def addOptions(addOptionFn):
 
+def addOptions(addOptionFn):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
-              help=("The type of batch system to run the job(s) with, currently can be one "
-                    "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
+                help=("The type of batch system to run the job(s) with, currently can be one "
+                      "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
     addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
                 help=("Should hot-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
@@ -68,17 +75,17 @@ def addOptions(addOptionFn):
         o(addOptionFn)
 
 def setDefaultOptions(config):
-    '''
+    """
     Set default options for builtin batch systems. This is required if a Config
     object is not constructed from an Options object.
-    '''
-
+    """
     config.batchSystem = "singleMachine"
     config.disableHotDeployment = False
     config.environment = {}
 
     # single machine
     config.scale = 1
+    config.linkImports = False
 
     # mesos
     config.mesosMasterAddress = 'localhost:5050'
