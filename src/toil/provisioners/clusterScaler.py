@@ -67,7 +67,8 @@ class RecentJobShapes(object):
                                iterable=10 * [Shape(wallTime=nodeShape.wallTime,
                                                     memory=config.defaultMemory,
                                                     cores=config.defaultCores,
-                                                    disk=config.defaultDisk)])
+                                                    disk=config.defaultDisk,
+                                                    preemptable=False)])
         # Calls to add and getLastNJobShapes may be concurrent
         self.lock = Lock()
         # Number of jobs to average over
@@ -112,8 +113,9 @@ def binPacking(jobShapes, nodeShapes):
     jobShapes.sort()
     jobShapes.reverse()
 
-    #When creating new reservations, we'll use a node
-    #with the least memory possible
+
+    #Prioritize preemptable node shapes with the lowest memory
+    nodeShapes.sort(key=lambda nS: not nS.preemptable)
     nodeShapes.sort(key=lambda nS: nS.memory)
     
     assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
@@ -144,20 +146,20 @@ def binPacking(jobShapes, nodeShapes):
                 """
                 Check if a job shape's resource requirements will fit within a given node allocation
                 """
-                return y.memory <= x.memory and y.cores <= x.cores and y.disk <= x.disk
+                return y.memory <= x.memory and y.cores <= x.cores and y.disk <= x.disk and (y.preemptable or not x.preemptable)
 
             def subtract(x, y):
                 """
                 Adjust available resources of a node allocation as a job is scheduled within it.
                 """
-                return Shape(x.wallTime, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk)
+                return Shape(x.wallTime, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk, y.preemptable)
 
             def split(x, y, t):
                 """
                 Partition a node allocation into two
                 """
-                return (Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk),
-                        NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk)))
+                return (Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk, y.preemptable),
+                        NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk, x.preemptable)))
 
             reservedSuccessfully = False
             for nodeShape in nodeShapes:
@@ -206,11 +208,11 @@ def binPacking(jobShapes, nodeShapes):
                             # add to reservation i
                             break
             # Case a new node reservation is required. Assign to the smallest node shape
-            # that will fit this job
+            # that will fit this job, prioritizing preemptable nodes
             if not reservedSuccessfully:
-                consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk]
+                consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk and (jS.preemptable or not nodeShape.preemptable)]
                 if len(consideredNodes) == 0:
-                    logger.warn("Provisioner unable to create nodes capable of running job with shape %s" % jobShape)
+                    logger.warn("Provisioner unable to create nodes capable of running job with shape %s" % jS)
                     return
                 nodeShape = consideredNodes[0]
                 x = NodeReservation(subtract(nodeShape, jS))
@@ -250,22 +252,15 @@ class ClusterScaler(object):
         self.totalAvgRuntime = 0.0
         
 
-        assert sum(config.maxPreemptableNodes) >= 0 and sum(config.maxNodes) >= 0
-        require(sum(config.maxPreemptableNodes) + sum(config.maxNodes) > 0,
-                'Must be able to create either preemptable or non-preemptable nodes.')
+        require(sum(config.maxNodes) > 0, 'Not configured to create nodes of any type.')
         
-        self.preemptableScaler = ScalerThread(scaler=self, preemptable=True, nodeTypes=self.config.preemptableNodeTypes) if sum(self.config.maxPreemptableNodes) > 0 else None
-        self.scaler = ScalerThread(scaler=self, preemptable=False, nodeTypes=self.config.nodeTypes) if sum(self.config.maxNodes) > 0 else None
+        self.scaler = ScalerThread(scaler=self)
 
     def start(self):
         """ 
         Start the cluster scaler thread(s).
         """
-        if self.preemptableScaler != None:
-            self.preemptableScaler.start()
-
-        if self.scaler != None:
-            self.scaler.start()
+        self.scaler.start()
 
     def check(self):
         """
@@ -273,13 +268,11 @@ class ClusterScaler(object):
         any exceptions raised in the threads are propagated in a timely fashion.
         """
         exception = False
-        for scalerThread in [self.preemptableScaler, self.scaler]:
-            if scalerThread is not None:
-                try:
-                    scalerThread.join(timeout=0)
-                except Exception as e:
-                    logger.exception(e)
-                    exception = True
+        try:
+            self.scaler.join(timeout=0)
+        except Exception as e:
+            logger.exception(e)
+            exception = True
         if exception:
             raise RuntimeError('The cluster scaler has exited due to an exception')
 
@@ -288,9 +281,7 @@ class ClusterScaler(object):
         Shutdown the cluster.
         """
         self.stop = True
-        for scaler in self.preemptableScaler, self.scaler:
-            if scaler is not None:
-                scaler.join()
+        self.scaler.join()
                 
     def getAverageRuntime(self, jobName):
         if jobName in self.jobNameToAvgRuntime:
@@ -325,11 +316,9 @@ class ClusterScaler(object):
         self.totalAvgRuntime = float(self.totalAvgRuntime*(sum(self.jobNameToNumCompleted.values()) - 1) + wallTime)/sum(self.jobNameToNumCompleted.values())
 
         
-        s = Shape(wallTime=wallTime, memory=job.memory, cores=job.cores, disk=job.disk)
-        if job.preemptable and self.preemptableScaler is not None:
-            self.preemptableScaler.addRecentJobShape(s)
-        else:
-            self.scaler.addRecentJobShape(s)
+        s = Shape(wallTime=wallTime, memory=job.memory, cores=job.cores, disk=job.disk,
+                preemptable=job.preemptable)
+        self.scaler.addRecentJobShape(s)
 
 
 class ScalerThread(ExceptionalThread):
@@ -347,49 +336,46 @@ class ScalerThread(ExceptionalThread):
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
     """
-    def __init__(self, scaler, preemptable, nodeTypes):
+    def __init__(self, scaler):
         """
         :param ClusterScaler scaler: the parent class
         """
-        super(ScalerThread, self).__init__(name='preemptable-scaler' if preemptable else 'scaler')
+        super(ScalerThread, self).__init__(name='scaler')
         self.scaler = scaler
-        self.preemptable = preemptable
-        self.nodeTypeString = ("preemptable" if self.preemptable else "non-preemptable") + " nodes" # Used for logging
-        # Resource requirements and wall-time of an atomic node allocation
 
-        self.nodeTypeToShape = {nodeType:self.scaler.provisioner.getNodeShape(nodeType=nodeType) for nodeType in nodeTypes}
+        self.nodeTypes = self.scaler.provisioner.nodeTypes
+        self.nodeShapes = self.scaler.provisioner.nodeShapes
 
-        logger.info("NodeTypes = %s" % self.nodeTypeToShape)
-        #Put the node shapes in smallest-to-largest order for prioritizing low-cost nodes
-        self.nodeTypes = nodeTypes
-        self.nodeShapes = [self.scaler.provisioner.getNodeShape(nodeType=nodeType) for nodeType in self.nodeTypes]
+        self.nodeShapeToType = dict(zip(self.nodeShapes, self.nodeTypes))
+
+        self.nodeShapes.sort()
+
         assert len(self.nodeShapes) > 0
 
         # Monitors the requirements of the N most recently completed jobs
         # Start off with 10 jobs with the shape of the smallest node type
         self.jobShapes = RecentJobShapes(scaler.config, nodeShape=self.nodeShapes[0])
         # Minimum/maximum number of either preemptable or non-preemptable nodes in the cluster
-        minNodes = scaler.config.minPreemptableNodes if preemptable else scaler.config.minNodes
-        maxNodes = scaler.config.maxPreemptableNodes if preemptable else scaler.config.maxNodes
+        minNodes = scaler.config.minNodes
+        maxNodes = scaler.config.maxNodes
         if minNodes is None:
-            minNodes = [0 for node in nodeTypes]
-        self.minNodes = dict(zip(nodeTypes, minNodes))
-        self.maxNodes = dict(zip(nodeTypes, maxNodes))
-        logger.info("Min nodes = %s" % self.minNodes)
+            minNodes = [0 for node in self.nodeTypes]
+        self.minNodes = dict(zip(self.nodeShapes, minNodes))
+        self.maxNodes = dict(zip(self.nodeShapes, maxNodes))
+
+        #Node shape to number of currently provisioned nodes
         self.totalNodes = defaultdict(int)
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             for preemptable in (True, False):
-                # although this thread only deals with either preemptable or non-preemptable nodes,
-                # the presence of any statically provisioned nodes effects both scaler threads so we
-                # will check for both preemptable and non preemptable static nodes
-                nodes = self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=None, preemptable=preemptable)
-                self.scaler.provisioner.setStaticNodes(nodes, preemptable)
-                for node in nodes:
-                    self.totalNodes[node.instanceType] += 1
-                if preemptable == self.preemptable:
-                    for node in nodes:
-                        self.totalNodes[node.instanceType] += 1
+                nodes = []
+                for nodeType in self.nodeTypes:
+                    nodes_thisType = self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=preemptable)
+                    nodeShape = self.scaler.provisioner.getNodeShape(nodeType, preemptable=preemptable)
+                    self.totalNodes[nodeShape] += len(nodes_thisType)
+                    nodes.extend(nodes_thisType)
 
+                self.scaler.provisioner.setStaticNodes(nodes, preemptable)
+                    
 
         self.stats = None
         logger.info('Starting with the following nodes in the cluster: %s' % self.totalNodes )
@@ -412,13 +398,14 @@ class ScalerThread(ExceptionalThread):
             with throttle(self.scaler.config.scaleInterval):
                 # Estimate of number of nodes needed to run recent jobs
                 recentJobShapes = self.jobShapes.get()
-                queuedJobs = self.scaler.leader.getJobs(preemptable=self.preemptable)
-                queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName), memory=job.memory, cores=job.cores, disk=job.disk) for job in queuedJobs]
+                queuedJobs = self.scaler.leader.getJobs()
+                logger.info("Detected %i queued jobs." % len(queuedJobs))
+                queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
                 nodesToRunRecentJobs = binPacking(jobShapes=recentJobShapes, nodeShapes=self.nodeShapes)
                 nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
-                for nodeType in self.nodeTypes:
-                    self.totalNodes[nodeType] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=self.preemptable))
-                    nodeShape = self.nodeTypeToShape[nodeType]
+                for nodeShape in self.nodeShapes:
+                    nodeType = self.nodeShapeToType[nodeShape]
+                    self.totalNodes[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
 
                     logger.info("Nodes of type %s to run recent jobs: %s" % (nodeType, nodesToRunRecentJobs[nodeShape]))
                     logger.info("Nodes of type %s to run queued jobs = %s" % (nodeType, nodesToRunQueuedJobs[nodeShape]))
@@ -430,70 +417,45 @@ class ScalerThread(ExceptionalThread):
                     logger.info("Estimating %i nodes of shape %s" % (estimatedNodes, nodeShape))
 
 
-                    # If we're the non-preemptable scaler, we need to see if we have a deficit of
-                    # preemptable nodes that we should compensate for.
-                    if not self.preemptable:
-                        compensation = self.scaler.config.preemptableCompensation
-                        assert 0.0 <= compensation <= 1.0
-                        # The number of nodes we provision as compensation for missing preemptable
-                        # nodes is the product of the deficit (the number of preemptable nodes we did
-                        # _not_ allocate) and configuration preference.
-                        compensationNodes = int(round(_preemptableNodeDeficit * compensation))
-                        if compensationNodes > 0:
-                            logger.info('Adding %d preemptable nodes to compensate for a deficit of %d '
-                                        'non-preemptable ones.', compensationNodes, _preemptableNodeDeficit)
-                        estimatedNodes += compensationNodes
-
                     jobsPerNode = (0 if nodesToRunRecentJobs[nodeShape] <= 0
                                    else len(recentJobShapes) / float(nodesToRunRecentJobs[nodeShape]))
-                    if estimatedNodes > 0 and self.totalNodes[nodeType] < self.maxNodes[nodeType]:
-                        logger.info('Estimating that cluster needs %s %s of shape %s, from current '
+                    if estimatedNodes > 0 and self.totalNodes[nodeShape] < self.maxNodes[nodeShape]:
+                        logger.info('Estimating that cluster needs %s of shape %s, from current '
                                     'size of %s, given a queue size of %s, the number of jobs per node '
                                     'estimated to be %s, an alpha parameter of %s.',
-                                    estimatedNodes, self.nodeTypeString, nodeShape,
-                                    self.totalNodes[nodeType], len(queuedJobs), jobsPerNode,
+                                    estimatedNodes, nodeShape,
+                                    self.totalNodes[nodeShape], len(queuedJobs), jobsPerNode,
                                     self.scaler.config.alphaPacking)
 
                     # Use inertia parameter to stop small fluctuations
-                    logger.info("Currently %i nodes of type %s in cluster" % (self.totalNodes[nodeType], nodeType))
-                    delta = self.totalNodes[nodeType] * max(0.0, self.scaler.config.betaInertia - 1.0)
-                    if self.totalNodes[nodeType] - delta <= estimatedNodes <= self.totalNodes[nodeType] + delta:
+                    logger.info("Currently %i nodes of type %s in cluster" % (self.totalNodes[nodeShape], nodeType))
+                    delta = self.totalNodes[nodeShape] * max(0.0, self.scaler.config.betaInertia - 1.0)
+                    if self.totalNodes[nodeShape] - delta <= estimatedNodes <= self.totalNodes[nodeShape] + delta:
                         logger.debug('Difference in new (%s) and previous estimates in number of '
                                      '%s (%s) required is within beta (%s), making no change.',
-                                     estimatedNodes, self.nodeTypeString, self.totalNodes[nodeType], self.scaler.config.betaInertia)
-                        estimatedNodes = self.totalNodes[nodeType]
+                                     estimatedNodes, nodeType, self.totalNodes[nodeShape], self.scaler.config.betaInertia)
+                        estimatedNodes = self.totalNodes[nodeShape]
 
                     # Bound number using the max and min node parameters
-                    if estimatedNodes > self.maxNodes[nodeType]:
+                    if estimatedNodes > self.maxNodes[nodeShape]:
                         logger.debug('Limiting the estimated number of necessary %s (%s) to the '
-                                     'configured maximum (%s).', self.nodeTypeString, estimatedNodes, self.maxNodes[nodeType])
-                        estimatedNodes = self.maxNodes[nodeType]
-                    elif estimatedNodes < self.minNodes[nodeType]:
+                                     'configured maximum (%s).', nodeType, estimatedNodes, self.maxNodes[nodeShape])
+                        estimatedNodes = self.maxNodes[nodeShape]
+                    elif estimatedNodes < self.minNodes[nodeShape]:
                         logger.info('Raising the estimated number of necessary %s (%s) to the '
-                                    'configured mininimum (%s).', self.nodeTypeString, estimatedNodes, self.minNodes)
-                        estimatedNodes = self.minNodes[nodeType]
+                                    'configured mininimum (%s).', nodeType, estimatedNodes, self.minNodes[nodeShape])
+                        estimatedNodes = self.minNodes[nodeShape]
 
-                    if estimatedNodes != self.totalNodes[nodeType]:
-                        logger.info('Changing the number of %s from %s to %s.', self.nodeTypeString, self.totalNodes[nodeType],
+                    if estimatedNodes != self.totalNodes[nodeShape]:
+                        logger.info('Changing the number of %s from %s to %s.', nodeType, self.totalNodes[nodeShape],
                                     estimatedNodes)
-                        self.totalNodes[nodeType] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=self.preemptable)
+                        self.totalNodes[nodeShape] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=nodeShape.preemptable)
                         
-                        # If we were scaling up the number of preemptable nodes and failed to meet
-                        # our target, we need to update the slack so that non-preemptable nodes will
-                        # be allocated instead and we won't block. If we _did_ meet our target,
-                        # we need to reset the slack to 0.
-                        if self.preemptable:
-                            if self.totalNodes[nodeType] < estimatedNodes:
-                                deficit = estimatedNodes - self.totalNodes[nodeType]
-                                logger.info('Preemptable scaler detected deficit of %d nodes.', deficit)
-                                _preemptableNodeDeficit = deficit
-                            else:
-                                _preemptableNodeDeficit = 0
 
-                        if self.stats:
-                            self.stats.checkStats()
+                    if self.stats:
+                        self.stats.checkStats()
                     
-        self.shutDown(preemptable=self.preemptable)
+        self.shutDown()
         logger.info('Scaler exited normally.')
 
     def setNodeCount(self, nodeType, numNodes, preemptable=False, force=False):
@@ -522,8 +484,10 @@ class ScalerThread(ExceptionalThread):
         for attempt in retry(predicate=self.scaler.provisioner.retryPredicate):
             with attempt:
                 workerInstances = self.getNodes(preemptable=preemptable)
+                logger.info("Cluster contains %i instances" % len(workerInstances))
                 #Reduce to nodes of the correct type
                 workerInstances = {node:workerInstances[node] for node in workerInstances if node.nodeType == nodeType}
+                logger.info("Cluster contains %i instances of type %s" % (len(workerInstances), nodeType))
                 numCurrentNodes = len(workerInstances)
                 delta = numNodes - numCurrentNodes
                 if delta > 0:
@@ -682,19 +646,14 @@ class ScalerThread(ExceptionalThread):
             nodeToInfo[node] = info
         return nodeToInfo
 
-    def shutDown(self, preemptable):
+    def shutDown(self):
         if self.stats:
             self.stats.shutDownStats()
         logger.debug('Forcing provisioner to reduce cluster size to zero.')
-        for nodeType in self.nodeTypes:
+        for nodeShape in self.nodeShapes:
+            preemptable = nodeShape.preemptable
+            nodeType = self.nodeShapeToType[nodeShape]
             totalNodes = self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
-        if totalNodes > len(self.scaler.provisioner.getStaticNodes(preemptable)):  # ignore static nodes
-            raise RuntimeError('Provisioner could not terminate all autoscaled nodes. There are '
-                               '%s nodes left in the cluster, %s of which were statically provisioned' % (totalNodes, len(self.getStaticNodes(preemptable)))
-                               )
-        elif totalNodes < len(self.scaler.provisioner.getStaticNodes(preemptable)):  # ignore static nodes
-            raise RuntimeError('Provisioner incorrectly terminated statically provisioned nodes.')
-
 
 class ClusterStats(object):
 

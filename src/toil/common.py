@@ -80,15 +80,9 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = []
-        self.preemptableNodeTypes = []
-        self.spotBids = []
-        self.preemptableNodeOptions = None
-        self.minPreemptableNodes = []
-        self.maxPreemptableNodes = []
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
-        self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
@@ -213,18 +207,9 @@ class Config(object):
         setOption("nodeOptions")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
-        setOption("preemptableNodeTypes", parseStrList)
-        setOption("spotBids", parseStrList)
-        setOption("preemptableNodeOptions")
-        setOption("minPreemptableNodes", parseIntList)
-        setOption("maxPreemptableNodes", parseIntList)
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-        setOption("preemptableCompensation", float)
-        require(0.0 <= self.preemptableCompensation <= 1.0,
-                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
-                self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -353,36 +338,22 @@ def _addOptions(addGroupFn, config):
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
-    for preemptable in (False, True):
-        def _addOptionFn(*name, **kwargs):
-            name = list(name)
-            if preemptable:
-                name.insert(-1, 'preemptable' )
-            name = ''.join((s[0].upper() + s[1:]) if i else s for i, s in enumerate(name))
-            terms = re.compile(r'\{([^{}]+)\}')
-            _help = kwargs.pop('help')
-            _help = ''.join((term.split('|') * 2)[int(preemptable)] for term in terms.split(_help))
-            addOptionFn('--' + name, dest=name,
-                        help=_help + ' The default is %s.' % getattr(config, name),
-                        **kwargs)
+    addOptionFn('--nodeTypes', default=None,
+                 help="Node type for {non-|}preemptable nodes. The syntax depends on the "
+                      "provisioner used. For the cgcloud and AWS provisioners this is the name "
+                      "of an EC2 instance type{|, followed by a colon and the price in dollar "
+                      "to bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
+    addOptionFn('--nodeOptions', default=None,
+                 help="Provisioning options for the {non-|}preemptable node type. The syntax "
+                      "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                      "provisioner support any node options.")
 
-        _addOptionFn('nodeTypes', metavar='TYPE',
-                     help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                          "provisioner used. For the cgcloud and AWS provisioners this is the name "
-                          "of an EC2 instance type{|, followed by a colon and the price in dollar "
-                          "to bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
-        _addOptionFn('nodeOptions', metavar='OPTIONS',
-                     help="Provisioning options for the {non-|}preemptable node type. The syntax "
-                          "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                          "provisioner support any node options.")
+    addOptionFn('--minNodes', default=None, 
+                 help="Mininum number of nodes in the cluster, if using "
+                              "auto-scaling.")
 
-        for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
-            _addOptionFn(p, 'nodes', default=None, metavar='NUM',
-                         help=q + " number of {non-|}preemptable nodes in the cluster, if using "
-                                  "auto-scaling.")
-
-    addOptionFn('--spotBids', metavar='NUM',
-        help="Spot bids for the preemptable node types.")
+    addOptionFn('--maxNodes', default=None,
+                help="Maximum number of nodes in the cluster, if using autoscaling")
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
@@ -398,15 +369,6 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
-    addOptionFn("--preemptableCompensation", dest="preemptableCompensation",
-                default=None,
-                help=("The preference of the autoscaler to replace preemptable nodes with "
-                      "non-preemptable nodes, when preemptable nodes cannot be started for some "
-                      "reason. Defaults to %s. This value must be between 0.0 and 1.0, inclusive. "
-                      "A value of 0.0 disables such compensation, a value of 0.5 compensates two "
-                      "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
-                      "replaces every missing pre-emptable node with a non-preemptable one." %
-                      config.preemptableCompensation))
     addOptionFn("--nodeStorage", dest="nodeStorage", default=50,
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "

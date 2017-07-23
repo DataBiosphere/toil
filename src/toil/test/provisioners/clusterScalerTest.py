@@ -128,16 +128,14 @@ class ClusterScalerTest(ToilTest):
             logger.info("We waited %s for cluster to finish" % (time.time() - startTime))
         finally:
             clusterScaler.shutdown()
-            mock.shutdownLeader()
+            mock.shutDown()
 
         # Print some info about the autoscaling
-        for i, bs in enumerate(mock.delegates):
-            preemptable = bool(i)
-            logger.info("Preemptable: %s, Total-jobs: %s: Max-workers: %s,"
-                        " Total-worker-time: %s, Worker-time-per-job: %s" %
-                        (preemptable, bs.totalJobs, sum(bs.maxWorkers.values()),
-                         bs.totalWorkerTime,
-                         bs.totalWorkerTime / bs.totalJobs if bs.totalJobs > 0 else 0.0))
+        logger.info("Total-jobs: %s: Max-workers: %s,"
+                    " Total-worker-time: %s, Worker-time-per-job: %s" %
+                    (mock.totalJobs, sum(mock.maxWorkers.values()),
+                     mock.totalWorkerTime,
+                     mock.totalWorkerTime / mock.totalJobs if mock.totalJobs > 0 else 0.0))
 
     def testClusterScaling(self):
         """
@@ -155,7 +153,7 @@ class ClusterScalerTest(ToilTest):
         config.maxPreemptableNodes = []  # No preemptable nodes
 
         # Non-preemptable parameters
-        config.nodeTypes = [Shape(20, 10, 10, 10)]
+        config.nodeTypes = [Shape(20, 10, 10, 10, False)]
         config.minNodes = [0]
         config.maxNodes = [10]
 
@@ -168,9 +166,9 @@ class ClusterScalerTest(ToilTest):
         
     def testClusterScalingMultipleNodeTypes(self):
 
-        smallNode = Shape(20, 5, 10, 10)
-        mediumNode = Shape(20, 10, 10, 10)
-        largeNode = Shape(20, 20, 10, 10)
+        smallNode = Shape(20, 5, 10, 10, False)
+        mediumNode = Shape(20, 10, 10, 10, False)
+        largeNode = Shape(20, 20, 10, 10, False)
 
         numJobs = 100
         
@@ -225,15 +223,14 @@ class ClusterScalerTest(ToilTest):
                 time.sleep(0.5)
         finally:
             clusterScaler.shutdown()
-            mock.shutdownLeader()
+            mock.shutDown()
 
         #Make sure jobs ran on both the small and medium node types
-        batchSystem = mock._pick(preemptable=False)
-        self.assertTrue(batchSystem.totalJobs > 0)
-        self.assertTrue(batchSystem.maxWorkers[smallNode] > 0)
-        self.assertTrue(batchSystem.maxWorkers[mediumNode] > 0)
+        self.assertTrue(mock.totalJobs > 0)
+        self.assertTrue(mock.maxWorkers[smallNode] > 0)
+        self.assertTrue(mock.maxWorkers[mediumNode] > 0)
 
-        self.assertEqual(batchSystem.maxWorkers[largeNode], 0)
+        self.assertEqual(mock.maxWorkers[largeNode], 0)
         
     def testClusterScalingWithPreemptableJobs(self):
         """
@@ -246,15 +243,10 @@ class ClusterScalerTest(ToilTest):
         config.defaultCores = 1
         config.defaultDisk = 1
 
-        # Preemptable node parameters
-        config.nodeType = Shape(20, 10, 10, 10)
-        config.minNodes = 0
-        config.maxNodes = 10
-
-        # Preemptable node parameters
-        config.preemptableNodeType = Shape(20, 10, 10, 10)
-        config.minPreemptableNodes = 0
-        config.maxPreemptableNodes = 10
+        # non-preemptable node parameters
+        config.nodeTypes = [Shape(20, 10, 10, 10, False), Shape(20, 10, 10, 10, True)]
+        config.minNodes = [0,0]
+        config.maxNodes = [10,10]
 
         # Algorithm parameters
         config.alphaPacking = 0.8
@@ -276,37 +268,38 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         # for jobs we create two parallel instances of the following class
         self.config = config
         self.secondsPerJob = secondsPerJob
-        self.delegates = [self.Delegate(nodeTypes=config.nodeTypes, preemptable=False), self.Delegate(nodeTypes=config.preemptableNodeTypes, preemptable=True)]
         self.provisioner = self
         self.batchSystem = self
 
+        self.nodeTypes = config.nodeTypes
+        self.nodeShapes = self.nodeTypes
+        self.nodeShapes.sort()
+
+        self.jobQueue = Queue()
+        self.updatedJobsQueue = Queue()
+        self.jobBatchSystemIDToIssuedJob = {}
+        self.totalJobs = 0 # Count of total jobs processed
+        self.totalWorkerTime = 0.0  # Total time spent in worker threads
+
+        self.nodesToWorker = {}  # Map from Node to instances of the Worker class
+
+        self.workers = {nodeShape:[] for nodeShape in self.nodeShapes} # Instances of the Worker class
+        self.maxWorkers = {nodeShape:0 for nodeShape in self.nodeShapes} # Maximum number of workers
+        self.running = False
+        self.leaderThread = Thread(target=self._leaderFn)
+
     def start(self):
-        for delegate in self.delegates:
-            delegate.start()
-            
-    def shutdownLeader(self):
-        for delegate in self.delegates:
-            delegate.shutdown()
+        self.running = True
+        self.leaderThread.start()
 
-    def _pick(self, preemptable=False):
-        """
-        Select the preemptable or non-premptable delegate
-        """
-        return self.delegates[int(preemptable)]
-
-    def addJob(self, jobShape, preemptable=False):
-        self._pick(preemptable).addJob(jobShape=jobShape)
+    def shutDown(self):
+        self.running = False
+        self.leaderThread.join()
 
     # Leader methods
-
-    def getNumberOfJobsIssued(self, preemptable=False):
-        return self._pick(preemptable).getNumberOfJobsIssued()
     
     def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self):
         return self.getNumberOfJobsIssued(), 50
-
-    def getJobs(self, preemptable):
-        return self._pick(preemptable).getJobs()
 
     # Stub out all AbstractBatchSystem methods since they are never called
 
@@ -317,9 +310,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         del name, value
 
     # AbstractScalableBatchSystem methods
-
-    def getNodes(self, preemptable=False, timeout=None):
-        return self._pick(preemptable).getNodes()
 
     def nodeInUse(self, nodeIP):
         return False
@@ -334,175 +324,139 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     # AbstractProvisioner methods
 
-    def getNodeShape(self, nodeType, preemptable=False):
-        return self._pick(preemptable).getNodeShape(nodeType=nodeType)
-
-    def getWorkersInCluster(self, nodeType, preemptable):
-        return self._pick(preemptable).getWorkersInCluster(nodeType=nodeType)
-
-    def addNodes(self, nodeType, numNodes, preemptable):
-        self._pick(preemptable)._addNodes(nodeType=nodeType, numNodes=numNodes)
-        return self.getNumberOfNodes(nodeType=nodeType, preemptable=preemptable)
-
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, nodeType=None, preemptable=None):
         """
         Returns a list of Node objects, each representing a worker node in the cluster
         
         :param preemptable: If True only return preemptable nodes else return non-preemptable nodes
         :return: list of Node
         """
-        nodesToWorker = self._pick(preemptable).nodesToWorker
+        nodesToWorker = self.nodesToWorker
         if nodeType:
             return [node for node in nodesToWorker if node.nodeType == nodeType]
         else:
             return nodesToWorker.keys()
 
     def terminateNodes(self, nodes):
-        for preemptable in (True, False):
-            self._pick(preemptable)._removeNodes(nodes)
+        self._removeNodes(nodes)
 
     def remainingBillingInterval(self, node):
         pass
 
-    # FIXME: Not part of AbstractScalableBatchSystem but used by the tests
 
-    def getNumberOfNodes(self, nodeType=None, preemptable=False):
-        return self._pick(preemptable).getNumberOfNodes(nodeType=nodeType)
 
-    @InnerClass
-    class Delegate(object):
+    def addJob(self, jobShape, preemptable=False):
         """
-        Implements the methods of the Provisioner and JobBatcher class needed for the
-        ClusterScaler class.
+        Add a job to the job queue
         """
+        self.totalJobs += 1
+        jobID = uuid.uuid4()
+        self.jobBatchSystemIDToIssuedJob[jobID] = Job(memory=jobShape.memory,
+                                                          cores=jobShape.cores, disk=jobShape.disk, preemptable=preemptable)
+        self.jobQueue.put(jobID)
 
-        def __init__(self, nodeTypes, preemptable):
-            super(MockBatchSystemAndProvisioner.Delegate, self).__init__()
-            self.nodeTypes = nodeTypes
-            self.nodeShapes = self.nodeTypes
-            self.nodeShapes.sort()
+    # JobBatcher functionality
 
-            self.jobQueue = Queue()
-            self.updatedJobsQueue = Queue()
-            self.jobBatchSystemIDToIssuedJob = {}
-            self.totalJobs = 0 # Count of total jobs processed
-            self.totalWorkerTime = 0.0  # Total time spent in worker threads
-
-            self.nodesToWorker = {}  # Map from Node to instances of the Worker class
-            self.preemptable = preemptable
-
-            self.workers = {nodeType:[] for nodeType in self.nodeTypes} # Instances of the Worker class
-            self.maxWorkers = {nodeType:0 for nodeType in self.nodeTypes} # Maximum number of workers
-            self.running = False
-            self.leaderThread = Thread(target=self._leaderFn)
-
-        def start(self):
-            self.running = True
-            self.leaderThread.start()
-
-        def shutdown(self):
-            self.running = False
-            self.leaderThread.join()
-
-        def addJob(self, jobShape):
-            """
-            Add a job to the job queue
-            """
-            self.totalJobs += 1
-            jobID = uuid.uuid4()
-            self.jobBatchSystemIDToIssuedJob[jobID] = Job(memory=jobShape.memory,
-                                                              cores=jobShape.cores, disk=jobShape.disk)
-            self.jobQueue.put(jobID)
-
-        # JobBatcher functionality
-
-        def getNumberOfJobsIssued(self):
+    def getNumberOfJobsIssued(self, preemptable=None):
+        if preemptable is not None:
+            jobList = [job for job in list(self.jobQueue.queue) if self.jobBatchSystemIDToIssuedJob[job].preemptable == preemptable]
+            return len(jobList)
+        else:
             return self.jobQueue.qsize()
 
-        def getJobs(self):
-            return self.jobBatchSystemIDToIssuedJob.values()
-        
-        # AbstractScalableBatchSystem functionality
+    def getJobs(self):
+        return self.jobBatchSystemIDToIssuedJob.values()
+    
+    # AbstractScalableBatchSystem functionality
 
-        def getNodes(self):
-            nodes = dict()
-            for node in self.nodesToWorker:
+    def getNodes(self, preemptable=False, timeout=None):
+        nodes = dict()
+        for node in self.nodesToWorker:
+            if node.preemptable == preemptable:
                 worker = self.nodesToWorker[node]
                 nodes[node.privateIP] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=1,
                                                         memoryTotal=0, memoryUsed=0, requestedMemory=1,
                                                         workers=1 if worker.busyEvent.is_set() else 0)
-            return nodes
+        return nodes
 
-        # AbstractProvisioner functionality
+    # AbstractProvisioner functionality
 
-        def getNodeShape(self, nodeType):
-            #Assume node shapes and node types are the same thing for testing
-            return nodeType
+    def addNodes(self, nodeType, numNodes, preemptable):
+        self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptable=preemptable)
+        return self.getNumberOfNodes(nodeType=nodeType, preemptable=preemptable)
 
-        def getWorkersInCluster(self, nodeType):
-            return self.workers[nodeType]
+    def getNodeShape(self, nodeType, preemptable=False):
+        #Assume node shapes and node types are the same thing for testing
+        return nodeType
+
+    def getWorkersInCluster(self, nodeShape):
+        return self.workers[nodeShape]
 
 
-        def _leaderFn(self):
-            while self.running:
-                updatedJobID = None
-                try:
-                    updatedJobID = self.updatedJobsQueue.get(timeout=1.0)
-                except Empty:
-                    continue
-                if updatedJobID:
-                    del self.jobBatchSystemIDToIssuedJob[updatedJobID]
-                time.sleep(0.1)
-                
+    def _leaderFn(self):
+        while self.running:
+            updatedJobID = None
+            try:
+                updatedJobID = self.updatedJobsQueue.get(timeout=1.0)
+            except Empty:
+                continue
+            if updatedJobID:
+                del self.jobBatchSystemIDToIssuedJob[updatedJobID]
+            time.sleep(0.1)
+            
 
-        def _addNodes(self, numNodes, nodeType):
-            class Worker(object):
-                def __init__(self, jobQueue, updatedJobsQueue, secondsPerJob):
-                    self.busyEvent = Event()
-                    self.stopEvent = Event()
+    def _addNodes(self, numNodes, nodeType, preemptable=False):
+        nodeShape = self.getNodeShape(nodeType=nodeType, preemptable=preemptable)
+        class Worker(object):
+            def __init__(self, jobQueue, updatedJobsQueue, secondsPerJob):
+                self.busyEvent = Event()
+                self.stopEvent = Event()
 
-                    def workerFn():
-                        while True:
-                            if self.stopEvent.is_set():
-                                return
-                            try:
-                                jobID = jobQueue.get(timeout=1.0)
-                            except Empty:
-                                continue
-                            updatedJobsQueue.put(jobID)
-                            self.busyEvent.set()
-                            time.sleep(secondsPerJob)
-                            self.busyEvent.clear()
+                def workerFn():
+                    while True:
+                        if self.stopEvent.is_set():
+                            return
+                        try:
+                            jobID = jobQueue.get(timeout=1.0)
+                        except Empty:
+                            continue
+                        updatedJobsQueue.put(jobID)
+                        self.busyEvent.set()
+                        time.sleep(secondsPerJob)
+                        self.busyEvent.clear()
 
-                    self.startTime = time.time()
-                    self.worker = Thread(target=workerFn)
-                    self.worker.start()
+                self.startTime = time.time()
+                self.worker = Thread(target=workerFn)
+                self.worker.start()
 
-                def stop(self):
-                    self.stopEvent.set()
-                    self.worker.join()
-                    return time.time() - self.startTime
-            for i in xrange(numNodes):
-                node = Node('127.0.0.1', '127.0.0.1', 'testNode', time.time(), nodeType=nodeType)
-                self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.outer.secondsPerJob)
-                self.workers[nodeType].append(self.nodesToWorker[node])
-            self.maxWorkers[nodeType] = max(self.maxWorkers[nodeType], len(self.workers[nodeType]))
+            def stop(self):
+                self.stopEvent.set()
+                self.worker.join()
+                return time.time() - self.startTime
+        for i in xrange(numNodes):
+            node = Node('127.0.0.1', '127.0.0.1', 'testNode', time.time(), nodeType=nodeType,
+                    preemptable=preemptable)
+            self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)
+            self.workers[nodeShape].append(self.nodesToWorker[node])
+        self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
-        def _removeNodes(self, nodes):
-            logger.info("removing nodes. %s workers and %s to terminate", len(self.nodesToWorker), len(nodes))
-            for node in nodes:
-                logger.info("removed node")
-                try:
-                    worker = self.nodesToWorker.pop(node)
-                    self.workers[node.nodeType].pop()
-                    self.totalWorkerTime += worker.stop()
-                except KeyError:
-                    # Node isn't our responsibility
-                    pass
+    def _removeNodes(self, nodes):
+        logger.info("removing nodes. %s workers and %s to terminate", len(self.nodesToWorker), len(nodes))
+        for node in nodes:
+            logger.info("removed node")
+            try:
+                nodeShape = self.getNodeShape(node.nodeType, node.preemptable)
+                worker = self.nodesToWorker.pop(node)
+                self.workers[nodeShape].pop()
+                self.totalWorkerTime += worker.stop()
+            except KeyError:
+                # Node isn't our responsibility
+                pass
 
-        def getNumberOfNodes(self, nodeType):
-            if nodeType:
-                return len(self.workers[nodeType])
-            else:
-                return len(self.nodesToWorker)
+    def getNumberOfNodes(self, nodeType=None, preemptable=None):
+        if nodeType:
+            nodeShape = self.getNodeShape(nodeType=nodeType, preemptable=preemptable)
+            return len(self.workers[nodeShape])
+        else:
+            return len(self.nodesToWorker)
                 

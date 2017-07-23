@@ -159,15 +159,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--provisioner=aws']
 
         if spotInstances:
-            toilOptions.extend([
-                '--preemptableNodeTypes=%s' % ",".join(self.instanceTypes),
-                # The RNASeq pipeline does not specify a preemptability requirement so we
-                # need to specify a default, otherwise jobs would never get scheduled.
-                '--defaultPreemptable',
-                '--maxPreemptableNodes=%s' % ",".join(self.numWorkers)])
-        else:
-            toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                                '--maxNodes=%s' % ",".join(self.numWorkers)])
+            self.instanceTypes = ["%s:%f" % (instanceType, spotBid) for (instanceType, spotBid) in zip(self.instanceTypes, self.spotBids)]
+        toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=%s' % ",".join(self.numWorkers)])
 
         self._runScript(toilOptions)
 
@@ -431,8 +425,6 @@ class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         AWSProvisioner._sshAppliance(self.leader.ip_address, 'tee', '/home/userScript.py', input=script)
 
     def _runScript(self, toilOptions):
-        toilOptions.extend([
-            '--preemptableCompensation=1.0'])
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)

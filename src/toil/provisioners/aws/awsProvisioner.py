@@ -82,10 +82,24 @@ class AWSProvisioner(AbstractProvisioner):
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
-            self.instanceTypes = [ec2_instance_types[nodeType] for nodeType in config.nodeTypes]
-            self.preemptableInstanceTypes = [ec2_instance_types[nodeType] for nodeType in config.preemptableNodeTypes]
-            self.spotBids = dict(zip(self.preemptableInstanceTypes, config.spotBids))
-            assert len(config.preemptableNodeTypes) > 0 or len(config.nodeTypes) > 0
+            spotBids = []
+            self.nonPreemptableNodeTypes = []
+            self.preemptableNodeTypes = []
+            for nodeTypeStr in config.nodeTypes:
+                nodeBidTuple = nodeTypeStr.split(":")
+                if len(nodeBidTuple) == 2:
+                    #This is a preemptable node type, with a spot bid
+                    self.preemptableNodeTypes.append(nodeBidTuple[0])
+                    self.spotBids.append(nodeBidTuple[1])
+                else:
+                    self.nonPreemptableNodeTypes.append(nodeTypeStr)
+            self.preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True) for nodeType in self.preemptableNodeTypes]
+            self.nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False) for nodeType in self.nonPreemptableNodeTypes]
+
+            self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
+            self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
+            self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
+
         else:
             self.ctx = None
             self.clusterName = None
@@ -94,8 +108,6 @@ class AWSProvisioner(AbstractProvisioner):
             self.keyName = None
             self.tags = None
             self.masterPublicKey = None
-            self.instanceTypes = []
-            self.preemptableInstanceTypes = []
             self.nodeStorage = None
         self.subnetID = None
 
@@ -148,10 +160,8 @@ class AWSProvisioner(AbstractProvisioner):
         self.leaderIP = leader.private_ip_address
         self._addTags([leader], defaultTags)
         self.ctx = ctx
-        self.instanceTypes = [ec2_instance_types[nodeType] for nodeType in nodeTypes]
-        self.preemptableInstanceTypes = [ec2_instance_types[nodeType] for nodeType in preemptableNodeTypes]
         if spotBids:
-            self.spotBids = dict(zip(self.preemptableInstanceTypes, spotBids))
+            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
         self.clusterName = clusterName
         self.keyName = keyName
         self.tags = leader.tags
@@ -167,15 +177,16 @@ class AWSProvisioner(AbstractProvisioner):
 
         return leader
 
-    def getNodeShape(self, nodeType):
+    def getNodeShape(self, nodeType, preemptable=False):
         instanceType = ec2_instance_types[nodeType]
         #EBS-backed instances are listed as having zero disk space in cgcloud.lib.ec2,
-        #but we'll estimate them at 2GB
-        disk = max(2 * 2**30, instanceType.disks * instanceType.disk_capacity * 2 ** 30)
+        #but we'll estimate them at 100MB
+        disk = max(0.1 * 2**30, instanceType.disks * instanceType.disk_capacity * 2 ** 30)
         return Shape(wallTime=60 * 60,
                      memory=instanceType.memory * 2 ** 30,
                      cores=instanceType.cores,
-                     disk=disk)
+                     disk=disk,
+                     preemptable=preemptable)
 
     @staticmethod
     def retryPredicate(e):
@@ -278,7 +289,7 @@ class AWSProvisioner(AbstractProvisioner):
                     kwargs['placement'] = getSpotZone(self.spotBid, instanceType.name, self.ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                                                   price=self.spotBids[instanceType],
+                                                                   price=self.spotBids[nodeType],
                                                                    image_id=self._discoverAMI(self.ctx),
                                                                    tags={'clusterName': self.clusterName},
                                                                    spec=kwargs,
@@ -308,7 +319,8 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
-                     name=i.id, launchTime=i.launch_time, nodeType=nodeType)
+                     name=i.id, launchTime=i.launch_time, nodeType=i.instance_type, 
+                     preemptable=preemptable)
                 for i in workerInstances]
 
     def _getClusterNameFromTags(self, md):
@@ -712,17 +724,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
-        filters = {
-                'instance.group-name': clusterName, 
-                'instance-state-name': 'pending'
-                }
         for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
             with attempt:
-                pendingInstances = ctx.ec2.get_only_instances(filters=filters)
-        filters['instance-state-name'] = 'running'
+                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'pending'})
         for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
             with attempt:
-                runningInstances = ctx.ec2.get_only_instances(filters=filters)
+                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
+                                                                       'instance-state-name': 'running'})
         if nodeType:
             pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
             runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]

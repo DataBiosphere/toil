@@ -88,12 +88,13 @@ class Cluster(object):
 
 
 class Node(object):
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType):
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable):
         self.publicIP = publicIP
         self.privateIP = privateIP
         self.name = name
         self.launchTime = launchTime
         self.nodeType = nodeType
+        self.preemptable = preemptable
 
     def __str__(self):
         return "%s at %s" % (self.name, self.publicIP)

@@ -626,9 +626,10 @@ class Leader:
                 self.serviceJobsIssued -= 1
 
         return jobNode
-    def getJobs(self, preemptable=False):
+    def getJobs(self, preemptable=None):
         jobs = self.jobBatchSystemIDToIssuedJob.values()
-        jobs = [job for job in jobs if job.preemptable == preemptable]
+        if preemptable is not None:
+            jobs = [job for job in jobs if job.preemptable == preemptable]
         return jobs
 
     def getJobIDs(self):

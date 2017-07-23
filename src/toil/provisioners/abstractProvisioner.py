@@ -24,7 +24,7 @@ from bd2k.util.retry import never
 log = logging.getLogger(__name__)
 
 
-Shape = namedtuple("_Shape", "wallTime memory cores disk")
+Shape = namedtuple("_Shape", "wallTime memory cores disk preemptable")
 """
 Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
 wall-time allocation. All attributes are integers.
@@ -130,7 +130,7 @@ class AbstractProvisioner(object):
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, nodeType=None):
+    def getNodeShape(self, nodeType=None, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
