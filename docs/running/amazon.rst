@@ -9,7 +9,7 @@ Prepare your AWS environment
 
 #. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
 
-#. Follow `Amazon's instructions`_ to create an ssh key and import it into EC2.
+#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
 
 #. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
 
@@ -22,74 +22,42 @@ Prepare your AWS environment
 
 Launch a Toil workflow in AWS
 -----------------------------
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same ``helloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
 
-The user easily can run the :ref:`quickstart` example on an aws instance using the :ref:`clusterRef`.
-
-#. First launch a node in AWS using the :ref:`launchCluster` command. ::
-
-        (venv) $ toil launch-cluster <cluster-name> \
-        --keyPairName <AWS-key-pair-name> \
-        --nodeType t2.micro \
-        --zone us-west-2a
-
-#. Copy ``helloWorld.py`` from the :ref:`quickstart example <quickstart>`. to the node using the :ref:`rsyncCluster`
-   command. ::
-
-    $ (venv) toil rsync-cluster <cluster-name> helloWorld.py :/tmp
-
-.. tip::
-
-    Launching a Toil script from the root directory is currently not supported. Make sure when you copy over your script
-    you put it in some sub-directory such as ``/tmp`` in this case.
-
-Launch a Toil workflow in AWS
------------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same
-``helloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
-
-Since our cluster is distributed, we'll use the ``aws`` job store which uses a combination of one S3 bucket and a
-couple of SimpleDB domains.  This allows all nodes in the cluster access to the job store which would not be possible
-if we were to use the ``file`` job store with a locally mounted file system on the leader.
 
 #. Launch a cluster in AWS. ::
 
-       $ (venv) toil launch-cluster <cluster-name> \
-       --keyPairName <AWS-key-pair-name> \
+       (venv) $ toil launch-cluster <cluster-name> \
+	--keyPairName <AWS-key-pair-name> \
        --nodeType t2.medium \
-       --zone us-west-2a \
+	--zone us-west-2a 
 
-   Notice that jobStore option is prefixed by ``aws:us-west-2``. This indicates that you are using a jobStore on aws and
-   that your region is ``us-west-2``.
 
 #. Copy ``helloWorld.py`` to the leader node. ::
 
-      $ (venv) toil rsync-cluster <cluster-name> helloWorld.py :/tmp
-
+      	(venv) $ toil rsync-cluster <cluster-name> helloWorld.py :/tmp
+	
 #. Login to the cluster leader node. ::
 
-      $ (venv) toil ssh-cluster <cluster-name>
+      	(venv) $ toil ssh-cluster <cluster-name>
 
 #. Run the Toil script in the cluster ::
 
-      $ python /tmp/helloWorld.py \
-      aws:us-west-2:my-aws-jobstore
+      	$ python /tmp/helloWorld.py 
 
-   .. note::
+.. note::
 
-      Toil can save output from a job in various output locations including files and, as in the example above, an S3
-      bucket called ``my-aws-jobstore``.  See the :ref:`jobStoreInterface` for more information.
+	Along with some other ``INFO`` log messages, you should get the following output in your 
+	terminal window: ``Hello, world!, here's a message: You did it!``
+
 
 #. Exit from the SSH connection. ::
 
-      $ exit
-
-#. Remove the S3 bucket created in the ``helloWorld.py`` workflow. ::
-
-      $ (venv) toil clean <cluster-name>
+      	$ exit
 
 #. Destroy the cluster. ::
 
-      $ (venv) toil destroy-cluster <cluster-name>
+      	(venv) $ toil destroy-cluster <cluster-name>
 
 .. _awscwl:
 
@@ -99,32 +67,32 @@ In this section, we describe how to run a CWL workflow with Toil on AWS.
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-    (venv) $ toil launch-cluster <cluster-name> \
-    --keyPairName <AWS-key-pair-name> \
-    --nodeType t2.micro \
-    --zone us-west-2a
+    	(venv) $ toil launch-cluster <cluster-name> \
+    	--keyPairName <AWS-key-pair-name> \
+    	--nodeType t2.micro \
+    	--zone us-west-2a
 
-#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the
-   :ref:`rsyncCluster` command. ::
+#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
 
-        $ (venv) toil rsync-cluster <cluster-name> example.cwl example-job.cwl :/tmp
+     	(venv) $ toil rsync-cluster <cluster-name> \
+	example.cwl example-job.cwl :/tmp
 
 #. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
 
-      $ (venv) toil ssh-cluster <cluster-name> \
-      cwltoil \
-      /tmp/example.cwl \
-      /tmp/example-job.yml
+      	(venv) $ toil ssh-cluster <cluster-name> \
+      	cwltoil \
+      	/tmp/example.cwl \
+      	/tmp/example-job.yml
 
    ..  tip::
 
       When running a CWL workflow on AWS, input files can be provided either on the
-      local file system or in S3 buckets using ``s3://`` URL references. Final output
+      local file system or in S3 buckets using ``s3://`` URI references. Final output
       files will be copied to the local file system of the leader node.
 
 #. Destroy the cluster. ::
 
-      $ toil destroy-cluster <cluster-name>
+      	(venv) $ toil destroy-cluster <cluster-name>
 
 Details about Launching a Cluster in AWS
 ----------------------------------------
@@ -132,8 +100,10 @@ Details about Launching a Cluster in AWS
 Using the provisioner to launch a Toil leader instance is simple using the launch-cluster command.
 ::
 
-    $ toil launch-cluster my-cluster --nodeType=t2.medium \
-       --zone us-west-2a --keyPairName=your-AWS-key-pair-name
+    	(venv) $ toil launch-cluster my-cluster \
+	--nodeType t2.medium \
+       	--zone us-west-2a \
+	--keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will
@@ -146,14 +116,11 @@ The nodeType is an `EC2 instance type`_. This only affects any nodes launched no
 
 The ``-z`` parameter specifies which EC2 availability
 zone to launch the cluster in. Alternatively, you can specify this option
-via the ``TOIL_AWS_ZONE`` environment variable. We will assume this environment variable is set for the
-rest of the tutorial. Note: the zone is different from an EC2 region. A
-region corresponds to a geographical area like ``us-west-2 (Oregon)``, and
-availability zones are partitions of this area like ``us-west-2a``.
+via the ``TOIL_AWS_ZONE`` environment variable. We will assume this environment variable is set for the rest of the tutorial. Note: the zone is different from an EC2 region. A region corresponds to a geographical area like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like ``us-west-2a``.
 
 For more information on options try::
 
-    $ toil launch-cluster --help
+    	(venv) $ toil launch-cluster --help
 
 Uploading Workflows
 ^^^^^^^^^^^^^^^^^^^
@@ -162,7 +129,7 @@ Now that our cluster is launched we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
 look like::
 
-    $ toil rysnc-cluster my-cluster ~/toil-workflow.py :/
+    	(venv) $ toil rysnc-cluster my-cluster ~/toil-workflow.py :/
 
 .. note::
 
@@ -178,20 +145,19 @@ The only remaining step is to kick off our Toil run with special autoscaling opt
 
 First we use the :ref:`sshCluster` utility to log on to the leader. ::
 
-    $ toil ssh-cluster my-cluster
+    	(venv) $ toil ssh-cluster my-cluster
 
 In order for your script to make use of autoscaling you will need to specify the options
-``--provisioner=aws`` and ``--nodeType=<>`` where nodeType is the name of an `EC2 instance type`_.
+``--provisioner aws`` and ``--nodeType <>`` where nodeType is the name of an `EC2 instance type`_.
 These options, respectively, tell Toil that we are running on AWS (currently the
 only supported autoscaling environment) and which instance type to use for the
 Toil worker instances. Here is an example: ::
 
-    $ python my-toil-script.py --provisioner=aws --nodeType=m3.large
+    	(venv) $ python my-toil-script.py --provisioner aws --nodeType m3.large
 
-For more information on other autoscaling (and other) options
-have a look at :ref:`workflowOptions` and/or run::
+For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run::
 
-    $ python my-toil-script.py --help
+    	(venv) $ python my-toil-script.py --help
 
 .. important::
 
@@ -202,25 +168,19 @@ Preemptability
 ^^^^^^^^^^^^^^
 
 Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes.
-Our preemptable node type can be set by using the ``--preemptableNodeType=<>`` flag. While individual jobs can
-each explicitly specify whether or not they should be run on preemptable nodes
-via the boolean ``preemptable`` resource requirement, the
-``--defaultPreemptable`` flag will allow jobs without a ``preemptable``
-requirement to run on preemptable machines.
+Our preemptable node type can be set by using the ``--preemptableNodeType <>`` flag. While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
+via the boolean ``preemptable`` resource requirement, the ``--defaultPreemptable`` flag will allow jobs without a ``preemptable`` requirement to run on preemptable machines.
 
-We can set the maximum number of preemptable and non-preemptable nodes via the flags ``--maxNodes=<>``
-and ``--maxPreemptableNodes=<>``.
+We can set the maximum number of preemptable and non-preemptable nodes via the flags ``--maxNodes <>`` and ``--maxPreemptableNodes <>``.
 
 .. admonition:: Specify Preemptability Carefully
 
-    Ensure that your choices for ``--maxNodes=<>`` and ``--maxPreemptableNodes=<>`` make
-    sense for your workflow and won't cause it to hang - if the workflow requires preemptable nodes set
-    ``--maxPreemptableNodes`` to some non-zero value and if any job requires
-    non-preemptable nodes set ``--maxNodes`` to some non-zero value.
+    	Ensure that your choices for ``--maxNodes <>`` and ``--maxPreemptableNodes <>`` make
+    	sense for your workflow and won't cause it to hang - if the workflow requires preemptable 
+	nodes set ``--maxPreemptableNodes`` to some non-zero value and if any job requires
+    	non-preemptable nodes set ``--maxNodes`` to some non-zero value.
 
-Finally, the ``--preemptableCompensation`` flag can be used to handle
-cases where preemptable nodes may not be available but are required for your
-workflow.
+Finally, the ``--preemptableCompensation`` flag can be used to handle cases where preemptable nodes may not be available but are required for your workflow.
 
 .. admonition:: Using Mesos with Toil on AWS
 
@@ -240,8 +200,8 @@ change. This is in contrast with :ref:`Autoscaling`.
 
 To launch a cluster with a specific number of worker nodes we use the ``-w`` option.::
 
-    $ toil launch-cluster my-cluster --nodeType=t2.micro \
-       -z us-west-2a --keyPairName=your-AWS-key-pair-name -w 3
+    	(venv) $ toil launch-cluster my-cluster --nodeType t2.micro \
+       	-z us-west-2a --keyPairName your-AWS-key-pair-name -w 3
 
 This will spin up a leader node with three additional workers all with the same type.
 
