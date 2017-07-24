@@ -21,7 +21,6 @@ import logging
 import subprocess
 
 # Python 3 compatibility imports
-import sys
 from six.moves import xrange
 
 from toil import resolveEntryPoint
@@ -107,12 +106,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True
-                try:
+                with self.assertRaises(NoSuchJobStoreException):
                     main(options)
-                except NoSuchJobStoreException:
-                    pass
-                else:
-                    self.fail('Expected %s to be raised' % NoSuchJobStoreException)
 
                 options.restart = False
 
@@ -124,12 +119,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     i = e.numberOfFailedJobs
 
                 # Check we get an exception if we try to run without restart on an existing store
-                try:
+                with self.assertRaises(JobStoreExistsException):
                     main(options)
-                except JobStoreExistsException:
-                    pass
-                else:
-                    self.fail('Expected %s to be raised' % JobStoreExistsException)
 
                 options.restart = True
 
@@ -148,12 +139,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
-                try:
+                with self.assertRaises(JobException):
                     main(options)
-                except JobException:
-                    pass
-                else:
-                    self.fail('Expected %s to be raised' % JobException)
 
                 # Now check the file is properly sorted..
                 with open(tempSortFile, 'r') as fileHandle:
