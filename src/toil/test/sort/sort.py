@@ -197,14 +197,14 @@ def main(options=None):
 
     # Now we are ready to run
     with Toil(options) as toil:
+        sortFileURL = 'file://' + os.path.abspath(fileName)
         if not toil.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
             sortFileID = toil.importFile(sortFileURL)
             sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
                                                     memory=sortMemory))
-            toil.exportFile(sortedFileID, sortFileURL)
         else:
-            toil.restart()
-
+            sortedFileID = toil.restart()
+        toil.exportFile(sortedFileID, sortFileURL)
 if __name__ == '__main__':
     main()
