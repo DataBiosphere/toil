@@ -3,6 +3,7 @@ import signal
 import time
 import uuid
 from threading import Thread
+from subprocess import CalledProcessError
 
 import os
 from pwd import getpwuid
@@ -113,6 +114,23 @@ class DockerTest(ToilTest):
         rv = Job.Runner.startToil(A, options)
         assert rv.strip() == '2'
 
+    def testDockerPipeChainErrorDetection(self, caching=True):
+        """
+        By default, executing cmd1 | cmd2 | ... | cmdN, will only return an error
+        if cmdN fails.  This can lead to all manor of errors being silently missed.
+        This tests to make sure that the piping API for dockerCall() throws an exception
+        if non-last commands in the chain fail.
+        """
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = 'INFO'
+        options.workDir = self.tempDir
+        options.clean = 'always'
+        if not caching:
+            options.disableCaching = True
+        A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
+        rv = Job.Runner.startToil(A, options)
+        assert rv == True
+
     def testDockerPermissions(self, caching=True):
         options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = 'INFO'
@@ -128,6 +146,9 @@ class DockerTest(ToilTest):
 
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(caching=False)
+
+    def testNonCachingDockerChainErrorDetection(self):
+        self.testDockerPipeChainErrorDetection(caching=False)
 
     def testNonCachingDockerClean(self):
         self.testDockerClean(caching=False)
@@ -174,6 +195,17 @@ def _testDockerPipeChainFn(job):
     parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
     return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
 
+def _testDockerPipeChainErrorFn(job):
+    """
+    Return True if the command exit 1 | wc -l raises a CalledProcessError when run through 
+    the docker interface
+    """
+    parameters = [ ['exit', '1'], ['wc', '-l'] ]
+    try:
+        return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
+    except CalledProcessError:
+        return True
+    return False
 
 def _testDockerPermissions(job):
     testDir = job.fileStore.getLocalTempDir()

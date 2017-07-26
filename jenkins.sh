@@ -19,6 +19,7 @@ export LIBPROCESS_IP=127.0.0.1
 
 # Needed for integrative provisioner tests
 export CGCLOUD_ME=jenkins@jenkins-master
+export TOIL_AWS_KEYNAME=jenkins@jenkins-master
 
 TMPDIR=/mnt/ephemeral/tmp
 # Run rm "as root" so we can clean up files left over by rogue containers

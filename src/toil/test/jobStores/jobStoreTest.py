@@ -738,6 +738,16 @@ class AbstractJobStoreTest:
             cleaner = self._createJobStore()
             cleaner.destroy()
 
+        def testEmptyFileStoreIDIsReadable(self):
+            """Simply creates an empty fileStoreID and attempts to read from it."""
+            id = self.master.getEmptyFileStoreID()
+            fh, path = tempfile.mkstemp()
+            try:
+                self.master.readFile(id, path)
+                self.assertTrue(os.path.isfile(path))
+            finally:
+                os.unlink(path)
+
         def _largeLogEntrySize(self):
             """
             Sub-classes may want to override these in order to maximize test coverage
@@ -951,7 +961,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     self.assertEqual(s, f.read())
 
     def testInaccessableLocation(self):
-        url = 's3://cgl-toil-tests-disallow-getbucketlocation/README'
+        url = 's3://toil-no-location-bucket-dont-delete/README'
         with patch('toil.jobStores.aws.jobStore.log') as mock_log:
             jobStoreID = self.master.importFile(url)
             self.assertTrue(self.master.fileExists(jobStoreID))

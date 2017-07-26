@@ -1100,7 +1100,8 @@ class Job(JobLikeObject):
             # Create the service job tuple
             j = ServiceJobNode(jobStoreID=serviceJobGraph.jobStoreID,
                                memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
-                               disk=serviceJobGraph.disk, startJobStoreID=serviceJobGraph.startJobStoreID,
+                               disk=serviceJobGraph.disk, preemptable=serviceJobGraph.preemptable,
+                               startJobStoreID=serviceJobGraph.startJobStoreID,
                                terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
                                errorJobStoreID=serviceJobGraph.errorJobStoreID,
                                jobName=serviceJobGraph.jobName, unitName=serviceJobGraph.unitName,
@@ -1509,9 +1510,9 @@ class EncapsulatedJob(Job):
 
 
 class ServiceJobNode(JobNode):
-    def __init__(self, jobStoreID, memory, cores, disk, startJobStoreID, terminateJobStoreID,
+    def __init__(self, jobStoreID, memory, cores, disk, preemptable, startJobStoreID, terminateJobStoreID,
                  errorJobStoreID, unitName, jobName, command, predecessorNumber):
-        requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=False)
+        requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
         super(ServiceJobNode, self).__init__(unitName=unitName, jobName=jobName,
                                              requirements=requirements,
                                              jobStoreID=jobStoreID,
