@@ -195,6 +195,7 @@ class Config(object):
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
+        setOption("linkImports")
 
         setOption("environment", parseSetEnv)
 

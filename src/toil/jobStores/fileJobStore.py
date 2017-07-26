@@ -189,7 +189,6 @@ class FileJobStore(AbstractJobStore):
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
-                # linking is not done be default because of issue #1755
                 self._copyOrLink(url, path)
                 return None
         else:
