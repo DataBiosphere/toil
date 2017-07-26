@@ -70,7 +70,7 @@ class JobStore(AbstractJobStore):
             self.conn.commit()
             logger.debug('Successfully deleted jobStore:%s' % self.db_url)
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
 
@@ -89,7 +89,7 @@ class JobStore(AbstractJobStore):
                 self._insert_row('job_store', **attrs)
                 self.conn.commit()
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
         return job
@@ -106,7 +106,7 @@ class JobStore(AbstractJobStore):
                 cur.execute("SELECT * FROM job_store WHERE namespace = %s AND job_store_id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreID))
                 record = cur.fetchone()
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
 
         self.conn.commit()
@@ -168,7 +168,7 @@ class JobStore(AbstractJobStore):
                 ))
             self.conn.commit()
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
 
@@ -178,7 +178,7 @@ class JobStore(AbstractJobStore):
                 cur.execute( "UPDATE job_store SET _deleted_at = now() WHERE namespace = %s AND job_store_id = %s AND _deleted_at IS NULL;", (self.namespace, jobStoreID))
             self.conn.commit()
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
 
@@ -190,7 +190,7 @@ class JobStore(AbstractJobStore):
                 for record in cur:
                     yield self.__jobGraphFromRecord(record)
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
         self.conn.commit()
 
@@ -245,7 +245,7 @@ class JobStore(AbstractJobStore):
                 exists = bool(cur.rowcount)
 
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
 
         self.conn.commit()
@@ -275,7 +275,7 @@ class JobStore(AbstractJobStore):
             self.conn.commit()
 
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
 
@@ -347,7 +347,7 @@ class JobStore(AbstractJobStore):
             self.conn.commit()
             return len(results)
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             self.conn.rollback()
             raise e
 
@@ -374,7 +374,7 @@ class JobStore(AbstractJobStore):
                 logger.debug('inserting %s into %s', fields, tableName)
                 cur.execute(sqlQuery, fields)
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
 
     def _checkJobStoreFileID(self, jobStoreFileID):
@@ -395,7 +395,7 @@ class JobStore(AbstractJobStore):
                     return record['id']
 
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
         self.conn.commit()
 
@@ -468,7 +468,7 @@ class JobStore(AbstractJobStore):
                 """)
             logger.debug('Created job_store table')
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
 
     def _create_filestore_table(self):
@@ -490,7 +490,7 @@ class JobStore(AbstractJobStore):
                 """)
             logger.debug('Created file_store table')
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
 
     # NOTE: The embedded PL/pgSQL script is playing havoc with atom syntax highlighter.
@@ -544,5 +544,5 @@ class JobStore(AbstractJobStore):
                 cur.execute(trigger_plsql)
             logger.debug('Created updated_at triggers')
         except RuntimeError as e:
-            # Handle known erros
+            # Handle known errors
             raise e
