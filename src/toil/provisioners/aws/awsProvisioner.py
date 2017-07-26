@@ -182,8 +182,11 @@ class AWSProvisioner(AbstractProvisioner):
         #EBS-backed instances are listed as having zero disk space in cgcloud.lib.ec2,
         #but we'll estimate them at 100MB
         disk = max(0.1 * 2**30, instanceType.disks * instanceType.disk_capacity * 2 ** 30)
+        #Underestimate memory by 1 GB to prevent autoscaler from disagreeing with 
+        #mesos about whether a job can run on a particular node type
+        memory = (instanceType.memory - 1) * 2** 30
         return Shape(wallTime=60 * 60,
-                     memory=instanceType.memory * 2 ** 30,
+                     memory=memory,
                      cores=instanceType.cores,
                      disk=disk,
                      preemptable=preemptable)
