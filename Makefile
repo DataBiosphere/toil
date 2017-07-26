@@ -142,6 +142,7 @@ integration_test: check_venv check_build_reqs sdist push_docker
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
+	$(pip) install setuptools --upgrade
 	$(python) setup.py egg_info sdist bdist_egg upload
 clean_pypi:
 	- rm -rf build/
@@ -214,7 +215,7 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 pytest-timeout==1.2.0
 
 
 check_venv:

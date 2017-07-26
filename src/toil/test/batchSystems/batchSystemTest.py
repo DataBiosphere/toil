@@ -325,8 +325,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
         return MesosBatchSystem(config=self.config,
-                                maxCores=numCores, maxMemory=1e9, maxDisk=1001,
-                                masterAddress='127.0.0.1:5050')
+                                maxCores=numCores, maxMemory=1e9, maxDisk=1001)
 
     def tearDown(self):
         self._stopMesos()
@@ -344,8 +343,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
-
+        
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
     This test ensures that single machine batch system doesn't exceed the configured number of
@@ -537,6 +535,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def createBatchSystem(self):
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
+        
         return ParasolBatchSystem(config=self.config,
                                   maxCores=numCores,
                                   maxMemory=memory,

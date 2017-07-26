@@ -19,8 +19,11 @@ from inspect import getsource
 from textwrap import dedent
 
 import time
+
+import pytest
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
+from cgcloud.lib.ec2 import wait_instances_running
 
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
@@ -38,12 +41,12 @@ log = logging.getLogger(__name__)
 class AbstractAWSAutoscaleTest(ToilTest):
 
     def sshUtil(self, command):
-        baseCommand = ['toil', 'ssh-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + command
         subprocess.check_call(callCommand)
 
     def rsyncUtil(self, src, dest):
-        baseCommand = ['toil', 'rsync-cluster', '-p=aws', self.clusterName]
+        baseCommand = ['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName]
         callCommand = baseCommand + [src, dest]
         subprocess.check_call(callCommand)
 
@@ -51,9 +54,12 @@ class AbstractAWSAutoscaleTest(ToilTest):
         callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
         subprocess.check_call(callCommand)
 
-    def createClusterUtil(self):
+    def createClusterUtil(self, args=None):
+        if args is None:
+            args = []
         callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
                        '--nodeType=%s' % self.instanceType, self.clusterName]
+        callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -63,7 +69,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.instanceType = 'm3.large'
-        self.keyName = 'jenkins@jenkins-master'
+        self.keyName = os.getenv('TOIL_AWS_KEYNAME')
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = 2
         self.numSamples = 2
@@ -82,6 +88,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
         ctx = AWSProvisioner._buildContext(clusterName)
         roles = list(ctx.local_roles())
         return roles
+
+    def launchCluster(self):
+        self.createClusterUtil()
+
+    def getRootVolID(self):
+        rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
+        assert isinstance(rootBlockDevice, BlockDeviceType)
+        return rootBlockDevice.volume_id
 
     @abstractmethod
     def _getScript(self):
@@ -102,13 +116,21 @@ class AbstractAWSAutoscaleTest(ToilTest):
         raise NotImplementedError()
 
     def _test(self, spotInstances=False, fulfillableBid=True):
+        """
+        Does the work of the testing. Many features' test are thrown in here is no particular
+        order
+
+        :param spotInstances: Specify if you want to use spotInstances
+        :param fulfillableBid: If false, the bid will never succeed. Used to test bid failure
+        """
         if not fulfillableBid:
             self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        self.createClusterUtil()
+        self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
+        ctx = AWSProvisioner._buildContext(self.clusterName)
 
         assert len(self.getMatchingRoles(self.clusterName)) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
@@ -132,6 +154,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--retryCount=2',
                        '--clusterStats=/home/',
                        '--logDebug',
+                       '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
         if spotInstances:
@@ -157,10 +180,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
+        volumeID = self.getRootVolID()
         ctx = AWSProvisioner._buildContext(self.clusterName)
-        assert isinstance(self.leader.block_device_mapping["/dev/xvda"], BlockDeviceType)
-        volumeID = self.leader.block_device_mapping["/dev/xvda"].volume_id
-        ctx.ec2.get_all_volumes(volume_ids=[volumeID])
         AWSProvisioner.destroyCluster(self.clusterName)
         self.leader.update()
         for attempt in range(6):
@@ -180,31 +201,48 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles(self.clusterName)) == 0
 
 
+@pytest.mark.timeout(1200)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
+        self.requestedLeaderStorage = 80
 
     def setUp(self):
         super(AWSAutoscaleTest, self).setUp()
         self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
-        sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
-        with open(sseKeyFile, 'w') as f:
+        fileToSort = os.path.join(os.getcwd(), str(uuid4()))
+        with open(fileToSort, 'w') as f:
+            # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(sseKeyFile, ':/home/keyFile')
-        os.unlink(sseKeyFile)
+        self.rsyncUtil(fileToSort, ':/home/sortFile')
+        os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        # the file to sort is included in the Toil appliance so we know it will be on every node in the cluster
-        # hacky, but it works.
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)
+
+    def launchCluster(self):
+        # add arguments to test that we can specify leader storage
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
+
+    def getRootVolID(self):
+        """
+        Adds in test to check that EBS volume is build with adequate size.
+        Otherwise is functionally equivalent to parent.
+        :return: volumeID
+        """
+        volumeID = super(AWSAutoscaleTest, self).getRootVolID()
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        # test that the leader is given adequate storage
+        self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
+        return volumeID
 
     @integrative
     @needs_aws
@@ -217,6 +255,41 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self._test(spotInstances=True)
 
 
+@pytest.mark.timeout(1200)
+class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def __init__(self, name):
+        super(AWSStaticAutoscaleTest, self).__init__(name)
+        self.requestedNodeStorage = 20
+
+    def launchCluster(self):
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
+                                     '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
+        ctx = AWSProvisioner._buildContext(self.clusterName)
+        nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        nodes.sort(key=lambda x: x.launch_time)
+        # assuming that leader is first
+        workers = nodes[1:]
+        # test that two worker nodes were created
+        self.assertEqual(2, len(workers))
+        # test that workers have expected storage size
+        # just use the first worker
+        worker = workers[0]
+        worker = next(wait_instances_running(ctx.ec2, [worker]))
+        rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
+        self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
+        rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
+
+    def _runScript(self, toilOptions):
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand.extend(toilOptions)
+        self.sshUtil(runCommand)
+
+
+@pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
     This test insures autoscaling works on a restarted Toil run
@@ -276,6 +349,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         self._test()
 
 
+@pytest.mark.timeout(1200)
 class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):

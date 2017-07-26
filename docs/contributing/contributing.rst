@@ -47,11 +47,24 @@ To build the docs, run ``make develop`` with all extras followed by
 Running tests
 -------------
 
-To invoke all tests (unit and integration) use
+To invoke all unit tests use
 
 ::
 
     $ make test
+
+To invoke all non-AWS integration tests use
+
+::
+
+    $ make integration_test
+
+To invoke all integration tests, including AWS tests, use
+
+::
+
+    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
+
 
 .. topic:: Installing Docker with Quay
 
@@ -129,6 +142,9 @@ as soon as a developer makes a commit or dirties the working copy they will no
 longer be able to rely on Toil to automatically detect the proper Toil Appliance
 image. Instead, developers wishing to test any appliance changes in autoscaling
 should build and push their own appliance image to a personal Docker registry.
+See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
+configure Toil to pull the Toil Appliance image from your personal repo instead
+of the our official Quay account.
 
 Here is a general workflow: (similar instructions apply when using
 Docker Hub)
@@ -168,7 +184,7 @@ Docker Hub)
    :ref:`envars`.
 
 7. Now you can launch your cluster! For more information see
-   :ref:`Toil_Provisioner`.
+   :ref:`Autoscaling`.
 
 Running Cluster Locally
 ~~~~~~~~~~~~~~~~~~~~~~~

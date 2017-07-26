@@ -375,10 +375,8 @@ class AzureJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         jobStoreFileID = self._newFileID()
-        for attempt in retry_azure(timeout=45):
-            with attempt:
-                self.files.put_blob(blob_name=jobStoreFileID, blob='',
-                                    x_ms_blob_type='BlockBlob')
+        with self._uploadStream(jobStoreFileID, self.files) as _:
+            pass
         self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 

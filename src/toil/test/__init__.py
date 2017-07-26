@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import tempfile
 import threading
 import time
@@ -245,16 +246,43 @@ else:
         return MarkDecorator(name)(test_item)
 
 
+def needs_rsync3(test_item):
+    """
+    Use as a decorator before test classes or methods that depend on any features used in rsync
+    version 3.0.0+
+
+    Necessary because :meth:`utilsTest.testAWSProvisionerUtils` uses option `--protect-args` which is only
+    available in rsync 3
+    """
+    test_item = _mark_test('rsync', test_item)
+    try:
+        versionInfo = subprocess.check_output(['rsync', '--version'])
+    except CalledProcessError:
+        return unittest.skip('rsync needs to be installed to run this test.')(test_item)
+    else:
+        # version output looks like: 'rsync  version 2.6.9 ...'
+        versionNum = int(versionInfo.split()[2].split('.')[0])
+        if versionNum < 3:
+            return unittest.skip('This test depends on rsync version 3.0.0+.')
+        return test_item
+
+
 def needs_aws(test_item):
     """
     Use as a decorator before test classes or methods to only run them if AWS usable.
     """
     test_item = _mark_test('aws', test_item)
+    keyName = os.getenv('TOIL_AWS_KEYNAME')
+    log.info('Checking keyname: %s', keyName)
+    if not keyName or keyName is None:
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    log.info("NOPE %s" % keyName)
+
     try:
         # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
-        return unittest.skip("Install toil with the 'aws' extra to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
     except:
         raise
     else:
