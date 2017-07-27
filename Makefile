@@ -88,7 +88,7 @@ SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
-pytest_args_local=-vv -s --timeout=600
+pytest_args_local=-vv --timeout=600
 extras=
 
 dist_version:=$(shell $(python) version_template.py distVersion)
