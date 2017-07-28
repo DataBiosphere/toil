@@ -82,8 +82,17 @@ class MesosExecutor(mesos.interface.Executor):
         """
         Kill parent task process and all its spawned children
         """
+        # Kill any docker instances launched by current task
+        pid, job_id = self.runningTasks[taskId]
+        if self.workerCleanupInfo is not None:
+            workflow_id = self.workerCleanupInfo.workflowID
+            docker_kill_command = "docker kill `docker ps -q -f label=job_id={} -f label=workflow_id={}`".format(
+                job_id, workflow_id)
+            p = subprocess.Popen(docker_kill_command, shell=True)
+            if p.wait() != 0:
+                log.debug("Couldn't kill docker container with job_id {}, workflow_id: {}".format(job_id, workflow_id))
+
         try:
-            pid = self.runningTasks[taskId]
             pgid = os.getpgid(pid)
         except KeyError:
             pass
@@ -150,7 +159,7 @@ class MesosExecutor(mesos.interface.Executor):
             startTime = time()
             try:
                 popen = runJob(taskData)
-                self.runningTasks[task.task_id.value] = popen.pid
+                self.runningTasks[task.task_id.value] = (popen.pid, taskData.jobStoreID)
                 try:
                     exitStatus = popen.wait()
                     wallTime = time() - startTime
